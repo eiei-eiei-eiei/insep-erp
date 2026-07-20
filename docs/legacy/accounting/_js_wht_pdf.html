@@ -1,0 +1,214 @@
+<script>
+/* =========================================================================
+ * _js_wht_pdf.html  —  WHT50 PDF Fill Engine (Route A: เติม AcroForm fields)
+ * เติมข้อมูลลงเทมเพลต PDF ฟอร์ม 50 ทวิ ของสรรพากร (approve_wh3_xxxxxx.pdf)
+ * ด้วย pdf-lib โดยอ้างอิง "ชื่อ field" ไม่ใช้พิกัด (ฟอร์มนี้เป็น AcroForm 89 fields)
+ *
+ * วิธีใช้จากที่อื่น:
+ *   WHT50.printOne(printData)            // 1 ใบ -> เปิดแท็บใหม่ (พิมพ์ 2 ชุดได้)
+ *   WHT50.printMany([printData, ...])    // หลายใบ -> รวมเป็น PDF เดียว
+ *   printData = object ที่ backend (saveAndGenerate50Tawi / generate50TawiHTMLFromHistory) คืนมา
+ * ========================================================================= */
+window.WHT50 = (function () {
+  'use strict';
+
+  // ---- CDN (jsdelivr มิเรอร์ npm ตรง — cdnjs ไม่มี @pdf-lib/fontkit) ----
+  const PDFLIB_URL  = 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js';
+  const FONTKIT_URL = 'https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js';
+
+  // ---- MAPPING: field ในเทมเพลต PDF (ยืนยันด้วย test-fill + render แล้ว) ----
+  const CFG = {
+    header: { bookNo: 'book_no', runNo: 'run_no' },
+    issuer: { tinComb: 'id1',   tin13: 'tin1',   name: 'name1', addr: 'add1' },  // ผู้มีหน้าที่หัก (เรา)
+    payee:  { tinComb: 'id1_2', tin13: 'tin1_2', name: 'name2', addr: 'add2' },  // ผู้ถูกหัก
+    item: 'item',
+    pndChk: {
+      'ภ.ง.ด.1ก'       : 'chk1',
+      'ภ.ง.ด.1ก พิเศษ' : 'chk2',
+      'ภ.ง.ด.2'        : 'chk3',
+      'ภ.ง.ด.3'        : 'chk4',
+      'ภ.ง.ด.2ก'       : 'chk5',
+      'ภ.ง.ด.3ก'       : 'chk6',
+      'ภ.ง.ด.53'       : 'chk7'
+    },
+    // แถวประเภทเงินได้ตาม seq (1-6) — seq5 = ม.3 เตรส, seq6 = อื่นๆ
+    rows: {
+      '1': { date: 'date1',    pay: 'pay1.0',    tax: 'tax1.0'   },
+      '2': { date: 'date2',    pay: 'pay1.1',    tax: 'tax1.1'   },
+      '3': { date: 'date3',    pay: 'pay1.2',    tax: 'tax1.2'   },
+      '4': { date: 'date4',    pay: 'pay1.3',    tax: 'tax1.3'   },
+      '5': { date: 'date14.0', pay: 'pay1.13.0', tax: 'tax1.13.0' },
+      '6': { date: null,       pay: 'pay1.14',   tax: 'tax1.14', spec: 'spec3' }
+    },
+    totalWords: 'total',
+    payerType : { hak: 'chk8', issueAll: 'chk9', issueOnce: 'chk10', other: 'chk11', otherSpec: 'spec4' },
+    issueDate : { d: 'date_pay', m: 'month_pay', y: 'year_pay' },
+    clearButton: 'clear data',
+    // เส้นแบ่ง บาท|สตางค์ (x เป็น pt วัดจากเทมเพลตจริง): บาทชิดขวาจบที่ dividerX, สตางค์กลางกล่อง [dividerX,rightX]
+    amountCols: {
+      pay: { dividerX: 474.8, rightX: 490.0 },
+      tax: { dividerX: 546.1, rightX: 560.5 }
+    }
+  };
+
+  const SIZE = { docNo: 13, nameAddr: 11, amount: 11, issueDate: 12 };
+  const TH_MONTHS = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
+                     'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+
+  let _assets = null;
+
+  // ========================== helpers ==========================
+  function _loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src; s.onload = resolve;
+      s.onerror = () => reject(new Error('โหลดสคริปต์ไม่ได้: ' + src));
+      document.head.appendChild(s);
+    });
+  }
+  async function _ensureLibs() {
+    if (!window.PDFLib)  await _loadScript(PDFLIB_URL);
+    if (!window.fontkit) await _loadScript(FONTKIT_URL);
+  }
+  function _b64ToBytes(b64) {
+    const bin = atob(b64), len = bin.length, u = new Uint8Array(len);
+    for (let i = 0; i < len; i++) u[i] = bin.charCodeAt(i);
+    return u;
+  }
+  function _getAssets() {
+    if (_assets) return Promise.resolve(_assets);
+    return new Promise((resolve, reject) => {
+      google.script.run
+        .withSuccessHandler(r => {
+          if (!r || !r.success) return reject(new Error((r && r.message) || 'โหลดเทมเพลต PDF ไม่ได้'));
+          _assets = { tpl: _b64ToBytes(r.template), font: _b64ToBytes(r.font) };
+          resolve(_assets);
+        })
+        .withFailureHandler(e => reject(e))
+        .getWht50Assets();
+    });
+  }
+  // 13 หลัก -> "d dddd ddddd dd d" (17 ช่อง comb, ช่องว่าง = คั่นกลุ่ม)
+  function _fmtTinComb(t) {
+    t = String(t || '').replace(/\D/g, '');
+    if (t.length !== 13) return t;
+    return t[0] + ' ' + t.slice(1, 5) + ' ' + t.slice(5, 10) + ' ' + t.slice(10, 12) + ' ' + t[12];
+  }
+
+  // ====================== fill 1 เอกสาร ======================
+  async function _fillOne(outDoc, data) {
+    const { tpl, font } = await _getAssets();
+    const tplDoc = await PDFLib.PDFDocument.load(tpl);
+    tplDoc.registerFontkit(window.fontkit);
+    const thai = await tplDoc.embedFont(font, { subset: true });
+    const form = tplDoc.getForm();
+    const page = tplDoc.getPage(0);
+    const TA = PDFLib.TextAlignment;
+
+    // ลบปุ่ม "Clear Data" (กรอบแดงมุมขวาบน)
+    try { form.removeField(form.getButton(CFG.clearButton)); } catch (e) { /* ไม่มีก็ข้าม */ }
+
+    const setText = (name, val, size, align) => {
+      if (name == null || val == null || val === '') return;
+      try {
+        const f = form.getTextField(name);
+        f.setText(String(val));
+        if (size)  f.setFontSize(size);
+        if (align) f.setAlignment(align);
+        f.updateAppearances(thai);
+      } catch (e) { console.warn('[WHT50] ไม่พบ text field:', name); }
+    };
+    const check = (name) => {
+      if (!name) return;
+      try { form.getCheckBox(name).check(); } catch (e) { console.warn('[WHT50] ไม่พบ checkbox:', name); }
+    };
+    // วาดจำนวนเงินแยก บาท|สตางค์ ลง page โดยตรง (กันหลักหน่วยตกกรอบทศนิยม) — ปล่อย field ว่าง
+    const drawAmount = (fieldName, value, col, size) => {
+      const v = parseFloat(value);
+      if (isNaN(v)) return;
+      const baht   = Math.floor(v).toLocaleString('en-US');
+      const satang = Math.round((v - Math.floor(v)) * 100).toString().padStart(2, '0');
+      let rect;
+      try { rect = form.getTextField(fieldName).acroField.getWidgets()[0].getRectangle(); }
+      catch (e) { console.warn('[WHT50] ไม่พบ field จำนวนเงิน:', fieldName); return; }
+      const baseY = rect.y + (rect.height - size) / 2 + size * 0.18;
+      const bw = thai.widthOfTextAtSize(baht, size);
+      page.drawText(baht, { x: col.dividerX - 3 - bw, y: baseY, size: size, font: thai });
+      const sw = thai.widthOfTextAtSize(satang, size);
+      page.drawText(satang, { x: col.dividerX + ((col.rightX - col.dividerX) - sw) / 2, y: baseY, size: size, font: thai });
+    };
+
+    const issuer = data.entInfo || {};
+
+    setText(CFG.header.runNo, data.docNo, SIZE.docNo);
+
+    // ผู้มีหน้าที่หัก — กรอกเฉพาะช่อง 13 หลัก* (tinComb), เว้นช่อง tin13
+    setText(CFG.issuer.name,    issuer.name,    SIZE.nameAddr);
+    setText(CFG.issuer.addr,    issuer.address, SIZE.nameAddr);
+    setText(CFG.issuer.tinComb, _fmtTinComb(issuer.taxId));
+
+    // ผู้ถูกหัก
+    setText(CFG.payee.name,    data.payeeName,    SIZE.nameAddr);
+    setText(CFG.payee.addr,    data.payeeAddress, SIZE.nameAddr);
+    setText(CFG.payee.tinComb, _fmtTinComb(data.payeeTaxId));
+
+    check(CFG.pndChk[data.pndType]);
+
+    const row = CFG.rows[String(data.seq)] || CFG.rows['6'];
+    setText(row.date, data.dateText, SIZE.amount);
+    drawAmount(row.pay, data.amount,    CFG.amountCols.pay, SIZE.amount);
+    drawAmount(row.tax, data.whtAmount, CFG.amountCols.tax, SIZE.amount);
+    if (row.spec && data.otherDesc) setText(row.spec, data.otherDesc);
+
+    setText(CFG.totalWords, data.bahtText);
+    check(CFG.payerType.hak);
+
+    // วันที่ออกหนังสือ = issueDateISO (Transaction_Date col C) จัด center
+    const issueDt = data.issueDateISO ? new Date(data.issueDateISO) : new Date();
+    if (!isNaN(issueDt.getTime())) {
+      setText(CFG.issueDate.d, issueDt.getDate(),             SIZE.issueDate, TA.Center);
+      setText(CFG.issueDate.m, TH_MONTHS[issueDt.getMonth()], SIZE.issueDate, TA.Center);
+      setText(CFG.issueDate.y, issueDt.getFullYear() + 543,   SIZE.issueDate, TA.Center);
+    }
+
+    form.flatten();
+    const [outPage] = await outDoc.copyPages(tplDoc, [0]);
+    outDoc.addPage(outPage);
+  }
+
+  // ====================== build + open ======================
+  async function _build(list) {
+    await _ensureLibs();
+    const out = await PDFLib.PDFDocument.create();
+    out.registerFontkit(window.fontkit);
+    for (const d of list) await _fillOne(out, d);
+    const bytes = await out.save();
+    return new Blob([bytes], { type: 'application/pdf' });
+  }
+  function _openBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, '_blank');
+    if (!w) {
+      const a = document.createElement('a');
+      a.href = url; a.download = filename || 'wht50.pdf';
+      document.body.appendChild(a); a.click(); a.remove();
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
+  // ====================== public API ======================
+  async function printOne(printData) {
+    if (!printData) throw new Error('ไม่มีข้อมูลสำหรับสร้าง PDF (printData ว่าง)');
+    const blob = await _build([printData]);
+    _openBlob(blob, '50ทวิ_' + (printData.docNo || 'doc') + '.pdf');
+  }
+  async function printMany(list) {
+    list = (list || []).filter(Boolean);
+    if (!list.length) throw new Error('ไม่มีรายการสำหรับสร้าง PDF');
+    const blob = await _build(list);
+    _openBlob(blob, '50ทวิ_' + list.length + 'ใบ.pdf');
+  }
+
+  return { printOne, printMany, CFG };
+})();
+</script>

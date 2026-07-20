@@ -1,0 +1,250 @@
+<!-- ============================================================
+     JS CORE — Vue boot + state (data/computed/mounted) + util/auth methods
+     โหลดก่อน mixin อื่น · global ที่ประกาศ: createApp, coreMixin
+     ============================================================ -->
+<script>
+  const { createApp } = Vue;
+
+  const coreMixin = {
+    data() {
+        return {
+            b2bMode: 'sales',
+            whTab: 'orders',
+            isLoading: true,
+            inTeam: [], loggedInUser: null, loginForm: { name: '', password: '' },
+            b2bCustomers: [], b2bMenu: [],
+            b2bData: { selectedCustomerId: '', customer: {}, items: [], discount: 0, customRemarks: '', saleName: '', isDepositRequired: false, depositPercent: 50, isWhtRequired: false, whtPercent: 3, category: 'รายได้ค่าสินค้า' },
+            editingQuNo: null,    // null = สร้างใหม่, มีค่า = กำลัง edit QU นี้
+            b2bPrintData: { quNo: '', date: '', quExp: '', customerID: '', customerName: '', customerAddress: '', customerTaxId: '', customerBranch: '', creditTerm: 0, items: [], subTotal: 0, discount: 0, subDiscount: 0, vat: 0, grandTotal: 0, remarks: '', saleName: '', whtPercent: 0, whtAmount: 0, netPayable: 0 },
+            showAddCustomerModal: false, newCustomer: { name: '', address: '', taxId: '', taxIdError: '', branch: '', branchMode: 'hq', branchNumber: '', phone: '', email: '', creditTerm: 0, isExport: false },
+            salesView: 'create', isB2BHistoryLoading: false, b2bOrders: [], b2bPrintDocs: [],   // salesView: create | orders | queue (เต็มหน้า แทน modal)
+            // perf: cache ออเดอร์ (ไม่ยิง server ซ้ำตอนเปิด modal) + cache รายการสินค้าต่อ quNo (พิมพ์ซ้ำไม่ยิง server)
+            b2bOrdersLoaded: false, b2bItemsCache: {},
+            // งาน A: background accounting sync — คิวรอ sync + countdown ถึงรอบยิง
+            accQueue: [], accQueueLastRunAt: null, accQueueServerOffset: 0, accQueueCountdown: 0, accQueueTimer: null, accQueueRefreshing: false,
+            // แท็บจัดการออเดอร์: 'open' = ยังไม่ปิด, 'closed' = ปิดการขายแล้ว
+            orderTab: 'open',
+            // C1-5/C1-6/C1-7: filter + sort state
+            historyFilter: { search: '', status: '', dateFrom: '', dateTo: '' },
+            historySortKey: 'timestamp', historySortDir: 'desc',
+            pendingWHOrders: [],
+
+            curStockList: [], stockSearch: '',
+            stockManageForm: { itemCode: '', actionType: 'IN', qty: 1, refNo: '', remarks: '' }
+        }
+    },
+
+    computed: {
+        filteredB2BCustomers() { if (!this.loggedInUser) return []; return this.b2bCustomers.filter(c => c.salename === this.loggedInUser.name || this.loggedInUser.role === 'all'); },
+        filteredB2BOrdersHistory() {
+            if (!this.loggedInUser) return [];
+            const myNames = this.filteredB2BCustomers.map(c => c.name);
+
+            // แปลง "12/5/2569 10:30" (th-TH Buddhist Era) → "2026-05-12" (ISO AD)
+            const toISO = (thStr) => {
+                const s = (thStr || '').split(' ')[0];
+                const p = s.split('/');
+                if (p.length !== 3) return '';
+                return `${parseInt(p[2]) - 543}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}`;
+            };
+
+            let list = this.b2bOrders.filter(o => myNames.includes(o.customerName) || this.loggedInUser.role === 'all');
+
+            // แท็บ: ยังไม่ปิด (ทุกสถานะที่ไม่ใช่ 'ปิดการขาย') vs ปิดแล้ว
+            if (this.orderTab === 'closed') list = list.filter(o => o.status === 'ปิดการขาย');
+            else                            list = list.filter(o => o.status !== 'ปิดการขาย');
+
+            // C1-5: date range filter — ใช้เฉพาะแท็บ "ปิดแล้ว"
+            // (แท็บ "ยังไม่ปิด" โชว์ออเดอร์ค้างทั้งหมดไม่จำกัดวันที่ จะได้ไม่พลาดบิลค้างเก่า)
+            if (this.orderTab === 'closed') {
+                if (this.historyFilter.dateFrom) list = list.filter(o => toISO(o.timestamp) >= this.historyFilter.dateFrom);
+                if (this.historyFilter.dateTo)   list = list.filter(o => toISO(o.timestamp) <= this.historyFilter.dateTo);
+            }
+
+            // C1-6: status filter
+            if (this.historyFilter.status)   list = list.filter(o => o.status === this.historyFilter.status);
+
+            // C1-6: text search (QU, orderNo, ชื่อลูกค้า)
+            if (this.historyFilter.search) {
+                const q = this.historyFilter.search.toLowerCase();
+                list = list.filter(o =>
+                    (o.quNo        || '').toLowerCase().includes(q) ||
+                    (o.orderNo     || '').toLowerCase().includes(q) ||
+                    (o.customerName|| '').toLowerCase().includes(q)
+                );
+            }
+
+            // C1-7: sort
+            const key = this.historySortKey;
+            const dir = this.historySortDir === 'asc' ? 1 : -1;
+            return [...list].sort((a, b) => {
+                let av = key === 'timestamp' ? toISO(a[key]) : a[key];
+                let bv = key === 'timestamp' ? toISO(b[key]) : b[key];
+                // numeric sort สำหรับยอดเงิน
+                const an = parseFloat(av), bn = parseFloat(bv);
+                if (!isNaN(an) && !isNaN(bn)) return (an - bn) * dir;
+                return (av || '') < (bv || '') ? -dir : (av || '') > (bv || '') ? dir : 0;
+            });
+        },
+        filteredCurStock() { 
+            if(!this.stockSearch) return this.curStockList; 
+            const s = this.stockSearch.toLowerCase();
+            return this.curStockList.filter(item => item.itemCode.toLowerCase().includes(s) || item.itemName.toLowerCase().includes(s) || item.category.toLowerCase().includes(s));
+        }
+    },
+
+    mounted() {
+        this.loadInitialData();
+
+        // auto-load pending orders เมื่อสลับมาหน้าคลัง (ทุก role)
+        this.$watch('b2bMode', (newMode) => {
+            if (newMode === 'warehouse' && this.pendingWHOrders.length === 0) {
+                this.loadPendingWHOrders();
+            }
+        });
+
+        // C1-4: Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            // Esc — ปิด modal / กลับหน้าสร้าง (ตามลำดับ priority)
+            if (e.key === 'Escape') {
+                if (this.showAddCustomerModal)    { this.showAddCustomerModal = false; return; }
+                if (this.salesView !== 'create')  { this.salesView = 'create';         return; }
+            }
+
+            // Ctrl+S / Cmd+S — บันทึกตาม context ปัจจุบัน
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                // ถ้าฟอร์มลูกค้าเปิดอยู่ → submit ฟอร์ม
+                if (this.showAddCustomerModal) {
+                    this.saveNewCustomer();
+                    return;
+                }
+                // ถ้าอยู่หน้าขาย มีลูกค้าและสินค้าแล้ว → ออกใบเสนอราคา
+                if (this.b2bMode === 'sales' && this.b2bData.customer.name && this.b2bData.items.length > 0) {
+                    this.saveB2BQuotation();
+                    return;
+                }
+            }
+        });
+    },
+
+    methods: {
+      roundTo2(num) { return Math.round((num + Number.EPSILON) * 100) / 100; },
+
+      validateTaxId(taxId) {
+          const s = (taxId || '').toString().trim();
+          if (s === '') return 'กรุณากรอกเลขประจำตัวผู้เสียภาษี';
+          if (!/^\d{13}$/.test(s)) return 'ต้องเป็นตัวเลข 13 หลักเท่านั้น';
+          return '';
+      },
+
+      formatBranch(branchText) {
+          if (!branchText) return '';
+          let b = branchText.toString().trim();
+          if (b === 'สำนักงานใหญ่' || b.includes('สำนักงานใหญ่')) return '(สำนักงานใหญ่)';
+          if (/^\d+$/.test(b)) return `(สาขาที่ ${b})`;
+          return `(${b})`; 
+      },
+
+      formatChequeDetail(text) {
+          if (!text) return '';
+          // 1. ถ้ามีคำว่า "เลขที่เช็ค" หรือ "ยอด" แสดงว่าเป็น Format ใหม่ที่สวยแล้ว ให้ข้ามไปได้เลย
+          if (text.includes('เลขที่เช็ค') || text.includes('ยอด')) return text;
+
+          // 2. ถ้าเป็น Format เก่า (กสิกรไทย 61596339 2026-04-28 62400)
+          const parts = text.split(' ');
+          // ตรวจสอบว่ามีอย่างน้อย 4 ชิ้น (แบงก์ เลข วันที่ จำนวนเงิน)
+          if (parts.length >= 4) {
+              let amount = parseFloat(parts.pop());
+              let date = parts.pop();
+              let cqNo = parts.pop();
+              let bank = parts.join(' '); // ชื่อธนาคารอาจจะมีเว้นวรรค
+
+              let bankDisplay = bank;
+              // เติมคำว่า "ธนาคาร" ถ้ายังไม่มี
+              if (!bankDisplay.includes('ธนาคาร') && bankDisplay !== '-') {
+                  bankDisplay = 'ธนาคาร' + bankDisplay;
+              }
+
+              // ใส่คอมม่าให้ตัวเลข
+              let amtFormatted = isNaN(amount) ? amount : amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+              return `${bankDisplay} เลขที่เช็ค : ${cqNo} ลงวันที่ ${date} ยอด ${amtFormatted} บาท`;
+          }
+          return text; // ถ้าแยกไม่ออก คืนค่าเดิม
+      },
+
+      login() {
+          const user = this.inTeam.find(s => s.name === this.loginForm.name && s.password === this.loginForm.password);
+          if (user) { 
+              this.loggedInUser = user; this.b2bData.saleName = user.name;
+          if (user.role === 'wh') { this.b2bMode = 'warehouse'; this.loadPendingWHOrders(); } else { this.b2bMode = 'sales'; this.loadAccQueue(); }
+              Swal.fire({ icon: 'success', title: 'เข้าสู่ระบบสำเร็จ', timer: 1000, showConfirmButton: false });
+          } else { Swal.fire('ข้อผิดพลาด', 'รหัสผ่านไม่ถูกต้อง หรือไม่พบชื่อผู้ใช้งาน', 'error'); }
+      },
+
+      logout() { this.loggedInUser = null; this.b2bData.saleName = ''; this.b2bData.selectedCustomerId = ''; this.b2bData.customer = {}; this.loginForm = { name: '', password: '' }; this.b2bMode = 'sales'; this.whTab = 'orders'; this.editingQuNo = null; this.salesView = 'create'; },
+
+      handleEditQuotation(order) {
+          this.isLoading = true;
+          // ดึง items ปัจจุบันจาก btbsales ก่อน แล้วค่อย switch หน้า
+          const proceedEdit = (items) => {
+              this.salesView = 'create';   // แก้ไข → กลับหน้าสร้าง (full-page)
+              this.b2bMode = 'sales';
+
+              // โหลดลูกค้าเดิม
+              const cust = this.b2bCustomers.find(c => c.name === order.customerName);
+              if (cust) {
+                  this.b2bData.selectedCustomerId = cust.id;
+                  this.b2bData.customer = cust;
+              }
+
+              // โหลด items เดิม
+              this.b2bData.items = items.map(i => ({ name: i.name, price: i.price, qty: i.qty }));
+
+              // โหลด discount / WHT / remarks เดิม
+              this.b2bData.discount       = order.discount || 0;
+              this.b2bData.customRemarks  = order.remarks  || '';
+              this.b2bData.category       = order.category || 'รายได้ค่าสินค้า';
+              if (order.whtPercent > 0) {
+                  this.b2bData.isWhtRequired = true;
+                  this.b2bData.whtPercent    = order.whtPercent;
+              } else {
+                  this.b2bData.isWhtRequired = false;
+              }
+
+              this.editingQuNo = order.quNo;
+              this.isLoading = false;
+              Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 3000 })
+                  .fire({ icon: 'info', title: `แก้ไขใบเสนอราคา ${order.quNo}` });
+          };
+
+          if (typeof google === 'undefined') {
+              setTimeout(() => proceedEdit([{ name: 'สินค้าทดสอบ', qty: 2, price: 500 }]), 300);
+              return;
+          }
+          google.script.run
+              .withSuccessHandler(items => proceedEdit(items))
+              .withFailureHandler(err => { this.isLoading = false; Swal.fire('Error', err.toString(), 'error'); })
+              .getB2BOrderItems(order.quNo);
+      },
+
+      cancelEditQuotation() {
+          this.editingQuNo = null;
+          this.b2bData.items = [];
+          this.b2bData.selectedCustomerId = '';
+          this.b2bData.customer = {};
+          this.b2bData.discount = 0;
+          this.b2bData.customRemarks = '';
+          this.b2bData.isWhtRequired = false;
+      },
+
+      loadInitialData() {
+          this.isLoading = true;
+          if (typeof google === 'undefined') { setTimeout(() => { this.inTeam = [{name: 'Admin', password: '123', role: 'all'}, {name: 'Sale1', password: '123', role: 'sale'}, {name: 'WH1', password: '123', role: 'wh'}]; this.b2bCustomers = [{id: 'C001', name: 'บริษัท เทส จำกัด', address: '123 กทม.', taxId: '1234567890123', branch: '00000', creditTerm: 30, salename: 'Admin'}]; this.b2bMenu = [{name: 'เหล้า', price: 500}]; this.pendingWHOrders = []; this.curStockList = [{itemCode: 'B001', itemName: 'เบียร์ช้าง', category: 'เครื่องดื่ม', unit: 'ขวด', currentStock: 50, reorderPoint: 100}]; this.isLoading = false; }, 500); return; }
+          google.script.run.withSuccessHandler(data => { this.inTeam = data; google.script.run.withSuccessHandler(cData => { this.b2bCustomers = cData; this.isLoading = false; }).getB2BCustomers(); }).getInTeamAuth();
+          google.script.run.withSuccessHandler(data => { this.b2bMenu = data; }).getB2BMenuData();
+      }
+    }
+  };
+</script>

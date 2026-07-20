@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Insep Distillery</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- Chart.js (กราฟแนวโน้มการหมัก) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <!-- pdf-lib + fontkit (เติมฟอร์ม PDF จริง) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit/dist/fontkit.umd.min.js"></script>
+    <!-- Google Fonts: Prompt -->
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Prompt', sans-serif; background-color: #f3f4f6; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        /* Toggle Switch CSS */
+        .toggle-checkbox:checked { right: 0; border-color: #059669; }
+        .toggle-checkbox:checked + .toggle-label { background-color: #059669; }
+        .toggle-checkbox { right: 4px; z-index: 1; border-color: #e5e7eb; transition: all 0.3s; }
+        .toggle-label { width: 3rem; height: 1.5rem; background-color: #e5e7eb; border-radius: 9999px; transition: all 0.3s; }
+    </style>
+</head>
+<body class="text-gray-800 flex flex-col md:flex-row h-screen overflow-hidden">
+
+    <!-- Mobile Header -->
+    <div class="md:hidden bg-slate-800 text-white p-4 flex justify-between items-center shadow-md z-20">
+        <h1 class="font-bold text-lg"><i class="fa-solid fa-wine-bottle mr-2"></i>Insep Distillery</h1>
+        <button onclick="document.getElementById('mobile-menu').classList.toggle('hidden')" class="text-2xl"><i class="fa-solid fa-bars"></i></button>
+    </div>
+
+    <!-- Sidebar / Nav -->
+    <aside id="mobile-menu" class="hidden md:flex w-full md:w-64 bg-slate-800 text-white flex-col h-full absolute md:relative z-10">
+        <div class="p-6 border-b border-slate-700 text-center hidden md:block">
+            <i class="fa-solid fa-wine-bottle text-4xl mb-2 text-amber-500"></i>
+            <!-- ชื่อบริษัทและทะเบียนจะถูกโหลดจาก Script Properties ผ่าน getCompanyInfo() -->
+            <h1 class="text-xl font-bold" id="sidebar-company-name">กำลังโหลด...</h1>
+            <p class="text-xs text-slate-400 mt-1" id="sidebar-excise-id">ทะเบียน: ...</p>
+        </div>
+        <nav class="flex-1 p-4 space-y-2 overflow-y-auto text-sm md:text-base">
+            <div class="pb-1 text-xs font-semibold text-slate-400 uppercase tracking-wider">บันทึกประจำวัน</div>
+            <button onclick="switchTab('material')" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 bg-blue-600 rounded-lg text-left transition-colors">
+                <i class="fa-solid fa-wheat-awn w-5"></i><span>วัตถุดิบ (รับ/จ่าย)</span>
+            </button>
+            <button onclick="switchTab('ferment')" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 hover:bg-slate-700 rounded-lg text-left transition-colors">
+                <i class="fa-solid fa-jar w-5"></i><span>การหมักส่า</span>
+            </button>
+            <button onclick="switchTab('fermentMonitor')" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 hover:bg-slate-700 rounded-lg text-left transition-colors">
+                <i class="fa-solid fa-temperature-half w-5"></i><span>ติดตามการหมัก</span>
+            </button>
+            <button onclick="switchTab('distillRun')" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 hover:bg-slate-700 rounded-lg text-left transition-colors">
+                <i class="fa-solid fa-fire-burner w-5"></i><span>การกลั่น</span>
+            </button>
+            <button onclick="switchTab('dilute')" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 hover:bg-slate-700 rounded-lg text-left transition-colors">
+                <i class="fa-solid fa-flask w-5"></i><span>การปรุงแต่ง/ปรับดีกรี</span>
+            </button>
+            <button onclick="switchTab('product')" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 hover:bg-slate-700 rounded-lg text-left transition-colors">
+                <i class="fa-solid fa-box-open w-5"></i><span>สุราขวด (บรรจุ/ขาย)</span>
+            </button>
+            <button onclick="switchTab('history')" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 hover:bg-slate-700 rounded-lg text-left transition-colors">
+                <i class="fa-solid fa-chart-column w-5"></i><span>ประวัติหมัก-กลั่น</span>
+            </button>
+            
+            <div class="pt-4 pb-1 text-xs font-semibold text-slate-400 uppercase tracking-wider">ระบบรายงาน</div>
+            <button onclick="switchTab('report')" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 text-red-400 hover:bg-slate-700 hover:text-red-300 rounded-lg text-left transition-colors">
+                <i class="fa-solid fa-file-pdf w-5"></i><span>พิมพ์รายงาน PDF</span>
+            </button>
+
+            <div class="pt-4 pb-1 text-xs font-semibold text-slate-400 uppercase tracking-wider">Admin</div>
+            <button onclick="switchTab('admin')" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 hover:bg-slate-700 rounded-lg text-left transition-colors text-amber-400 hover:text-amber-300">
+                <i class="fa-solid fa-screwdriver-wrench w-5"></i><span>จัดการสต็อก</span>
+            </button>
+        </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 overflow-y-auto p-4 md:p-8 bg-gray-50 w-full relative">
+        
+        <!-- Loading Overlay -->
+        <div id="loading" class="absolute inset-0 bg-white bg-opacity-80 flex justify-center items-center z-50">
+            <div class="text-center">
+                <i class="fa-solid fa-circle-notch fa-spin text-4xl text-blue-600 mb-2"></i>
+                <p class="text-gray-600 mt-2">กำลังโหลดฐานข้อมูล...</p>
+            </div>
+        </div>
+
+
+        <!-- ===== views (แตกไฟล์: แก้ใน _view_*.html) ===== -->
+        <?!= include('_view_daily'); ?>
+        <?!= include('_view_distill'); ?>
+        <?!= include('_view_dilute_product'); ?>
+        <?!= include('_view_history'); ?>
+        <?!= include('_view_admin_report'); ?>
+
+    </main>
+
+    <!-- ===== scripts (แตกไฟล์: แก้ใน _js_*.html · _js_core ต้องมาก่อน) ===== -->
+    <?!= include('_js_core'); ?>
+    <?!= include('_js_entry'); ?>
+    <?!= include('_js_history'); ?>
+    <?!= include('_js_ferment'); ?>
+    <?!= include('_js_distill'); ?>
+    <?!= include('_js_dilute_calc'); ?>
+    <?!= include('_js_reports'); ?>
+    <?!= include('_js_submit'); ?>
+</body>
+</html>

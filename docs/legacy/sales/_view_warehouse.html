@@ -1,0 +1,101 @@
+        <!-- ========================================================= -->
+        <!-- MODE: WAREHOUSE (คลังสินค้า) -->
+        <!-- ========================================================= -->
+        <div v-if="loggedInUser && b2bMode === 'warehouse'" class="flex-1 flex flex-col bg-slate-50 overflow-hidden">
+            <!-- เมนูย่อยของคลังสินค้า -->
+            <div class="bg-white border-b shadow-sm flex px-2 md:px-4 pt-3 md:pt-4 gap-1 md:gap-2 overflow-x-auto hide-scrollbar flex-shrink-0">
+                <button @click="switchWHTab('orders')" :class="['px-3 md:px-5 py-2 md:py-2.5 rounded-t-lg font-bold text-xs md:text-sm transition border-b-2 whitespace-nowrap', whTab === 'orders' ? 'bg-slate-50 text-teal-700 border-teal-600' : 'text-slate-500 border-transparent hover:bg-slate-50']">📦 1. ออเดอร์รอจัดส่ง</button>
+                <button @click="switchWHTab('stock')" :class="['px-3 md:px-5 py-2 md:py-2.5 rounded-t-lg font-bold text-xs md:text-sm transition border-b-2 whitespace-nowrap', whTab === 'stock' ? 'bg-slate-50 text-teal-700 border-teal-600' : 'text-slate-500 border-transparent hover:bg-slate-50']">📊 2. สต็อกคงเหลือ</button>
+            </div>
+
+            <!-- TAB 1: ออเดอร์รอจัดส่ง -->
+            <div v-if="whTab === 'orders'" class="flex-1 overflow-auto p-3 md:p-6 relative">
+                <div class="max-w-7xl mx-auto">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
+                        <h2 class="text-lg md:text-xl font-bold text-slate-800">รายการออเดอร์รอจัดส่ง</h2>
+                        <button @click="loadPendingWHOrders" class="w-full sm:w-auto text-xs md:text-sm bg-white border border-slate-300 px-3 py-1.5 md:py-2 rounded shadow-sm hover:bg-slate-50 flex justify-center items-center gap-1">🔄 โหลดข้อมูลใหม่</button>
+                    </div>
+                    
+                    <div v-if="pendingWHOrders.length === 0" class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 text-center py-16 md:py-20">
+                        <div class="text-4xl md:text-5xl mb-4">🎉</div><h3 class="text-lg md:text-xl font-bold text-slate-700">ไม่มีออเดอร์ค้างจัดส่ง</h3><p class="text-sm md:text-base text-slate-500 mt-2">ทุกออเดอร์ถูกแพ็คและจัดส่งเรียบร้อยแล้ว</p>
+                    </div>
+
+                    <div v-else class="grid gap-4">
+                        <div v-for="order in pendingWHOrders" :key="order.quNo" class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col md:flex-row">
+                            <div class="p-3 md:p-4 md:w-1/3 bg-slate-50 border-b md:border-b-0 md:border-r border-slate-200 flex flex-col justify-between">
+                                <div>
+                                    <div class="flex justify-between items-start mb-2">
+                                        <span class="text-[10px] md:text-xs font-bold text-orange-600 bg-orange-100 px-2 py-1 rounded">รอคลังจัดส่ง</span>
+                                        <span class="text-[10px] md:text-xs text-slate-500">{{ order.timestamp }}</span>
+                                    </div>
+                                    <h3 class="font-bold text-base md:text-lg text-slate-800">{{ order.orderNo }}</h3>
+                                    <p class="text-[10px] md:text-xs text-slate-500 mb-3">Ref: {{ order.quNo }}</p>
+                                    <div class="text-xs md:text-sm text-slate-700 mb-1"><span class="font-bold">ลูกค้า:</span> <span class="line-clamp-1">{{ order.customerName }}</span></div>
+                                    <div class="text-xs md:text-sm text-slate-700 mb-3"><span class="font-bold">การชำระ:</span> {{ order.paymentMethod || 'เครดิต/รอชำระ' }}</div>
+                                </div>
+                                <div class="text-[10px] md:text-xs bg-white p-2 border rounded text-slate-600">
+                                    <span class="font-bold text-slate-700">เอกสารที่ต้องพิมพ์:</span><br>{{ order.docToPrint.split(',').join(', ') }}
+                                </div>
+                            </div>
+                            
+                            <div class="p-3 md:p-4 md:w-1/2 flex-1">
+                                <h4 class="font-bold text-xs md:text-sm text-slate-700 mb-2 border-b pb-1">📦 รายการสินค้าที่ต้องแพ็ค:</h4>
+                                <div class="max-h-[120px] md:max-h-[160px] overflow-y-auto custom-scrollbar pr-2">
+                                    <div v-for="(item, idx) in order.items" :key="idx" class="flex justify-between items-center py-1.5 border-b border-slate-100 text-xs md:text-sm">
+                                        <span class="text-slate-800">{{ idx + 1 }}. {{ item.name }}</span>
+                                        <span class="font-bold bg-slate-100 px-2 py-0.5 rounded text-slate-700 whitespace-nowrap">{{ item.qty }} ชิ้น</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="p-3 md:p-4 bg-slate-50 border-t md:border-t-0 md:border-l border-slate-200 flex flex-row md:flex-col gap-2 justify-center w-full md:w-48">
+                                <button @click="printWHDocument(order)" class="flex-1 md:w-full bg-slate-700 hover:bg-slate-800 text-white py-2 md:py-2.5 rounded-lg shadow-sm text-xs md:text-sm font-medium transition active:scale-95 flex items-center justify-center gap-1">🖨️ <span class="hidden sm:inline">ปริ๊นใบส่งสินค้า</span><span class="sm:hidden">ปริ๊นเอกสาร</span></button>
+                                <button @click="confirmFulfillment(order)" class="flex-1 md:w-full bg-teal-600 hover:bg-teal-700 text-white py-2 md:py-3 rounded-lg shadow-md text-xs md:text-sm font-bold transition active:scale-95 flex flex-col items-center justify-center leading-tight">
+                                    <span>✅ ยืนยันจัดส่ง</span><span class="text-[9px] md:text-[10px] font-normal opacity-80 hidden md:block mt-0.5">(ตัดสต็อกอัตโนมัติ)</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: สต็อกคงเหลือ -->
+            <div v-if="whTab === 'stock'" class="flex-1 overflow-auto p-3 md:p-6">
+                <div class="max-w-6xl mx-auto bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full max-h-[80vh]">
+                    <div class="p-3 md:p-4 border-b bg-slate-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                        <h2 class="text-base md:text-lg font-bold text-slate-800">บัญชีสต็อกปัจจุบัน</h2>
+                        <input v-model="stockSearch" type="text" placeholder="🔍 ค้นหาสินค้า..." class="w-full sm:w-64 border border-slate-300 rounded-lg px-3 py-1.5 text-xs md:text-sm focus:outline-none focus:border-teal-500">
+                    </div>
+                    <div class="flex-1 overflow-x-auto custom-scrollbar p-0">
+                        <table class="w-full text-xs md:text-sm text-left border-collapse min-w-[500px]">
+                            <thead class="bg-slate-100 sticky top-0 z-10">
+                                <tr>
+                                    <th class="p-2 md:p-3 border-b font-bold text-slate-700 whitespace-nowrap">รหัส (Code)</th>
+                                    <th class="p-2 md:p-3 border-b font-bold text-slate-700">ชื่อสินค้า (Item Name)</th>
+                                    <th class="p-2 md:p-3 border-b font-bold text-slate-700 text-center whitespace-nowrap">หมวดหมู่</th>
+                                    <th class="p-2 md:p-3 border-b font-bold text-slate-700 text-center bg-teal-50 whitespace-nowrap">สต็อกคงเหลือ</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="item in filteredCurStock" :key="item.itemCode" class="border-b hover:bg-slate-50">
+                                    <td class="p-2 md:p-3 font-medium text-slate-600">{{ item.itemCode }}</td>
+                                    <td class="p-2 md:p-3 font-bold text-slate-800">
+                                        {{ item.itemName }}
+                                        <span v-if="item.isLive" class="ml-1 text-[10px] text-teal-600 font-normal">🏭 Live</span>
+                                    </td>
+                                    <td class="p-2 md:p-3 text-center text-slate-500">{{ item.category }}</td>
+                                    <td class="p-2 md:p-3 text-center font-bold text-base md:text-lg" :class="item.currentStock <= 0 ? 'text-red-600 bg-red-50' : 'text-teal-700 bg-teal-50'">
+                                        {{ item.currentStock.toLocaleString() }} <span class="text-[10px] md:text-xs font-normal text-slate-500">{{ item.unit }}</span>
+                                    </td>
+                                </tr>
+                                <tr v-if="filteredCurStock.length === 0">
+                                    <td colspan="4" class="text-center p-8 text-slate-500 text-sm">ไม่พบข้อมูลสินค้า</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+

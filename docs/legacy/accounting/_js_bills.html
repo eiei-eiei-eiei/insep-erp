@@ -1,0 +1,198 @@
+<script>
+  // =========================================================================
+  // JS — [Phase 4 / #8 + N2] ค้นหาบิล + แก้ไข/ลบ + ดูกลุ่มงวด
+  // ใช้ global: currentEntityId, currentUser, formatMoney, setType, addItemRow,
+  //            toggleWht/toggleVat, onApArToggle, onInstToggle, switchTab
+  // =========================================================================
+
+  function loadBills() {
+    const load = document.getElementById('bills-loading'); load.classList.remove('hidden');
+    const filters = {
+      type:        document.getElementById('bills-f-type').value,
+      accountType: document.getElementById('bills-f-account').value,
+      category:    document.getElementById('bills-f-category').value,
+      contact:     document.getElementById('bills-f-contact').value
+    };
+    google.script.run
+      .withSuccessHandler(function(res) {
+        load.classList.add('hidden');
+        if (!res || !res.success) { Swal.fire('ผิดพลาด', (res && res.message) || 'โหลดไม่สำเร็จ', 'error'); return; }
+        if (res.options) fillBillFilters(res.options);   // [Filter] เติม dropdown (คง selection เดิม)
+        renderBills(res.results);
+      })
+      .withFailureHandler(function(e) { load.classList.add('hidden'); Swal.fire('เชื่อมต่อไม่ได้', e.message, 'error'); })
+      .searchBills(document.getElementById('bills-kw').value, currentEntityId, filters);
+  }
+
+  // [Filter] เติมตัวเลือก dropdown ฟิลเตอร์ — options คงที่ทุกครั้ง (มาจากชุดข้อมูลทั้งหมด) จึงเติมซ้ำได้
+  function fillBillFilters(opt) {
+    fillBillFilterSelect('bills-f-account',  opt.accountTypes, 'ทุกประเภทบัญชี');
+    fillBillFilterSelect('bills-f-category', opt.categories,   'ทุกหมวดหมู่');
+    fillBillFilterSelect('bills-f-contact',  opt.contacts,     'ทุกคู่ค้า');
+  }
+  // เติม <option> แบบ DOM-safe (กันชื่อคู่ค้ามีอักขระพิเศษ) + คงค่าที่เลือกไว้ถ้ายังอยู่ในรายการ
+  function fillBillFilterSelect(id, list, allLabel) {
+    const sel = document.getElementById(id);
+    const cur = sel.value;
+    sel.innerHTML = '';
+    const o0 = document.createElement('option'); o0.value = ''; o0.textContent = allLabel; sel.appendChild(o0);
+    (list || []).forEach(function(v) {
+      const o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o);
+    });
+    if (cur && (list || []).indexOf(cur) !== -1) sel.value = cur;
+  }
+
+  // escape ข้อความก่อน inject ลง innerHTML
+  function escBill(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function renderBills(arr) {
+    const el = document.getElementById('bills-list');
+    if (!arr || !arr.length) { el.innerHTML = '<div class="py-6 text-center text-gray-400">ไม่พบบิล</div>'; return; }
+    const canEdit = currentUser && currentUser.role === 'main';
+    el.innerHTML = arr.map(function(b) {
+      const typeColor = b.type === 'รายรับ' ? 'text-emerald-600' : 'text-red-600';
+      const instBadge = b.isInstallment ? `<span class="text-xs bg-indigo-100 text-indigo-700 rounded px-1.5 py-0.5">แบ่ง ${b.installments} งวด</span>` : '';
+      const safeDesc = (b.desc || '').replace(/'/g, '');
+      const editBtn = b.isInstallment
+        ? `<button onclick="viewGroup('${b.txId}')" class="text-xs text-indigo-600 border border-indigo-200 rounded px-2 py-1">ดูงวด</button>`
+        : `<button onclick="editBill('${b.txId}')" class="text-xs text-blue-600 border border-blue-200 rounded px-2 py-1">แก้ไข</button>`;
+      const actions = canEdit ? `<div class="flex gap-2 mt-1">${editBtn}
+        <button onclick="deleteBill('${b.txId}','${safeDesc}')" class="text-xs text-red-600 border border-red-200 rounded px-2 py-1">ลบ</button></div>` : '';
+      // คู่ค้าเป็นคอลัมน์ของตัวเอง + meta แถวล่าง (วันที่ · หมวดหมู่ · ประเภทบัญชี)
+      const meta = [b.date, b.category ? 'หมวด: ' + escBill(b.category) : '', b.accountType ? 'บัญชี: ' + escBill(b.accountType) : '']
+        .filter(Boolean).join(' · ');
+      return `<div class="py-3">
+        <div class="flex justify-between gap-2"><span class="font-semibold text-gray-800">${escBill(b.desc)}</span><span class="font-bold ${typeColor} whitespace-nowrap">${formatMoney(b.priceBeforeVat)}</span></div>
+        <div class="flex items-center gap-2 mt-0.5"><span class="text-sm text-gray-700 font-medium">👤 ${escBill(b.contact) || '-'}</span>${instBadge}</div>
+        <div class="text-xs text-gray-500 mt-0.5">${meta}</div>
+        ${actions}
+      </div>`;
+    }).join('');
+  }
+
+  function deleteBill(txId, desc) {
+    Swal.fire({
+      title: 'ยกเลิกบิลนี้?', icon: 'warning', showCancelButton: true,
+      html: `<b>${desc}</b><br><small>บิลจะถูกตั้งสถานะ "ยกเลิก" (ไม่เข้ารายงาน) ข้อมูลยังอยู่ในชีท</small>`,
+      confirmButtonText: 'ยกเลิกบิล', cancelButtonText: 'ไม่', confirmButtonColor: '#dc2626'
+    }).then(function(r) {
+      if (!r.isConfirmed) return;
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (res && res.success) { Swal.fire('สำเร็จ', res.message, 'success'); loadBills(); }
+          else Swal.fire('ผิดพลาด', (res && res.message) || 'ลบไม่สำเร็จ', 'error');
+        })
+        .withFailureHandler(function(e) { Swal.fire('เชื่อมต่อไม่ได้', e.message, 'error'); })
+        .voidTransaction(txId);
+    });
+  }
+
+  // แก้ไข: โหลดบิลเข้าฟอร์มบันทึก (reuse) → สลับไปแท็บบันทึก
+  function editBill(txId) {
+    Swal.fire({ title: 'กำลังโหลด...', didOpen: () => Swal.showLoading() });
+    google.script.run
+      .withSuccessHandler(function(res) {
+        Swal.close();
+        if (!res || !res.success) { Swal.fire('ผิดพลาด', (res && res.message) || 'โหลดไม่สำเร็จ', 'error'); return; }
+        populateEntryForm(res.tx, res.items);
+        window._editTxId = res.tx.txId;
+        document.getElementById('edit-banner').classList.remove('hidden');
+        document.getElementById('edit-banner-id').innerText = res.tx.txId;
+        const at = document.getElementById('isApAr');    if (at) { at.checked = false; onApArToggle(); }
+        const it = document.getElementById('inst-toggle'); if (it) { it.checked = false; onInstToggle(); }
+        document.getElementById('btn-submit').innerText = 'บันทึกการแก้ไข';
+        switchTab('entry');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      })
+      .withFailureHandler(function(e) { Swal.close(); Swal.fire('เชื่อมต่อไม่ได้', e.message, 'error'); })
+      .getTransactionForEdit(txId);
+  }
+
+  // เติมค่าลงฟอร์มบันทึก — set summary fields + inject item rows (โครงตรงกับที่ submitForm อ่าน)
+  function populateEntryForm(tx, items) {
+    if (typeof setType === 'function') setType(tx.type || 'รายจ่าย');
+    const set  = (id, v) => { const el = document.getElementById(id); if (el) el.value = (v != null ? v : ''); };
+    const setM = (id, v) => { const el = document.getElementById(id); if (el) el.value = (v === '' || v == null ? '' : fmt2(v)); };
+    set('transactionDate', tx.transactionDate); set('accountType', tx.accountType);
+    // category เป็น searchable dropdown แล้ว — ใช้ selectCategory แทน set
+    if (typeof selectCategory === 'function') selectCategory(tx.category || '');
+    else set('category', tx.category);
+    set('contactNameSearch', tx.contactName); set('description', tx.description);
+    set('taxInvoiceNo', tx.taxInvoiceNo); set('taxInvoiceDate', tx.taxInvoiceDate);
+    // เปิด checkbox VAT/WHT ก่อน (toggle จะ recalc) แล้วค่อยทับด้วยค่าจริงจากบิล
+    const hv = document.getElementById('hasVat');
+    if (hv) { hv.checked = (num(tx.vatAmount)) > 0; if (typeof toggleVat === 'function') toggleVat(); }
+    const hw = document.getElementById('hasWht');
+    if (hw) { hw.checked = (parseFloat(tx.whtRate) || 0) > 0; if (typeof toggleWht === 'function') toggleWht(); }
+    set('whtRate', tx.whtRate);
+    // ทับยอดเงินด้วยค่าจริง (ใส่คอมม่า) — ทำหลัง toggle เพื่อไม่ให้ recalc override
+    setM('baseAmount', tx.baseAmount); setM('discount', tx.discount); setM('amountAfterDiscount', tx.amountAfterDiscount);
+    setM('vatAmount', tx.vatAmount); setM('whtAmount', tx.whtAmount); setM('netAmount', tx.netAmount);
+
+    const tbody = document.getElementById('items-body'), mob = document.getElementById('items-body-mobile');
+    if (tbody) tbody.innerHTML = ''; if (mob) mob.innerHTML = '';
+    (items || []).forEach(function(it) {
+      addItemRow();   // ใช้โครงแถวมาตรฐาน (มีคอลัมน์ใหม่ครบ) แล้วเติมค่า
+      const tr = tbody.lastElementChild;
+      const sv = (c, v) => { const e = tr.querySelector(c); if (e) e.value = v; };
+      sv('.item-name', it.itemName || ''); sv('.item-cat', it.itemCategory || ''); sv('.item-job', it.itemJob || '');
+      sv('.item-qty', it.quantity || ''); sv('.item-invat', fmt2(it.inVat)); sv('.item-exvat', fmt2(it.exVat));
+      sv('.item-discpct', it.discountPct || ''); sv('.item-discbaht', it.discountBaht ? fmt2(it.discountBaht) : '');
+      sv('.item-total', fmt2(it.totalPrice));
+      const card = mob ? mob.lastElementChild : null;
+      if (card) {
+        const sm = (c, v) => { const e = card.querySelector(c); if (e) e.value = v; };
+        sm('.item-name-m', it.itemName || ''); sm('.item-cat-m', it.itemCategory || ''); sm('.item-job-m', it.itemJob || '');
+        sm('.item-qty-m', it.quantity || ''); sm('.item-invat-m', fmt2(it.inVat)); sm('.item-exvat-m', fmt2(it.exVat)); sm('.item-total-m', fmt2(it.totalPrice));
+      }
+    });
+    if ((!items || !items.length) && typeof addItemRow === 'function') addItemRow();
+  }
+
+  // ส่งการแก้ไข (เรียกจาก submitForm เมื่อ window._editTxId ถูกตั้ง)
+  function submitEditedBill(data) {
+    const btn = document.getElementById('btn-submit'); btn.disabled = true; btn.innerText = 'กำลังบันทึก...';
+    google.script.run
+      .withSuccessHandler(function(res) {
+        btn.disabled = false;
+        if (res && res.success) { Swal.fire('สำเร็จ', res.message, 'success'); cancelEdit(); switchTab('bills'); loadBills(); }
+        else { btn.innerText = 'บันทึกการแก้ไข'; Swal.fire('ผิดพลาด', (res && res.message) || 'แก้ไม่สำเร็จ', 'error'); }
+      })
+      .withFailureHandler(function(e) { btn.disabled = false; btn.innerText = 'บันทึกการแก้ไข'; Swal.fire('เชื่อมต่อไม่ได้', e.message, 'error'); })
+      .updateTransaction(window._editTxId, data);
+  }
+
+  function cancelEdit() {
+    window._editTxId = null;
+    const b = document.getElementById('edit-banner'); if (b) b.classList.add('hidden');
+    const btn = document.getElementById('btn-submit'); if (btn) btn.innerText = 'บันทึกข้อมูลลงระบบ';
+    const f = document.getElementById('accounting-form'); if (f) f.reset();
+    const tb = document.getElementById('items-body'); if (tb) tb.innerHTML = '';
+    const mb = document.getElementById('items-body-mobile'); if (mb) mb.innerHTML = '';
+    if (typeof addItemRow === 'function') addItemRow();
+    if (typeof setType === 'function') setType('รายจ่าย');
+  }
+
+  // ดูกลุ่มงวด (read-only)
+  function viewGroup(poGroupId) {
+    Swal.fire({ title: 'กำลังโหลด...', didOpen: () => Swal.showLoading() });
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (!res || !res.success) { Swal.fire('ผิดพลาด', (res && res.message) || 'โหลดไม่สำเร็จ', 'error'); return; }
+        const h = res.header;
+        const rows = res.installments.map(function(x) {
+          return `<tr><td style="padding:2px 6px">งวด ${x.installmentNo}</td><td style="padding:2px 6px;text-align:right">${formatMoney(x.net)}</td><td style="padding:2px 6px">${x.dueDate || '-'}</td><td style="padding:2px 6px">${x.paid ? '✅ จ่ายแล้ว' : '⏳ ค้าง'}</td></tr>`;
+        }).join('');
+        Swal.fire({
+          title: 'กลุ่มงวด: ' + (h.description || ''), width: 620,
+          html: `<div style="text-align:left;font-size:13px"><div>${h.contactName || ''} · รวม ${formatMoney(res.totalBase)} (ก่อน VAT)</div>
+            <table style="width:100%;margin-top:8px;border-collapse:collapse"><thead><tr style="border-bottom:1px solid #ddd"><th style="text-align:left;padding:2px 6px">งวด</th><th style="text-align:right;padding:2px 6px">สุทธิ</th><th style="text-align:left;padding:2px 6px">ครบกำหนด</th><th style="text-align:left;padding:2px 6px">สถานะ</th></tr></thead><tbody>${rows}</tbody></table>
+            <p style="margin-top:8px;color:#6b7280">ชำระแต่ละงวดได้ที่แท็บลูกหนี้-เจ้าหนี้</p></div>`
+        });
+      })
+      .withFailureHandler(function(e) { Swal.fire('เชื่อมต่อไม่ได้', e.message, 'error'); })
+      .getInstallmentGroup(poGroupId);
+  }
+</script>

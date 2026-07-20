@@ -1,0 +1,108 @@
+<!-- ============================================================
+     JS B2B — ลูกค้า/ตะกร้า/คำนวณ/ออกใบเสนอราคา (sales mode)
+     global: b2bMixin
+     ============================================================ -->
+<script>
+  const b2bMixin = {
+    methods: {
+      saveNewCustomer() {
+          // C1-1: ตรวจ tax ID format ก่อน submit
+          const taxIdErr = this.validateTaxId(this.newCustomer.taxId);
+          if (taxIdErr) return Swal.fire('เลขประจำตัวผู้เสียภาษีไม่ถูกต้อง', taxIdErr, 'warning');
+
+          // C1-11: assemble branch จาก radio mode
+          const branch = this.newCustomer.branchMode === 'hq'
+              ? 'สำนักงานใหญ่'
+              : (this.newCustomer.branchNumber || '').padStart(5, '0');
+          if (this.newCustomer.branchMode === 'branch' && !/^\d{5}$/.test(branch)) {
+              return Swal.fire('ข้อมูลไม่ถูกต้อง', 'เลขสาขาต้องเป็นตัวเลข 5 หลัก เช่น 00001', 'warning');
+          }
+
+          const payload = { ...this.newCustomer, branch, saleName: this.loggedInUser.name };
+          this.isLoading = true;
+          const resetForm = () => {
+              this.newCustomer = { name: '', address: '', taxId: '', taxIdError: '', branch: '', branchMode: 'hq', branchNumber: '', phone: '', email: '', creditTerm: 0, isExport: false };
+          };
+
+          if (typeof google === 'undefined') { setTimeout(() => { this.isLoading = false; const mockId = 'C' + Math.floor(Math.random() * 1000).toString().padStart(3, '0'); this.b2bCustomers.push({ ...payload, id: mockId }); this.showAddCustomerModal = false; this.b2bData.selectedCustomerId = mockId; this.onB2BCustomerSelect(); resetForm(); Swal.fire('สำเร็จ', 'เพิ่มลูกค้าเรียบร้อย', 'success'); }, 800); return; }
+          google.script.run.withSuccessHandler(res => { this.isLoading = false; if (res.success) { this.b2bCustomers.push(res.customer); this.showAddCustomerModal = false; this.b2bData.selectedCustomerId = res.customer.id; this.onB2BCustomerSelect(); resetForm(); Swal.fire('สำเร็จ', 'เพิ่มลูกค้าเรียบร้อย', 'success'); } else Swal.fire('Error', res.message, 'error'); }).addB2BCustomer(payload);
+      },
+
+      onB2BCustomerSelect() { if (!this.b2bData.selectedCustomerId) { this.b2bData.customer = {}; return; } this.b2bData.customer = this.b2bCustomers.find(c => c.id === this.b2bData.selectedCustomerId) || {}; },
+
+      addB2BToCart(item) { const ex = this.b2bData.items.find(i => i.name === item.name); if (ex) { ex.qty++; } else { this.b2bData.items.push({ name: item.name, price: item.price, qty: 1 }); } },
+
+      async addB2BCustomItem() {
+          if (!this.b2bData.selectedCustomerId) return;
+          const { value: formValues } = await Swal.fire({ title: 'เพิ่มสินค้านอกระบบ/สั่งทำ', html: '<div class="text-left"><label class="block text-sm font-bold text-slate-700 mb-1">รายละเอียดสินค้า/บริการ</label><textarea id="swal-custom-name" class="swal2-textarea !mt-0 !mb-3" style="width: 100%; display: flex; box-sizing: border-box;" rows="4" placeholder="ระบุรายละเอียด"></textarea></div><div class="text-left"><label class="block text-sm font-bold text-slate-700 mb-1">ราคาต่อหน่วย (บาท)</label><input id="swal-custom-price" class="swal2-input !mt-0" type="number" step="0.01"></div>', focusConfirm: false, showCancelButton: true, confirmButtonText: 'เพิ่ม', preConfirm: () => { const name = document.getElementById('swal-custom-name').value; const price = parseFloat(document.getElementById('swal-custom-price').value); if (!name || isNaN(price) || price < 0) return false; return { name: name, price: price }; } });
+          if (formValues) this.addB2BToCart(formValues);
+      },
+
+      calculateB2BSubtotal() { return this.roundTo2(this.b2bData.items.reduce((sum, item) => sum + (item.price * item.qty), 0)); },
+
+      calculateB2BSubDiscount() { return Math.max(0, this.roundTo2(this.calculateB2BSubtotal() - (this.b2bData.discount || 0))); },
+
+      calculateB2BVat() { return this.roundTo2(this.calculateB2BSubDiscount() * 0.07); },
+
+      calculateB2BGrandTotal() { return this.roundTo2(this.calculateB2BSubDiscount() + this.calculateB2BVat()); },
+
+      calculateB2BWht() { return this.b2bData.isWhtRequired ? this.roundTo2(this.calculateB2BSubDiscount() * (this.b2bData.whtPercent / 100)) : 0; },
+
+      calculateB2BNetPayable() { return this.roundTo2(this.calculateB2BGrandTotal() - this.calculateB2BWht()); },
+
+      calculateB2BExpectedDeposit() { if (!this.b2bData.isDepositRequired || !this.b2bData.depositPercent) return 0; const preVatDeposit = this.roundTo2(this.calculateB2BSubDiscount() * (this.b2bData.depositPercent / 100)); return this.roundTo2(preVatDeposit + this.roundTo2(preVatDeposit * 0.07) - (this.b2bData.isWhtRequired ? this.roundTo2(preVatDeposit * (this.b2bData.whtPercent / 100)) : 0)); },
+
+      generateQuotation() {
+          const expectedDepositAmt = this.calculateB2BExpectedDeposit(); let finalRemarks = this.b2bData.customRemarks || '';
+          if (this.b2bData.isDepositRequired && expectedDepositAmt > 0) { const depositText = `มัดจำงวดแรก ${this.b2bData.depositPercent}% คิดเป็นเงินชำระสุทธิ ${expectedDepositAmt.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} บาท`; finalRemarks = finalRemarks ? `${depositText}\n${finalRemarks}` : depositText; }
+
+          const payload = { customer: this.b2bData.customer, items: JSON.parse(JSON.stringify(this.b2bData.items)), subTotal: this.calculateB2BSubtotal(), discount: this.roundTo2(this.b2bData.discount || 0), subDiscount: this.calculateB2BSubDiscount(), vatAmount: this.calculateB2BVat(), grandTotal: this.calculateB2BGrandTotal(), whtPercent: this.b2bData.isWhtRequired ? this.b2bData.whtPercent : 0, whtAmount: this.calculateB2BWht(), netPayable: this.calculateB2BNetPayable(), remarks: finalRemarks, saleName: this.b2bData.saleName, category: this.b2bData.category };
+
+          this.isLoading = true;
+          if (typeof google === 'undefined') { setTimeout(() => { this.handleQuotationSuccess({ success: true, quNo: 'QU260424-001', timestamp: new Date().toLocaleString('th-TH'), quExp: '15/05/2569' }, payload); }, 1000); return; }
+
+          // ✏️ Route: edit mode → updateB2BQuotation | new → saveB2BQuotation
+          if (this.editingQuNo) {
+              google.script.run
+                  .withSuccessHandler(response => {
+                      this.isLoading = false;
+                      if (response && response.success) {
+                          // แก้ออเดอร์แล้ว → ล้าง cache items ของ quNo นี้ + บังคับ refetch ออเดอร์ตอนเปิด history ครั้งหน้า
+                          delete this.b2bItemsCache[this.editingQuNo];
+                          this.b2bOrdersLoaded = false;
+                          this.editingQuNo = null;
+                          this.b2bData.items = [];
+                          this.b2bData.selectedCustomerId = '';
+                          this.b2bData.customer = {};
+                          this.b2bData.discount = 0;
+                          this.b2bData.customRemarks = '';
+                          this.b2bData.isWhtRequired = false;
+                          Swal.fire('อัปเดตสำเร็จ', `แก้ไข ${response.quNo} เรียบร้อย`, 'success');
+                      } else {
+                          Swal.fire('Error', response.message, 'error');
+                      }
+                  })
+                  .withFailureHandler(err => { this.isLoading = false; Swal.fire('Error', err.toString(), 'error'); })
+                  .updateB2BQuotation(this.editingQuNo, payload);
+          } else {
+              google.script.run.withSuccessHandler(response => { if (response && response.success) this.handleQuotationSuccess(response, payload); else { this.isLoading = false; Swal.fire('Error', response.message, 'error'); } }).saveB2BQuotation(payload);
+          }
+      },
+
+      handleQuotationSuccess(response, payload) {
+          this.isLoading = false;
+          this.b2bPrintData = { 
+              quNo: response.quNo, date: response.timestamp.split(' ')[0], quExp: response.quExp, 
+              customerID: payload.customer.id, customerName: payload.customer.name, customerAddress: payload.customer.address, customerTaxId: payload.customer.taxId, 
+              customerBranch: this.formatBranch(payload.customer.branch), // นำสาขามาฟอร์แมตก่อนส่งไปปริ๊น
+              creditTerm: payload.customer.creditTerm, items: payload.items, subTotal: payload.subTotal, discount: payload.discount, subDiscount: payload.subDiscount, vat: payload.vatAmount, grandTotal: payload.grandTotal, whtPercent: payload.whtPercent, whtAmount: payload.whtAmount, netPayable: payload.netPayable, remarks: payload.remarks, saleName: payload.saleName 
+          };
+          this.b2bData.items = []; this.b2bData.discount = 0; this.b2bData.customRemarks = ''; this.b2bData.isDepositRequired = false; this.b2bData.depositPercent = 50; this.b2bData.isWhtRequired = false;
+          // ออเดอร์ใหม่ถูกสร้าง → บังคับ refetch ตอนเปิด history ครั้งหน้า (cache เดิมยังไม่มีออเดอร์นี้)
+          this.b2bOrdersLoaded = false;
+          Swal.fire({ icon: 'success', title: 'สร้างใบเสนอราคาสำเร็จ', timer: 1500, showConfirmButton: false });
+          this.$nextTick(() => { setTimeout(() => { this.executeIframePrint('a4'); }, 80); });
+      }
+    }
+  };
+</script>

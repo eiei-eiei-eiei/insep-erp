@@ -1,0 +1,131 @@
+<script>
+        // ===== core: globals, boot, switchTab, window.onload, populateData =====
+        let globalContainers = [];
+        let globalPendingBatches = [];
+        let globalMaterials = [];
+        let globalProducts = [];
+        let lastFmonBatch = '';   // จำ Batch ล่าสุดที่บันทึกผลวัด ไว้รีโหลดประวัติหลังบันทึก
+        let fmonChart = null;     // instance ของ Chart.js (ต้อง destroy ก่อนวาดใหม่ กัน memory leak)
+
+        // ===== state หน้าติดตามการกลั่น =====
+        let dtBatch = '', dtProduct = '';
+        let dtActiveRun = null;        // {runId, potNo, startTs} ของหม้อที่กำลังกลั่น
+        let dtMaxPhase = 0;            // ช่วงสูงสุดที่บันทึกแล้วในหม้อ active (1=หัว 2=กลาง 3=หาง)
+        let dtLastCum = 0, dtLastMin = 0; // base ของ reading ล่าสุด ไว้คิด flow rate
+        let dtLastPhase = '';             // ช่วงของ reading ล่าสุด (flow คิดเฉพาะภายในช่วงเดียวกัน)
+        let dtLapAtMs = null;             // เวลาที่กด Lap (ms) — ล็อคเวลาตอนอ่านค่า กันเวลาไหลตอนกรอก
+        let dtTimerInt = null;
+        let dtChart = null;
+        let dtAllReadings = [];        // ผลจาก getDistillRunData
+        let dtFermVol = 0;             // ปริมาณน้ำหมักทั้งหมดของ batch ที่เลือก (จาก Log_Ferment)
+        let dtViewPot = null;          // หม้อที่กำลังดูในกราฟ (override จากปุ่มแท็บ)
+        let dtFpComputedAbv = 0;       // ดีกรี@20 ที่คำนวณของหม้อที่กำลังจะจบ (ไว้เทียบกับค่าวัด)
+        const DT_PHASES = ['หัว', 'กลาง', 'หาง'];
+
+        document.querySelectorAll('input[type="date"]').forEach(el => {
+            el.valueAsDate = new Date();
+        });
+        
+        let today = new Date();
+        document.getElementById('rep-month').value = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, '0');
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.getElementById('tab-' + tabId).classList.add('active');
+            
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('bg-blue-600', 'bg-slate-700');
+                if (btn.classList.contains('text-red-400')) {
+                    btn.classList.add('hover:bg-slate-700');
+                } else {
+                    btn.classList.add('hover:bg-slate-700');
+                }
+            });
+            event.currentTarget.classList.add(tabId === 'report' ? 'bg-slate-700' : 'bg-blue-600');
+            event.currentTarget.classList.remove('hover:bg-slate-700');
+            
+            if (window.innerWidth < 768) {
+                document.getElementById('mobile-menu').classList.add('hidden');
+            }
+        }
+
+        // ==========================================
+        // โหลดข้อมูลเมื่อเปิดหน้าเว็บ
+        // ==========================================
+        window.onload = function() {
+            // 1. โหลดชื่อบริษัทและทะเบียนสรรพสามิตจาก Script Properties
+            google.script.run
+                .withSuccessHandler(function(info) {
+                    document.getElementById('sidebar-company-name').innerText = info.companyName || 'Insep Distillery';
+                    document.getElementById('sidebar-excise-id').innerText = 'ทะเบียน: ' + (info.exciseId || '-');
+                })
+                .withFailureHandler(function() {
+                    // ไม่แสดง error ถ้าโหลดชื่อบริษัทไม่สำเร็จ (ไม่ critical)
+                    document.getElementById('sidebar-company-name').innerText = 'Insep Distillery';
+                })
+                .getCompanyInfo();
+
+            // 2. โหลด Master data (วัตถุดิบ, ภาชนะ, สินค้า, Batch รอกลั่น)
+            google.script.run
+                .withSuccessHandler(populateData)
+                .withFailureHandler(function(err) {
+                    document.getElementById('loading').style.display = 'none';
+                    Swal.fire('Error', 'ไม่สามารถโหลดข้อมูลได้: ' + err.message, 'error');
+                })
+                .getMasterAndInitialData();
+        };
+
+        // ==========================================
+        // เติมข้อมูล Dropdown ทั้งหมดหลังโหลด Master data
+        // ==========================================
+        function populateData(data) {
+            // ตรวจสอบว่าโหลดสำเร็จหรือไม่ (error handling จาก server)
+            if (data && data.success === false) {
+                document.getElementById('loading').style.display = 'none';
+                Swal.fire('ข้อผิดพลาด', data.message || 'โหลดข้อมูลไม่สำเร็จ', 'error');
+                return;
+            }
+
+            document.getElementById('loading').style.display = 'none';
+            globalContainers    = data.containers    || [];
+            globalPendingBatches = data.pendingBatches || [];
+            globalMaterials     = data.materials      || [];
+            globalProducts      = data.products       || [];
+
+            let matOptions = '<option value="">-- เลือกวัตถุดิบ --</option>';
+            globalMaterials.forEach(m => {
+                matOptions += `<option value="${m['รหัสวัตถุดิบ']}">${m['ชื่อวัตถุดิบ']} (${m['หน่วยนับ']})</option>`;
+            });
+            document.querySelectorAll('.mat-dropdown').forEach(el => el.innerHTML = matOptions);
+
+            let conOptions = '<option value="">-- เลือกภาชนะ --</option>';
+            globalContainers.forEach(c => {
+                conOptions += `<option value="${c['รหัสภาชนะ']}">${c['ประเภทภาชนะ']} - ${c['ความจุ(ลิตร)']} ลิตร</option>`;
+            });
+            document.querySelectorAll('.con-dropdown').forEach(el => el.innerHTML = conOptions);
+
+            let uniqueNames = [...new Set(globalProducts.map(p => p['ชื่อสุรา']))];
+            let nameOptions = '<option value="">-- เลือกชื่อสุรา --</option>';
+            uniqueNames.forEach(name => {
+                nameOptions += `<option value="${name}">${name}</option>`;
+            });
+            document.querySelectorAll('.prd-name-dropdown').forEach(el => el.innerHTML = nameOptions);
+
+            let prdOptions = '<option value="">-- เลือกสินค้า --</option>';
+            globalProducts.forEach(p => {
+                prdOptions += `<option value="${p['รหัสสินค้า']}">${p['ชื่อสุรา']} ${p['ดีกรี']}% ขนาด ${p['ขนาดขวด(ลิตร)']}L</option>`;
+            });
+            document.querySelectorAll('.prd-dropdown').forEach(el => el.innerHTML = prdOptions);
+
+            updateFmonBatchDropdown();
+            updateDtBatchDropdown();
+            setFmonDefaults();
+            histInit();
+            generateBatchNumber();
+            repPopulateLists();
+        }
+
+        // ==========================================
+        // ดึงเลข Batch ถัดไปอัตโนมัติ
+        // ==========================================
+</script>

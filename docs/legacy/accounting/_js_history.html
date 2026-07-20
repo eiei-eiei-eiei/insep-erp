@@ -1,0 +1,89 @@
+<script>
+  // =========================================================================
+  // JS — [Phase 4/#8 + Phase C] ประวัติสินค้า/ราคา
+  // ใช้ global: currentEntityId, formatMoney
+  // =========================================================================
+  let _histData = [];
+
+  function loadHistory() {
+    const load = document.getElementById('hist-loading'); load.classList.remove('hidden');
+    const includePC = document.getElementById('hist-pc').checked;   // default = ติ๊กไว้ (รวมเช็คราคา)
+    google.script.run
+      .withSuccessHandler(function(res) {
+        load.classList.add('hidden');
+        if (!res || !res.success) { Swal.fire('ผิดพลาด', (res && res.message) || 'โหลดไม่สำเร็จ', 'error'); return; }
+        _histData = res.results || [];   // backend เรียงตามลำดับบันทึก ใหม่→เก่า แล้ว
+        buildHistFilters();
+        renderHistory();
+      })
+      .withFailureHandler(function(e) { load.classList.add('hidden'); Swal.fire('เชื่อมต่อไม่ได้', e.message, 'error'); })
+      .searchItemHistory(currentEntityId, includePC);
+  }
+
+  // เติม dropdown ฟิลเตอร์จากค่าที่มีจริงในข้อมูล
+  function buildHistFilters() {
+    const cats = {}, jobs = {}, contacts = {};
+    _histData.forEach(r => { if (r.itemCategory) cats[r.itemCategory] = 1; if (r.itemJob) jobs[r.itemJob] = 1; if (r.contact) contacts[r.contact] = 1; });
+    fillHistSel('hist-f-cat', 'ทุกหมวดหมู่', Object.keys(cats).sort());
+    fillHistSel('hist-f-job', 'ทุกงาน', Object.keys(jobs).sort());
+    fillHistSel('hist-f-contact', 'ทุกคู่ค้า', Object.keys(contacts).sort());
+  }
+  function fillHistSel(id, allLabel, arr) {
+    const sel = document.getElementById(id); const cur = sel.value;
+    sel.innerHTML = `<option value="">${allLabel}</option>` + arr.map(v => `<option value="${String(v).replace(/"/g, '&quot;')}">${v}</option>`).join('');
+    if (arr.indexOf(cur) !== -1) sel.value = cur;   // คงค่าที่เลือกไว้ถ้ายังมี
+  }
+
+  // กรองตามฟิลเตอร์ + ค้นชื่อสินค้า (ค้นเฉพาะในกลุ่มที่ฟิลเตอร์)
+  function histFiltered() {
+    const fc = document.getElementById('hist-f-cat').value;
+    const fj = document.getElementById('hist-f-job').value;
+    const fk = document.getElementById('hist-f-contact').value;
+    const kw = (document.getElementById('hist-filter').value || '').trim().toLowerCase();
+    return _histData.filter(r => {
+      if (fc && r.itemCategory !== fc) return false;
+      if (fj && r.itemJob !== fj) return false;
+      if (fk && r.contact !== fk) return false;
+      if (kw && (r.itemName || '').toLowerCase().indexOf(kw) === -1) return false;
+      return true;
+    });
+  }
+
+  function renderHistory() {
+    const rows = histFiltered();
+    const body = document.getElementById('hist-body');
+    const allCb = document.getElementById('hist-all'); if (allCb) allCb.checked = false;
+    if (!rows.length) { body.innerHTML = '<tr><td colspan="10" class="py-6 text-center text-gray-400">ไม่มีข้อมูล</td></tr>'; updateHistSum(); return; }
+    body.innerHTML = rows.map(function(r) {
+      const pc = r.isPriceCheck
+        ? '<span class="text-xs bg-purple-100 text-purple-700 rounded px-1.5 py-0.5">เช็คราคา</span>'
+        : '<span class="text-xs bg-green-100 text-green-700 rounded px-1.5 py-0.5">ซื้อขายจริง</span>';
+      return `<tr class="border-b border-gray-50 hover:bg-gray-50">
+        <td class="py-1.5 px-2"><input type="checkbox" class="hist-cb" data-total="${r.totalPrice || 0}" onchange="updateHistSum()"></td>
+        <td class="py-1.5 px-2 whitespace-nowrap">${r.date}</td>
+        <td class="py-1.5 px-2">${r.itemName}</td>
+        <td class="py-1.5 px-2">${r.itemCategory || '-'}</td>
+        <td class="py-1.5 px-2">${r.itemJob || '-'}</td>
+        <td class="py-1.5 px-2 text-right">${r.quantity}</td>
+        <td class="py-1.5 px-2 text-right">${formatMoney(r.exVat)}</td>
+        <td class="py-1.5 px-2 text-right">${formatMoney(r.totalPrice)}</td>
+        <td class="py-1.5 px-2">${r.contact || '-'}</td>
+        <td class="py-1.5 px-2">${pc}</td>
+      </tr>`;
+    }).join('');
+    updateHistSum();
+  }
+
+  function toggleAllHist(el) {
+    document.querySelectorAll('#hist-body .hist-cb').forEach(cb => cb.checked = el.checked);
+    updateHistSum();
+  }
+  // รวมราคาของรายการที่ติ๊กเลือก
+  function updateHistSum() {
+    let n = 0, sum = 0;
+    document.querySelectorAll('#hist-body .hist-cb').forEach(cb => { if (cb.checked) { n++; sum += parseFloat(cb.dataset.total) || 0; } });
+    const el = document.getElementById('hist-sum');
+    const total = histFiltered().length;
+    el.innerText = n > 0 ? `เลือก ${n} รายการ · รวม ${formatMoney(sum)} บาท` : `ทั้งหมด ${total} รายการ (ติ๊กหน้ารายการเพื่อรวมราคา)`;
+  }
+</script>

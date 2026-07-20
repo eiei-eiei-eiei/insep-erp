@@ -1,0 +1,14 @@
+  <!-- Modal เพิ่มคู่ค้า (คงเดิม) -->
+  <div id="contactModal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
+    <div class="bg-white p-5 md:p-8 rounded-lg shadow-xl w-full max-w-md">
+      <h3 class="text-lg font-bold text-gray-900 mb-4 border-b pb-2">เพิ่มคู่ค้า/ลูกค้าใหม่</h3>
+      <div class="space-y-4">
+        <div><label class="block text-sm font-medium text-gray-700">ชื่อ-นามสกุล / ชื่อบริษัท <span class="text-red-500">*</span></label><input type="text" id="newContactName" class="mt-1 w-full border-gray-300 rounded-md shadow-sm border p-2"></div>
+        <div><label class="block text-sm font-medium text-gray-700">ประเภท</label><select id="newContactType" class="mt-1 w-full border-gray-300 rounded-md shadow-sm border p-2"><option value="ผู้ขาย">ผู้ขาย (เจ้าหนี้)</option><option value="ลูกค้า">ลูกค้า (ลูกหนี้)</option></select></div>
+        <div><label class="block text-sm font-medium text-gray-700">เลขประจำตัวผู้เสียภาษี</label><input type="text" id="newContactTaxId" class="mt-1 w-full border-gray-300 rounded-md shadow-sm border p-2" maxlength="13"></div>
+        <div><label class="block text-sm font-medium text-gray-700">สาขา</label><input type="text" id="newContactBranch" value="สำนักงานใหญ่" class="mt-1 w-full border-gray-300 rounded-md shadow-sm border p-2"></div>
+        <div><label class="block text-sm font-medium text-gray-700">ที่อยู่</label><textarea id="newContactAddress" rows="2" class="mt-1 w-full border-gray-300 rounded-md shadow-sm border p-2"></textarea></div>
+      </div>
+      <div class="mt-6 flex justify-end space-x-3"><button onclick="closeContactModal()" class="px-4 py-2 bg-gray-200 rounded-md font-medium">ยกเลิก</button><button id="btnSaveContact" onclick="saveNewContact()" class="px-4 py-2 bg-blue-600 text-white rounded-md font-medium">บันทึกข้อมูล</button></div>
+    </div>
+  </div>

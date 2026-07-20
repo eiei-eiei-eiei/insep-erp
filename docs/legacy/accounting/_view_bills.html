@@ -1,0 +1,36 @@
+<!-- =========================================================================
+     VIEW: _view_bills — [Phase 4 / #8 + N2] ค้นหาบิล + แก้ไข/ลบ
+     [Filter] + ฟิลเตอร์ ประเภทรายการ/ประเภทบัญชี/หมวดหมู่/คู่ค้า
+     ========================================================================= -->
+<div id="view-bills" class="hidden">
+  <div class="bg-white rounded-2xl shadow-sm p-4 md:p-6">
+    <h2 class="text-xl font-bold text-gray-800 mb-3">ค้นหาบิล</h2>
+
+    <!-- ช่องค้นหา: เสิชเฉพาะ "รายละเอียดบิล" -->
+    <div class="flex gap-2 mb-3">
+      <input type="text" id="bills-kw" placeholder="ค้นจากรายละเอียดบิล..." onkeypress="if(event.key==='Enter')loadBills()" class="flex-1 border-gray-300 rounded-xl border p-3">
+      <button onclick="loadBills()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 rounded-xl">ค้นหา</button>
+    </div>
+
+    <!-- ฟิลเตอร์ (เปลี่ยนแล้วค้นทันที) -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+      <select id="bills-f-type" onchange="loadBills()" class="border-gray-300 rounded-xl border p-2.5 text-sm bg-white">
+        <option value="">ทุกประเภทรายการ</option>
+        <option value="รายรับ">รายรับ</option>
+        <option value="รายจ่าย">รายจ่าย</option>
+      </select>
+      <select id="bills-f-account" onchange="loadBills()" class="border-gray-300 rounded-xl border p-2.5 text-sm bg-white">
+        <option value="">ทุกประเภทบัญชี</option>
+      </select>
+      <select id="bills-f-category" onchange="loadBills()" class="border-gray-300 rounded-xl border p-2.5 text-sm bg-white">
+        <option value="">ทุกหมวดหมู่</option>
+      </select>
+      <select id="bills-f-contact" onchange="loadBills()" class="border-gray-300 rounded-xl border p-2.5 text-sm bg-white">
+        <option value="">ทุกคู่ค้า</option>
+      </select>
+    </div>
+
+    <div id="bills-loading" class="text-center text-gray-400 py-8 hidden">กำลังโหลด...</div>
+    <div id="bills-list" class="divide-y divide-gray-100"></div>
+  </div>
+</div>

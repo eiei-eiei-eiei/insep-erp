@@ -1,0 +1,503 @@
+<script>
+        // ===== รายงาน PDF: pdf-lib fill ภส.๐๗ forms =====
+        function gsr(fn) {
+            const args = Array.prototype.slice.call(arguments, 1);
+            return new Promise((resolve, reject) => {
+                const r = google.script.run.withSuccessHandler(resolve).withFailureHandler(reject);
+                r[fn].apply(r, args);
+            });
+        }
+        function b64ToBytes(b64) { const bin = atob(b64); const a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return a; }
+        let _sarabunBytes = null;
+        async function getSarabunBytes() {
+            if (_sarabunBytes) return _sarabunBytes;
+            const r = await gsr('getSarabunFontB64');
+            if (!r || !r.success) throw new Error((r && r.message) || 'โหลดฟอนต์ไม่สำเร็จ');
+            _sarabunBytes = b64ToBytes(r.b64);
+            return _sarabunBytes;
+        }
+        function rfFmt(v) { const n = parseFloat(v); if (isNaN(n)) return String(v); return n.toLocaleString('en-US', { maximumFractionDigits: 3 }); }
+        // วาดเครื่องหมายติ๊กถูก (✓) ด้วยเส้นเวกเตอร์ — ไม่พึ่งฟอนต์ (TH Sarabun ไม่มี glyph ✓)
+        // (x, y) = จุดที่คลิกไว้ (กลางช่อง checkbox); วาดขีดสั้นลงขวา + ขีดยาวขึ้นขวา
+        function rfDrawCheck(page, x, y, size) {
+            const s = size || 8;
+            const col = PDFLib.rgb(0, 0, 0);
+            page.drawLine({ start: { x: x - s * 0.45, y: y + s * 0.10 }, end: { x: x - s * 0.10, y: y - s * 0.30 }, thickness: 1.2, color: col });
+            page.drawLine({ start: { x: x - s * 0.10, y: y - s * 0.30 }, end: { x: x + s * 0.55, y: y + s * 0.55 }, thickness: 1.2, color: col });
+        }
+        function rfDownload(bytes, name) {
+            const blob = new Blob([bytes], { type: 'application/pdf' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 4000);
+        }
+
+        // ===== ฟอร์มรายวัน: เอนจินเติม + แบ่งหน้า + ข้ามวันว่าง + ดึงหน้า 1 =====
+        // ===== ระบบออกรายงาน batch: เลือกหลายใบ/หลายรายการ → PDF แยกไฟล์ตามใบ =====
+        // populate checklist ทั้ง 3 ใบจาก master (เรียกหลังโหลดข้อมูล)
+        function repPopulateLists() {
+            const mk = (items) => items.map(it =>
+                `<label class="flex items-center gap-2 cursor-pointer hover:bg-white rounded px-1">
+                    <input type="checkbox" class="rep-item w-3.5 h-3.5" value="${it.v}" checked>
+                    <span>${it.t}</span>
+                </label>`).join('');
+            const mats  = (globalMaterials || []).map(m => ({ v: m['รหัสวัตถุดิบ'], t: `${m['ชื่อวัตถุดิบ']} (${m['หน่วยนับ'] || ''})` }));
+            const names = [...new Set((globalProducts || []).map(p => p['ชื่อสุรา']))].map(n => ({ v: n, t: n }));
+            const prods = (globalProducts || []).map(p => ({ v: p['รหัสสินค้า'], t: `${p['ชื่อสุรา']} ${p['ดีกรี'] || ''}% ${p['ขนาดขวด(ลิตร)'] || ''}L` }));
+            const empty = '<div class="text-gray-400 italic text-xs px-1">— ไม่มีข้อมูล —</div>';
+            document.getElementById('list-0701').innerHTML   = mats.length  ? mk(mats)  : empty;
+            document.getElementById('list-0702-1').innerHTML = names.length ? mk(names) : empty;
+            document.getElementById('list-0702-2').innerHTML = prods.length ? mk(prods) : empty;
+        }
+        function repSelAll(cb) {
+            const box = document.getElementById(cb.dataset.list);
+            if (box) box.querySelectorAll('.rep-item').forEach(it => it.checked = cb.checked);
+        }
+        function repToggleAll() {
+            const on = document.getElementById('rep-all').checked;
+            ['en-0701', 'en-0702_1', 'en-0702_2', 'en-0704'].forEach(id => { const e = document.getElementById(id); if (e) e.checked = on; });
+            document.querySelectorAll('[data-list]').forEach(cb => { cb.checked = on; repSelAll(cb); });
+        }
+        function repSelectedVals(listId) {
+            return Array.from(document.querySelectorAll('#' + listId + ' .rep-item:checked')).map(cb => cb.value);
+        }
+        // รวมหลาย PDF (Uint8Array) เป็นไฟล์เดียว
+        async function rfMergePdfs(byteArrays) {
+            const merged = await PDFLib.PDFDocument.create();
+            for (const bytes of byteArrays) {
+                const src = await PDFLib.PDFDocument.load(bytes);
+                const pages = await merged.copyPages(src, src.getPageIndices());
+                pages.forEach(p => merged.addPage(p));
+            }
+            return await merged.save();
+        }
+        // เลือก backend + engine ตามชนิดใบ → คืน bytes (1 รายการ)
+        async function genReportBytes(kind, month, id) {
+            if (kind === '0701')   return await genReport0701(month, id);
+            if (kind === '0702_1') return await genReport0702_1(month, id);
+            if (kind === '0702_2') return await genReport0702_2(month, id);
+            if (kind === '0704')   return await genReport0704(month);
+            throw new Error('ชนิดรายงานไม่ถูกต้อง: ' + kind);
+        }
+        // สร้างรายงานทั้งหมดตามที่ติ๊ก → ดาวน์โหลด PDF แยกไฟล์ตามใบ
+        async function runBatchReports() {
+            const month = document.getElementById('rep-month').value;
+            if (!month) { Swal.fire('เลือกเดือนก่อน', '', 'warning'); return; }
+
+            const jobs = [];
+            if (document.getElementById('en-0701').checked)   jobs.push({ kind: '0701',   ids: repSelectedVals('list-0701'),   file: 'ภส07-01_วัตถุดิบ' });
+            if (document.getElementById('en-0702_1').checked) jobs.push({ kind: '0702_1', ids: repSelectedVals('list-0702-1'), file: 'ภส07-02-1_ผลิตสุรา' });
+            if (document.getElementById('en-0702_2').checked) jobs.push({ kind: '0702_2', ids: repSelectedVals('list-0702-2'), file: 'ภส07-02-2_สุราขวด' });
+            if (document.getElementById('en-0704').checked)   jobs.push({ kind: '0704',   ids: null,                            file: 'ภส07-04_งบเดือน' });
+
+            if (!jobs.length) { Swal.fire('ยังไม่ได้เลือกใบไหนเลย', '', 'warning'); return; }
+            for (const j of jobs) { if (j.kind !== '0704' && (!j.ids || !j.ids.length)) { Swal.fire('แจ้งเตือน', 'ใบที่ติ๊กไว้ยังไม่ได้เลือกรายการ (' + j.file + ')', 'warning'); return; } }
+
+            Swal.fire({ title: 'กำลังสร้างรายงาน...', html: 'กำลังเติมฟอร์มและรวมไฟล์', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            try {
+                const outputs = [];
+                for (const j of jobs) {
+                    if (j.kind === '0704') {
+                        outputs.push({ name: j.file + '_' + month + '.pdf', bytes: await genReportBytes('0704', month) });
+                    } else {
+                        const parts = [];
+                        for (const id of j.ids) parts.push(await genReportBytes(j.kind, month, id));
+                        const bytes = parts.length === 1 ? parts[0] : await rfMergePdfs(parts);
+                        outputs.push({ name: j.file + '_' + month + '.pdf', bytes: bytes });
+                    }
+                }
+                for (let i = 0; i < outputs.length; i++) {
+                    rfDownload(outputs[i].bytes, outputs[i].name);
+                    if (i < outputs.length - 1) await new Promise(r => setTimeout(r, 450));
+                }
+                Swal.fire({ icon: 'success', title: 'สร้างรายงานสำเร็จ', text: 'ออก ' + outputs.length + ' ไฟล์', timer: 2200, showConfirmButton: false });
+            } catch (e) { Swal.fire('Error', (e && e.message) || String(e), 'error'); }
+        }
+
+        /**
+         * เติมฟอร์มรายวันลง PDF: ดึงเฉพาะหน้า 1 ของ template มา clone ตามจำนวนหน้า
+         * - เติมเฉพาะแถวที่มีรายการ (ข้ามวันว่าง)
+         * - หน้าแรกมี "ยอดยกมา" / หน้าสุดท้ายมี "รวมเดือน/รวมปี" / หน้ากลางข้อมูลล้วน
+         * cfg.cols.<day|desc|ref|inv|outv|bal> = { x, align }
+         */
+        async function fillDailyForm(cfg, data) {
+            if (typeof PDFLib === 'undefined' || typeof fontkit === 'undefined') throw new Error('โหลดไลบรารี PDF ไม่สำเร็จ (ลองรีเฟรช)');
+            const fontBytes = await getSarabunBytes();
+            const tpl = await gsr('getReportTemplateB64', cfg.templateName);
+            if (!tpl || !tpl.success) throw new Error((tpl && tpl.message) || 'ดึงไฟล์ฟอร์มไม่สำเร็จ');
+
+            const tplDoc = await PDFLib.PDFDocument.load(b64ToBytes(tpl.b64));
+            const outDoc = await PDFLib.PDFDocument.create();
+            outDoc.registerFontkit(fontkit);
+            const f = await outDoc.embedFont(fontBytes);
+            const S = cfg.size || 8.5;
+
+            // เฉพาะแถวที่มีรายการ
+            const records = data.grid.filter(r => (r.desc && r.desc !== '') || r.inv != null || r.outv != null);
+            const per = cfg.rowsPerPage;
+            const pages = [];
+            for (let i = 0; i < records.length; i += per) pages.push(records.slice(i, i + per));
+            if (pages.length === 0) pages.push([]);
+
+            for (let pi = 0; pi < pages.length; pi++) {
+                const [page] = await outDoc.copyPages(tplDoc, [0]);
+                outDoc.addPage(page);
+                const txt = (s, x, y, sz) => { if (s === '' || s == null) return; page.drawText(String(s), { x: x, y: y, size: sz || S, font: f }); };
+                const right = (v, xr, y, sz) => { if (v == null || v === '') return; const s = rfFmt(v); const w = f.widthOfTextAtSize(s, sz || S); page.drawText(s, { x: xr - w, y: y, size: sz || S, font: f }); };
+                const rightText = (s, xr, y, sz) => { if (s === '' || s == null) return; const w = f.widthOfTextAtSize(String(s), sz || S); page.drawText(String(s), { x: xr - w, y: y, size: sz || S, font: f }); };
+                const center = (s, xc, y, sz) => { if (s === '' || s == null) return; const w = f.widthOfTextAtSize(String(s), sz || S); page.drawText(String(s), { x: xc - w / 2, y: y, size: sz || S, font: f }); };
+                // แถวข้อมูล: ช่องว่าง/0 → "-" (ตามรูปแบบ ภส.๐๗-๐๔/๑) ยกเว้นคอลัมน์ keepZero (คงเหลือ) → 0 แสดง "0"
+                const drawCol = (col, val, y) => {
+                    if (!col) return;
+                    let s;
+                    if (col.align === 'R') {
+                        const empty = col.keepZero ? (val == null || val === '') : !val;
+                        s = empty ? '-' : rfFmt(val);
+                    } else s = (val == null || val === '') ? '-' : String(val);
+                    if (col.align === 'C') center(s, col.x, y, col.size);
+                    else if (col.align === 'R') rightText(s, col.x, y, col.size);
+                    else txt(s, col.x, y, col.size);
+                };
+
+                // header (ทุกหน้า — แต่ละหน้าเป็นฟอร์มเต็ม)
+                if (cfg.header) cfg.header.forEach(h => {
+                    const v = (typeof h.text === 'function') ? h.text(data) : h.text;
+                    if (h.align === 'R') right(v, h.x, h.y, h.size); else if (h.align === 'C') center(v, h.x, h.y, h.size); else txt(v, h.x, h.y, h.size);
+                });
+                // เลขทะเบียนสรรพสามิต (กล่อง 13-1-3) — กระจาย x ในแต่ละกลุ่ม
+                if (cfg.reg && data.exciseId) {
+                    const digits = String(data.exciseId).replace(/\D/g, '');
+                    let idx = 0;
+                    cfg.reg.groups.forEach(g => {
+                        for (let i = 0; i < g.count; i++, idx++) {
+                            if (idx >= digits.length) continue;
+                            const x = g.count > 1 ? g.xFirst + (g.xLast - g.xFirst) * (i / (g.count - 1)) : g.xFirst;
+                            center(digits[idx], x, cfg.reg.y, 9);
+                        }
+                    });
+                }
+                // checkbox โรงเล็ก (เครื่องหมายติ๊กถูก)
+                if (cfg.checkbox) rfDrawCheck(page, cfg.checkbox.x, cfg.checkbox.y);
+                // ยอดยกมา (หน้าแรก)
+                if (pi === 0 && cfg.bf) right(data.bfBalance, cfg.bf.x, cfg.bf.y, cfg.bf.size);
+
+                // แถวข้อมูล: baseline เชิงเส้น rowFirst..rowLast
+                pages[pi].forEach((r, k) => {
+                    const y = cfg.rowFirst + (cfg.rowLast - cfg.rowFirst) * (per > 1 ? k / (per - 1) : 0);
+                    drawCol(cfg.cols.day, r.date, y);
+                    drawCol(cfg.cols.desc, r.desc, y);
+                    drawCol(cfg.cols.ref, r.ref, y);
+                    drawCol(cfg.cols.inv, r.inv, y);
+                    drawCol(cfg.cols.outv, r.outv, y);
+                    drawCol(cfg.cols.bal, r.bal, y);
+                });
+
+                // ยอดรวม (หน้าสุดท้าย)
+                if (pi === pages.length - 1 && cfg.totals) {
+                    if (cfg.cols.inv) { right(data.monthIn, cfg.cols.inv.x, cfg.totals.monthY, S); right(data.yearIn, cfg.cols.inv.x, cfg.totals.yearY, S); }
+                    if (cfg.cols.outv) { right(data.monthOut, cfg.cols.outv.x, cfg.totals.monthY, S); right(data.yearOut, cfg.cols.outv.x, cfg.totals.yearY, S); }
+                }
+            }
+            return await outDoc.save();
+        }
+
+        async function genReport0701(month, materialId) {
+            const data = await gsr('getMaterialReportData', month, materialId);
+            if (!data || !data.success) throw new Error((data && data.message) || 'ดึงข้อมูล ๐๗-๐๑/๑ ไม่สำเร็จ');
+            const cfg = {
+                    templateName: 'ภส_07-01ทับ1.pdf', rowsPerPage: 31, size: 8.5,
+                    rowFirst: 620, rowLast: 213,
+                    header: [
+                        { text: d => d.company, x: 96.7, y: 702.1, align: 'L' },
+                        { text: d => d.materialName, x: 91.7, y: 682.1, align: 'L' },  // ประเภทวัตถุดิบ
+                        { text: d => d.liquorType, x: 216.7, y: 682.1, align: 'L' },   // ประเภทสุรา (จาก Master_Product แถวแรก)
+                        { text: d => d.monthThai, x: 351.7, y: 682.1, align: 'L' },
+                        { text: d => d.unit, x: 455.7, y: 682.1, align: 'L' }
+                    ],
+                    reg: { groups: [{ xFirst: 249.7, xLast: 338.7, count: 13 }, { xFirst: 347.7, xLast: 347.7, count: 1 }, { xFirst: 357.7, xLast: 372.7, count: 3 }], y: 702.1 },
+                    checkbox: { x: 385.7, y: 703.1 },
+                    bf: { x: 463, y: 634 },
+                    cols: { day: { x: 50, align: 'C' }, desc: { x: 74, align: 'L' }, ref: { x: 238, align: 'L' }, inv: { x: 360, align: 'R' }, outv: { x: 411, align: 'R' }, bal: { x: 463, align: 'R', keepZero: true } },
+                    totals: { monthY: 197, yearY: 183 }
+                };
+            return await fillDailyForm(cfg, data);
+        }
+
+        // ===== เอนจินเฉพาะ: งบเดือน ภส.๐๗-๐๔/๑ (เมทริกซ์ 2 ตาราง, คอลัมน์=รายการ สูงสุด 6/หน้า, แถว 8 คงที่) =====
+        // ยืม pattern จาก fillProductionForm: clone หน้า 1, reg 13-1-3
+        // ต่างจากเดิม: ตำแหน่ง = (x คอลัมน์, y แถว) — แถว interpolate top→bottom, คอลัมน์ตามอาเรย์/interpolate ชื่อ
+        function rfLerp(a, b, i, n) { return n <= 1 ? a : a + (b - a) * i / (n - 1); }
+
+        async function fillSummaryForm(cfg, data) {
+            if (typeof PDFLib === 'undefined' || typeof fontkit === 'undefined') throw new Error('โหลดไลบรารี PDF ไม่สำเร็จ (ลองรีเฟรช)');
+            const fontBytes = await getSarabunBytes();
+            const tpl = await gsr('getReportTemplateB64', cfg.templateName);
+            if (!tpl || !tpl.success) throw new Error((tpl && tpl.message) || 'ดึงไฟล์ฟอร์มไม่สำเร็จ');
+
+            const tplDoc = await PDFLib.PDFDocument.load(b64ToBytes(tpl.b64));
+            const outDoc = await PDFLib.PDFDocument.create();
+            outDoc.registerFontkit(fontkit);
+            const f = await outDoc.embedFont(fontBytes);
+            const S = cfg.size || 8;
+            const cpp = cfg.colsPerPage;
+            const totalPages = Math.max(1, Math.ceil(data.materials.length / cpp), Math.ceil(data.products.length / cpp));
+
+            for (let pg = 0; pg < totalPages; pg++) {
+                const [page] = await outDoc.copyPages(tplDoc, [0]);
+                outDoc.addPage(page);
+                const txt    = (s, x, y, sz) => { if (s === '' || s == null) return; page.drawText(String(s), { x: x, y: y, size: sz || S, font: f }); };
+                const center = (s, xc, y, sz) => { if (s === '' || s == null) return; const w = f.widthOfTextAtSize(String(s), sz || S); page.drawText(String(s), { x: xc - w / 2, y: y, size: sz || S, font: f }); };
+                const cell   = (v, xc, y) => { center((!v) ? '-' : rfFmt(v), xc, y, S); }; // 0/ว่าง → "-" ตาม formatVal เดิม
+
+                // header (ทุกหน้า)
+                if (cfg.header) cfg.header.forEach(h => { const v = (typeof h.text === 'function') ? h.text(data) : h.text; txt(v, h.x, h.y, h.size); });
+                if (cfg.reg && data.exciseId) {
+                    const digits = String(data.exciseId).replace(/\D/g, ''); let idx = 0;
+                    cfg.reg.groups.forEach(g => { for (let i = 0; i < g.count; i++, idx++) { if (idx >= digits.length) continue; const x = g.count > 1 ? g.xFirst + (g.xLast - g.xFirst) * (i / (g.count - 1)) : g.xFirst; center(digits[idx], x, cfg.reg.y, 9); } });
+                }
+                if (cfg.checkbox) rfDrawCheck(page, cfg.checkbox.x, cfg.checkbox.y);
+
+                const colX = cfg.colX;
+                // ตาราง ๑ งบวัตถุดิบ
+                data.materials.slice(pg * cpp, (pg + 1) * cpp).forEach((m, c) => {
+                    const nx = rfLerp(cfg.mat.nameX1, cfg.mat.nameX6, c, cpp);
+                    txt(m.name, nx, cfg.mat.nameY, S);
+                    txt(m.unit, nx, cfg.mat.unitY, S);
+                    const xc = colX[c];
+                    [m.bf, m.inv, m.total, m.outMain, m.outOther, m.damage, m.misc, m.balance]
+                        .forEach((v, k) => cell(v, xc, rfLerp(cfg.mat.rowY1, cfg.mat.rowY8, k, 8)));
+                });
+                // ตาราง ๒ งบการผลิตสุรา
+                data.products.slice(pg * cpp, (pg + 1) * cpp).forEach((p, c) => {
+                    const nx = rfLerp(cfg.prod.nameX1, cfg.prod.nameX6, c, cpp);
+                    txt(p.name, nx, cfg.prod.nameY, S);
+                    txt(p.degree, rfLerp(cfg.prod.degX1, cfg.prod.degX6, c, cpp), cfg.prod.degY, S);
+                    txt(p.size,   rfLerp(cfg.prod.sizeX1, cfg.prod.sizeX6, c, cpp), cfg.prod.degY, S);
+                    txt(p.unit,   rfLerp(cfg.prod.unitX1, cfg.prod.unitX6, c, cpp), cfg.prod.unitY, S);
+                    const xc = colX[c];
+                    [p.bf, p.inv, p.total, p.outLocal, p.outExport, p.damage, p.misc, p.balance]
+                        .forEach((v, k) => cell(v, xc, rfLerp(cfg.prod.rowY1, cfg.prod.rowY8, k, 8)));
+                });
+            }
+            return await outDoc.save();
+        }
+
+        async function genReport0704(month) {
+            const data = await gsr('getSummaryReportData', month);
+            if (!data || !data.success) throw new Error((data && data.message) || 'ดึงข้อมูล ๐๗-๐๔/๑ ไม่สำเร็จ');
+            const cfg = {
+                    templateName: 'ภส_07-04ทับ1.pdf', size: 8, colsPerPage: 6,
+                    colX: [210.7, 321.7, 432.7, 546.7, 657.7, 767.7],
+                    header: [
+                        { text: d => d.company,    x: 78.7,  y: 471.5 },  // ชื่อโรงอุตสาหกรรม
+                        { text: d => d.liquorType, x: 62.7,  y: 455.5 },  // ประเภทสุรา
+                        { text: d => d.liquorKind, x: 192.7, y: 455.5 },  // ชนิดสุรา
+                        { text: d => d.monthThai,  x: 348.7, y: 455.5 }   // ประจำเดือน
+                    ],
+                    reg: { groups: [{ xFirst: 230.7, xLast: 310.7, count: 13 }, { xFirst: 318.7, xLast: 318.7, count: 1 }, { xFirst: 328.7, xLast: 341.7, count: 3 }], y: 471.5 },
+                    checkbox: { x: 357.7, y: 472.5 },
+                    // ตาราง ๑ งบวัตถุดิบ (8 แถว: ยกมา/รับ/รวม/ผลิตตามพิกัด/ผลิตอื่น/เสียหาย/อื่นๆ/ยกไป)
+                    mat:  { nameX1: 206.7, nameX6: 759.7, nameY: 422.5, unitY: 413.5, rowY1: 390.9, rowY8: 291.5 },
+                    // ตาราง ๒ งบการผลิตสุรา (8 แถว: ยกมา/รับจากผลิต/รวม/จำหน่ายในปท/ตปท/เสียหาย/อื่นๆ/ยกไป)
+                    prod: { nameX1: 190.7, nameX6: 749.7, nameY: 255.5, degX1: 163.7, degX6: 721.7, sizeX1: 222.7, sizeX6: 783.7, degY: 245.5, unitX1: 204.7, unitX6: 762.7, unitY: 236.5, rowY1: 213.5, rowY8: 114.5 }
+                };
+            return await fillSummaryForm(cfg, data);
+        }
+
+        // ===== เอนจินเฉพาะ: ฟอร์มผลิตสุรา ภส.๐๗-๐๒/๑(๑) (landscape, 19 คอลัมน์, 13 แถว/หน้า) =====
+        // ยืม pattern จาก fillDailyForm: clone หน้า 1, baseline เชิงเส้น, reg 13-1-3
+        // ต่างจากเดิม: หลายคอลัมน์, ยอดยกมา 3 ช่อง, แถวรวมเดือน+รวมปี, ป้ายดีกรีในหัวคอลัมน์ขวด
+        async function fillProductionForm(cfg, data) {
+            if (typeof PDFLib === 'undefined' || typeof fontkit === 'undefined') throw new Error('โหลดไลบรารี PDF ไม่สำเร็จ (ลองรีเฟรช)');
+            const fontBytes = await getSarabunBytes();
+            const tpl = await gsr('getReportTemplateB64', cfg.templateName);
+            if (!tpl || !tpl.success) throw new Error((tpl && tpl.message) || 'ดึงไฟล์ฟอร์มไม่สำเร็จ');
+
+            const tplDoc = await PDFLib.PDFDocument.load(b64ToBytes(tpl.b64));
+            const outDoc = await PDFLib.PDFDocument.create();
+            outDoc.registerFontkit(fontkit);
+            const f = await outDoc.embedFont(fontBytes);
+            const S = cfg.size || 7.5;
+
+            // grid ถูก filter เฉพาะวันที่มีกิจกรรมจาก backend แล้ว → แบ่งหน้าตรงๆ
+            const per = cfg.rowsPerPage;
+            const pages = [];
+            for (let i = 0; i < data.grid.length; i += per) pages.push(data.grid.slice(i, i + per));
+            if (pages.length === 0) pages.push([]);
+
+            for (let pi = 0; pi < pages.length; pi++) {
+                const [page] = await outDoc.copyPages(tplDoc, [0]);
+                outDoc.addPage(page);
+                const txt       = (s, x, y, sz) => { if (s === '' || s == null) return; page.drawText(String(s), { x: x, y: y, size: sz || S, font: f }); };
+                const right     = (v, xr, y, sz) => { if (v == null || v === '') return; const s = rfFmt(v); const w = f.widthOfTextAtSize(s, sz || S); page.drawText(s, { x: xr - w, y: y, size: sz || S, font: f }); };
+                const rightText = (s, xr, y, sz) => { if (s === '' || s == null) return; const w = f.widthOfTextAtSize(String(s), sz || S); page.drawText(String(s), { x: xr - w, y: y, size: sz || S, font: f }); };
+                const center    = (s, xc, y, sz) => { if (s === '' || s == null) return; const w = f.widthOfTextAtSize(String(s), sz || S); page.drawText(String(s), { x: xc - w / 2, y: y, size: sz || S, font: f }); };
+                // แถวข้อมูล: ช่องว่าง/0 → "-" (ตามรูปแบบ ภส.๐๗-๐๔/๑) ยกเว้นคอลัมน์ keepZero (คงเหลือ) → 0 แสดง "0"
+                const drawCol   = (col, val, y) => {
+                    if (!col) return;
+                    let s;
+                    if (col.align === 'R') {
+                        const empty = col.keepZero ? (val == null || val === '') : !val;
+                        s = empty ? '-' : rfFmt(val);
+                    }
+                    else if (col.align === 'RT') s = (val == null || val === '') ? '-' : String(val); // ขนาดบรรจุ — คงทศนิยมไว้
+                    else                         s = (val == null || val === '') ? '-' : String(val);
+                    if (col.align === 'C') center(s, col.x, y, col.size);
+                    else if (col.align === 'R' || col.align === 'RT') rightText(s, col.x, y, col.size);
+                    else txt(s, col.x, y, col.size);
+                };
+
+                // header (ทุกหน้า — แต่ละหน้าเป็นฟอร์มเต็ม)
+                if (cfg.header) cfg.header.forEach(h => {
+                    const v = (typeof h.text === 'function') ? h.text(data) : h.text;
+                    if (h.align === 'R') right(v, h.x, h.y, h.size); else if (h.align === 'C') center(v, h.x, h.y, h.size); else txt(v, h.x, h.y, h.size);
+                });
+                // เลขทะเบียนสรรพสามิต (กล่อง 13-1-3)
+                if (cfg.reg && data.exciseId) {
+                    const digits = String(data.exciseId).replace(/\D/g, '');
+                    let idx = 0;
+                    cfg.reg.groups.forEach(g => {
+                        for (let i = 0; i < g.count; i++, idx++) {
+                            if (idx >= digits.length) continue;
+                            const x = g.count > 1 ? g.xFirst + (g.xLast - g.xFirst) * (i / (g.count - 1)) : g.xFirst;
+                            center(digits[idx], x, cfg.reg.y, 9);
+                        }
+                    });
+                }
+                // checkbox โรงเล็ก (เครื่องหมายติ๊กถูก)
+                if (cfg.checkbox) rfDrawCheck(page, cfg.checkbox.x, cfg.checkbox.y);
+                // ป้ายดีกรีในหัวคอลัมน์ "จำนวนขวด" (ทุกหน้า)
+                if (cfg.degreeLabel && data.degree != null && data.degree !== '') txt(data.degree, cfg.degreeLabel.x, cfg.degreeLabel.y, cfg.degreeLabel.size || S);
+
+                // ยอดยกมา 3 ช่อง (หน้าแรก)
+                if (pi === 0 && cfg.bf) {
+                    right(data.bfSaa,     cfg.bf.saa.x,  cfg.bf.saa.y,  S);
+                    right(data.bfDistill, cfg.bf.dist.x, cfg.bf.dist.y, S);
+                    right(data.bfDilute,  cfg.bf.dilu.x, cfg.bf.dilu.y, S);
+                }
+
+                // แถวข้อมูล: baseline เชิงเส้น rowFirst..rowLast
+                const C = cfg.cols;
+                pages[pi].forEach((r, k) => {
+                    const y = cfg.rowFirst + (cfg.rowLast - cfg.rowFirst) * (per > 1 ? k / (per - 1) : 0);
+                    drawCol(C.day, r.date, y);
+                    drawCol(C.fermBatch, r.fermBatch, y);
+                    drawCol(C.fermQty, r.fermQty, y);
+                    drawCol(C.avgFermVol, r.avgFermVol, y);
+                    drawCol(C.fermSaa, r.fermSaa, y);
+                    drawCol(C.distBatch, r.distBatch, y);
+                    drawCol(C.distFermQty, r.distFermQty, y);
+                    drawCol(C.avgDistFermVol, r.avgDistFermVol, y);
+                    drawCol(C.distSaa, r.distSaa, y);
+                    drawCol(C.curSaa, r.curSaa, y);
+                    drawCol(C.avgAbv, r.avgAbv, y);
+                    drawCol(C.distVol, r.distVol, y);
+                    drawCol(C.diluStartVol, r.diluStartVol, y);
+                    drawCol(C.curDist, r.curDist, y);
+                    drawCol(C.packSize, r.packSize, y);
+                    drawCol(C.packQty, r.packQty, y);
+                    drawCol(C.packVol, r.packVol, y);
+                    drawCol(C.curDilu, r.curDilu, y);
+                    drawCol(C.note, r.note, y);
+                });
+
+                // แถวรวม (หน้าสุดท้าย): รวมเดือนนี้ + รวมแต่ต้นปี — คงเหลือใช้ค่าปลายเดือนล่าสุด
+                if (pi === pages.length - 1 && cfg.totals) {
+                    (cfg.totals.month || []).forEach(t => right(data[t.key], t.x, t.y, S));
+                    (cfg.totals.year  || []).forEach(t => right(data[t.key], t.x, t.y, S));
+                }
+            }
+            return await outDoc.save();
+        }
+
+        async function genReport0702_1(month, productId) {
+            const data = await gsr('getProductionReportData', month, productId);
+            if (!data || !data.success) throw new Error((data && data.message) || 'ดึงข้อมูล ๐๗-๐๒/๑(๑) ไม่สำเร็จ');
+            const cfg = {
+                    templateName: 'ภส_07-02ทับ1.pdf', rowsPerPage: 13, size: 7.5,
+                    rowFirst: 372.5, rowLast: 222.5,
+                    header: [
+                        { text: d => d.company,     x: 86.7,  y: 480.5, align: 'L' },  // ชื่อโรงอุตสาหกรรม
+                        { text: d => d.productName, x: 57.7,  y: 466.5, align: 'L' },  // ชื่อสุรา
+                        { text: d => d.liquorType,  x: 285.7, y: 466.5, align: 'L' },  // ประเภทสุรา
+                        { text: d => d.monthThai,   x: 442.7, y: 466.5, align: 'L' }   // ประจำเดือน
+                    ],
+                    reg: { groups: [{ xFirst: 289.7, xLast: 370.7, count: 13 }, { xFirst: 379.7, xLast: 379.7, count: 1 }, { xFirst: 388.7, xLast: 401.7, count: 3 }], y: 478.5 },
+                    checkbox: { x: 418.7, y: 479.5 },
+                    degreeLabel: { x: 605.7, y: 409.5, size: 8 },  // ดีกรีในหัวคอลัมน์จำนวนขวด
+                    bf: {
+                        saa:  { x: 429.7, y: 385.2 },   // ยอดยกมา น้ำหมักส่าคงเหลือ
+                        dist: { x: 564.7, y: 385.2 },   // ยอดยกมา น้ำสุราก่อนปรุงแต่งคงเหลือ
+                        dilu: { x: 750.7, y: 384.5 }    // ยอดยกมา น้ำสุราหลังปรุงแต่งคงเหลือ
+                    },
+                    cols: {
+                        day:            { x: 35.7,  align: 'C', size: 6.5 },
+                        fermBatch:      { x: 73.7,  align: 'C' },
+                        fermQty:        { x: 131.7, align: 'R' },
+                        avgFermVol:     { x: 182.7, align: 'R' },
+                        fermSaa:        { x: 222.7, align: 'R' },
+                        distBatch:      { x: 249.7, align: 'C' },
+                        distFermQty:    { x: 304.7, align: 'R' },
+                        avgDistFermVol: { x: 346.7, align: 'R' },
+                        distSaa:        { x: 379.7, align: 'R' },
+                        curSaa:         { x: 430.7, align: 'R', keepZero: true },
+                        avgAbv:         { x: 451.7, align: 'R' },
+                        distVol:        { x: 483.7, align: 'R' },
+                        diluStartVol:   { x: 527.7, align: 'R' },
+                        curDist:        { x: 565.7, align: 'R', keepZero: true },
+                        packSize:       { x: 598.7, align: 'RT' },
+                        packQty:        { x: 624.7, align: 'R' },
+                        packVol:        { x: 710.7, align: 'R' },
+                        curDilu:        { x: 751.7, align: 'R', keepZero: true },
+                        note:           { x: 758.7, align: 'L', size: 6.5 }
+                    },
+                    totals: {
+                        month: [
+                            { key: 'monthFermSaa',   x: 223.7, y: 209.5 },
+                            { key: 'monthDistSaa',   x: 380.7, y: 210.5 },
+                            { key: 'endSaa',         x: 431.7, y: 210.5 },
+                            { key: 'monthDiluStart', x: 527.7, y: 210.5 },
+                            { key: 'endDist',        x: 565.7, y: 210.5 },
+                            { key: 'monthPackVol',   x: 710.7, y: 210.9 },
+                            { key: 'endDilu',        x: 751.7, y: 211.2 }
+                        ],
+                        year: [
+                            { key: 'yearFermSaa',   x: 222.7, y: 198.2 },
+                            { key: 'yearDistSaa',   x: 380.7, y: 199.2 },
+                            { key: 'yearDiluStart', x: 526.7, y: 198.9 },
+                            { key: 'yearPackVol',   x: 710.7, y: 198.9 }
+                        ]
+                    }
+                };
+            return await fillProductionForm(cfg, data);
+        }
+
+        async function genReport0702_2(month, productId) {
+            const data = await gsr('getProductReportData', month, productId);
+            if (!data || !data.success) throw new Error((data && data.message) || 'ดึงข้อมูล ๐๗-๐๒/๑(๒) ไม่สำเร็จ');
+            const cfg = {
+                    templateName: 'ภส_07-02ทับ12.pdf', rowsPerPage: 23, size: 8.5,
+                    rowFirst: 633.8, rowLast: 339.8,
+                    header: [
+                        { text: d => d.company, x: 92.7, y: 716.1, align: 'L' },
+                        { text: d => d.productName, x: 64.7, y: 702.1, align: 'L' },   // ชื่อสุรา
+                        { text: d => d.liquorType, x: 189.7, y: 702.1, align: 'L' },   // ประเภทสุรา
+                        { text: d => d.liquorKind, x: 270.7, y: 702.1, align: 'L' },   // ชนิดสุรา
+                        { text: d => d.degree, x: 375.7, y: 702.1, align: 'L' },       // แรงแอลกอฮอล์
+                        { text: d => d.bottleSize, x: 443.7, y: 702.1, align: 'L' },   // ขนาดบรรจุ
+                        { text: d => d.unit, x: 517.7, y: 702.1, align: 'L' },         // หน่วยนับ
+                        { text: d => d.monthThai, x: 80.7, y: 690.1, align: 'L' }
+                    ],
+                    reg: { groups: [{ xFirst: 258.7, xLast: 343.7, count: 13 }, { xFirst: 351.7, xLast: 351.7, count: 1 }, { xFirst: 360.7, xLast: 374.7, count: 3 }], y: 715.1 },
+                    checkbox: { x: 392.7, y: 717.1 },
+                    bf: { x: 496.7, y: 646.8 },
+                    cols: { day: { x: 51.7, align: 'C' }, desc: { x: 83.7, align: 'L' }, ref: { x: 245.7, align: 'L' }, inv: { x: 365.7, align: 'R' }, outv: { x: 430.7, align: 'R' }, bal: { x: 495.7, align: 'R', keepZero: true } },
+                    totals: { monthY: 327.5, yearY: 313.5 }
+                };
+            return await fillDailyForm(cfg, data);
+        }
+
+        // ==========================================
+        // บันทึกข้อมูลจาก Form ต่างๆ
+        // ==========================================
+</script>

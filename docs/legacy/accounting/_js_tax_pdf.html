@@ -1,0 +1,109 @@
+<script>
+/* =========================================================================
+ * _js_tax_pdf.html  —  Tax Report → PDF (A4 แนวนอน, โหลดลงเครื่องตรง)
+ * ใช้กับรายงานภาษีซื้อ-ขาย (ภพ.30) และรายงานหัก ณ ที่จ่าย (ภงด.3/53)
+ *
+ * ทำไมไม่ใช้ window.print():
+ *   - การ Save as PDF ผ่าน print dialog ทำให้ browser แบ่งหน้าเอง → แทรกหน้าเปล่า
+ *     (content .page สูงเกิน 1 หน้าพิมพ์เล็กน้อย → ล้นไปหน้าถัดไป)
+ *   - วิธีนี้: 1 <div class="page"> = 1 หน้า PDF เป๊ะ (html2canvas → addPage) ไม่มีหน้าเปล่า
+ *
+ * วิธีใช้:
+ *   TAXPDF.print(htmlContent, 'รายงานภาษี_2026-06.pdf')
+ *     htmlContent = string ที่ backend (generateTaxReportHTML / generateWHTReportHTML) คืนมา
+ *     (เอกสาร HTML เต็มที่มี <style> + <div class="page">…)
+ * ========================================================================= */
+window.TAXPDF = (function () {
+  'use strict';
+
+  // ---- CDN (jsdelivr — สอดคล้องกับ _js_wht_pdf) ----
+  const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+  const JSPDF_URL       = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js';
+  const SARABUN_CSS_URL = 'https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;700&display=swap';
+
+  // A4 แนวนอน (mm)
+  const A4 = { w: 297, h: 210 };
+  const SCALE = 2;   // เพิ่มความคมตัวอักษร (rasterize ที่ 2x)
+
+  function _loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src; s.onload = resolve;
+      s.onerror = () => reject(new Error('โหลดสคริปต์ไม่ได้: ' + src));
+      document.head.appendChild(s);
+    });
+  }
+
+  async function _ensureLibs() {
+    if (!window.html2canvas) await _loadScript(HTML2CANVAS_URL);
+    if (!(window.jspdf && window.jspdf.jsPDF)) await _loadScript(JSPDF_URL);
+    // ฟอนต์ Sarabun — โหลดครั้งเดียว (กัน html2canvas จับภาพก่อนฟอนต์มา → ตัวอักษรเพี้ยน)
+    if (!document.getElementById('taxpdf-sarabun')) {
+      const link = document.createElement('link');
+      link.id = 'taxpdf-sarabun'; link.rel = 'stylesheet'; link.href = SARABUN_CSS_URL;
+      document.head.appendChild(link);
+    }
+  }
+
+  /**
+   * แปลง htmlContent (เอกสารเต็ม) → PDF แล้วบันทึกลงเครื่อง
+   * @param {string} htmlContent  HTML จาก backend
+   * @param {string} filename     ชื่อไฟล์ .pdf
+   */
+  async function print(htmlContent, filename) {
+    await _ensureLibs();
+
+    // --- แยก <style> และ .page ออกจากเอกสาร ---
+    const doc = new DOMParser().parseFromString(htmlContent, 'text/html');
+    const styleText = Array.from(doc.querySelectorAll('style')).map(s => s.textContent).join('\n');
+    const pages = Array.from(doc.querySelectorAll('.page'));
+    if (!pages.length) throw new Error('ไม่พบหน้ารายงาน (.page) ในเอกสาร');
+
+    // --- สร้าง host นอกจอ (ต้อง render ได้จริง html2canvas ถึงจับภาพได้ — ห้าม display:none) ---
+    const host = document.createElement('div');
+    host.style.cssText = 'position:fixed; left:-10000px; top:0; background:#fff; z-index:-1;';
+    const style = document.createElement('style');
+    style.textContent = styleText;
+    host.appendChild(style);
+    pages.forEach(p => {
+      const clone = p.cloneNode(true);
+      // ตัด margin/เงา ออก เพื่อจับภาพเฉพาะพื้นที่กระดาษ
+      clone.style.margin = '0';
+      clone.style.boxShadow = 'none';
+      host.appendChild(clone);
+    });
+    document.body.appendChild(host);
+
+    try {
+      // รอฟอนต์โหลดเสร็จก่อนจับภาพ
+      if (document.fonts && document.fonts.ready) {
+        try { await document.fonts.load("12pt 'Sarabun'"); } catch (e) {}
+        await document.fonts.ready;
+      }
+
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const pageEls = Array.from(host.querySelectorAll('.page'));
+
+      for (let i = 0; i < pageEls.length; i++) {
+        const canvas = await window.html2canvas(pageEls[i], {
+          scale: SCALE,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+          logging: false
+        });
+        const img = canvas.toDataURL('image/jpeg', 0.95);
+        if (i > 0) pdf.addPage('a4', 'landscape');
+        // วางเต็มกระดาษ A4 แนวนอน — 1 .page = 1 หน้า ไม่มีหน้าเปล่า
+        pdf.addImage(img, 'JPEG', 0, 0, A4.w, A4.h);
+      }
+
+      pdf.save(filename || 'report.pdf');
+    } finally {
+      document.body.removeChild(host);
+    }
+  }
+
+  return { print: print };
+})();
+</script>

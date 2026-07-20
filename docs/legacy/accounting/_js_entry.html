@@ -1,0 +1,863 @@
+<script>
+  // =========================================================================
+  // JS [2/4] ENTRY — AI สแกนใบเสร็จ + ฟอร์มบันทึก (contacts/items/calc/submit)
+  // =========================================================================
+
+  function openScanSheet()  { document.getElementById('scan-source-sheet').classList.remove('hidden'); }
+  function closeScanSheet(e) {
+    if (e && e.target !== document.getElementById('scan-source-sheet')) return;
+    document.getElementById('scan-source-sheet').classList.add('hidden');
+  }
+  function triggerCamera() {
+    document.getElementById('scan-source-sheet').classList.add('hidden');
+    document.getElementById('scanCameraInput').click();
+  }
+  function triggerAlbum() {
+    document.getElementById('scan-source-sheet').classList.add('hidden');
+    document.getElementById('scanReceiptInput').click();
+  }
+
+  // =========================================================================
+  // AI Receipt Scanner
+  // =========================================================================
+
+  const SCAN_MAX_SIDE = 1568;   // px — พอสำหรับ OCR แต่ลดขนาดได้ ~70-80%
+
+  /**
+   * Resize รูปด้วย canvas API
+   * - ถ้าขอบยาวสุด <= SCAN_MAX_SIDE → ไม่ resize (คืน original dataUrl)
+   * - ถ้าใหญ่กว่า → scale ให้ขอบยาวสุด = SCAN_MAX_SIDE, quality 0.85
+   * @param {string} dataUrl - original base64 dataUrl
+   * @returns {Promise<string>} dataUrl ที่ resize แล้ว
+   */
+  function resizeImage_(dataUrl) {
+    return new Promise(function(resolve) {
+      const img = new Image();
+      img.onload = function() {
+        const maxSide = Math.max(img.width, img.height);
+        if (maxSide <= SCAN_MAX_SIDE) { resolve(dataUrl); return; }   // ไม่ต้อง resize
+
+        const scale  = SCAN_MAX_SIDE / maxSide;
+        const canvas = document.createElement('canvas');
+        canvas.width  = Math.round(img.width  * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.onerror = function() { resolve(dataUrl); };  // fallback ใช้ต้นฉบับ
+      img.src = dataUrl;
+    });
+  }
+
+  /**
+   * เรียกเมื่อ user เลือกรูปจาก input[type=file]
+   * 1. FileReader → dataUrl
+   * 2. resizeImage_ (canvas) → ลดขนาดก่อนส่ง
+   * 3. ส่ง base64 ที่ resize แล้วไป GAS → Anthropic API
+   */
+  function handleScanReceipt(input) {
+    if (!input.files || !input.files[0]) return;
+    const file     = input.files[0];
+    const mimeType = file.type || 'image/jpeg';
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const originalDataUrl = e.target.result;
+
+      // แสดง preview จากรูปต้นฉบับทันที (ไม่รอ resize)
+      document.getElementById('scan-preview-img').src = originalDataUrl;
+      document.getElementById('scan-full-img').src    = originalDataUrl;
+      document.getElementById('scan-result-box').classList.remove('hidden');
+      document.getElementById('scan-status-text').textContent = '🔄 กำลังเตรียมรูปภาพ...';
+      document.getElementById('scan-contact-result').classList.add('hidden');
+      document.getElementById('scan-price-type-box').classList.add('hidden');
+      document.getElementById('scan-uncertain-text').classList.add('hidden');
+
+      // --- auto-upload รูปต้นฉบับเข้าช่องแนบสลิป ---
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      document.getElementById('receiptImage').files = dt.files;
+
+      // --- resize แล้วส่ง ---
+      resizeImage_(originalDataUrl).then(function(resizedDataUrl) {
+        document.getElementById('scan-status-text').textContent = '🔄 กำลังวิเคราะห์ใบเสร็จ...';
+        const base64 = resizedDataUrl.split(',')[1];
+
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (!result.success) {
+              document.getElementById('scan-status-text').textContent = '❌ ' + result.message;
+              return;
+            }
+            fillFormFromScan(result.data);
+          })
+          .withFailureHandler(function(err) {
+            document.getElementById('scan-status-text').textContent = '❌ เชื่อมต่อระบบไม่ได้: ' + err.message;
+          })
+          .scanReceiptWithAI(base64, 'image/jpeg');   // หลัง resize เป็น jpeg เสมอ
+      });
+    };
+    reader.readAsDataURL(file);
+    input.value = '';
+  }
+
+  /**
+   * นำ data จาก AI มากรอกฟอร์ม
+   * field ที่ Claude ไม่แน่ใจจะ highlight สีเหลือง
+   */
+  function fillFormFromScan(data) {
+    const uncertain = data.uncertainFields || [];
+    scannedItems = data.items || [];
+
+    function setField(id, value) {
+      const el = document.getElementById(id); if (!el || value == null) return;
+      el.value = value;
+      if (uncertain.includes(id)) el.classList.add('ai-uncertain');
+      else el.classList.remove('ai-uncertain');
+    }
+
+    setField('taxInvoiceNo',   data.taxInvoiceNo);
+    setField('taxInvoiceDate', data.taxInvoiceDate);
+    setField('description',    data.description);
+
+    // --- taxId lookup → auto-select contact ---
+    // SCAN-5: normalize ทั้ง 2 ฝั่งด้วย .toString().replace(/\D/g,'')
+    // กัน contact ที่เก็บเป็น "'0123456789012" (มี ' นำหน้า) match ไม่ติด
+    const contactResult = document.getElementById('scan-contact-result');
+    if (data.taxId) {
+      const cleanTaxId = data.taxId.toString().replace(/\D/g, '');
+      const matched = (globalSettings.contacts || []).find(c => {
+        const cid = (c.taxId || '').toString().replace(/\D/g, '');
+        return cid && cid === cleanTaxId;
+      });
+      if (matched) {
+        selectContact(matched);
+        contactResult.innerHTML = `<span class="text-emerald-700">✅ พบในระบบ: <b>${matched.name}</b></span>`;
+        contactResult.classList.remove('hidden');
+      } else {
+        contactResult.innerHTML = `<span class="text-yellow-700">⚠️ ไม่พบคู่ค้า — Tax ID: <b>${data.taxId}</b></span>`;
+        contactResult.classList.remove('hidden');
+      }
+    }
+
+    // --- กรอก items + แสดงราคาสแกน ---
+    if (scannedItems.length > 0) {
+      document.getElementById('items-body').innerHTML = '';
+      document.getElementById('items-body-mobile').innerHTML = '';
+      scannedItems.forEach(item => addItemRow(item));
+      calculateSummary('items');
+    }
+
+    // --- แสดง radio เลือก price type ---
+    if (scannedItems.length > 0) {
+      const box = document.getElementById('scan-price-type-box');
+      box.classList.remove('hidden');
+      // set default จาก AI
+      const defaultType = data.priceType === 'incl_vat' ? 'incl_vat' : data.priceType === 'excl_vat' ? 'excl_vat' : null;
+      if (defaultType) {
+        const radio = box.querySelector(`input[value="${defaultType}"]`);
+        if (radio) { radio.checked = true; applyScanPriceType(); }
+      }
+    }
+
+    // --- VAT ---
+    if (data.hasVat) {
+      document.getElementById('hasVat').checked = true; toggleVat();
+    }
+
+    // --- สถานะ ---
+    const emojis = { high: '✅', medium: '⚠️', low: '❗' };
+    const labels = { high: 'ความมั่นใจสูง', medium: 'ปานกลาง — ตรวจสอบด้วย', low: 'ต่ำ — ตรวจให้ครบ' };
+    document.getElementById('scan-status-text').textContent =
+      `${emojis[data.confidence]||'⚠️'} AI กรอกข้อมูลเสร็จ (${labels[data.confidence]||''})`;
+
+    if (uncertain.length > 0) {
+      const el = document.getElementById('scan-uncertain-text');
+      el.textContent = `⚠️ ตรวจสอบ (highlight เหลือง): ${uncertain.join(', ')}`;
+      el.classList.remove('hidden');
+    }
+  }
+
+  /**
+   * เมื่อ user เลือก radio incl_vat / excl_vat → กรอกราคาในช่องที่ถูกต้อง
+   */
+  function applyScanPriceType() {
+    const selected = document.querySelector('input[name="scanPriceType"]:checked');
+    if (!selected || selected.value === 'skip') return;
+    const type = selected.value; // 'incl_vat' | 'excl_vat'
+
+    const desktopRows = document.getElementById('items-body').querySelectorAll('.item-row');
+    const mobileCards = document.getElementById('items-body-mobile').querySelectorAll('.item-card');
+
+    scannedItems.forEach((item, i) => {
+      if (item.scannedPrice == null) return;
+      const price = parseFloat(item.scannedPrice) || 0;
+      const desktopRow = desktopRows[i];
+      const mobileCard = mobileCards[i];
+
+      if (type === 'incl_vat') {
+        if (desktopRow) {
+          desktopRow.querySelector('.item-invat').value = price.toFixed(2);
+          handleInVatChange(desktopRow.querySelector('.item-invat'));
+        }
+        if (mobileCard) {
+          mobileCard.querySelector('.item-invat-m').value = price.toFixed(2);
+          handleMobileInVat(mobileCard.querySelector('.item-invat-m'));
+        }
+      } else {
+        if (desktopRow) {
+          desktopRow.querySelector('.item-exvat').value = price.toFixed(2);
+          handleExVatChange(desktopRow.querySelector('.item-exvat'));
+        }
+        if (mobileCard) {
+          mobileCard.querySelector('.item-exvat-m').value = price.toFixed(2);
+          handleMobileExVat(mobileCard.querySelector('.item-exvat-m'));
+        }
+      }
+    });
+    calculateSummary('items');
+  }
+
+  function clearScanResult() {
+    document.getElementById('scan-result-box').classList.add('hidden');
+    document.getElementById('scan-preview-img').src = '';
+    document.getElementById('scan-full-img').src = '';
+    document.getElementById('scan-contact-result').classList.add('hidden');
+    document.getElementById('scan-price-type-box').classList.add('hidden');
+    document.getElementById('scan-uncertain-text').classList.add('hidden');
+    scannedItems = [];
+    // C2-5: ซ่อน recent bills
+    document.getElementById('recent-bills-box').classList.add('hidden');
+    ['taxInvoiceNo','taxInvoiceDate','description','contactNameSearch'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.remove('ai-uncertain');
+    });
+  }
+
+  // =========================================================================
+
+  // =========================================================================
+  // Searchable Category Dropdown
+  // =========================================================================
+  function showCategoryDropdown() {
+    if (!_catOptions_.length) return;   // ยังไม่เลือก type → ไม่เปิด
+    document.getElementById('categoryDropdownList').classList.remove('hidden');
+    filterCategory();
+  }
+  function filterCategory() {
+    const inp = (document.getElementById('categorySearch').value || '').toLowerCase();
+    const dd  = document.getElementById('categoryDropdownList');
+    dd.innerHTML = '';
+    const filtered = _catOptions_.filter(c => c.toLowerCase().includes(inp));
+    if (filtered.length === 0) {
+      dd.innerHTML = '<li class="text-gray-500 py-2 pl-3 text-sm">ไม่พบหมวดหมู่</li>';
+    } else {
+      filtered.forEach(c => {
+        const li = document.createElement('li');
+        li.className = 'cursor-pointer py-2 pl-3 pr-2 hover:bg-blue-50 border-b border-gray-100 text-sm';
+        li.textContent = c;
+        li.onclick = () => selectCategory(c);
+        dd.appendChild(li);
+      });
+    }
+    dd.classList.remove('hidden');
+  }
+  function selectCategory(val) {
+    document.getElementById('categorySearch').value = val || '';
+    document.getElementById('category').value       = val || '';
+    document.getElementById('categoryDropdownList').classList.add('hidden');
+  }
+  document.addEventListener('click', function(e) {
+    const cs = document.getElementById('categorySearch'), cdd = document.getElementById('categoryDropdownList');
+    if (cs && cdd && !cs.contains(e.target) && !cdd.contains(e.target)) cdd.classList.add('hidden');
+  });
+
+  // =========================================================================
+
+  function showContactDropdown() { document.getElementById('contactDropdownList').classList.remove('hidden'); filterContacts(); }
+  document.addEventListener('click', function(e) {
+    const sb = document.getElementById('contactNameSearch'), dd = document.getElementById('contactDropdownList');
+    if (sb && dd && !sb.contains(e.target) && !dd.contains(e.target)) dd.classList.add('hidden');
+  });
+  function filterContacts() {
+    const inp = document.getElementById('contactNameSearch').value.toLowerCase(), list = document.getElementById('contactDropdownList');
+    list.innerHTML = ''; document.getElementById('contactDetailsBox').classList.add('hidden');
+    // [B2] filter ตามประเภทรายการ: รายจ่าย→ผู้ขาย, รายรับ→ลูกค้า (คู่ค้าที่ไม่ระบุ type แสดงทั้งคู่)
+    const t = document.getElementById('type').value;
+    const wantType = t === 'รายจ่าย' ? 'ผู้ขาย' : (t === 'รายรับ' ? 'ลูกค้า' : '');
+    const filtered = (globalSettings.contacts || []).filter(c => {
+      if (!c.name.toLowerCase().includes(inp)) return false;
+      if (wantType && c.type && c.type !== wantType) return false;
+      return true;
+    }).sort((a, b) => (b.txCount || 0) - (a.txCount || 0));   // เรียงบ่อย→น้อย
+    if (filtered.length === 0) { list.innerHTML = '<li class="text-gray-500 py-2 pl-3 text-sm">ไม่พบข้อมูล (กด +)</li>'; }
+    else {
+      filtered.forEach(c => {
+        const li = document.createElement('li'); li.className = 'cursor-pointer py-2 pl-3 pr-2 hover:bg-blue-50 border-b border-gray-100';
+        // แสดงสาขาถัดจากชื่อ เพื่อแยกคู่ค้าที่มีหลายสาขา
+        const branchLabel = (c.branch && c.branch !== '-' && c.branch !== 'สำนักงานใหญ่')
+          ? `<span class="ml-1 text-xs bg-blue-100 text-blue-700 rounded px-1">${c.branch}</span>`
+          : `<span class="ml-1 text-xs text-gray-400">สนญ.</span>`;
+        const freqBadge = c.txCount > 0 ? `<span class="ml-1 text-xs text-gray-400">(${c.txCount})</span>` : '';
+        li.innerHTML = `<span class="block font-medium text-sm">${c.name} ${branchLabel}${freqBadge}</span><span class="block text-xs text-gray-500">เลขภาษี: ${c.taxId || '-'}</span>`;
+        li.onclick = () => selectContact(c); list.appendChild(li);
+      });
+    }
+  }
+  function selectContact(c) {
+    document.getElementById('contactNameSearch').value = c.name;
+    document.getElementById('contactDropdownList').classList.add('hidden');
+    document.getElementById('contactDetailsBox').classList.remove('hidden');
+    document.getElementById('lblTaxId').innerText   = c.taxId   || '-';
+    document.getElementById('lblBranch').innerText  = c.branch  || '-';
+    document.getElementById('lblAddress').innerText = c.address || '-';
+
+    // C2-5: ดึง recent bills ของ contact นี้
+    loadRecentBills(c.name);
+  }
+
+  // =========================================================================
+  // C2-4: Receipt Image Preview
+  // =========================================================================
+  function previewReceiptImage(input) {
+    if (!input.files || !input.files[0]) return;
+    const file = input.files[0];
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      document.getElementById('receipt-preview-img').src  = e.target.result;
+      document.getElementById('receipt-full-img').src     = e.target.result;
+      document.getElementById('receipt-preview-name').textContent = file.name;
+      document.getElementById('receipt-preview-size').textContent =
+        (file.size / 1024).toFixed(0) + ' KB';
+      // แจ้งเตือน HEIC
+      const isHeic = /\.heic$/i.test(file.name) || file.type === 'image/heic';
+      document.getElementById('receipt-heic-warn').classList.toggle('hidden', !isHeic);
+      document.getElementById('receipt-preview-box').classList.remove('hidden');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function clearReceiptImage() {
+    document.getElementById('receiptImage').value = '';
+    document.getElementById('receipt-preview-box').classList.add('hidden');
+    document.getElementById('receipt-preview-img').src = '';
+    document.getElementById('receipt-full-img').src    = '';
+  }
+
+  // =========================================================================
+  // C2-5: Recent Bills Autocomplete
+  // =========================================================================
+  function loadRecentBills(contactName) {
+    const box = document.getElementById('recent-bills-box');
+    const list = document.getElementById('recent-bills-list');
+    box.classList.add('hidden');
+    list.innerHTML = '<p class="text-xs text-blue-500 px-3 py-2">กำลังโหลด...</p>';
+
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (!res.success || res.transactions.length === 0) { box.classList.add('hidden'); return; }
+        list.innerHTML = '';
+        res.transactions.forEach(function(tx) {
+          const div = document.createElement('div');
+          div.className = 'flex items-center gap-2 px-3 py-2 hover:bg-blue-100 cursor-pointer text-xs';
+          div.innerHTML = `
+            <span class="text-gray-400 flex-shrink-0">${tx.date}</span>
+            <span class="flex-1 truncate font-medium text-gray-800">${tx.description || '-'}</span>
+            <span class="text-gray-500 flex-shrink-0">${tx.category || ''}</span>
+            <span class="text-blue-700 font-semibold flex-shrink-0">฿${Number(tx.netAmount||0).toLocaleString()}</span>`;
+          div.onclick = function() {
+            document.getElementById('description').value = tx.description || '';
+            if (tx.category && typeof selectCategory === 'function') selectCategory(tx.category);
+            box.classList.add('hidden');
+          };
+          list.appendChild(div);
+        });
+        box.classList.remove('hidden');
+      })
+      .withFailureHandler(function() { box.classList.add('hidden'); })
+      .getRecentTransactionsByContact(contactName, 5);
+  }
+
+  // =========================================================================
+  // C2-6: WHT Reverse Calc
+  // =========================================================================
+  let calcMode_ = 'base';   // 'base' | 'net'
+
+  function setCalcMode(mode) {
+    calcMode_ = mode;
+    document.getElementById('calc-section-base').classList.toggle('hidden', mode === 'net');
+    document.getElementById('calc-section-net').classList.toggle('hidden',  mode === 'base');
+    document.getElementById('calc-mode-base').className = mode === 'base'
+      ? 'px-3 py-1 text-xs font-semibold rounded-md bg-white text-blue-700 shadow'
+      : 'px-3 py-1 text-xs font-semibold rounded-md text-gray-500';
+    document.getElementById('calc-mode-net').className = mode === 'net'
+      ? 'px-3 py-1 text-xs font-semibold rounded-md bg-white text-blue-700 shadow'
+      : 'px-3 py-1 text-xs font-semibold rounded-md text-gray-500';
+
+    // sync whtRate options ไปยัง whtRateReverse
+    if (mode === 'net') {
+      const src  = document.getElementById('whtRate');
+      const dest = document.getElementById('whtRateReverse');
+      dest.innerHTML = src.innerHTML;
+    }
+  }
+
+  function reverseCalcWht() {
+    const net  = num(document.getElementById('netAmountReverse').value);
+    const rate = parseFloat(document.getElementById('whtRateReverse').value) || 0;
+    if (net <= 0 || rate <= 0) {
+      document.getElementById('rev-base').textContent = '-';
+      document.getElementById('rev-wht').textContent  = '-';
+      return;
+    }
+    // net = base × (1 - rate/100)  →  base = net / (1 - rate/100)
+    const base = Math.round(net / (1 - rate / 100) * 100) / 100;
+    const wht  = Math.round((base - net) * 100) / 100;
+    document.getElementById('rev-base').textContent = fmt2(base);
+    document.getElementById('rev-wht').textContent  = fmt2(wht);
+  }
+
+  function applyReverseCalc() {
+    const net  = num(document.getElementById('netAmountReverse').value);
+    const rate = parseFloat(document.getElementById('whtRateReverse').value) || 0;
+    if (net <= 0) { Swal.fire('แจ้งเตือน', 'กรุณากรอกยอดสุทธิก่อน', 'warning'); return; }
+
+    const base = Math.round(net / (1 - rate / 100) * 100) / 100;
+    const wht  = Math.round((base - net) * 100) / 100;
+
+    setCalcMode('base');
+    if (document.getElementById('items-body').children.length === 0) addItemRow();
+    document.getElementById('baseAmount').value          = fmt2(base);
+    document.getElementById('amountAfterDiscount').value = fmt2(base);
+    document.getElementById('discount').value            = '0';
+    if (rate > 0) {
+      document.getElementById('hasWht').checked = true;
+      toggleWht();
+      const sel = document.getElementById('whtRate');
+      for (let i = 0; i < sel.options.length; i++) {
+        if (parseFloat(sel.options[i].value) === rate) { sel.selectedIndex = i; break; }
+      }
+      document.getElementById('whtAmount').value = fmt2(wht);
+    }
+    calculateSummary('manual');
+    document.getElementById('netAmountReverse').value = '';
+    document.getElementById('rev-base').textContent   = '-';
+    document.getElementById('rev-wht').textContent    = '-';
+  }
+
+  // =========================================================================
+  // C2-7: taxInvoiceDate copy to transactionDate ถ้ายังว่าง
+  // =========================================================================
+  function onTaxInvoiceDateChange(val) {
+    const txDate = document.getElementById('transactionDate');
+    if (!txDate.value && val) { txDate.value = val; }
+  }
+  function openContactModal() {
+    document.getElementById('newContactName').value = document.getElementById('contactNameSearch').value; document.getElementById('newContactTaxId').value = ''; document.getElementById('newContactBranch').value = 'สำนักงานใหญ่'; document.getElementById('newContactAddress').value = ''; document.getElementById('contactModal').classList.remove('hidden');
+  }
+  function closeContactModal() { document.getElementById('contactModal').classList.add('hidden'); }
+  function saveNewContact() {
+    const n = document.getElementById('newContactName').value; if (!n) { Swal.fire('แจ้งเตือน', 'กรุณากรอกชื่อคู่ค้า', 'warning'); return; }
+    const btn = document.getElementById('btnSaveContact'); btn.innerText = 'กำลังบันทึก...'; btn.disabled = true;
+    const data = { name: n, type: document.getElementById('newContactType').value, taxId: document.getElementById('newContactTaxId').value, branch: document.getElementById('newContactBranch').value, address: document.getElementById('newContactAddress').value };
+    google.script.run.withSuccessHandler(function(res) {
+      if (res.success) {
+        if(!globalSettings.contacts) globalSettings.contacts = []; globalSettings.contacts.push(res.contact);
+        selectContact(res.contact); closeContactModal(); Swal.fire({ icon: 'success', title: 'สำเร็จ', timer: 1500, showConfirmButton: false });
+      } else { Swal.fire('เกิดข้อผิดพลาด', res.message, 'error'); }
+      btn.innerText = 'บันทึกข้อมูล'; btn.disabled = false;
+    }).addContact(data);
+  }
+
+  // scannedItems เก็บราคาที่สแกนได้แยกต่างหาก เพื่อใช้ตอน apply price type
+  let scannedItems = [];
+
+  // =========================================================================
+  // [Phase A] helpers — ตัวเลข/คอมม่า + คอลัมน์เสริม + suggestion + ส่วนลดหักจริง
+  // =========================================================================
+  let _showOptCols = false;
+  function num(v) { return parseFloat(String(v == null ? '' : v).replace(/,/g, '')) || 0; }
+  function fmt2(n) { if (n === '' || n == null) return ''; return (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function escAttr(s) { return String(s == null ? '' : s).replace(/"/g, '&quot;'); }
+  function rawNum(el) { const n = num(el.value); el.value = n ? String(n) : ''; }   // ตัดคอมม่าตอนแก้
+  function fmtNum(el) { el.value = (el.value === '' ? '' : fmt2(num(el.value))); }    // ใส่คอมม่าตอน blur
+
+  // ปุ่มแสดง/ซ่อนคอลัมน์เสริม (ราคาสแกน/ส่วนลด)
+  function toggleOptCols() {
+    _showOptCols = !_showOptCols;
+    document.querySelectorAll('.col-opt').forEach(el => el.style.display = _showOptCols ? '' : 'none');
+    const b = document.getElementById('btn-optcols');
+    if (b) b.innerText = _showOptCols ? '🙈 ซ่อนคอลัมน์เสริม' : '👁️ แสดงคอลัมน์เสริม (ราคาสแกน/ส่วนลด)';
+  }
+  // ล้างหมวดหมู่+งานของแถวนั้น (เผื่อ carry-forward มาคนละหมวด)
+  function clearCatJob(btn) { const tr = btn.closest('tr'); tr.querySelector('.item-cat').value = ''; tr.querySelector('.item-job').value = ''; }
+
+  // โหลด suggestion หมวดหมู่/งาน → datalist
+  function loadItemSuggestions() {
+    google.script.run.withSuccessHandler(function(res) {
+      if (!res || !res.success) return;
+      const cl = document.getElementById('cat-list'), jl = document.getElementById('job-list');
+      if (cl) cl.innerHTML = (res.categories || []).map(c => `<option value="${escAttr(c)}">`).join('');
+      if (jl) jl.innerHTML = (res.jobs || []).map(j => `<option value="${escAttr(j)}">`).join('');
+    }).getItemSuggestions();
+  }
+
+  // คำนวณแถว desktop — ส่วนลดหักจริง: total(ก่อน VAT) = qty×exVat − ส่วนลดบาท
+  function recalcDesktopRow(tr) {
+    const gross = num(tr.querySelector('.item-qty').value) * num(tr.querySelector('.item-exvat').value);
+    const pct = num(tr.querySelector('.item-discpct').value);
+    const db = tr.querySelector('.item-discbaht');
+    const baht = Math.round(gross * pct / 100 * 100) / 100;
+    if (document.activeElement !== db) db.value = baht ? fmt2(baht) : '';   // อย่าทับตอนผู้ใช้พิมพ์บาทเอง
+    tr.querySelector('.item-total').value = fmt2(gross - num(db.value));
+    calculateSummary('items');
+  }
+  function onDiscPct(el) { recalcDesktopRow(el.closest('tr')); }
+  function onDiscBaht(el) {
+    const tr = el.closest('tr');
+    const gross = num(tr.querySelector('.item-qty').value) * num(tr.querySelector('.item-exvat').value);
+    const baht = num(el.value);
+    tr.querySelector('.item-discpct').value = gross > 0 ? (Math.round(baht / gross * 10000) / 100) : 0;
+    tr.querySelector('.item-total').value = fmt2(gross - baht);
+    calculateSummary('items');
+  }
+  // mobile → desktop (desktop = แหล่งความจริงที่ submitForm อ่าน)
+  function mobileToDesktop(card) { const idx = Array.from(card.parentNode.children).indexOf(card); return document.getElementById('items-body').children[idx]; }
+  function mirrorToMobile(tr, card) {
+    [['.item-total-m', '.item-total'], ['.item-exvat-m', '.item-exvat'], ['.item-invat-m', '.item-invat'], ['.item-discpct-m', '.item-discpct'], ['.item-discbaht-m', '.item-discbaht']]
+      .forEach(p => { const m = card.querySelector(p[0]); if (m) m.value = tr.querySelector(p[1]).value; });
+  }
+  function onMobileDiscBaht(el) { const card = el.closest('.item-card'), tr = mobileToDesktop(card); if (!tr) return; tr.querySelector('.item-discbaht').value = el.value; onDiscBaht(tr.querySelector('.item-discbaht')); mirrorToMobile(tr, card); }
+
+  function addItemRow(itemData) {
+    // SCAN-7: ถ้าเป็น manual add (ไม่มี itemData) หลังจากสแกนแล้ว
+    // → disable radio price type เพราะ index ของ scannedItems จะเพี้ยน
+    if (!itemData && scannedItems.length > 0) {
+      const box = document.getElementById('scan-price-type-box');
+      if (box && !box.classList.contains('hidden')) {
+        box.querySelectorAll('input[type="radio"]').forEach(r => r.disabled = true);
+        const hint = box.querySelector('.scan-manual-hint');
+        if (!hint) {
+          const p = document.createElement('p');
+          p.className = 'scan-manual-hint text-xs text-gray-400 mt-1';
+          p.textContent = '⚠️ มีรายการที่เพิ่มเองภายหลัง — กรุณากรอกราคาด้วยตนเอง';
+          box.appendChild(p);
+        }
+      }
+    }
+    const scanned = itemData && itemData.scannedPrice != null ? itemData.scannedPrice : null;
+    const name    = itemData ? (itemData.itemName || '') : '';
+    const qty     = itemData ? (itemData.quantity  || '') : '';   // blank ถ้าเพิ่มเอง, ใช้ค่าจาก scan ถ้ามี
+
+    // ---- Desktop table row ----
+    const tbody = document.getElementById('items-body');
+    const tr = document.createElement('tr'); tr.className = 'item-row';
+    // [Phase A] carry-forward หมวดหมู่/งาน จากแถวก่อนหน้า + ซ่อนคอลัมน์เสริมตาม flag
+    let prevCat = '', prevJob = '';
+    if (tbody.lastElementChild) {
+      const pc = tbody.lastElementChild.querySelector('.item-cat'), pj = tbody.lastElementChild.querySelector('.item-job');
+      prevCat = pc ? pc.value : ''; prevJob = pj ? pj.value : '';
+    }
+    const od = _showOptCols ? '' : 'none';
+    tr.innerHTML = `
+      <td class="px-2 py-2"><input type="text" class="item-name border rounded p-2 text-sm outline-none" style="min-width:150px;width:100%" placeholder="ชื่อสินค้า" value="${escAttr(name)}" oninput="this.title=this.value"></td>
+      <td class="px-2 py-2"><input type="text" list="cat-list" class="item-cat border rounded p-2 text-sm outline-none" style="width:110px" placeholder="หมวดหมู่" value="${escAttr(prevCat)}"></td>
+      <td class="px-2 py-2"><div class="flex items-center gap-1"><input type="text" list="job-list" class="item-job border rounded p-2 text-sm outline-none" style="width:90px" placeholder="ระบุงาน" value="${escAttr(prevJob)}"><button type="button" onclick="clearCatJob(this)" title="ล้างหมวดหมู่/งาน" class="text-gray-400 hover:text-red-500 text-xs">✕</button></div></td>
+      <td class="px-2 py-2"><input type="number" class="item-qty w-16 border rounded p-2 text-sm text-right outline-none" value="${qty}" min="1" oninput="recalculateRow(this)"></td>
+      <td class="px-2 py-2 col-opt" style="display:${od}"><input type="number" class="item-scanned w-20 bg-gray-100 border rounded p-2 text-sm text-right outline-none text-gray-400" value="${scanned != null ? scanned : ''}" placeholder="-" readonly tabindex="-1"></td>
+      <td class="px-2 py-2"><input type="text" inputmode="decimal" class="item-invat w-24 border rounded p-2 text-sm text-right outline-none" oninput="handleInVatChange(this)" onfocus="rawNum(this)" onblur="fmtNum(this)"></td>
+      <td class="px-2 py-2"><input type="text" inputmode="decimal" class="item-exvat w-24 border rounded p-2 text-sm text-right outline-none" oninput="handleExVatChange(this)" onfocus="rawNum(this)" onblur="fmtNum(this)"></td>
+      <td class="px-2 py-2 col-opt" style="display:${od}"><input type="number" class="item-discpct w-14 border rounded p-2 text-sm text-right outline-none" placeholder="%" oninput="onDiscPct(this)"></td>
+      <td class="px-2 py-2 col-opt" style="display:${od}"><input type="text" inputmode="decimal" class="item-discbaht w-20 border rounded p-2 text-sm text-right outline-none" placeholder="บาท" oninput="onDiscBaht(this)" onfocus="rawNum(this)" onblur="fmtNum(this)"></td>
+      <td class="px-2 py-2"><input type="text" class="item-total w-24 bg-gray-100 border rounded p-2 text-sm text-right outline-none" readonly></td>
+      <td class="px-2 py-2 text-center"><button type="button" onclick="removeItemRow(this)" class="text-red-500 font-bold hover:bg-red-50 rounded-full w-8 h-8">✕</button></td>`;
+    tbody.appendChild(tr);
+
+    // ---- Mobile card ----
+    const mobileBody = document.getElementById('items-body-mobile');
+    const card = document.createElement('div');
+    card.className = 'item-card' + (scanned != null ? ' item-card-scanned' : '');
+    card.dataset.desktopRow = tbody.children.length - 1; // link กับ desktop row
+    card.innerHTML = `
+      <div class="flex justify-between items-start mb-2">
+        <input type="text" class="item-name-m flex-1 border-0 border-b border-gray-200 p-1 text-sm font-semibold outline-none bg-transparent" placeholder="ชื่อสินค้า" value="${escAttr(name)}" oninput="syncMobileField(this,'item-name')">
+        <button type="button" onclick="removeItemCard(this)" class="ml-2 text-red-500 text-xl leading-none">✕</button>
+      </div>
+      ${scanned != null ? `<div class="text-xs text-purple-600 font-semibold mb-2">🔍 ราคาสแกน: <span class="font-bold">${Number(scanned).toLocaleString('th-TH', {minimumFractionDigits:2})}</span></div>` : ''}
+      <div class="grid grid-cols-2 gap-2">
+        <div><label class="text-xs text-gray-500">หมวดหมู่</label><input type="text" list="cat-list" class="item-cat-m w-full border rounded-lg p-2 text-sm outline-none" value="${escAttr(prevCat)}" oninput="syncMobileField(this,'item-cat')"></div>
+        <div><label class="text-xs text-gray-500">ระบุงาน</label><input type="text" list="job-list" class="item-job-m w-full border rounded-lg p-2 text-sm outline-none" value="${escAttr(prevJob)}" oninput="syncMobileField(this,'item-job')"></div>
+        <div><label class="text-xs text-gray-500">จำนวน</label><input type="number" class="item-qty-m w-full border rounded-lg p-2 text-sm text-right outline-none" value="${qty}" min="1" oninput="syncMobileField(this,'item-qty'); recalculateMobileRow(this)"></div>
+        <div><label class="text-xs text-gray-500">รวม (ไม่รวม VAT)</label><input type="text" class="item-total-m w-full bg-gray-100 border rounded-lg p-2 text-sm text-right outline-none" readonly></div>
+        <div><label class="text-xs text-gray-500">ราคา รวม VAT</label><input type="text" inputmode="decimal" class="item-invat-m w-full border rounded-lg p-2 text-sm text-right outline-none" oninput="handleMobileInVat(this)"></div>
+        <div><label class="text-xs text-gray-500">ราคา ไม่รวม VAT</label><input type="text" inputmode="decimal" class="item-exvat-m w-full border rounded-lg p-2 text-sm text-right outline-none" oninput="handleMobileExVat(this)"></div>
+        <div><label class="text-xs text-gray-500">ลด %</label><input type="number" class="item-discpct-m w-full border rounded-lg p-2 text-sm text-right outline-none" placeholder="%" oninput="syncMobileField(this,'item-discpct'); syncMobileValues(this.closest('.item-card'))"></div>
+        <div><label class="text-xs text-gray-500">ลด บาท</label><input type="text" inputmode="decimal" class="item-discbaht-m w-full border rounded-lg p-2 text-sm text-right outline-none" placeholder="บาท" oninput="onMobileDiscBaht(this)"></div>
+      </div>`;
+    mobileBody.appendChild(card);
+  }
+
+  function removeItemRow(btn) {
+    const tr = btn.closest('tr');
+    const idx = Array.from(tr.parentNode.children).indexOf(tr);
+    tr.remove();
+    // ลบ mobile card ที่ตรงกัน
+    const cards = document.getElementById('items-body-mobile').children;
+    if (cards[idx]) cards[idx].remove();
+    calculateSummary('items');
+  }
+  function removeItemCard(btn) {
+    const card = btn.closest('.item-card');
+    const idx = Array.from(card.parentNode.children).indexOf(card);
+    card.remove();
+    const rows = document.getElementById('items-body').children;
+    if (rows[idx]) rows[idx].remove();
+    calculateSummary('items');
+  }
+  function syncMobileField(el, cls) {
+    const card = el.closest('.item-card');
+    const idx = Array.from(card.parentNode.children).indexOf(card);
+    const desktopRow = document.getElementById('items-body').children[idx];
+    if (desktopRow) desktopRow.querySelector('.' + cls).value = el.value;
+  }
+  function recalculateMobileRow(el) {
+    const card = el.closest('.item-card'), tr = mobileToDesktop(card);
+    if (tr) { recalcDesktopRow(tr); mirrorToMobile(tr, card); }
+  }
+  function handleMobileInVat(el) {
+    const card = el.closest('.item-card'), tr = mobileToDesktop(card); if (!tr) return;
+    tr.querySelector('.item-invat').value = el.value; handleInVatChange(tr.querySelector('.item-invat')); mirrorToMobile(tr, card);
+  }
+  function handleMobileExVat(el) {
+    const card = el.closest('.item-card'), tr = mobileToDesktop(card); if (!tr) return;
+    tr.querySelector('.item-exvat').value = el.value; handleExVatChange(tr.querySelector('.item-exvat')); mirrorToMobile(tr, card);
+  }
+  function syncMobileValues(card) {
+    const tr = mobileToDesktop(card); if (!tr) return;
+    const dpm = card.querySelector('.item-discpct-m'); if (dpm) tr.querySelector('.item-discpct').value = dpm.value;
+    recalcDesktopRow(tr); mirrorToMobile(tr, card);
+  }
+  function handleInVatChange(el) { const row = el.closest('tr'), inV = num(el.value); row.querySelector('.item-exvat').value = inV > 0 ? fmt2(inV / 1.07) : ""; recalcDesktopRow(row); }
+  function handleExVatChange(el) { const row = el.closest('tr'), exV = num(el.value); row.querySelector('.item-invat').value = exV > 0 ? fmt2(exV * 1.07) : ""; recalcDesktopRow(row); }
+  function recalculateRow(el) { recalcDesktopRow(el.closest('tr')); }
+
+  function toggleVat() { document.getElementById('vatAmount').disabled = !document.getElementById('hasVat').checked; calculateSummary('toggle'); }
+  function toggleWht() { const isC = document.getElementById('hasWht').checked; document.getElementById('whtRate').disabled = !isC; document.getElementById('whtAmount').disabled = !isC; calculateSummary('toggle'); }
+
+  function calculateSummary(source = 'items') {
+    // 'items'  → คำนวณ baseAmount จากรายการสินค้าใหม่ทั้งหมด
+    // 'manual' → ใช้ค่าที่ user กรอกใน field นั้นๆ โดยตรง ไม่ override
+    // 'toggle' → checkbox VAT/WHT เปลี่ยน
+
+    if (source === 'items') {
+      // คำนวณ baseAmount จากรายการสินค้า (item-total = หลังหักส่วนลด item แล้ว)
+      let sb = 0;
+      document.querySelectorAll('.item-total').forEach(i => sb += num(i.value));
+      document.getElementById('baseAmount').value = fmt2(sb);
+    }
+
+    const base = num(document.getElementById('baseAmount').value);
+    const disc = num(document.getElementById('discount').value);
+
+    if (source === 'items' || source === 'toggle') {
+      document.getElementById('amountAfterDiscount').value = fmt2(base - disc);
+    }
+
+    const aad = num(document.getElementById('amountAfterDiscount').value);
+
+    // VAT
+    const vi = document.getElementById('vatAmount');
+    if ((source === 'items' || source === 'toggle') && document.getElementById('hasVat').checked) {
+      vi.value = fmt2(aad * 0.07);
+    } else if (!document.getElementById('hasVat').checked) {
+      vi.value = '0';
+    }
+
+    // WHT
+    const wi = document.getElementById('whtAmount');
+    const wr = parseFloat(document.getElementById('whtRate').value) || 0;
+    if ((source === 'items' || source === 'toggle') && document.getElementById('hasWht').checked) {
+      wi.value = fmt2(aad * (wr / 100));
+    } else if (!document.getElementById('hasWht').checked) {
+      wi.value = '0';
+    }
+
+    // netAmount — คำนวณเสมอจาก aad + VAT - WHT
+    const vat = num(vi.value);
+    const wht = num(wi.value);
+    document.getElementById('netAmount').value = fmt2(aad + vat - wht);
+  }
+
+  // [Phase 2] เปิด/ปิดช่องวันครบกำหนด เมื่อ toggle "ตั้งเป็นรายการค้าง"
+  function onApArToggle() {
+    const on = document.getElementById('isApAr').checked;
+    document.getElementById('apArFields').classList.toggle('hidden', !on);
+    // [Phase 3] กันติ๊กชนกับแบ่งงวด (งวดเป็น AP/AR อยู่แล้ว)
+    if (on) { const it = document.getElementById('inst-toggle'); if (it && it.checked) { it.checked = false; onInstToggle(); } }
+  }
+
+  // [Phase 3] toggle แบ่งจ่ายงวด
+  function onInstToggle() {
+    const on = document.getElementById('inst-toggle').checked;
+    document.getElementById('inst-fields').classList.toggle('hidden', !on);
+    window._instMode = on;
+    if (on) {
+      const at = document.getElementById('isApAr'); if (at && at.checked) { at.checked = false; onApArToggle(); }
+      if (document.querySelectorAll('#inst-rows .inst-row').length === 0) { addInstRow(); addInstRow(); }
+    }
+  }
+  function addInstRow() {
+    const wrap = document.getElementById('inst-rows');
+    const div = document.createElement('div'); div.className = 'inst-row flex items-center gap-2 mb-2';
+    div.innerHTML = `<input type="number" class="inst-pct w-20 border rounded p-2 text-sm text-right bg-white" placeholder="%" oninput="updateInstSum()">
+      <span class="text-xs text-gray-500">% · ครบกำหนด</span>
+      <input type="date" class="inst-due border rounded p-2 text-sm bg-white">
+      <button type="button" onclick="this.closest('.inst-row').remove();updateInstSum()" class="text-red-500 px-2">✕</button>`;
+    wrap.appendChild(div); updateInstSum();
+  }
+  function updateInstSum() {
+    let s = 0; document.querySelectorAll('#inst-rows .inst-pct').forEach(i => s += parseFloat(i.value) || 0);
+    const el = document.getElementById('inst-sum');
+    if (el) { el.innerText = 'รวม ' + (Math.round(s * 100) / 100) + '%'; el.style.color = (Math.abs(s - 100) < 0.01) ? '#059669' : '#dc2626'; }
+  }
+  // ส่งบิลแบ่งงวด (เรียกจาก submitForm เมื่อ window._instMode = true)
+  function submitInstallments(data) {
+    const rows = [];
+    document.querySelectorAll('#inst-rows .inst-row').forEach(function(r) {
+      const pct = parseFloat(r.querySelector('.inst-pct').value) || 0;
+      const due = r.querySelector('.inst-due').value;
+      if (pct > 0) rows.push({ percent: pct, dueDate: due });
+    });
+    if (rows.length < 1) { Swal.fire('แจ้งเตือน', 'เพิ่มงวดอย่างน้อย 1 งวด', 'warning'); return; }
+    const sum = rows.reduce((s, x) => s + x.percent, 0);
+    if (Math.abs(sum - 100) > 0.01) { Swal.fire('แจ้งเตือน', `รวม % = ${sum} (ต้องเท่ากับ 100)`, 'warning'); return; }
+    const payload = {
+      transactionDate: data.transactionDate, type: data.type, category: data.category,
+      contactName: data.contactName, description: data.description,
+      amountAfterDiscount: data.amountAfterDiscount, vatAmount: data.vatAmount,
+      whtRate: data.whtRate, entityId: data.entityId, items: data.items, installments: rows
+    };
+    const btn = document.getElementById('btn-submit'); btn.disabled = true; btn.innerText = 'กำลังบันทึก...';
+    google.script.run
+      .withSuccessHandler(function(res) {
+        btn.disabled = false; btn.innerText = 'บันทึกข้อมูลลงระบบ';
+        if (res && res.success) {
+          Swal.fire('สำเร็จ', res.message, 'success');
+          document.getElementById('inst-toggle').checked = false; onInstToggle();
+          document.getElementById('accounting-form').reset();
+          document.getElementById('items-body').innerHTML = ''; document.getElementById('items-body-mobile').innerHTML = '';
+          addItemRow(); setType('รายจ่าย');
+        } else Swal.fire('ผิดพลาด', (res && res.message) || 'บันทึกไม่สำเร็จ', 'error');
+      })
+      .withFailureHandler(function(e) { btn.disabled = false; btn.innerText = 'บันทึกข้อมูลลงระบบ'; Swal.fire('เชื่อมต่อไม่ได้', e.message, 'error'); })
+      .saveTransactionInstallments(payload);
+  }
+
+  async function submitForm() {
+    const btn = document.getElementById('btn-submit'); const items = [];
+    document.querySelectorAll('.item-row').forEach(row => {
+      const n = row.querySelector('.item-name').value;
+      if (n.trim() === '') return;
+      items.push({
+        itemName: n,
+        quantity: num(row.querySelector('.item-qty').value),
+        inVat: num(row.querySelector('.item-invat').value),
+        exVat: num(row.querySelector('.item-exvat').value),
+        totalPrice: num(row.querySelector('.item-total').value),
+        discountPct: num(row.querySelector('.item-discpct').value),
+        discountBaht: num(row.querySelector('.item-discbaht').value),
+        itemCategory: row.querySelector('.item-cat').value.trim(),
+        itemJob: row.querySelector('.item-job').value.trim()
+      });
+    });
+    if (items.length === 0) { Swal.fire('แจ้งเตือน', 'กรุณาเพิ่มสินค้า 1 รายการ', 'warning'); return; }
+    // [Phase B/B2] บังคับเลือกประเภทก่อน (ไม่มี default แล้ว)
+    if (!document.getElementById('type').value) { Swal.fire('แจ้งเตือน', 'กรุณาเลือก "รายรับ" หรือ "รายจ่าย" ก่อน', 'warning'); return; }
+
+    let imgObj = null; const fi = document.getElementById('receiptImage');
+    if (fi.files.length > 0) {
+      imgObj = await new Promise((res) => { const r = new FileReader(); r.onload = (e) => res({ filename: fi.files[0].name, base64: e.target.result }); r.readAsDataURL(fi.files[0]); });
+    }
+
+    const data = {
+      transactionDate: document.getElementById('transactionDate').value, type: document.getElementById('type').value, accountType: document.getElementById('accountType').value, category: document.getElementById('category').value, contactName: document.getElementById('contactNameSearch').value, description: document.getElementById('description').value, baseAmount: document.getElementById('baseAmount').value, discount: document.getElementById('discount').value, amountAfterDiscount: document.getElementById('amountAfterDiscount').value, vatAmount: document.getElementById('vatAmount').value, whtRate: document.getElementById('hasWht').checked ? document.getElementById('whtRate').value : 0, whtAmount: document.getElementById('whtAmount').value, netAmount: document.getElementById('netAmount').value, taxInvoiceNo: document.getElementById('taxInvoiceNo').value, taxInvoiceDate: document.getElementById('taxInvoiceDate').value, imageObj: imgObj, items: items, entityId: currentEntityId
+    };
+
+    // [Phase 2] โหมดตั้งค้าง AP/AR — รายจ่าย=เจ้าหนี้(AP), รายรับ=ลูกหนี้(AR)
+    if (document.getElementById('isApAr') && document.getElementById('isApAr').checked) {
+      data.apArStatus  = (data.type === 'รายจ่าย') ? 'AP' : 'AR';
+      data.dueDate     = document.getElementById('dueDate').value || '';
+      data.accountType = '';   // [Option A] ยังไม่จ่ายจากบัญชีใด → col 4 เว้นว่าง (เติมตอน settle)
+    }
+
+    // [Phase 4] โหมดแก้ไขบิล → updateTransaction (อยู่ใน _js_bills)
+    if (window._editTxId) { submitEditedBill(data); return; }
+    // [Phase 3] โหมดแบ่งจ่ายงวด → saveTransactionInstallments
+    if (window._instMode) { submitInstallments(data); return; }
+
+    btn.innerText = "กำลังบันทึก..."; btn.disabled = true;
+
+    // แสดง loading overlay บนมือถือ (กัน user งงว่าระบบค้าง)
+    const mobileBar = document.querySelector('.sticky-bottom');
+    if (mobileBar) mobileBar.innerHTML = `
+      <div class="flex items-center justify-center gap-3 py-3.5 text-blue-700 font-semibold">
+        <svg class="animate-spin h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+        </svg>
+        กำลังบันทึกข้อมูล...
+      </div>`;
+
+    google.script.run
+      .withSuccessHandler(function(res) {
+        // คืนปุ่ม mobile bar กลับเสมอ
+        if (mobileBar) mobileBar.innerHTML = `<button type="button" onclick="submitForm()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl text-base shadow">💾 บันทึกข้อมูลลงระบบ</button>`;
+
+        if (res.success) {
+          if (res.apiWarning) {
+            Swal.fire({ icon: 'warning', title: 'บันทึกสำเร็จ (มีคำเตือน)', html: `รหัส: <b>${res.txId}</b><br><small class="text-yellow-600">${res.apiWarning}</small>` });
+          } else {
+            Swal.fire({ icon: 'success', title: 'บันทึกสำเร็จ!', html: `รหัส: <b>${res.txId}</b>` });
+          }
+
+          // keep: วันที่ + type + accountType
+          const cd   = document.getElementById('transactionDate').value;
+          const type = document.getElementById('type').value || 'รายจ่าย';
+          const acct = document.getElementById('accountType').value;
+
+          document.getElementById('accounting-form').reset();
+          document.getElementById('transactionDate').value = cd;
+          document.getElementById('accountType').value = acct;
+          setType(type);
+
+          // reset contact
+          document.getElementById('contactNameSearch').value = '';
+          document.getElementById('contactDetailsBox').classList.add('hidden');
+
+          // reset items (ทั้ง desktop + mobile card)
+          document.getElementById('items-body').innerHTML = '';
+          document.getElementById('items-body-mobile').innerHTML = '';
+          addItemRow();
+          toggleVat(); toggleWht(); calculateSummary('items');
+
+          // reset scan result box + scannedItems
+          clearScanResult();
+          // reset receipt image preview
+          document.getElementById('receiptImage').value = '';
+
+        } else {
+          Swal.fire('ผิดพลาด', res.message, 'error');
+        }
+        btn.innerText = "บันทึกข้อมูลลงระบบ"; btn.disabled = false;
+      })
+      .withFailureHandler(function(err) {
+        if (mobileBar) mobileBar.innerHTML = `<button type="button" onclick="submitForm()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl text-base shadow">💾 บันทึกข้อมูลลงระบบ</button>`;
+        Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
+        btn.innerText = "บันทึกข้อมูลลงระบบ"; btn.disabled = false;
+      })
+      .saveTransaction(data);
+  }
+
+  // util ใช้ร่วม (dashboard/accounts ก็เรียก)
+  function formatMoney(num) { return "฿" + Number(num).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+</script>

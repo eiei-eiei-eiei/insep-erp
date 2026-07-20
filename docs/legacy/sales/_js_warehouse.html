@@ -1,0 +1,99 @@
+<!-- ============================================================
+     JS WAREHOUSE — โหมดคลังสินค้า (โหลดออเดอร์, สต็อก, ตัดสต็อก, พิมพ์เอกสาร WH)
+     global: warehouseMixin
+     ============================================================ -->
+<script>
+  const warehouseMixin = {
+    methods: {
+      switchWHTab(tab) {
+          this.whTab = tab;
+          if (tab === 'orders') this.loadPendingWHOrders();
+          else if (tab === 'stock') this.loadCurrentStock();
+      },
+
+      loadPendingWHOrders() {
+          this.isLoading = true;
+          if (typeof google === 'undefined') { setTimeout(() => { this.isLoading = false; }, 500); return; }
+          google.script.run.withSuccessHandler(data => { this.pendingWHOrders = data; this.isLoading = false; }).withFailureHandler(err => { this.isLoading = false; Swal.fire('Error', err.toString(), 'error'); }).getPendingWarehouseOrders();
+      },
+
+      loadCurrentStock() {
+          this.isLoading = true;
+          if (typeof google === 'undefined') { setTimeout(() => { this.isLoading = false; }, 500); return; }
+          google.script.run.withSuccessHandler(data => { this.curStockList = data; this.isLoading = false; }).withFailureHandler(err => { this.isLoading = false; Swal.fire('Error', err.toString(), 'error'); }).getCurrentStockData();
+      },
+
+      submitManualStockMove() {
+          const payload = { ...this.stockManageForm };
+          if (!payload.itemCode) return Swal.fire('แจ้งเตือน', 'กรุณาเลือกสินค้า', 'warning');
+          if (!payload.qty) return Swal.fire('แจ้งเตือน', 'กรุณาระบุจำนวน', 'warning');
+
+          Swal.fire({ title: 'ยืนยันการบันทึก?', text: `คุณต้องการบันทึก ${payload.actionType} สินค้าจำนวน ${payload.qty} ใช่หรือไม่?`, icon: 'question', showCancelButton: true, confirmButtonText: 'ยืนยัน', cancelButtonText: 'ยกเลิก' }).then((result) => {
+              if (result.isConfirmed) {
+                  this.isLoading = true;
+                  if (typeof google === 'undefined') { setTimeout(() => { this.isLoading = false; Swal.fire('สำเร็จ', 'บันทึกสต็อกเรียบร้อย', 'success'); this.stockManageForm = { itemCode: '', actionType: 'IN', qty: 1, refNo: '', remarks: '' }; }, 800); return; }
+
+                  google.script.run.withSuccessHandler(res => {
+                      this.isLoading = false;
+                      if (res.success) {
+                          Swal.fire('สำเร็จ', 'อัปเดตยอดคงเหลือเป็น ' + res.newStock, 'success');
+                          this.stockManageForm = { itemCode: '', actionType: 'IN', qty: 1, refNo: '', remarks: '' };
+                          this.loadCurrentStock(); // รีเฟรชลิสต์ทันที
+                      } else { Swal.fire('เกิดข้อผิดพลาด', res.message, 'error'); }
+                  }).processManualStockMove(payload, this.loggedInUser.name);
+              }
+          });
+      },
+
+      printWHDocument(order) {
+          const docTypes = order.docToPrint ? order.docToPrint.split(',') : ['invoice'];
+          this.b2bPrintDocs = [];
+          const reverseCalc = (netAmt, whtPct) => { let preVat = whtPct > 0 ? netAmt / (1 + 0.07 - (whtPct / 100)) : netAmt / 1.07; return { preVat: this.roundTo2(preVat), vat: this.roundTo2(preVat * 0.07), wht: this.roundTo2(preVat * (whtPct / 100)) }; };
+
+          docTypes.forEach(docType => {
+              let docOri = JSON.parse(JSON.stringify(order)); docOri.docType = docType; docOri.copyType = '(ต้นฉบับ / Original)';
+              let docCopy = JSON.parse(JSON.stringify(order)); docCopy.docType = docType; docCopy.copyType = '(สำเนา / Copy)';
+
+              const setupDoc = (doc) => {
+                  // ใช้ this.formatChequeDetail จัดรูปแบบเพื่อแสดงผล
+                  if (docType === 'tax-invoice-deposit') doc.chequeDetails = this.formatChequeDetail(doc.checkDetail1); 
+                  else if (docType === 'tax-invoice-balance' || docType === 'tax-invoice-receipt' || docType === 'tax-invoice-receipt-do') doc.chequeDetails = this.formatChequeDetail(doc.checkDetail2); 
+                  else doc.chequeDetails = '';
+
+                  if (docType === 'invoice') { doc.receiptTitle = 'ใบแจ้งหนี้/ใบส่งสินค้า'; doc.receiptTitleEng = 'Invoice / Delivery Order'; doc.docNo = doc.invNo; if (doc.deposit > 0) { const balVals = reverseCalc(doc.outstandingBalance, doc.whtPercent); doc.receiptPreVat = balVals.preVat; doc.receiptVat = balVals.vat; doc.receiptWht = balVals.wht; const depVals = reverseCalc(doc.deposit, doc.whtPercent); doc.depositPreVat = depVals.preVat; } } 
+                  else if (docType === 'invoice-only') { doc.receiptTitle = 'ใบแจ้งหนี้'; doc.receiptTitleEng = 'Invoice'; doc.docNo = doc.invNo; } 
+                  else if (docType === 'tax-invoice-deposit') { doc.receiptTitle = 'ใบกำกับภาษี/ใบเสร็จรับเงิน'; doc.receiptTitleEng = 'Tax Invoice / Receipt'; doc.receiptAmount = doc.deposit; doc.docNo = doc.taxNo1; const vals = reverseCalc(doc.receiptAmount, doc.whtPercent); doc.receiptPreVat = vals.preVat; doc.receiptVat = vals.vat; doc.receiptWht = vals.wht; } 
+                  else if (docType === 'tax-invoice-balance') { doc.receiptTitle = 'ใบกำกับภาษี/ใบเสร็จรับเงิน'; doc.receiptTitleEng = 'Tax Invoice / Receipt'; doc.receiptAmount = doc.netPayable - doc.deposit; doc.docNo = doc.taxNo2; const vals = reverseCalc(doc.receiptAmount, doc.whtPercent); doc.receiptPreVat = vals.preVat; doc.receiptVat = vals.vat; doc.receiptWht = vals.wht; const depVals = reverseCalc(doc.deposit, doc.whtPercent); doc.depositPreVat = depVals.preVat; } 
+                  else if (docType === 'tax-invoice-receipt') { doc.receiptTitle = 'ใบกำกับภาษี/ใบเสร็จรับเงิน'; doc.receiptTitleEng = 'Tax Invoice / Receipt'; doc.docNo = doc.taxNo1; }
+                  else if (docType === 'tax-invoice-receipt-do') { doc.receiptTitle = 'ใบกำกับภาษี/ใบเสร็จรับเงิน/ใบส่งสินค้า'; doc.receiptTitleEng = 'Tax Invoice / Receipt / Delivery Order'; doc.docNo = doc.taxNo1; }
+              };
+              setupDoc(docOri); setupDoc(docCopy); this.b2bPrintDocs.push(docOri); this.b2bPrintDocs.push(docCopy);
+          });
+          this.$nextTick(() => { this.executeIframePrint('b2b-doc'); });
+      },
+
+      async confirmFulfillment(order) {
+          const res = await Swal.fire({ title: 'ยืนยันการจัดส่ง?', text: 'ระบบจะทำการตัดสต็อกออเดอร์ ' + order.orderNo + ' ทันที', icon: 'warning', showCancelButton: true, confirmButtonColor: '#0d9488', confirmButtonText: 'ใช่, ตัดสต็อกเลย!', cancelButtonText: 'ยกเลิก' });
+          if (res.isConfirmed) {
+              this.isLoading = true;
+              if (typeof google === 'undefined') { setTimeout(() => { this.isLoading = false; Swal.fire('สำเร็จ', 'จำลองการตัดสต็อกสำเร็จ', 'success'); this.pendingWHOrders = this.pendingWHOrders.filter(o => o.quNo !== order.quNo); }, 1000); return; }
+
+              google.script.run.withSuccessHandler(response => {
+                  this.isLoading = false;
+                  if (response.success) {
+                      this.loadPendingWHOrders();
+                      if (response.apiWarning) {
+                          // C1-9: toast เหลืองเมื่อ API สุราตีกลับ — สต็อกตัดแล้วแต่แอปผลิตยังไม่ได้รับ
+                          Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 6000, timerProgressBar: true })
+                              .fire({ icon: 'warning', title: 'บันทึกสำเร็จ แต่มีคำเตือน', text: response.apiWarning });
+                      } else {
+                          Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 2500 })
+                              .fire({ icon: 'success', title: 'ตัดสต็อกและอัปเดตสถานะเรียบร้อย' });
+                      }
+                  } else { Swal.fire('เกิดข้อผิดพลาด', response.message, 'error'); }
+              }).confirmFulfillmentAndDeductStock(order.quNo, this.loggedInUser.name);
+          }
+      }
+    }
+  };
+</script>

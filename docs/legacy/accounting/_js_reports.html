@@ -1,0 +1,517 @@
+<script>
+  // =========================================================================
+  // JS [3/4] REPORTS — แดชบอร์ด + ภพ.30/WHT report + จัดการ 50 ทวิ
+  // =========================================================================
+
+  function loadDashboard() {
+    const period = document.getElementById('reportPeriod').value; if(!period) return;
+    const btn = document.getElementById('btn-load-dash'); btn.innerText = 'กำลังโหลด...'; btn.disabled = true;
+
+    // ลบข้อมูลตาราง 50 ทวิเดิมทิ้งก่อนเพื่อรอโหลดใหม่
+    document.getElementById('wht-pending-body').innerHTML = `<tr><td colspan="5" class="text-center py-4 text-gray-500">กำลังดึงข้อมูล...</td></tr>`;
+    document.getElementById('wht-history-body').innerHTML = `<tr><td colspan="6" class="text-center py-4 text-gray-500">กำลังดึงข้อมูล...</td></tr>`;
+
+    google.script.run.withSuccessHandler(function(res) {
+      btn.innerText = 'ดึงข้อมูล'; btn.disabled = false;
+      if(res.success) {
+        // ส่วนแดชบอร์ดปกติ
+        document.getElementById('dash-cards').style.opacity = "1";
+        document.getElementById('lbl-income').innerText = formatMoney(res.dash.income);
+        document.getElementById('lbl-vat-out').innerText = formatMoney(res.dash.vatOut);
+        document.getElementById('lbl-expense').innerText = formatMoney(res.dash.expense);
+        document.getElementById('lbl-vat-in').innerText = formatMoney(res.dash.vatIn);
+
+        const net = res.dash.income - res.dash.expense; const nl = document.getElementById('lbl-net');
+        nl.innerText = formatMoney(net); nl.className = net >= 0 ? "text-2xl font-bold mt-2 text-green-600" : "text-2xl font-bold mt-2 text-red-600";
+
+        // แสดงปุ่มรายงานทั้ง VAT และ WHT รายเดือน
+        document.getElementById('btn-gen-report').classList.remove('hidden');
+        document.getElementById('btn-gen-wht').classList.remove('hidden');
+
+        const ctx = document.getElementById('myChart').getContext('2d');
+        if (myChartInstance) myChartInstance.destroy();
+        myChartInstance = new Chart(ctx, { type: 'bar', data: { labels: ['ภาพรวมบัญชีบริษัท (ก่อน VAT)'], datasets: [ { label: 'รายรับ (Income)', data: [res.dash.income], backgroundColor: '#10b981', borderRadius: 6 }, { label: 'รายจ่าย (Expense)', data: [res.dash.expense], backgroundColor: '#ef4444', borderRadius: 6 } ] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } } });
+
+        // ส่วนตารางจัดการ 50 ทวิ
+        document.getElementById('wht-management-section').classList.remove('hidden');
+        renderWhtTables(res.whtPending, res.whtHistory);
+
+      } else { Swal.fire('Error', res.message, 'error'); }
+    }).getDashboardAndWhtData(period, currentEntityId);
+  }
+
+  // 1. กระบวนการออกรายงานภาษีซื้อ-ขาย (VAT)
+  function processTaxReport() {
+    const period = document.getElementById('reportPeriod').value;
+    Swal.fire({ title: 'กำลังเช็คยอดยกมา...', didOpen: () => { Swal.showLoading(); } });
+
+    google.script.run.withSuccessHandler(function(res) {
+      Swal.close();
+      if(res.success) {
+        Swal.fire({
+          title: `ออกรายงานภาษี เดือน ${period}`,
+          html: `
+            <p class="text-sm text-gray-600 mb-2 text-left">ภาษีซื้อยกมาจากเดือน <b>${res.prevPeriod}</b>:</p>
+            <input type="number" step="0.01" id="swal-vat-in" class="w-full border p-2 text-center text-lg font-bold text-blue-600" value="${res.forwardedVat}">
+          `,
+          showCancelButton: true, confirmButtonText: 'เปิดหน้าเอกสารเพื่อพิมพ์', confirmButtonColor: '#059669',
+          preConfirm: () => parseFloat(document.getElementById('swal-vat-in').value) || 0
+        }).then((result) => {
+          if (result.isConfirmed) executeTaxReportGeneration(period, result.value);
+        });
+      } else { Swal.fire('Error', res.message, 'error'); }
+    }).getPreviousVAT(period, currentEntityId);
+  }
+
+  function executeTaxReportGeneration(period, forwardedVatIn) {
+    Swal.fire({ title: 'กำลังจัดหน้ากระดาษ A4...', didOpen: () => { Swal.showLoading(); } });
+    google.script.run.withSuccessHandler(function(res) {
+      if(res.success) {
+        // [Tax-PDF] โหลดเป็น PDF A4 แนวนอนลงเครื่องตรง (1 .page = 1 หน้า ไม่มีหน้าเปล่า) แทนการเปิดหน้าพิมพ์
+        Swal.update({ title: 'กำลังสร้าง PDF...' });
+        TAXPDF.print(res.htmlContent, `รายงานภาษี_${period}.pdf`)
+          .then(() => Swal.close())
+          .catch(err => Swal.fire('สร้าง PDF ไม่สำเร็จ', err.message, 'error'));
+      } else { Swal.fire('สร้างรายงานล้มเหลว', res.message, 'error'); }
+    }).withFailureHandler(function(err) {
+      Swal.fire('สร้างรายงานล้มเหลว', err && err.message ? err.message : String(err), 'error');
+    }).generateTaxReportHTML(period, forwardedVatIn, currentEntityId);
+  }
+
+  // 2. กระบวนการออกรายงานหัก ณ ที่จ่ายรายเดือน (WHT Report) ภ.ง.ด.3 / 53
+  function processWhtReport() {
+    const period = document.getElementById('reportPeriod').value;
+    Swal.fire({ title: 'กำลังจัดหน้ากระดาษรายงาน WHT...', didOpen: () => { Swal.showLoading(); } });
+
+    google.script.run.withSuccessHandler(function(res) {
+      if(res.success) {
+        // [Tax-PDF] โหลดเป็น PDF A4 แนวนอนลงเครื่องตรง แทนการเปิดหน้าพิมพ์ (กันหน้าเปล่าตอน Save as PDF)
+        Swal.update({ title: 'กำลังสร้าง PDF...' });
+        TAXPDF.print(res.htmlContent, `รายงานหักณที่จ่าย_${period}.pdf`)
+          .then(() => Swal.close())
+          .catch(err => Swal.fire('สร้าง PDF ไม่สำเร็จ', err.message, 'error'));
+      } else { Swal.fire('สร้างรายงานล้มเหลว', res.message, 'error'); }
+    }).withFailureHandler(function(err) {
+      Swal.fire('สร้างรายงานล้มเหลว', err && err.message ? err.message : String(err), 'error');
+    }).generateWHTReportHTML(period, currentEntityId);
+  }
+
+  // =========================================================================
+  // ส่วนควบคุม 50 ทวิ (WHT Management)
+  // =========================================================================
+
+  function renderWhtTables(pending, history) {
+    pendingWhtData = pending;
+
+    // C2-12: set default filter เป็นเดือน reportPeriod
+    const filterEl = document.getElementById('wht-filter-month');
+    if (!filterEl.value) {
+      filterEl.value = document.getElementById('reportPeriod').value;
+    }
+
+    // เพิ่ม _origIdx ก่อนส่งเข้า renderPendingTable_
+    // กัน checkbox data-idx="undefined" ซึ่งทำให้ batchIssueWht crash เงียบ
+    renderPendingTable_(pending.map((item, i) => ({ ...item, _origIdx: i })));
+
+    const hBody = document.getElementById('wht-history-body');
+    if (history.length === 0) {
+      hBody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-gray-500">ไม่มีประวัติการพิมพ์เอกสารในเดือนนี้</td></tr>`;
+    } else {
+      hBody.innerHTML = history.map((item) => `
+        <tr class="hover:bg-gray-50">
+          <td class="px-4 py-2 text-sm font-medium text-blue-600">${item.docNo}</td>
+          <td class="px-4 py-2 text-sm">${item.issueDate}</td>
+          <td class="px-4 py-2 text-sm">${item.contactName}</td>
+          <td class="px-4 py-2 text-sm text-center"><span class="bg-gray-200 text-gray-700 px-2 py-0.5 rounded text-xs font-bold">${item.pndType}</span></td>
+          <td class="px-4 py-2 text-sm text-right font-bold text-gray-700">${formatMoney(item.whtAmount)}</td>
+          <td class="px-4 py-2 text-center">
+            <button onclick="reprintWht('${item.docNo}')" class="bg-gray-200 text-gray-700 hover:bg-gray-300 px-3 py-1 rounded text-sm font-bold transition-colors flex items-center justify-center mx-auto">
+              <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+              พิมพ์ซ้ำ
+            </button>
+          </td>
+        </tr>`).join('');
+    }
+  }
+
+  /**
+   * C2-12: render ตาราง pending โดย filter เดือนฝั่ง client
+   * idx ใน dataset-idx = index จริงใน pendingWhtData (กัน index เพี้ยนหลัง filter)
+   */
+  function renderPendingTable_(dataToRender) {
+    const pBody = document.getElementById('wht-pending-body');
+    // reset select-all + batch bar
+    document.getElementById('wht-select-all').checked = false;
+    document.getElementById('wht-batch-bar').classList.add('hidden');
+
+    if (!dataToRender || dataToRender.length === 0) {
+      pBody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-gray-500">ไม่มีรายการรอออกเอกสารในเดือน/เงื่อนไขนี้</td></tr>`;
+      return;
+    }
+
+    pBody.innerHTML = dataToRender.map((item) => `
+      <tr class="hover:bg-orange-50/50" data-idx="${item._origIdx}">
+        <td class="px-3 py-2 text-center">
+          <input type="checkbox" class="wht-row-check h-4 w-4 text-indigo-600 rounded"
+            data-idx="${item._origIdx}" onchange="onWhtCheckChange()">
+        </td>
+        <td class="px-4 py-2 text-sm">${item.displayDate}</td>
+        <td class="px-4 py-2 text-sm text-gray-800 font-medium">${item.contactName}</td>
+        <td class="px-4 py-2 text-sm text-right">${formatMoney(item.amount)}</td>
+        <td class="px-4 py-2 text-sm text-right text-red-600 font-bold">${formatMoney(item.whtAmount)} <span class="text-xs text-gray-400 font-normal">(${item.whtRate}%)</span></td>
+        <td class="px-4 py-2 text-center">
+          <button onclick="openIssueWhtModal(${item._origIdx})" class="bg-indigo-100 text-indigo-700 hover:bg-indigo-200 px-3 py-1 rounded-lg text-sm font-bold transition-colors">ออก 50 ทวิ</button>
+        </td>
+      </tr>`).join('');
+  }
+
+  // C2-12: กรองตาราง pending ตาม month filter (client-side)
+  function filterPendingByMonth() {
+    const month = document.getElementById('wht-filter-month').value; // "yyyy-MM"
+    if (!month) {
+      // ถ้าไม่ได้เลือก → แสดงทั้งหมด
+      renderPendingTable_(pendingWhtData.map((item, i) => ({ ...item, _origIdx: i })));
+      return;
+    }
+    const filtered = pendingWhtData
+      .map((item, i) => ({ ...item, _origIdx: i }))
+      .filter(item => {
+        const d = item.displayDate || '';
+        // displayDate เป็น dd/MM/yy — แปลงเป็น yyyy-MM เพื่อเทียบ
+        const parts = d.split('/');
+        if (parts.length === 3) {
+          const mm = parts[1].padStart(2, '0');
+          const yy = parseInt(parts[2], 10);
+          const yyyy = yy < 100 ? (yy + (yy > 50 ? 1900 : 2000)) : yy;
+          return `${yyyy}-${mm}` === month;
+        }
+        return false;
+      });
+    renderPendingTable_(filtered);
+  }
+
+  // C2-11: checkbox handlers
+  function toggleSelectAllWht(cb) {
+    document.querySelectorAll('.wht-row-check').forEach(c => c.checked = cb.checked);
+    onWhtCheckChange();
+  }
+
+  function onWhtCheckChange() {
+    const checked = document.querySelectorAll('.wht-row-check:checked');
+    const all     = document.querySelectorAll('.wht-row-check');
+    document.getElementById('wht-select-all').checked = checked.length === all.length && all.length > 0;
+    document.getElementById('wht-select-all').indeterminate = checked.length > 0 && checked.length < all.length;
+
+    const bar = document.getElementById('wht-batch-bar');
+    if (checked.length > 0) {
+      bar.classList.remove('hidden');
+      document.getElementById('wht-selected-count').textContent = `${checked.length} รายการที่เลือก`;
+    } else {
+      bar.classList.add('hidden');
+    }
+  }
+
+  function clearWhtSelection() {
+    document.querySelectorAll('.wht-row-check').forEach(c => c.checked = false);
+    document.getElementById('wht-select-all').checked = false;
+    document.getElementById('wht-batch-bar').classList.add('hidden');
+  }
+
+  // C2-11: Batch generate — group by contact → แสดง modal เหมือนออกเดี่ยวทุกกลุ่ม
+  async function batchIssueWht() {
+    const checked = [...document.querySelectorAll('.wht-row-check:checked')];
+    if (checked.length === 0) return;
+
+    const selectedItems = checked.map(c => pendingWhtData[parseInt(c.dataset.idx)]);
+
+    // --- จัดกลุ่มตาม contactName ---
+    const groups = {};
+    selectedItems.forEach(item => {
+      const key = item.contactName;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(item);
+    });
+    const groupList = Object.values(groups);
+
+    // --- ยืนยันรวมก่อน ---
+    const summaryHtml = groupList.map(g => {
+      const totalWht = g.reduce((s, i) => s + (parseFloat(i.whtAmount) || 0), 0);
+      const tag = g.length > 1
+        ? `<span class="ml-1 text-xs bg-indigo-100 text-indigo-700 rounded px-1">รวม ${g.length} รายการ</span>`
+        : '';
+      return `<div class="py-1 border-b border-gray-100 text-sm">
+        <span class="font-medium">${g[0].contactName}</span>${tag}
+        <span class="float-right text-red-600 font-semibold">WHT ฿${Number(totalWht).toLocaleString()}</span>
+      </div>`;
+    }).join('');
+
+    const cfm = await Swal.fire({
+      title : `ออก 50 ทวิ ${groupList.length} ใบ`,
+      html  : `<div class="text-left max-h-40 overflow-y-auto mt-2">${summaryHtml}</div>
+               <p class="text-xs text-gray-400 mt-2">ระบบจะเปิดให้ตั้งค่าแต่ละใบทีละขั้น</p>`,
+      showCancelButton  : true,
+      confirmButtonText : 'ดำเนินการ →',
+      confirmButtonColor: '#4f46e5',
+      cancelButtonText  : 'ยกเลิก'
+    });
+    if (!cfm.isConfirmed) return;
+
+    // --- ออกทีละกลุ่ม โดยแสดง modal เหมือนออกเดี่ยว ---
+    const allHtmlContents = [];
+    const allPrintData = [];   // [PDF-Template] เก็บ printData ทุกใบ -> รวมเป็น PDF เดียว
+    let successCount = 0, failCount = 0;
+
+    for (let gi = 0; gi < groupList.length; gi++) {
+      const group   = groupList[gi];
+      const totalAmt = group.reduce((s, i) => s + (parseFloat(i.amount)    || 0), 0);
+      const totalWht = group.reduce((s, i) => s + (parseFloat(i.whtAmount) || 0), 0);
+      const whtRate  = group[0].whtRate || 0;
+
+      // ขอ docNo จาก GAS ก่อน
+      Swal.fire({ title: `กำลังดึงเลขที่เอกสาร... (${gi+1}/${groupList.length})`, didOpen: () => Swal.showLoading(), allowOutsideClick: false });
+
+      const docNoResult = await new Promise(resolve =>
+        google.script.run
+          .withSuccessHandler(resolve)
+          .withFailureHandler(() => resolve({ success: false }))
+          .getNextWhtDocNo()
+      );
+
+      if (!docNoResult || !docNoResult.success) {
+        await Swal.fire('เกิดข้อผิดพลาด', 'ดึงเลขที่เอกสารไม่สำเร็จ', 'error');
+        failCount++;
+        continue;
+      }
+
+      Swal.close();
+
+      // แสดง modal ตั้งค่า — เหมือน openIssueWhtModal ทุกอย่าง
+      const mergeNote = group.length > 1
+        ? `<p class="text-xs text-indigo-600 font-semibold mt-1">⚡ รวบ ${group.length} รายการจากคู่ค้าเดียวกัน</p>`
+        : '';
+
+      const todayStr = new Date().toISOString().split('T')[0];
+      const result = await Swal.fire({
+        title      : `ตั้งค่าหนังสือรับรองฯ (50 ทวิ) — ใบที่ ${gi+1}/${groupList.length}`,
+        html       : `
+          <div class="text-left space-y-4 mt-4">
+            <div>
+              <label class="block text-sm font-bold text-gray-700 mb-1">เลขที่เอกสาร (ระบบรันให้ / แก้ไขได้)</label>
+              <input type="text" id="swal-doc-no" class="w-full border p-2 rounded border-gray-300 font-bold text-blue-700 bg-blue-50" value="${docNoResult.docNo}">
+            </div>
+            <div>
+              <label class="block text-sm font-bold text-gray-700 mb-1">📅 วันที่จ่าย (แสดงในคอลัมน์ วัน เดือน ปีที่จ่าย)</label>
+              <input type="date" id="swal-pay-date" class="w-full border p-2 rounded border-gray-300" value="${todayStr}">
+            </div>
+            <div class="bg-gray-50 p-3 rounded border">
+              <p class="text-sm"><b>ผู้ถูกหัก:</b> ${group[0].contactName}</p>
+              <p class="text-sm"><b>ยอดก่อนหัก:</b> ฿${Number(totalAmt).toLocaleString('en-US', {minimumFractionDigits:2})}</p>
+              <p class="text-sm"><b>ยอดภาษี:</b> ฿${Number(totalWht).toLocaleString('en-US', {minimumFractionDigits:2})} (${whtRate}%)</p>
+              ${mergeNote}
+            </div>
+            <div>
+              <label class="block text-sm font-bold text-gray-700 mb-1">ลำดับประเภทเงินได้ (ข้อ 1-6)</label>
+              <select id="swal-income-seq" class="w-full border p-2 rounded border-gray-300" onchange="toggleOtherDesc()">
+                <option value="1">(1) เงินเดือน ค่าจ้าง บำนาญ ฯลฯ</option>
+                <option value="2">(2) ค่าธรรมเนียม ค่านายหน้า ฯลฯ</option>
+                <option value="3">(3) ค่าแห่งลิขสิทธิ์ ฯลฯ</option>
+                <option value="4">(4)(ก) ดอกเบี้ย ฯลฯ</option>
+                <option value="5" selected>(5) ค่าบริการ, ค่ารับจ้างทำของ ฯลฯ</option>
+                <option value="6">(6) อื่นๆ (โปรดระบุ)</option>
+              </select>
+            </div>
+            <div id="swal-other-desc-box" class="hidden">
+              <label class="block text-sm font-bold text-gray-700 mb-1">ระบุรายละเอียด (สำหรับข้อ 6)</label>
+              <input type="text" id="swal-other-desc" class="w-full border p-2 rounded border-gray-300" placeholder="เช่น ค่าขนส่ง, ค่าเช่า">
+            </div>
+          </div>`,
+        showCancelButton  : true,
+        confirmButtonText : gi < groupList.length - 1 ? 'บันทึก & ไปใบถัดไป →' : 'บันทึก & พิมพ์เอกสาร',
+        confirmButtonColor: '#4f46e5',
+        cancelButtonText  : 'ข้ามใบนี้',
+        didOpen           : () => toggleOtherDesc(),
+        preConfirm        : () => {
+          const docNo = document.getElementById('swal-doc-no').value.trim();
+          if (!docNo) { Swal.showValidationMessage('กรุณาระบุเลขที่เอกสาร'); return false; }
+          if (!document.getElementById('swal-pay-date').value) { Swal.showValidationMessage('กรุณาระบุวันที่จ่าย'); return false; }
+          return {
+            docNo      : docNo,
+            paymentDate: document.getElementById('swal-pay-date').value,
+            seq        : document.getElementById('swal-income-seq').value,
+            otherDesc  : document.getElementById('swal-other-desc')?.value || ''
+          };
+        }
+      });
+
+      // user กด "ข้ามใบนี้"
+      if (!result.isConfirmed) { failCount++; continue; }
+
+      // บันทึกและสร้างเอกสาร
+      Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+      const saveResult = await new Promise(resolve =>
+        google.script.run
+          .withSuccessHandler(resolve)
+          .withFailureHandler(() => resolve({ success: false }))
+          .saveAndGenerate50Tawi({
+            docNo      : result.value.docNo,
+            paymentDate: result.value.paymentDate,
+            seq        : result.value.seq,
+            otherDesc  : result.value.otherDesc,
+            entityId   : currentEntityId,
+            items    : group.map(i => ({
+              transactionId: i.transactionId,
+              amount       : parseFloat(i.amount)    || 0,
+              whtAmount    : parseFloat(i.whtAmount)  || 0
+            }))
+          })
+      );
+
+      Swal.close();
+
+      if (saveResult && saveResult.success) {
+        successCount++;
+        allHtmlContents.push(saveResult.htmlContent);
+        if (saveResult.printData) allPrintData.push(saveResult.printData);
+      } else {
+        failCount++;
+        await Swal.fire('เกิดข้อผิดพลาด', saveResult?.message || 'บันทึกไม่สำเร็จ', 'error');
+      }
+    }
+
+    // --- สร้าง PDF รวมทุกใบ (เติมเทมเพลตสรรพากร) ---
+    if (allPrintData.length > 0) {
+      Swal.fire({ title: 'กำลังสร้าง PDF...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+      try {
+        await WHT50.printMany(allPrintData);
+        Swal.close();
+      } catch (err) {
+        Swal.fire('สร้าง PDF ไม่สำเร็จ', err.message, 'error');
+      }
+    }
+
+    if (successCount > 0) {
+      Swal.fire({
+        icon : failCount === 0 ? 'success' : 'warning',
+        title: 'เสร็จสิ้น',
+        html : `บันทึกสำเร็จ <b>${successCount}</b> ใบ${failCount > 0 ? ` / ข้าม/ล้มเหลว <b>${failCount}</b> ใบ` : ''}`,
+        timer: 3000, showConfirmButton: false
+      });
+    }
+
+    clearWhtSelection();
+    loadDashboard();
+  }
+
+  // เปิด Popup เพื่อให้กดยืนยันการออก 50 ทวิ
+  function openIssueWhtModal(idx) {
+    const item = pendingWhtData[idx];
+    Swal.fire({ title: 'กำลังดึงเลขที่เอกสาร...', didOpen: () => { Swal.showLoading(); } });
+
+    // ข้อ 4: getNextWhtDocNo ตอนนี้ return {success, docNo} แทน string ตรงๆ
+    google.script.run
+      .withSuccessHandler(function(result) {
+        Swal.close();
+        if (!result.success) {
+          Swal.fire('เกิดข้อผิดพลาด', result.message || 'ดึงเลขที่เอกสารไม่สำเร็จ', 'error');
+          return;
+        }
+        const nextDocNo = result.docNo;
+        const todayStr = new Date().toISOString().split('T')[0];
+        Swal.fire({
+        title: 'ตั้งค่าหนังสือรับรองฯ (50 ทวิ)',
+        html: `
+          <div class="text-left space-y-4 mt-4">
+            <div>
+              <label class="block text-sm font-bold text-gray-700 mb-1">เลขที่เอกสาร (ระบบรันให้ / แก้ไขได้)</label>
+              <input type="text" id="swal-doc-no" class="w-full border p-2 rounded border-gray-300 font-bold text-blue-700 bg-blue-50" value="${nextDocNo}">
+            </div>
+            <div>
+              <label class="block text-sm font-bold text-gray-700 mb-1">📅 วันที่จ่าย (แสดงในคอลัมน์ วัน เดือน ปีที่จ่าย)</label>
+              <input type="date" id="swal-pay-date" class="w-full border p-2 rounded border-gray-300" value="${todayStr}">
+            </div>
+            <div class="bg-gray-50 p-3 rounded border">
+              <p class="text-sm"><b>ผู้ถูกหัก:</b> ${item.contactName}</p>
+              <p class="text-sm"><b>ยอดก่อนหัก:</b> ฿${Number(item.amount).toLocaleString('en-US')}</p>
+              <p class="text-sm"><b>ยอดภาษี:</b> ฿${Number(item.whtAmount).toLocaleString('en-US')} (${item.whtRate}%)</p>
+            </div>
+            <div>
+              <label class="block text-sm font-bold text-gray-700 mb-1">ลำดับประเภทเงินได้ (ข้อ 1-6)</label>
+              <select id="swal-income-seq" class="w-full border p-2 rounded border-gray-300" onchange="toggleOtherDesc()">
+                <option value="1">(1) เงินเดือน ค่าจ้าง บำนาญ ฯลฯ</option>
+                <option value="2">(2) ค่าธรรมเนียม ค่านายหน้า ฯลฯ</option>
+                <option value="3">(3) ค่าแห่งลิขสิทธิ์ ฯลฯ</option>
+                <option value="4">(4)(ก) ดอกเบี้ย ฯลฯ</option>
+                <option value="5" selected>(5) ค่าบริการ, ค่ารับจ้างทำของ ฯลฯ</option>
+                <option value="6">(6) อื่นๆ (โปรดระบุ)</option>
+              </select>
+            </div>
+            <div id="swal-other-desc-box" class="hidden">
+              <label class="block text-sm font-bold text-gray-700 mb-1">ระบุรายละเอียด (สำหรับข้อ 6)</label>
+              <input type="text" id="swal-other-desc" class="w-full border p-2 rounded border-gray-300" placeholder="เช่น ค่าขนส่ง, ค่าเช่า" value="${item.category}">
+            </div>
+          </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: 'บันทึก & พิมพ์เอกสาร',
+        confirmButtonColor: '#4f46e5',
+        cancelButtonText: 'ยกเลิก',
+        didOpen: () => toggleOtherDesc(),
+        preConfirm: () => {
+          const docNo = document.getElementById('swal-doc-no').value;
+          if(!docNo) { Swal.showValidationMessage('กรุณาระบุเลขที่เอกสาร'); return false; }
+          if(!document.getElementById('swal-pay-date').value) { Swal.showValidationMessage('กรุณาระบุวันที่จ่าย'); return false; }
+          return {
+            transactionId: item.transactionId,
+            docNo        : docNo,
+            paymentDate  : document.getElementById('swal-pay-date').value,
+            seq          : document.getElementById('swal-income-seq').value,
+            otherDesc    : document.getElementById('swal-other-desc').value
+          }
+        }
+      }).then((result) => {
+        if (result.isConfirmed) executeSaveAndPrint50Tawi(result.value);
+      });
+    }).getNextWhtDocNo();
+  }
+
+  // ใช้สำหรับซ่อน/แสดงช่องกรอกข้อความเมื่อเลือกข้อ 6
+  function toggleOtherDesc() {
+    const seq = document.getElementById('swal-income-seq').value;
+    const box = document.getElementById('swal-other-desc-box');
+    if(seq === '6') box.classList.remove('hidden'); else box.classList.add('hidden');
+  }
+
+  // ส่งคำสั่งไปบันทึกชีท pnd3-53 และเปิดหน้าปริ๊น
+  function executeSaveAndPrint50Tawi(formData) {
+    formData.entityId = currentEntityId;   // [Multi-Entity] ผู้ออกหนังสือรับรอง = กิจการที่เลือก
+    Swal.fire({ title: 'กำลังบันทึกและสร้างเอกสาร...', didOpen: () => { Swal.showLoading(); } });
+    google.script.run.withSuccessHandler(function(res) {
+      if(res.success) {
+        Swal.close();
+        // [PDF-Template] เติมข้อมูลลงเทมเพลต PDF สรรพากร แทนการ write HTML
+        WHT50.printOne(res.printData)
+          .catch(err => Swal.fire('สร้าง PDF ไม่สำเร็จ', err.message, 'error'));
+        // โหลดตารางใหม่เพื่อให้รายการนี้ย้ายไปอยู่ฝั่ง "ประวัติ"
+        loadDashboard();
+      } else { Swal.fire('เกิดข้อผิดพลาด', res.message, 'error'); }
+    }).withFailureHandler(function(err) {
+      Swal.fire('บันทึก/สร้างเอกสารล้มเหลว', err && err.message ? err.message : String(err), 'error');
+    }).saveAndGenerate50Tawi(formData);
+  }
+
+  // ส่งคำสั่งไปดึงข้อมูลเก่ามาปริ๊นเฉยๆ ไม่บันทึกซ้ำ
+  function reprintWht(docNo) {
+    Swal.fire({ title: 'กำลังดึงข้อมูลเพื่อพิมพ์ซ้ำ...', didOpen: () => { Swal.showLoading(); } });
+    google.script.run.withSuccessHandler(function(res) {
+      if(res.success) {
+        Swal.close();
+        // [PDF-Template] พิมพ์ซ้ำจากประวัติ -> เติมเทมเพลต PDF
+        WHT50.printOne(res.printData)
+          .catch(err => Swal.fire('สร้าง PDF ไม่สำเร็จ', err.message, 'error'));
+      } else { Swal.fire('ไม่พบเอกสาร', res.message, 'error'); }
+    }).withFailureHandler(function(err) {
+      Swal.fire('ดึงข้อมูลล้มเหลว', err && err.message ? err.message : String(err), 'error');
+    }).generate50TawiHTMLFromHistory(docNo);
+  }
+</script>

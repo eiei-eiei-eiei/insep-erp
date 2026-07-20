@@ -1,0 +1,86 @@
+      <!-- ================= [Phase B] SECTION 3: บัญชี & เงินสด ================= -->
+      <div id="view-accounts" class="hidden space-y-6">
+
+        <!-- แถวควบคุม: เลือก period + ปุ่มดึงข้อมูล -->
+        <div class="bg-white rounded-lg shadow-md p-4 md:p-6 flex flex-col md:flex-row justify-between items-center gap-4">
+          <div class="flex items-center gap-3 w-full md:w-auto">
+            <label class="font-bold text-gray-700 whitespace-nowrap">ยอด ณ สิ้นเดือน:</label>
+            <input type="month" id="accPeriod" class="border-gray-300 rounded-md shadow-sm border p-2 w-full md:w-auto">
+          </div>
+          <button onclick="loadAccountBalances()" id="btn-load-acc"
+            class="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-md transition-colors">
+            ดึงข้อมูล
+          </button>
+          <!-- [Phase C] ปุ่มโอนเงิน -->
+          <button onclick="openTransferModal()" id="btn-transfer"
+            class="w-full md:w-auto bg-amber-500 hover:bg-amber-600 text-white font-bold py-2 px-6 rounded-md transition-colors flex items-center justify-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
+            โอนเงินระหว่างบัญชี
+          </button>
+        </div>
+
+        <!-- Cards ยอดคงเหลือ -->
+        <div id="acc-balance-section" class="hidden">
+          <h2 class="text-lg font-bold text-gray-700 mb-3 px-1">ยอดคงเหลือแต่ละบัญชี</h2>
+          <div id="acc-cards-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+
+          <!-- Grand Total -->
+          <div class="mt-4 bg-gray-800 text-white rounded-lg p-4 flex justify-between items-center">
+            <span class="font-bold text-lg">ยอดรวมทุกบัญชี</span>
+            <span id="acc-grand-total" class="text-2xl font-bold">฿0.00</span>
+          </div>
+        </div>
+
+        <!-- Statement ของบัญชีที่เลือก -->
+        <div id="acc-statement-section" class="hidden bg-white rounded-lg shadow-md p-4 md:p-6">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-4 border-b pb-3">
+            <div>
+              <h2 class="text-lg font-bold text-gray-800" id="stmt-title">การเคลื่อนไหว</h2>
+              <p class="text-sm text-gray-500" id="stmt-subtitle"></p>
+            </div>
+            <div class="flex items-center gap-2 self-start md:self-auto flex-wrap">
+              <!-- [Phase D] เปลี่ยนเดือน statement (หลังเลือกบัญชี) -->
+              <input type="month" id="stmt-month" onchange="changeStmtMonth()" class="border-gray-300 rounded-md border p-1.5 text-sm">
+              <!-- [Phase 2 / N4] พิมพ์ statement เป็น PDF -->
+              <button onclick="printStatement()"
+                class="text-sm text-blue-600 hover:text-blue-800 border border-blue-300 rounded-md px-3 py-1.5 transition-colors">
+                🖨️ พิมพ์ / PDF
+              </button>
+              <button onclick="closeStatement()"
+                class="text-sm text-gray-500 hover:text-gray-700 border border-gray-300 rounded-md px-3 py-1.5 transition-colors">
+                ✕ ปิด
+              </button>
+            </div>
+          </div>
+
+          <!-- Opening balance row -->
+          <div class="flex justify-between items-center bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-3 text-sm font-semibold text-blue-800">
+            <span>ยอดยกมา (Opening Balance)</span>
+            <span id="stmt-opening" class="text-base font-bold">฿0.00</span>
+          </div>
+
+          <!-- ตาราง statement -->
+          <div class="overflow-x-auto table-scroll border rounded-xl">
+            <table class="min-w-full divide-y divide-gray-200 text-sm">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">วันที่</th>
+                  <th class="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase hidden md:table-cell">หมวดหมู่</th>
+                  <th class="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">คู่ค้า / รายละเอียด</th>
+                  <th class="px-3 py-2 text-right text-xs font-semibold text-red-500 uppercase">รายจ่าย</th>
+                  <th class="px-3 py-2 text-right text-xs font-semibold text-green-600 uppercase">รายรับ</th>
+                  <th class="px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase">คงเหลือ</th>
+                </tr>
+              </thead>
+              <tbody id="stmt-tbody" class="bg-white divide-y divide-gray-100"></tbody>
+            </table>
+          </div>
+
+          <!-- Closing balance row -->
+          <div class="flex justify-between items-center bg-gray-100 border border-gray-300 rounded-lg px-4 py-3 mt-3 text-sm font-semibold text-gray-700">
+            <span>ยอดยกไป (Closing Balance)</span>
+            <span id="stmt-closing" class="text-base font-bold">฿0.00</span>
+          </div>
+        </div>
+
+      </div><!-- /view-accounts -->

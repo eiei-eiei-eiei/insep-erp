@@ -1,0 +1,106 @@
+<!-- ===== view: ประวัติการหมัก-กลั่น ===== -->
+        <!-- 5.5 ประวัติการหมัก-กลั่น -->
+        <div id="tab-history" class="tab-content max-w-4xl mx-auto">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800 border-b pb-2"><i class="fa-solid fa-chart-column text-cyan-600 mr-2"></i> ประวัติการหมัก-กลั่น</h2>
+
+            <!-- โหมด -->
+            <div class="flex gap-2 mb-4">
+                <button type="button" id="hist-mode-single" onclick="histSetMode('single')" class="flex-1 px-3 py-2 rounded text-sm font-bold bg-cyan-600 text-white">ดู Batch เดี่ยว</button>
+                <button type="button" id="hist-mode-compare" onclick="histSetMode('compare')" class="flex-1 px-3 py-2 rounded text-sm font-bold bg-gray-200 text-gray-600">เปรียบเทียบหลาย Batch</button>
+            </div>
+
+            <!-- ตัวเลือก Batch -->
+            <div class="bg-white p-4 rounded-xl shadow-sm border mb-6">
+                <!-- เดี่ยว -->
+                <div id="hist-single-select">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">เลือก Batch</label>
+                    <select id="hist-single-batch" onchange="histSingleChange()" class="w-full p-2 border rounded bg-yellow-50">
+                        <option value="">-- เลือก Batch --</option>
+                    </select>
+                </div>
+                <!-- เปรียบเทียบ: multi-select dropdown -->
+                <div id="hist-compare-select" class="hidden relative">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">เลือก Batch (เลือกได้หลายอัน)</label>
+                    <button type="button" onclick="histToggleDropdown()" class="w-full p-2 border rounded bg-yellow-50 text-left flex justify-between items-center">
+                        <span id="hist-compare-label">-- เลือก Batch --</span>
+                        <i class="fa-solid fa-chevron-down text-gray-400"></i>
+                    </button>
+                    <div id="hist-compare-panel" class="hidden absolute z-20 mt-1 w-full bg-white border rounded shadow-lg max-h-60 overflow-y-auto p-2">
+                        <label class="flex items-center gap-2 p-1 border-b font-bold text-sm cursor-pointer">
+                            <input type="checkbox" id="hist-select-all" onchange="histSelectAll(this.checked)"> เลือกทั้งหมด
+                        </label>
+                        <div id="hist-compare-list"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== Section: ช่วงหมัก ===== -->
+            <button type="button" onclick="histToggleSection('ferment')" class="w-full flex items-center justify-between bg-cyan-50 border border-cyan-200 text-cyan-800 font-bold px-4 py-2 rounded-lg mb-2">
+                <span><i class="fa-solid fa-bubbles mr-2"></i>ช่วงหมัก</span>
+                <i id="hist-caret-ferment" class="fa-solid fa-chevron-up"></i>
+            </button>
+            <div id="hist-sec-ferment" class="mb-6">
+                <!-- เดี่ยว: กราฟรวม Brix/pH/Temp -->
+                <div id="hist-ferment-single" class="bg-white p-4 rounded-xl shadow-sm border">
+                    <h3 class="text-sm font-bold text-gray-600 mb-2">Brix / pH / อุณหภูมิ vs วันหมัก</h3>
+                    <canvas id="hist-combined-chart" height="110"></canvas>
+                </div>
+                <!-- เทียบ: 3 กราฟเล็ก -->
+                <div id="hist-ferment-multi" class="space-y-4 hidden">
+                    <div class="bg-white p-4 rounded-xl shadow-sm border"><h3 class="text-sm font-bold text-gray-600 mb-2">Brix (°Bx)</h3><canvas id="hist-brix-chart" height="90"></canvas></div>
+                    <div class="bg-white p-4 rounded-xl shadow-sm border"><h3 class="text-sm font-bold text-gray-600 mb-2">pH</h3><canvas id="hist-ph-chart" height="90"></canvas></div>
+                    <div class="bg-white p-4 rounded-xl shadow-sm border"><h3 class="text-sm font-bold text-gray-600 mb-2">อุณหภูมิ (°C)</h3><canvas id="hist-temp-chart" height="90"></canvas></div>
+                </div>
+                <div id="hist-summary" class="mt-4"></div>
+            </div>
+
+            <!-- ===== Section: ช่วงกลั่น ===== -->
+            <button type="button" onclick="histToggleSection('distill')" class="w-full flex items-center justify-between bg-orange-50 border border-orange-200 text-orange-800 font-bold px-4 py-2 rounded-lg mb-2">
+                <span><i class="fa-solid fa-fire-burner mr-2"></i>ช่วงกลั่น</span>
+                <i id="hist-caret-distill" class="fa-solid fa-chevron-up"></i>
+            </button>
+            <div id="hist-sec-distill" class="mb-6">
+                <div id="hist-d-empty" class="hidden text-center text-gray-400 italic py-6 bg-white rounded-xl border mb-3"></div>
+
+                <!-- เดี่ยว: ปุ่มเลือกหม้อ + 2 กราฟ -->
+                <div id="hist-d-single-wrap">
+                    <div id="hist-d-pot-tabs" class="flex flex-wrap gap-2 mb-3"></div>
+                    <div class="space-y-4">
+                        <div class="bg-white p-4 rounded-xl shadow-sm border"><h3 class="text-sm font-bold text-gray-600 mb-2">ดีกรี@20 + อุณหภูมิไอ vs ปริมาณสะสม</h3><canvas id="hist-d-chartA" height="100"></canvas></div>
+                        <div class="bg-white p-4 rounded-xl shadow-sm border"><h3 class="text-sm font-bold text-gray-600 mb-2">อัตราการไหล + ดีกรี/อุณหภูมิ vs เวลา</h3><canvas id="hist-d-chartB" height="100"></canvas></div>
+                    </div>
+                </div>
+
+                <!-- เทียบ: overlay (เลือก metric + แกน X) + กราฟแท่งสรุป -->
+                <div id="hist-d-compare-wrap" class="hidden">
+                    <div class="flex flex-wrap gap-3 mb-3 items-center text-sm text-gray-600">
+                        <label>ค่าที่เทียบ (แกน Y):
+                            <select id="hist-d-metric" onchange="histDistillCompareDraw()" class="p-2 border rounded text-sm ml-1">
+                                <option value="abv20">ดีกรี@20</option>
+                                <option value="vaporTemp">อุณหภูมิไอ</option>
+                                <option value="cumVol">ปริมาณสะสม (ช่วง)</option>
+                                <option value="flowRate">อัตราการไหล</option>
+                                <option value="potTemp">อุณหภูมิหม้อต้ม</option>
+                                <option value="coolTemp">น้ำหล่อเย็น</option>
+                            </select>
+                        </label>
+                        <label>แกน X:
+                            <select id="hist-d-xaxis" onchange="histDistillCompareDraw()" class="p-2 border rounded text-sm ml-1">
+                                <option value="minute">เวลา (นาที)</option>
+                                <option value="cum">ปริมาณสะสม (รวมทั้งหม้อ)</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl shadow-sm border mb-4"><canvas id="hist-d-compare-chart" height="110"></canvas></div>
+                    <p class="text-xs text-gray-400 mb-2">เทียบผลลัพธ์ปลายทางต่อ batch</p>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="bg-white p-3 rounded-xl shadow-sm border"><h4 class="text-xs font-bold text-gray-600 mb-2">ปริมาณ@เป้าหมาย (ล.)</h4><canvas id="hist-d-bar-vol" height="130"></canvas></div>
+                        <div class="bg-white p-3 rounded-xl shadow-sm border"><h4 class="text-xs font-bold text-gray-600 mb-2">ดีกรีหัวใจ @20 (%)</h4><canvas id="hist-d-bar-abv" height="130"></canvas></div>
+                        <div class="bg-white p-3 rounded-xl shadow-sm border"><h4 class="text-xs font-bold text-gray-600 mb-2">Yield (%)</h4><canvas id="hist-d-bar-yield" height="130"></canvas></div>
+                    </div>
+                </div>
+
+                <div id="hist-d-summary" class="mt-4"></div>
+            </div>
+        </div>
+

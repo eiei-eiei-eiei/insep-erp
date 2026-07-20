@@ -1,0 +1,92 @@
+<script>
+        // ===== ปรุงแต่ง/ปรับดีกรี: fetchRemainingVol, calculator =====
+        function fetchRemainingVol() {
+            let productName = document.getElementById('dil-product-name').value;
+            if (!productName) {
+                document.getElementById('dil-remaining-vol').innerText = "0.00";
+                return;
+            }
+            document.getElementById('dil-remaining-vol').innerText = "...";
+            google.script.run
+                .withSuccessHandler(function(result) {
+                    // รองรับ return format ใหม่ { success, data }
+                    if (result && result.success === false) {
+                        document.getElementById('dil-remaining-vol').innerText = "Error";
+                        return;
+                    }
+                    document.getElementById('dil-remaining-vol').innerText = parseFloat(result.data || 0).toFixed(2);
+                })
+                .withFailureHandler(function() {
+                    document.getElementById('dil-remaining-vol').innerText = "Error";
+                })
+                .getRemainingDistillVol(productName);
+        }
+
+        let isCalcMode = false;
+        function toggleCalcMode() {
+            isCalcMode = document.getElementById('calc-toggle').checked;
+            let statusText = document.getElementById('calc-status-text');
+            let badge      = document.getElementById('calc-badge');
+            
+            if (isCalcMode) {
+                statusText.innerText = "ระบบช่วยคำนวณ 2 ทาง (เปิด)";
+                statusText.className = "text-xs font-bold text-green-600";
+                badge.classList.remove('hidden');
+                
+                document.getElementById('dil-water').readOnly = true;
+                document.getElementById('dil-water').classList.add('bg-gray-100');
+                
+                document.getElementById('dil-start-vol').classList.add('ring-2', 'ring-green-400');
+                document.getElementById('dil-final-vol').classList.add('ring-2', 'ring-green-400');
+            } else {
+                statusText.innerText = "ระบบช่วยคำนวณ 2 ทาง (ปิด)";
+                statusText.className = "text-xs font-bold text-gray-500";
+                badge.classList.add('hidden');
+                
+                document.getElementById('dil-water').readOnly = false;
+                document.getElementById('dil-water').classList.remove('bg-gray-100');
+                
+                document.getElementById('dil-start-vol').classList.remove('ring-2', 'ring-green-400');
+                document.getElementById('dil-final-vol').classList.remove('ring-2', 'ring-green-400');
+            }
+            runCalculator('v1');
+        }
+
+        function runCalculator(source) {
+            if (!isCalcMode) return;
+            
+            let v1El    = document.getElementById('dil-start-vol');
+            let c1El    = document.getElementById('dil-start-abv');
+            let c2El    = document.getElementById('dil-final-abv');
+            let v2El    = document.getElementById('dil-final-vol');
+            let waterEl = document.getElementById('dil-water');
+
+            let v1 = parseFloat(v1El.value) || 0;
+            let c1 = parseFloat(c1El.value) || 0;
+            let c2 = parseFloat(c2El.value) || 0;
+            let v2 = parseFloat(v2El.value) || 0;
+            
+            if (source === 'v2') {
+                if (v2 > 0 && c1 > 0 && c2 > 0) {
+                    let calcV1 = (c2 * v2) / c1;
+                    let water  = v2 - calcV1;
+                    v1El.value    = calcV1.toFixed(2);
+                    waterEl.value = (water > 0 ? water.toFixed(2) : 0);
+                }
+            } else {
+                if (v1 > 0 && c1 > 0 && c2 > 0) {
+                    let calcV2 = (c1 * v1) / c2;
+                    let water  = calcV2 - v1;
+                    if (source !== 'v2') v2El.value = calcV2.toFixed(2);
+                    waterEl.value = (water > 0 ? water.toFixed(2) : 0);
+                }
+            }
+        }
+
+        // ==========================================
+        // Report — สร้าง Checkbox รายการ
+        // ==========================================
+        // ==========================================
+        // [ใหม่] เติมฟอร์มจริง ภส.๐๗-๐๑/๑ ด้วย pdf-lib (overlay บน PDF template)
+        // ==========================================
+</script>

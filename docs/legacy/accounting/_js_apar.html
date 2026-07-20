@@ -1,0 +1,120 @@
+<script>
+  // =========================================================================
+  // JS — [Phase 2 / #5] ลูกหนี้-เจ้าหนี้ (AP/AR)
+  // ใช้ global: currentEntityId, currentUser, globalSettings, formatMoney (จาก _js_entry)
+  // =========================================================================
+
+  function loadApAr() {
+    const load = document.getElementById('apar-loading');
+    if (load) load.classList.remove('hidden');
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (load) load.classList.add('hidden');
+        if (!res || !res.success) { Swal.fire('ผิดพลาด', (res && res.message) || 'โหลดไม่สำเร็จ', 'error'); return; }
+        renderApArList('apar-payable',    res.payable,    'AP');
+        renderApArList('apar-receivable', res.receivable, 'AR');
+        document.getElementById('apar-total-ap').innerText = formatMoney(res.totalAP);
+        document.getElementById('apar-total-ar').innerText = formatMoney(res.totalAR);
+      })
+      .withFailureHandler(function(e) {
+        if (load) load.classList.add('hidden');
+        Swal.fire('เชื่อมต่อไม่ได้', e.message, 'error');
+      })
+      .getApArReport(currentEntityId);
+  }
+
+  function renderApArList(elId, arr, kind) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    if (!arr || arr.length === 0) {
+      el.innerHTML = '<div class="px-4 py-6 text-center text-gray-400 text-sm">ไม่มีรายการค้าง</div>';
+      return;
+    }
+    // ปุ่มบันทึกชำระ = เฉพาะ role main
+    const canSettle = currentUser && currentUser.role === 'main';
+    const color = (kind === 'AP') ? 'red' : 'emerald';
+    el.innerHTML = arr.map(function(r) {
+      const settleBtn = canSettle
+        ? `<button onclick="openSettleModal('${r.transactionId}','${kind}',${r.amount})" class="text-xs font-bold text-white bg-${color}-500 hover:bg-${color}-600 rounded px-2 py-1">บันทึกชำระ</button>`
+        : '';
+      const due = r.dueDate ? `<span class="text-xs text-gray-500">ครบกำหนด ${r.dueDate}</span>` : '<span></span>';
+      const inst = r.installment ? ` · งวด ${r.installment}` : '';
+      return `<div class="px-4 py-2.5">
+        <div class="flex justify-between items-start">
+          <span class="font-semibold text-gray-800">${r.contactName || '-'}</span>
+          <span class="font-bold text-${color}-600">${formatMoney(r.amount)}</span>
+        </div>
+        <div class="text-xs text-gray-500">${r.date} · ${r.category || ''}${inst}</div>
+        ${r.description ? `<div class="text-xs text-gray-500">${r.description}</div>` : ''}
+        <div class="flex justify-between items-center mt-1">${due}${settleBtn}</div>
+      </div>`;
+    }).join('');
+  }
+
+  // เปิด modal บันทึกการชำระ (settle) — เลือกบัญชีที่จ่าย/รับ + วันที่
+  function openSettleModal(txId, kind, amount) {
+    const accs = globalSettings.accounts || [];
+    if (accs.length === 0) { Swal.fire('แจ้งเตือน', 'ยังไม่มีบัญชีใน Settings', 'warning'); return; }
+    const opts  = accs.map(a => `<option value="${a}">${a}</option>`).join('');
+    const today = new Date().toISOString().slice(0, 10);
+    Swal.fire({
+      title: 'บันทึกการชำระ',
+      html: `<div style="text-align:left;font-size:14px">
+          <div style="margin-bottom:8px">รายการ <b>${txId}</b> · ยอด <b>${formatMoney(amount)}</b></div>
+          <label style="font-weight:600">บัญชีที่${kind === 'AP' ? 'ใช้จ่าย' : 'รับเงิน'}</label>
+          <select id="settleAccount" class="swal2-select" style="display:block;width:100%;margin:4px 0 10px">${opts}</select>
+          <label style="font-weight:600">วันที่ชำระ</label>
+          <input type="date" id="settlePayDate" class="swal2-input" style="display:block;width:100%;margin:4px 0 10px" value="${today}">
+          <label style="font-weight:600">เลขที่ใบกำกับภาษี (ถ้ามี)</label>
+          <input type="text" id="settleInvNo" class="swal2-input" style="display:block;width:100%;margin:4px 0 10px" placeholder="เลขที่ใบกำกับ">
+          <label style="font-weight:600">วันที่ใบกำกับภาษี</label>
+          <input type="date" id="settleInvDate" class="swal2-input" style="display:block;width:100%;margin:4px 0">
+        </div>`,
+      showCancelButton: true, confirmButtonText: 'บันทึกชำระ', cancelButtonText: 'ยกเลิก',
+      preConfirm: function() {
+        return {
+          accountName: document.getElementById('settleAccount').value,
+          paymentDate: document.getElementById('settlePayDate').value,
+          taxInvoiceNo: document.getElementById('settleInvNo').value.trim(),
+          taxInvoiceDate: document.getElementById('settleInvDate').value
+        };
+      }
+    }).then(function(result) {
+      if (!result.isConfirmed) return;
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (res && res.success) { Swal.fire('สำเร็จ', res.message, 'success'); loadApAr(); }
+          else Swal.fire('ผิดพลาด', (res && res.message) || 'บันทึกไม่สำเร็จ', 'error');
+        })
+        .withFailureHandler(function(e) { Swal.fire('เชื่อมต่อไม่ได้', e.message, 'error'); })
+        .settleApAr(txId, result.value);
+    });
+  }
+
+  // [Phase 2 / N5] drill-down: คลิกการ์ดรายรับ/รายจ่ายในแดชบอร์ด → ดูรายการของเดือนนั้น
+  function openMonthDrill(type) {
+    const period = document.getElementById('reportPeriod').value;
+    if (!period) { Swal.fire('แจ้งเตือน', 'เลือกเดือนก่อน', 'warning'); return; }
+    Swal.fire({ title: 'กำลังโหลด...', didOpen: () => Swal.showLoading() });
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (!res || !res.success) { Swal.fire('ผิดพลาด', (res && res.message) || 'โหลดไม่สำเร็จ', 'error'); return; }
+        const rows = res.results || [];
+        const body = rows.length
+          ? rows.map(r => `<tr><td style="padding:2px 6px">${r.date}</td><td style="padding:2px 6px">${r.contact || r.category || ''}</td><td style="padding:2px 6px;text-align:right">${formatMoney(r.net)}</td></tr>`).join('')
+          : '<tr><td colspan="3" style="text-align:center;color:#999;padding:12px">ไม่มีรายการ</td></tr>';
+        const total = rows.reduce((s, r) => s + (r.net || 0), 0);
+        Swal.fire({
+          title: `${type} เดือน ${period}`,
+          width: 620,
+          html: `<div style="max-height:55vh;overflow:auto"><table style="width:100%;font-size:13px;border-collapse:collapse">
+            <thead><tr style="border-bottom:1px solid #ddd"><th style="text-align:left;padding:3px 6px">วันที่</th><th style="text-align:left;padding:3px 6px">คู่ค้า/หมวด</th><th style="text-align:right;padding:3px 6px">สุทธิ</th></tr></thead>
+            <tbody>${body}</tbody>
+            <tfoot><tr style="border-top:2px solid #333;font-weight:bold"><td colspan="2" style="padding:4px 6px">รวม ${rows.length} รายการ</td><td style="text-align:right;padding:4px 6px">${formatMoney(total)}</td></tr></tfoot>
+          </table></div>`
+        });
+      })
+      .withFailureHandler(function(e) { Swal.fire('เชื่อมต่อไม่ได้', e.message, 'error'); })
+      .getMonthTransactions(currentEntityId, period, type);
+  }
+</script>

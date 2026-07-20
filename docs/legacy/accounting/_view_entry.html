@@ -1,0 +1,269 @@
+      <div id="view-entry" class="bg-white rounded-lg shadow-md p-3 md:p-6 pb-24 md:pb-6">
+        <div class="flex items-center justify-between border-b pb-3 mb-4">
+          <h1 class="text-lg md:text-2xl font-bold text-gray-800">บันทึกรายรับ-รายจ่าย</h1>
+          <button type="button" onclick="openScanSheet()" class="scan-btn-desktop inline-flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white font-bold py-2 px-4 rounded-xl text-sm shadow">
+            🤖 สแกนใบเสร็จ
+          </button>
+          <input type="file" id="scanReceiptInput" accept="image/*" class="hidden" onchange="handleScanReceipt(this)">
+          <input type="file" id="scanCameraInput" accept="image/*" capture="environment" class="hidden" onchange="handleScanReceipt(this)">
+
+          <!-- Action sheet เลือกแหล่งรูป -->
+          <div id="scan-source-sheet" class="hidden fixed inset-0 z-50 flex items-end justify-center" onclick="closeScanSheet(event)">
+            <div class="bg-white rounded-t-2xl w-full max-w-md shadow-2xl pb-safe" onclick="event.stopPropagation()">
+              <div class="p-4 border-b text-center font-bold text-gray-700">เลือกรูปใบเสร็จ</div>
+              <button onclick="triggerCamera()" class="w-full flex items-center gap-3 px-6 py-4 text-left hover:bg-gray-50 text-gray-800 font-medium">
+                <span class="text-2xl">📷</span> ถ่ายรูปด้วยกล้อง
+              </button>
+              <button onclick="triggerAlbum()" class="w-full flex items-center gap-3 px-6 py-4 text-left hover:bg-gray-50 text-gray-800 font-medium">
+                <span class="text-2xl">🖼️</span> เลือกจากอัลบัม
+              </button>
+              <button onclick="closeScanSheet()" class="w-full py-4 text-red-500 font-bold border-t">ยกเลิก</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="scan-result-box" class="hidden mb-4 p-3 rounded-xl border bg-violet-50 border-violet-200">
+          <div class="flex items-start gap-3">
+            <img id="scan-preview-img" src="" alt="preview" class="w-16 h-16 md:w-20 md:h-20 object-cover rounded-xl border border-violet-200 flex-shrink-0 cursor-pointer"
+              onclick="document.getElementById('scan-full-img-modal').classList.remove('hidden')">
+            <div class="flex-1 min-w-0">
+              <p id="scan-status-text" class="text-sm font-semibold text-violet-800"></p>
+              <div id="scan-contact-result" class="hidden mt-1.5 text-sm font-medium"></div>
+              <p id="scan-uncertain-text" class="text-xs text-yellow-700 mt-1 hidden"></p>
+              <div id="scan-price-type-box" class="hidden mt-2 p-2 bg-white rounded-xl border border-violet-200">
+                <p class="text-xs font-bold text-gray-700 mb-1.5">💰 ราคาที่สแกนได้คือ:</p>
+                <div class="flex flex-wrap gap-3">
+                  <label class="flex items-center gap-1.5 cursor-pointer text-sm"><input type="radio" name="scanPriceType" value="excl_vat" onchange="applyScanPriceType()" class="h-4 w-4 text-violet-600"> ยังไม่รวม VAT</label>
+                  <label class="flex items-center gap-1.5 cursor-pointer text-sm"><input type="radio" name="scanPriceType" value="incl_vat" onchange="applyScanPriceType()" class="h-4 w-4 text-violet-600"> รวม VAT แล้ว</label>
+                  <label class="flex items-center gap-1.5 cursor-pointer text-sm"><input type="radio" name="scanPriceType" value="skip" onchange="applyScanPriceType()" class="h-4 w-4 text-gray-400"> ข้าม</label>
+                </div>
+              </div>
+              <p class="text-xs text-gray-400 mt-1.5">แตะรูปเพื่อดูขนาดเต็ม — ตรวจสอบก่อนบันทึก</p>
+            </div>
+            <button onclick="clearScanResult()" class="text-gray-400 hover:text-gray-600 text-xl p-1 flex-shrink-0">✕</button>
+          </div>
+        </div>
+
+        <div id="scan-full-img-modal" class="hidden fixed inset-0 z-50 bg-black bg-opacity-80 flex items-center justify-center p-4" onclick="this.classList.add('hidden')">
+          <img id="scan-full-img" src="" alt="ใบเสร็จ" class="max-w-full max-h-full rounded-xl shadow-xl">
+        </div>
+
+        <form id="accounting-form">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-5 mb-5">
+            <div><label class="block text-sm font-semibold text-gray-700 mb-1">📅 วันที่รายการ</label><input type="date" id="transactionDate" required class="w-full border-gray-300 rounded-xl shadow-sm border p-3 focus:ring-2 focus:ring-blue-500"></div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1">ประเภทรายการ</label>
+              <div class="flex gap-2">
+                <button type="button" id="btn-expense" onclick="setType('รายจ่าย')" class="flex-1 py-3 px-4 bg-red-500 text-white rounded-xl text-sm font-bold shadow">💸 รายจ่าย</button>
+                <button type="button" id="btn-income" onclick="setType('รายรับ')" class="flex-1 py-3 px-4 bg-gray-100 text-gray-700 border border-gray-300 rounded-xl text-sm font-bold">💰 รายรับ</button>
+              </div>
+              <input type="hidden" id="type" value="รายจ่าย">
+            </div>
+            <div><label class="block text-sm font-semibold text-gray-700 mb-1">ประเภทบัญชี</label><select id="accountType" required class="w-full border-gray-300 rounded-xl shadow-sm border p-3 bg-white"><option value="">โหลด...</option></select></div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1">หมวดหมู่</label>
+              <div class="relative">
+                <input type="text" id="categorySearch" onfocus="showCategoryDropdown()" oninput="filterCategory()"
+                  placeholder="— เลือกรายรับ/รายจ่ายก่อน —"
+                  class="w-full border-gray-300 rounded-xl shadow-sm border p-3" autocomplete="off">
+                <input type="hidden" id="category">
+                <ul id="categoryDropdownList" class="absolute z-20 mt-1 w-full bg-white shadow-lg max-h-52 rounded-xl py-1 overflow-auto hidden border border-gray-100"></ul>
+              </div>
+            </div>
+            <div>
+              <label id="contact-label" class="block text-sm font-semibold text-gray-700 mb-1">👤 ชื่อคู่ค้า/ลูกค้า</label>
+              <div class="flex gap-2 relative">
+                <div class="relative flex-1">
+                  <input type="text" id="contactNameSearch" onfocus="showContactDropdown()" oninput="filterContacts()" placeholder="ค้นหาชื่อ..." class="w-full border-gray-300 rounded-xl shadow-sm border p-3" autocomplete="off">
+                  <ul id="contactDropdownList" class="absolute z-20 mt-1 w-full bg-white shadow-lg max-h-52 rounded-xl py-1 overflow-auto hidden border border-gray-100"></ul>
+                </div>
+                <button type="button" onclick="openContactModal()" class="bg-blue-100 text-blue-700 px-4 rounded-xl font-bold text-lg">+</button>
+              </div>
+              <div id="contactDetailsBox" class="hidden mt-2 p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-gray-700">
+                <p><span class="font-bold">เลขภาษี:</span> <span id="lblTaxId">-</span> (<span id="lblBranch">-</span>)</p>
+                <p class="mt-1"><span class="font-bold">ที่อยู่:</span> <span id="lblAddress">-</span></p>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1">รายละเอียด</label>
+              <input type="text" id="description" placeholder="คำอธิบายภาพรวมบิล" class="w-full border-gray-300 rounded-xl shadow-sm border p-3">
+              <!-- C2-5: Recent bills suggest -->
+              <div id="recent-bills-box" class="hidden mt-1.5 border border-blue-100 rounded-xl bg-blue-50 overflow-hidden">
+                <p class="text-xs font-semibold text-blue-700 px-3 pt-2 pb-1">📋 บิลล่าสุดของคู่ค้านี้ — คลิกเพื่อใช้ข้อความเดิม</p>
+                <div id="recent-bills-list" class="divide-y divide-blue-100"></div>
+              </div>
+            </div>
+            <div><label class="block text-sm font-semibold text-gray-700 mb-1">เลขใบกำกับภาษี</label><input type="text" id="taxInvoiceNo" placeholder="เลขบิล/ใบกำกับ (ถ้ามี)" class="w-full border-gray-300 rounded-xl shadow-sm border p-3"></div>
+            <div><label class="block text-sm font-semibold text-gray-700 mb-1">วันที่ใบกำกับภาษี</label>
+              <!-- C2-7: copy วันที่ใบกำกับ → transactionDate ถ้ายังว่าง -->
+              <input type="date" id="taxInvoiceDate" onchange="onTaxInvoiceDateChange(this.value)" class="w-full border-gray-300 rounded-xl shadow-sm border p-3">
+            </div>
+
+            <!-- C2-4: Receipt image preview -->
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1">📎 แนบรูปภาพ/สลิป</label>
+              <input type="file" id="receiptImage" accept="image/jpeg,image/png,image/gif,image/webp,image/*"
+                class="w-full border-gray-300 rounded-xl border p-2 bg-white text-sm"
+                onchange="previewReceiptImage(this)">
+              <!-- thumbnail + ปุ่ม X -->
+              <div id="receipt-preview-box" class="hidden mt-2 flex items-center gap-3 p-2 bg-gray-50 rounded-xl border border-gray-200">
+                <img id="receipt-preview-img" src="" alt="preview"
+                  class="w-16 h-16 object-cover rounded-lg border cursor-pointer"
+                  onclick="document.getElementById('receipt-full-modal').classList.remove('hidden')">
+                <div class="flex-1 min-w-0">
+                  <p id="receipt-preview-name" class="text-xs font-medium text-gray-700 truncate"></p>
+                  <p id="receipt-preview-size" class="text-xs text-gray-400"></p>
+                  <p id="receipt-heic-warn" class="hidden text-xs text-yellow-600 mt-0.5">⚠️ ไฟล์ HEIC อาจแสดงผลไม่ถูกต้องในบางระบบ — แนะนำแปลงเป็น JPG ก่อน</p>
+                </div>
+                <button type="button" onclick="clearReceiptImage()" class="text-gray-400 hover:text-red-500 text-xl p-1">✕</button>
+              </div>
+              <!-- modal ดูรูปเต็ม -->
+              <div id="receipt-full-modal" class="hidden fixed inset-0 z-50 bg-black bg-opacity-80 flex items-center justify-center p-4"
+                onclick="this.classList.add('hidden')">
+                <img id="receipt-full-img" src="" alt="receipt" class="max-w-full max-h-full rounded-xl shadow-xl">
+              </div>
+            </div>
+          </div>
+
+          <hr class="mb-4 border-gray-200">
+          <h2 class="text-base md:text-lg font-bold text-gray-800 mb-3">รายการสินค้า/บริการ</h2>
+
+          <!-- [Phase A] datalist suggestion หมวดหมู่/งาน + ปุ่มซ่อนคอลัมน์เสริม -->
+          <datalist id="cat-list"></datalist>
+          <datalist id="job-list"></datalist>
+          <div class="flex items-center gap-2 mb-2">
+            <button type="button" onclick="toggleOptCols()" id="btn-optcols" class="text-xs text-gray-600 border border-gray-300 rounded-lg px-3 py-1.5 hover:bg-gray-50">👁️ แสดงคอลัมน์เสริม (ราคาสแกน/ส่วนลด)</button>
+          </div>
+
+          <div class="items-desktop-table overflow-x-auto table-scroll mb-4 border rounded-xl">
+            <table class="min-w-full divide-y divide-gray-200">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="px-2 py-3 text-left text-xs font-semibold text-gray-500" style="min-width:160px">ชื่อสินค้า</th>
+                  <th class="px-2 py-3 text-left text-xs font-semibold text-gray-500" style="min-width:110px">หมวดหมู่</th>
+                  <th class="px-2 py-3 text-left text-xs font-semibold text-gray-500" style="min-width:110px">ระบุงาน</th>
+                  <th class="px-2 py-3 text-left text-xs font-semibold text-gray-500">จำนวน</th>
+                  <th class="px-2 py-3 text-left text-xs font-semibold text-purple-600 col-opt" style="display:none">ราคาสแกน 🔒</th>
+                  <th class="px-2 py-3 text-left text-xs font-semibold text-gray-500">ราคา/หน่วย (รวม VAT)</th>
+                  <th class="px-2 py-3 text-left text-xs font-semibold text-gray-500">ราคา/หน่วย (ไม่รวม VAT)</th>
+                  <th class="px-2 py-3 text-left text-xs font-semibold text-gray-500 col-opt" style="display:none">ลด %</th>
+                  <th class="px-2 py-3 text-left text-xs font-semibold text-gray-500 col-opt" style="display:none">ลด บาท</th>
+                  <th class="px-2 py-3 text-left text-xs font-semibold text-gray-500">รวม (ไม่รวม VAT)</th>
+                  <th class="px-2 py-3 w-10"></th>
+                </tr>
+              </thead>
+              <tbody id="items-body" class="bg-white divide-y divide-gray-200"></tbody>
+            </table>
+          </div>
+
+          <div id="items-body-mobile" class="items-mobile-cards mb-4 space-y-3"></div>
+
+          <button type="button" onclick="addItemRow()" class="mb-5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 px-5 rounded-xl text-sm w-full md:w-auto">+ เพิ่มรายการ</button>
+
+          <hr class="mb-4 border-gray-200">
+          <div class="flex flex-col md:flex-row justify-end mb-4">
+            <div class="w-full md:w-96 space-y-3 bg-gray-50 p-4 rounded-xl border">
+
+              <!-- C2-6: Toggle คำนวณจาก baseAmount หรือ netAmount -->
+              <div class="flex items-center gap-2 pb-3 border-b border-gray-200">
+                <span class="text-xs font-semibold text-gray-600">คำนวณจาก:</span>
+                <div class="flex gap-1 bg-gray-200 rounded-lg p-0.5">
+                  <button type="button" id="calc-mode-base" onclick="setCalcMode('base')"
+                    class="px-3 py-1 text-xs font-semibold rounded-md bg-white text-blue-700 shadow">ยอดก่อน WHT</button>
+                  <button type="button" id="calc-mode-net" onclick="setCalcMode('net')"
+                    class="px-3 py-1 text-xs font-semibold rounded-md text-gray-500">ยอดสุทธิ</button>
+                </div>
+              </div>
+
+              <!-- ยอดก่อน WHT mode (default) -->
+              <div id="calc-section-base">
+                <div class="flex justify-between items-center gap-2"><label class="text-sm font-medium text-gray-700 whitespace-nowrap">รวมเป็นเงิน:</label><input type="text" inputmode="decimal" id="baseAmount" oninput="calculateSummary('manual')" onfocus="rawNum(this)" onblur="fmtNum(this)" class="flex-1 md:w-36 border-gray-300 rounded-lg border p-2.5 text-right font-semibold" style="min-height:0"></div>
+                <div class="flex justify-between items-center gap-2 mt-3"><label class="text-sm font-medium text-gray-700 whitespace-nowrap">ส่วนลด:</label><input type="text" inputmode="decimal" id="discount" value="0" oninput="calculateSummary('manual')" onfocus="rawNum(this)" onblur="fmtNum(this)" class="flex-1 md:w-36 border-gray-300 rounded-lg border p-2.5 text-right" style="min-height:0"></div>
+                <div class="flex justify-between items-center gap-2 mt-3 pb-3 border-b border-gray-200"><label class="text-sm font-medium text-gray-700 whitespace-nowrap">หลังหักส่วนลด:</label><input type="text" inputmode="decimal" id="amountAfterDiscount" oninput="calculateSummary('manual')" onfocus="rawNum(this)" onblur="fmtNum(this)" class="flex-1 md:w-36 border-gray-300 rounded-lg border p-2.5 text-right font-semibold" style="min-height:0"></div>
+                <div class="flex justify-between items-center gap-2 mt-3"><label class="text-sm font-medium text-gray-700 flex items-center cursor-pointer"><input type="checkbox" id="hasVat" onchange="toggleVat()" class="mr-2 h-4 w-4 text-blue-600"> VAT 7%</label><input type="text" inputmode="decimal" id="vatAmount" value="0" disabled oninput="calculateSummary('manual')" onfocus="rawNum(this)" onblur="fmtNum(this)" class="flex-1 md:w-36 bg-white border-gray-300 rounded-lg border p-2.5 text-right disabled:bg-gray-100" style="min-height:0"></div>
+                <div class="flex justify-between items-center gap-2 mt-3"><label class="text-sm font-medium text-gray-700 flex items-center cursor-pointer"><input type="checkbox" id="hasWht" onchange="toggleWht()" class="mr-2 h-4 w-4 text-blue-600"> หัก ณ ที่จ่าย</label><select id="whtRate" disabled onchange="calculateSummary('items')" class="flex-1 md:w-36 bg-white border-gray-300 rounded-lg border p-2.5 text-right disabled:bg-gray-100" style="min-height:0"><option value="0">0%</option></select></div>
+                <div class="flex justify-between items-center gap-2 mt-1 pb-2"><label class="text-sm font-medium text-gray-700 pl-5">ยอดหัก (บาท):</label><input type="text" inputmode="decimal" id="whtAmount" value="0" disabled oninput="calculateSummary('manual')" onfocus="rawNum(this)" onblur="fmtNum(this)" class="flex-1 md:w-36 bg-white border-gray-300 rounded-lg border p-2.5 text-right disabled:bg-gray-100" style="min-height:0"></div>
+                <!-- ปุ่มคำนวณอัตโนมัติ -->
+                <button type="button" onclick="calculateSummary('items')"
+                  class="mt-3 w-full flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 rounded-xl text-sm border border-gray-300 transition-colors">
+                  🔄 คำนวณอัตโนมัติจากรายการสินค้า
+                </button>
+              </div>
+
+              <!-- C2-6: ยอดสุทธิ mode (reverse calc) -->
+              <div id="calc-section-net" class="hidden">
+                <p class="text-xs text-gray-500 mb-3">กรอกยอดสุทธิที่โอนจริง + rate WHT → ระบบคำนวณย้อนกลับ</p>
+                <div class="flex justify-between items-center gap-2">
+                  <label class="text-sm font-medium text-gray-700 whitespace-nowrap text-blue-700 font-semibold">ยอดสุทธิ (จ่ายจริง):</label>
+                  <input type="text" inputmode="decimal" id="netAmountReverse" placeholder="0.00" oninput="reverseCalcWht()" onfocus="rawNum(this)" onblur="fmtNum(this)"
+                    class="flex-1 md:w-36 border-blue-300 border-2 rounded-lg p-2.5 text-right font-bold text-blue-700" style="min-height:0">
+                </div>
+                <div class="flex justify-between items-center gap-2 mt-3">
+                  <label class="text-sm font-medium text-gray-700">อัตรา WHT:</label>
+                  <select id="whtRateReverse" onchange="reverseCalcWht()"
+                    class="flex-1 md:w-36 bg-white border-gray-300 rounded-lg border p-2.5 text-right" style="min-height:0">
+                    <option value="0">0%</option>
+                  </select>
+                </div>
+                <div class="mt-3 p-2 bg-white rounded-lg border border-gray-200 text-xs text-gray-600 space-y-1">
+                  <div class="flex justify-between"><span>ยอดก่อนหัก (baseAmount):</span><span id="rev-base" class="font-semibold">-</span></div>
+                  <div class="flex justify-between"><span>WHT ที่หัก:</span><span id="rev-wht" class="font-semibold text-red-600">-</span></div>
+                </div>
+                <button type="button" onclick="applyReverseCalc()"
+                  class="mt-3 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-xl text-sm">
+                  ✅ ใช้ค่านี้
+                </button>
+              </div>
+
+              <div class="flex justify-between items-center gap-2 pt-3 border-t border-gray-300">
+                <label class="text-lg font-bold text-gray-900">ยอดสุทธิ:</label>
+                <input type="text" inputmode="decimal" id="netAmount" oninput="calculateSummary('manual')" onfocus="rawNum(this)" onblur="fmtNum(this)" class="flex-1 md:w-36 bg-blue-50 font-bold text-blue-800 border-blue-300 rounded-lg border p-2.5 text-right text-lg" style="min-height:0">
+              </div>
+            </div>
+          </div>
+
+          <!-- [Phase 2] โหมดตั้งค้าง (ลูกหนี้/เจ้าหนี้) -->
+          <div class="mt-3 p-3 rounded-xl border border-amber-200 bg-amber-50">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="isApAr" onchange="onApArToggle()" class="w-4 h-4 accent-amber-600">
+              <span class="text-sm font-bold text-amber-800">ตั้งเป็นรายการค้าง (ยังไม่ชำระ)</span>
+            </label>
+            <div id="apArFields" class="hidden mt-2 flex flex-wrap items-center gap-2">
+              <label class="text-sm font-semibold text-amber-800">ครบกำหนดชำระ:</label>
+              <input type="date" id="dueDate" class="border-amber-300 rounded-lg border p-2 text-sm bg-white">
+              <span class="text-xs text-amber-700">รายจ่าย=เจ้าหนี้ · รายรับ=ลูกหนี้ — ยังไม่ตัดบัญชี/ไม่เข้ารายงานภาษีจนกว่าจะกด "บันทึกชำระ"</span>
+            </div>
+          </div>
+
+          <!-- [Phase 3] แบ่งจ่ายหลายงวด (PO) -->
+          <div class="mt-3 p-3 rounded-xl border border-indigo-200 bg-indigo-50">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="inst-toggle" onchange="onInstToggle()" class="w-4 h-4 accent-indigo-600">
+              <span class="text-sm font-bold text-indigo-800">แบ่งจ่ายหลายงวด (PO)</span>
+            </label>
+            <div id="inst-fields" class="hidden mt-2">
+              <p class="text-xs text-indigo-700 mb-2">แบ่งยอด "หลังส่วนลด" เป็นงวด — ทุกงวดเป็นหนี้ค้าง (รวม % ต้อง = 100) · ตัดบัญชีตอนกด "บันทึกชำระ" แต่ละงวดในแท็บลูกหนี้-เจ้าหนี้</p>
+              <div id="inst-rows"></div>
+              <div class="flex items-center justify-between mt-2">
+                <button type="button" onclick="addInstRow()" class="text-sm text-indigo-600 border border-indigo-200 rounded px-2 py-1 bg-white">+ เพิ่มงวด</button>
+                <span class="text-xs font-bold text-indigo-800" id="inst-sum">รวม 0%</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- [Phase 4] แถบโหมดแก้ไข (โผล่เมื่อกำลังแก้บิล) -->
+          <div id="edit-banner" class="hidden mt-3 p-3 rounded-xl border border-orange-300 bg-orange-50 flex items-center justify-between">
+            <span class="text-sm font-bold text-orange-800">✏️ กำลังแก้ไขบิล: <span id="edit-banner-id"></span></span>
+            <button type="button" onclick="cancelEdit()" class="text-sm text-orange-700 border border-orange-300 rounded px-3 py-1 bg-white">ยกเลิกแก้ไข</button>
+          </div>
+
+          <div class="desktop-only justify-end pt-2" style="display:none">
+            <button type="button" onclick="submitForm()" id="btn-submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-10 rounded-xl text-lg shadow">บันทึกข้อมูลลงระบบ</button>
+          </div>
+        </form>
+      </div>
+
+      <button type="button" onclick="openScanSheet()" class="fab-scan md:hidden" title="สแกนใบเสร็จ">🤖</button>
+      <div class="sticky-bottom md:hidden">
+        <button type="button" onclick="submitForm()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl text-base shadow">💾 บันทึกข้อมูลลงระบบ</button>
+      </div>

@@ -1,0 +1,63 @@
+<script>
+  // =========================================================================
+  // JS — [Phase 5 / N3] เช็คราคา
+  // ใช้ global: currentEntityId, formatMoney (จาก _js_entry)
+  // =========================================================================
+
+  function pcItemRowHtml() {
+    return `<div class="pc-item flex flex-wrap gap-2 items-center mb-2 p-2 rounded-lg bg-gray-50">
+      <input type="text" class="pc-name flex-1 min-w-[140px] border-gray-300 rounded-lg border p-2" placeholder="ชื่อสินค้า">
+      <input type="text" list="cat-list" class="pc-cat w-28 border-gray-300 rounded-lg border p-2" placeholder="หมวดหมู่">
+      <input type="number" class="pc-qty w-16 border-gray-300 rounded-lg border p-2 text-right" placeholder="จำนวน" value="1" oninput="pcCalc(this)">
+      <input type="text" inputmode="decimal" class="pc-exvat w-28 border-gray-300 rounded-lg border p-2 text-right" placeholder="ราคา/หน่วย" oninput="pcCalc(this)" onfocus="rawNum(this)" onblur="fmtNum(this)">
+      <input type="text" class="pc-total w-28 border-gray-300 rounded-lg border p-2 text-right bg-gray-100" placeholder="รวม" readonly>
+      <button type="button" onclick="this.closest('.pc-item').remove()" class="text-red-500 px-2 text-lg">✕</button>
+    </div>`;
+  }
+  function addPriceItem() {
+    const wrap = document.getElementById('pc-items');
+    wrap.insertAdjacentHTML('beforeend', pcItemRowHtml());
+  }
+  // คำนวณราคารวม/แถว (exVat × qty) — เช็คราคาไม่คิด VAT (เก็บราคาต่อหน่วยล้วน)
+  function pcCalc(el) {
+    const row = el.closest('.pc-item');
+    const qty = num(row.querySelector('.pc-qty').value);
+    const ex  = num(row.querySelector('.pc-exvat').value);
+    row.querySelector('.pc-total').value = fmt2(qty * ex);
+  }
+
+  function submitPriceCheck() {
+    const items = [];
+    document.querySelectorAll('#pc-items .pc-item').forEach(row => {
+      const name = row.querySelector('.pc-name').value.trim();
+      if (!name) return;
+      const qty = num(row.querySelector('.pc-qty').value);
+      const ex  = num(row.querySelector('.pc-exvat').value);
+      items.push({ itemName: name, quantity: qty, inVat: ex, exVat: ex, totalPrice: qty * ex, itemCategory: row.querySelector('.pc-cat').value.trim() });
+    });
+    if (items.length === 0) { Swal.fire('แจ้งเตือน', 'กรุณาเพิ่มสินค้าอย่างน้อย 1 รายการ', 'warning'); return; }
+
+    const data = {
+      date       : document.getElementById('pcDate').value,
+      contactName: document.getElementById('pcContact').value,
+      note       : document.getElementById('pcNote').value,
+      entityId   : currentEntityId,
+      items      : items
+    };
+    const btn = document.getElementById('pc-submit');
+    btn.disabled = true; btn.innerText = 'กำลังบันทึก...';
+    google.script.run
+      .withSuccessHandler(function(res) {
+        btn.disabled = false; btn.innerText = '💾 บันทึกเช็คราคา';
+        if (res && res.success) {
+          Swal.fire('สำเร็จ', res.message, 'success');
+          document.getElementById('pc-items').innerHTML = '';
+          document.getElementById('pcContact').value = '';
+          document.getElementById('pcNote').value = '';
+          addPriceItem();
+        } else Swal.fire('ผิดพลาด', (res && res.message) || 'บันทึกไม่สำเร็จ', 'error');
+      })
+      .withFailureHandler(function(e) { btn.disabled = false; btn.innerText = '💾 บันทึกเช็คราคา'; Swal.fire('เชื่อมต่อไม่ได้', e.message, 'error'); })
+      .savePriceCheck(data);
+  }
+</script>

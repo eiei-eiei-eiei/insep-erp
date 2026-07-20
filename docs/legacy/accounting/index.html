@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบจัดการบัญชี</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <?!= include('_styles'); ?>
+</head>
+<body>
+
+  <!-- หน้าจอ Login -->
+  <div id="login-section" class="min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white p-8 rounded-lg shadow-lg w-full max-w-sm">
+      <h2 class="text-2xl font-bold text-center text-gray-800 mb-6">เข้าสู่ระบบบัญชี</h2>
+      <!-- [Phase 1] ช่อง username — ถ้ายังไม่ตั้งชีท Users เว้นว่างได้ (ใช้รหัสเดิม login เป็น main) -->
+      <div class="mb-4">
+        <label class="block text-gray-700 text-sm font-bold mb-2">ชื่อผู้ใช้</label>
+        <input type="text" id="username" autofocus autocomplete="username" onkeypress="handleLoginKeyPress(event)" class="shadow appearance-none border rounded w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="username">
+      </div>
+      <div class="mb-4">
+        <label class="block text-gray-700 text-sm font-bold mb-2">รหัสผ่าน</label>
+        <input type="password" id="password" autocomplete="current-password" onkeypress="handleLoginKeyPress(event)" class="shadow appearance-none border rounded w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="ใส่รหัสผ่าน...">
+      </div>
+      <p id="login-error" class="text-red-500 text-sm mb-4 hidden">username หรือรหัสผ่านไม่ถูกต้อง</p>
+      <button onclick="checkLogin()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded" id="btn-login">เข้าสู่ระบบ</button>
+    </div>
+  </div>
+
+  <!-- หน้าจอหลัก -->
+  <div id="app-section" class="hidden min-h-screen">
+
+    <!-- Tabs — scroll แนวนอนได้บนมือถือ -->
+    <div class="bg-white shadow-sm sticky top-0 z-40">
+      <div class="max-w-6xl mx-auto px-2 md:px-8">
+        <div class="flex overflow-x-auto scrollbar-hide -mb-px">
+          <button onclick="switchTab('entry')" id="tab-entry" class="tab-active py-3 px-4 text-sm md:text-base whitespace-nowrap transition-colors flex items-center focus:outline-none flex-shrink-0">
+            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+            บันทึกรายรับ-รายจ่าย
+          </button>
+          <button onclick="switchTab('dashboard')" id="tab-dashboard" class="tab-inactive py-3 px-4 text-sm md:text-base whitespace-nowrap transition-colors flex items-center focus:outline-none flex-shrink-0">
+            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+            แดชบอร์ด & รายงาน
+          </button>
+          <!-- [Phase B] Tab บัญชี & เงินสด -->
+          <button onclick="switchTab('accounts')" id="tab-accounts" class="tab-inactive py-3 px-4 text-sm md:text-base whitespace-nowrap transition-colors flex items-center focus:outline-none flex-shrink-0">
+            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
+            บัญชี & เงินสด
+          </button>
+          <!-- [Phase 2 / #5] Tab ลูกหนี้-เจ้าหนี้ -->
+          <button onclick="switchTab('apar')" id="tab-apar" class="tab-inactive py-3 px-4 text-sm md:text-base whitespace-nowrap transition-colors flex items-center focus:outline-none flex-shrink-0">
+            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m-6 4h6m-6 4h4M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"></path></svg>
+            ลูกหนี้-เจ้าหนี้
+          </button>
+          <!-- [Phase 4 / #8] Tab ค้นหาบิล -->
+          <button onclick="switchTab('bills')" id="tab-bills" class="tab-inactive py-3 px-4 text-sm md:text-base whitespace-nowrap transition-colors flex items-center focus:outline-none flex-shrink-0">
+            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            ค้นหาบิล
+          </button>
+          <!-- [Phase 4 / #8] Tab ประวัติสินค้า -->
+          <button onclick="switchTab('history')" id="tab-history" class="tab-inactive py-3 px-4 text-sm md:text-base whitespace-nowrap transition-colors flex items-center focus:outline-none flex-shrink-0">
+            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            ประวัติสินค้า
+          </button>
+          <!-- [Phase 5 / N3] Tab เช็คราคา -->
+          <button onclick="switchTab('pricecheck')" id="tab-pricecheck" class="tab-inactive py-3 px-4 text-sm md:text-base whitespace-nowrap transition-colors flex items-center focus:outline-none flex-shrink-0">
+            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.99 1.99 0 013 12V7a4 4 0 014-4z"></path></svg>
+            เช็คราคา
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- [Multi-Entity] แถบเลือกกิจการ — มีผลกับทุกหน้า (บันทึก/แดชบอร์ด/รายงาน/บัญชี) -->
+    <div class="bg-indigo-50 border-b border-indigo-100">
+      <div class="max-w-6xl mx-auto px-3 md:px-8 py-2 flex items-center gap-2">
+        <svg class="w-4 h-4 text-indigo-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0H5m14 0h2M5 21H3m4-14h.01M11 7h.01M7 11h.01M11 11h.01M7 15h.01M11 15h.01"></path></svg>
+        <label class="text-sm font-bold text-indigo-800 flex-shrink-0">กิจการ:</label>
+        <select id="entitySelector" onchange="onEntityChange()" class="border-indigo-300 rounded-md shadow-sm border p-1.5 text-sm font-semibold text-indigo-900 bg-white flex-shrink-0 max-w-xs">
+          <option value="EID01">กำลังโหลด...</option>
+        </select>
+        <!-- [Phase 1] badge ผู้ใช้ + ปุ่มออกจากระบบ -->
+        <div class="ml-auto flex items-center gap-2 flex-shrink-0">
+          <span id="user-name" class="text-sm font-semibold text-indigo-700"></span>
+          <button onclick="logout()" class="text-xs font-bold text-indigo-600 hover:text-red-600 border border-indigo-200 rounded px-2 py-1 bg-white">ออกจากระบบ</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="p-3 md:p-8 max-w-6xl mx-auto">
+
+      <?!= include('_view_accounts'); ?>
+
+      <?!= include('_view_entry'); ?>
+
+      <?!= include('_view_dashboard'); ?>
+
+      <?!= include('_view_apar'); ?>
+
+      <?!= include('_view_bills'); ?>
+
+      <?!= include('_view_history'); ?>
+
+      <?!= include('_view_pricecheck'); ?>
+
+    </div>
+  </div>
+
+  <!-- Modal เพิ่มคู่ค้า -->
+  <?!= include('_modals'); ?>
+
+  <!-- ================= JavaScript (แยกไฟล์ — โหลดตามลำดับ) ================= -->
+  <?!= include('_js_core'); ?>
+  <?!= include('_js_wht_pdf'); ?>
+  <?!= include('_js_tax_pdf'); ?>
+  <?!= include('_js_entry'); ?>
+  <?!= include('_js_reports'); ?>
+  <?!= include('_js_accounts'); ?>
+  <?!= include('_js_apar'); ?>
+  <?!= include('_js_bills'); ?>
+  <?!= include('_js_history'); ?>
+  <?!= include('_js_pricecheck'); ?>
+
+</body>
+</html>

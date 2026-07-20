@@ -1,0 +1,127 @@
+<!-- ===== view: การกลั่น (timer + readings) ===== -->
+        <!-- 3. การกลั่น (timer + readings รายช่วง) -->
+        <div id="tab-distillRun" class="tab-content max-w-4xl mx-auto">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800 border-b pb-2"><i class="fa-solid fa-stopwatch text-orange-600 mr-2"></i> ติดตามการกลั่น (จับเวลา + บันทึกรายช่วง)</h2>
+
+            <!-- เลือก Batch -->
+            <div id="dt-normal-card" class="bg-white p-6 rounded-xl shadow-sm border space-y-4 mb-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div><label class="block text-sm font-medium text-gray-700">เลือก Batch ที่จะกลั่น <span class="text-xs text-gray-400">(ยังไม่กลั่นครบ)</span></label>
+                        <select id="dt-batch" class="mt-1 w-full p-2 border rounded bg-yellow-50" onchange="onDtBatchChange()">
+                            <option value="">-- กำลังโหลด --</option>
+                        </select>
+                    </div>
+                    <div><label class="block text-sm font-medium text-gray-700">ชื่อสุรา</label>
+                        <input type="text" id="dt-product-name" readonly class="mt-1 w-full p-2 border rounded bg-gray-100 text-gray-600">
+                    </div>
+                </div>
+                <div id="dt-pot-summary" class="text-sm text-gray-500"></div>
+                <div id="dt-controls" class="flex flex-wrap gap-3"></div>
+            </div>
+
+            <!-- ฟอร์มบันทึกค่า (โชว์เมื่อมีหม้อ active) -->
+            <div id="dt-reading-panel" class="bg-white p-6 rounded-xl shadow-sm border space-y-4 mb-6 hidden">
+                <div class="flex items-center justify-between bg-orange-50 border border-orange-200 rounded-lg px-4 py-3">
+                    <div class="text-sm text-orange-800">กำลังกลั่น <strong id="dt-active-pot">หม้อ -</strong>
+                        <span id="dt-lap-display" class="hidden ml-2 text-xs bg-orange-200 text-orange-900 px-2 py-0.5 rounded font-mono">⏱ ล็อค <span id="dt-lap-time">00:00</span></span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="text-2xl font-bold text-orange-700 font-mono"><i class="fa-regular fa-clock mr-1"></i><span id="dt-timer">00:00</span></div>
+                        <button type="button" id="dt-lap-btn" onclick="dtLap()" class="bg-orange-600 text-white text-sm px-3 py-1.5 rounded font-bold hover:bg-orange-700" title="ล็อคเวลาตอนอ่านค่า">Lap</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <div><label class="block text-sm font-medium text-gray-700">ช่วง</label>
+                        <select id="dt-phase" class="mt-1 w-full p-2 border rounded"></select>
+                    </div>
+                    <div><label class="block text-sm font-medium text-gray-700">ดีกรีที่อ่าน (%)</label>
+                        <input type="number" step="0.1" id="dt-abv-obs" class="mt-1 w-full p-2 border rounded" oninput="dtComputeAbv20()">
+                    </div>
+                    <div><label class="block text-sm font-medium text-gray-700">อุณหภูมิสุรา (°C)</label>
+                        <input type="number" step="0.1" id="dt-temp-spirit" class="mt-1 w-full p-2 border rounded" oninput="dtComputeAbv20()">
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2 bg-blue-50 border border-blue-100 rounded px-3 py-2 text-sm text-blue-800">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> ดีกรีปรับเทียบ @20°C: <strong id="dt-abv20-preview" class="text-lg">—</strong>
+                    <span class="text-xs text-blue-400">(คำนวณอัตโนมัติ)</span>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <div><label class="block text-sm font-medium text-gray-700">ปริมาณสะสมของช่วงนี้ (ลิตร)</label>
+                        <input type="number" step="0.001" id="dt-cum-vol" class="mt-1 w-full p-2 border rounded" oninput="dtComputeFlow()">
+                        <p class="text-xs text-gray-400 mt-1">ยอดในภาชนะของช่วงนี้ — เริ่มนับใหม่เมื่อเปลี่ยนช่วง (หัว/กลาง/หาง) <span id="dt-flow-preview" class="text-blue-600"></span></p>
+                    </div>
+                    <div><label class="block text-sm font-medium text-gray-700">อุณหภูมิไอ (°C)</label>
+                        <input type="number" step="0.1" id="dt-vapor-temp" class="mt-1 w-full p-2 border rounded">
+                    </div>
+                    <div><label class="block text-sm font-medium text-gray-700">อุณหภูมิหม้อต้ม (°C) <span class="text-xs text-gray-400">ว่างได้</span></label>
+                        <input type="number" step="0.1" id="dt-pot-temp" class="mt-1 w-full p-2 border rounded">
+                    </div>
+                    <div><label class="block text-sm font-medium text-gray-700">อุณหภูมิน้ำหล่อเย็น (°C) <span class="text-xs text-gray-400">ว่างได้</span></label>
+                        <input type="number" step="0.1" id="dt-cool-temp" class="mt-1 w-full p-2 border rounded">
+                    </div>
+                    <div class="col-span-2 md:col-span-1"><label class="block text-sm font-medium text-gray-700">หมายเหตุ (กลิ่น/รส)</label>
+                        <input type="text" id="dt-note" class="mt-1 w-full p-2 border rounded">
+                    </div>
+                </div>
+                <button type="button" onclick="dtAddReading()" class="w-full bg-orange-600 text-white p-3 rounded font-bold hover:bg-orange-700"><i class="fa-solid fa-plus mr-1"></i> บันทึกค่า</button>
+            </div>
+
+            <!-- กราฟ + ตาราง readings ของหม้อปัจจุบัน -->
+            <div id="dt-detail-panel" class="bg-white p-6 rounded-xl shadow-sm border mb-6 hidden">
+                <h3 class="font-bold text-gray-700 mb-3"><i class="fa-solid fa-chart-line mr-2 text-orange-500"></i>เส้นโค้งการกลั่น <span id="dt-detail-pot" class="text-sm font-normal text-gray-400"></span></h3>
+                <div id="dt-pot-tabs" class="flex flex-wrap gap-2 mb-3"></div>
+                <div class="mb-4"><canvas id="dt-chart" height="110"></canvas></div>
+                <div id="dt-readings-table" class="overflow-x-auto"></div>
+            </div>
+
+            <!-- จบหม้อ — ตรวจค่าคำนวณ + กรอกค่าวัดจริง -->
+            <div id="dt-finishpot-panel" class="bg-white p-6 rounded-xl shadow-sm border border-slate-300 mb-6 hidden">
+                <h3 class="font-bold text-slate-700 mb-3"><i class="fa-solid fa-stop mr-2"></i>จบ <span id="dt-fp-pot">หม้อ -</span> — กรอกค่าวัดจริงของหัวใจ</h3>
+                <div id="dt-fp-computed" class="text-sm text-gray-600 bg-gray-50 rounded p-3 mb-4 border"></div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div><label class="block text-sm font-medium text-gray-700">ปริมาณกลางรวม (ลิตร)</label>
+                        <input type="number" step="0.001" id="dt-fp-vol" class="mt-1 w-full p-2 border rounded bg-yellow-50" placeholder="วัดจริง">
+                    </div>
+                    <div><label class="block text-sm font-medium text-gray-700">ดีกรีที่วัด (%)</label>
+                        <input type="number" step="0.1" id="dt-fp-abv" class="mt-1 w-full p-2 border rounded bg-yellow-50" placeholder="วัดจริง" oninput="dtFpComputeAbv20()">
+                    </div>
+                    <div><label class="block text-sm font-medium text-gray-700">อุณหภูมิ (°C)</label>
+                        <input type="number" step="0.1" id="dt-fp-temp" class="mt-1 w-full p-2 border rounded bg-yellow-50" placeholder="วัดจริง" oninput="dtFpComputeAbv20()">
+                    </div>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 bg-blue-50 border border-blue-100 rounded px-3 py-2 text-sm text-blue-800 mt-3">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> ดีกรี@20 (วัด): <strong id="dt-fp-abv20" class="text-lg">—</strong>
+                    <span class="text-gray-400">·</span> เทียบค่าคำนวณ: <span id="dt-fp-abv20-computed">—</span>
+                    <span id="dt-fp-diff" class="text-xs"></span>
+                </div>
+                <div class="flex gap-2 mt-4">
+                    <button type="button" onclick="dtFinishPotConfirm()" class="flex-1 bg-slate-700 text-white p-3 rounded font-bold hover:bg-slate-800">ยืนยันจบหม้อ</button>
+                    <button type="button" onclick="dtFinishPotCancel()" class="px-4 bg-gray-200 text-gray-700 rounded font-bold hover:bg-gray-300">ยกเลิก</button>
+                </div>
+            </div>
+
+            <!-- สรุปปิด Batch -->
+            <div id="dt-finish-panel" class="bg-white p-6 rounded-xl shadow-sm border border-green-200 hidden">
+                <h3 class="font-bold text-green-700 mb-3"><i class="fa-solid fa-flag-checkered mr-2"></i>ปิด Batch — สรุปลง Log_Distill</h3>
+                <p class="text-xs text-gray-500 mb-3">ตรวจค่าก่อนบันทึกลง Log_Distill — แก้ได้ถ้าวัดจริงต่างจากที่ระบบคำนวณ</p>
+                <div id="dt-finish-computed" class="text-sm text-gray-700 bg-gray-50 rounded p-3 mb-4 border"></div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div><label class="block text-sm font-medium text-gray-700">วันที่กลั่น (วันปิด)</label>
+                        <input type="date" id="dt-finish-date" class="mt-1 w-full p-2 border rounded">
+                    </div>
+                    <div><label class="block text-sm font-medium text-gray-700">ปริมาณหัวใจรวม (ลิตร)</label>
+                        <input type="number" step="0.001" id="dt-finish-vol" class="mt-1 w-full p-2 border rounded bg-green-50" oninput="dtUpdateLpa()">
+                    </div>
+                    <div><label class="block text-sm font-medium text-gray-700">ดีกรี @20°C</label>
+                        <input type="number" step="0.01" id="dt-finish-abv" class="mt-1 w-full p-2 border rounded bg-green-50" oninput="dtUpdateLpa()">
+                    </div>
+                </div>
+                <div class="text-sm text-gray-600 mt-3">LPA (ลิตรแอลกอฮอล์บริสุทธิ์): <strong id="dt-finish-lpa" class="text-lg text-green-700">—</strong></div>
+                <button type="button" onclick="dtCloseBatch()" class="w-full mt-4 bg-green-600 text-white p-3 rounded font-bold hover:bg-green-700">ยืนยันปิด Batch และบันทึกลง Log_Distill</button>
+            </div>
+
+        </div>
+

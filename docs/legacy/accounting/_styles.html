@@ -1,0 +1,55 @@
+<style>
+    body { font-family: 'Sarabun', sans-serif; background-color: #f3f4f6; }
+    .hidden { display: none !important; }
+    /* Scrollbar */
+    .table-scroll::-webkit-scrollbar { height: 6px; width: 6px; }
+    .table-scroll::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+    .table-scroll::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+    /* Tabs */
+    .tab-active { border-bottom-width: 3px; border-color: #2563eb; color: #2563eb; font-weight: 700; }
+    .tab-inactive { color: #6b7280; font-weight: 500; border-bottom-width: 3px; border-color: transparent; }
+    .tab-inactive:hover { color: #374151; border-color: #d1d5db; }
+    /* Mobile touch targets — ทุก input/select/button มีความสูงไม่ต่ำกว่า 48px */
+    input[type="text"], input[type="number"], input[type="date"],
+    input[type="month"], input[type="password"], select, textarea {
+      min-height: 48px; font-size: 16px !important; /* 16px กัน iOS zoom */
+    }
+    button { min-height: 44px; }
+    /* Item card layout สำหรับมือถือ */
+    .item-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+    .item-card-scanned { background: #fdf4ff; border-color: #d8b4fe; }
+    /* Sticky bottom bar */
+    .sticky-bottom { position: sticky; bottom: 0; z-index: 30; background: #fff; border-top: 1px solid #e5e7eb; padding: 12px 16px; box-shadow: 0 -4px 12px rgba(0,0,0,0.08); }
+    /* FAB — Floating Action Button สำหรับสแกนบนมือถือ */
+    .fab-scan { position: fixed; bottom: 80px; right: 16px; z-index: 40; width: 60px; height: 60px; border-radius: 50%; background: #7c3aed; color: #fff; font-size: 26px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 16px rgba(124,58,237,0.4); cursor: pointer; transition: transform 0.15s; }
+    .fab-scan:active { transform: scale(0.93); }
+    /* ซ่อน FAB บน desktop */
+    @media (min-width: 768px) { .fab-scan { display: none !important; } .sticky-bottom-mobile { display: none !important; } }
+    /* ซ่อนปุ่ม scan ใหญ่บนมือถือ (มี FAB แทน) */
+    @media (max-width: 767px) { .scan-btn-desktop { display: none !important; } }
+    /* Summary box เต็มความกว้างบนมือถือ */
+    @media (max-width: 767px) {
+      .summary-box-wrap { width: 100% !important; }
+      .summary-box-wrap input { width: 100% !important; text-align: right; }
+    }
+    /* Responsive layout — custom CSS แทน Tailwind hidden md:* ทั้งหมด
+       เพราะ Tailwind hidden ใช้ !important ทำให้ md:* override ไม่ได้ใน GAS iframe */
+    .desktop-only { display: none !important; }
+    .mobile-only  { display: block !important; }
+    @media (min-width: 768px) {
+      .desktop-only { display: flex !important; }   /* flex สำหรับปุ่ม save + elements อื่น */
+      .mobile-only  { display: none !important; }
+    }
+    .items-desktop-table { display: none; }
+    .items-mobile-cards  { display: block; }
+    @media (min-width: 768px) {
+      .items-desktop-table { display: block !important; }
+      .items-mobile-cards  { display: none !important; }
+    }
+    /* [FIX] เพิ่ม selector .ai-uncertain ที่หายไป — ไฮไลต์เหลืองช่องที่ AI ไม่มั่นใจ
+       (JS เรียก classList.add('ai-uncertain') แต่เดิม CSS rule กำพร้าไม่มี selector) */
+    .ai-uncertain {
+      background-color: #fef3c7 !important;
+      border-color: #f59e0b !important;
+    }
+  </style>

@@ -1,0 +1,121 @@
+<script>
+        // ===== ติดตามหมัก: dropdown/history/table/chart =====
+        function updateFmonBatchDropdown() {
+            const select = document.getElementById('fmon-batch');
+            if (!select) return;
+            const prev = select.value;
+            let options = '<option value="">-- เลือก Batch ที่กำลังหมัก --</option>';
+            globalPendingBatches.forEach(b => {
+                options += `<option value="${b.batch}" data-product="${b.productName}">Batch: ${b.batch} (${b.productName})</option>`;
+            });
+            if (globalPendingBatches.length === 0) options += '<option value="" disabled>ไม่มี Batch ที่กำลังหมัก</option>';
+            select.innerHTML = options;
+            if (prev) select.value = prev; // คงค่าที่เลือกไว้ถ้ายังอยู่ในรายการ
+        }
+
+        /** เมื่อเลือก Batch: autofill ชื่อสุรา + โหลดประวัติ */
+        function onFmonBatchChange() {
+            const select = document.getElementById('fmon-batch');
+            const opt = select.options[select.selectedIndex];
+            document.getElementById('fmon-product-name').value = (opt && opt.dataset.product) ? opt.dataset.product : '';
+            loadFermentHistory();
+        }
+
+        /** โหลดประวัติการวัดของ Batch ที่เลือก มาแสดงตาราง + กราฟ */
+        function loadFermentHistory() {
+            const batch = document.getElementById('fmon-batch').value;
+            const cont  = document.getElementById('fmon-history-container');
+            document.getElementById('fmon-hist-batch').innerText = batch ? ('— Batch ' + batch) : '';
+            if (!batch) {
+                cont.innerHTML = '<p class="text-center text-gray-400 italic py-4">เลือก Batch เพื่อดูประวัติ</p>';
+                renderFermentChart([]);
+                return;
+            }
+            cont.innerHTML = '<div class="py-6 text-center text-gray-400"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>กำลังโหลด...</div>';
+            google.script.run
+                .withSuccessHandler(function(res) {
+                    if (!res || res.success === false) {
+                        cont.innerHTML = `<p class="text-center text-red-500 py-4">โหลดไม่สำเร็จ: ${(res && res.message) || ''}</p>`;
+                        renderFermentChart([]);
+                        return;
+                    }
+                    renderFermentTable(res.data || []);
+                    renderFermentChart(res.data || []);
+                })
+                .withFailureHandler(function(err) {
+                    cont.innerHTML = `<p class="text-center text-red-500 py-4">Error: ${err.message}</p>`;
+                })
+                .getFermentMonitorData(batch);
+        }
+
+        /** วาดตารางประวัติ (ใหม่→เก่า อ่านง่าย) */
+        function renderFermentTable(data) {
+            const cont = document.getElementById('fmon-history-container');
+            if (!data.length) {
+                cont.innerHTML = '<p class="text-center text-gray-400 italic py-4">ยังไม่มีผลการวัดสำหรับ Batch นี้</p>';
+                return;
+            }
+            const rows = data.slice().reverse().map(d => `
+                <tr class="border-b border-gray-100 hover:bg-gray-50">
+                    <td class="px-3 py-2 text-sm">${d.date}</td>
+                    <td class="px-3 py-2 text-sm">${d.time}</td>
+                    <td class="px-3 py-2 text-sm text-right font-medium text-purple-700">${d.ph}</td>
+                    <td class="px-3 py-2 text-sm text-right font-medium text-teal-700">${d.brix}</td>
+                    <td class="px-3 py-2 text-sm text-right font-medium text-red-600">${d.temp}</td>
+                    <td class="px-3 py-2 text-xs text-gray-500">${d.note || ''}</td>
+                </tr>`).join('');
+            cont.innerHTML = `
+                <table class="w-full text-left">
+                    <thead class="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+                        <tr>
+                            <th class="px-3 py-2">วันที่</th>
+                            <th class="px-3 py-2">เวลา</th>
+                            <th class="px-3 py-2 text-right">pH</th>
+                            <th class="px-3 py-2 text-right">Brix</th>
+                            <th class="px-3 py-2 text-right">°C</th>
+                            <th class="px-3 py-2">หมายเหตุ</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>`;
+        }
+
+        /** วาดกราฟแนวโน้ม pH / Brix / อุณหภูมิ (เก่า→ใหม่) — pH แกนซ้าย, Brix+°C แกนขวา */
+        function renderFermentChart(data) {
+            const canvas = document.getElementById('fmon-chart');
+            if (!canvas || typeof Chart === 'undefined') return;
+            if (fmonChart) { fmonChart.destroy(); fmonChart = null; }
+            if (!data.length) return;
+
+            const labels = data.map(d => d.date + ' ' + d.time);
+            const num = arr => arr.map(v => (v === '' || v === null || v === undefined) ? null : parseFloat(v));
+            fmonChart = new Chart(canvas.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'pH',           data: num(data.map(d => d.ph)),   borderColor: '#7c3aed', backgroundColor: '#7c3aed', yAxisID: 'yPh',   tension: 0.3 },
+                        { label: 'Brix (°Bx)',   data: num(data.map(d => d.brix)), borderColor: '#0d9488', backgroundColor: '#0d9488', yAxisID: 'yBrix', tension: 0.3 },
+                        { label: 'อุณหภูมิ (°C)', data: num(data.map(d => d.temp)), borderColor: '#dc2626', backgroundColor: '#dc2626', yAxisID: 'yBrix', tension: 0.3 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        yPh:   { type: 'linear', position: 'left',  title: { display: true, text: 'pH' } },
+                        yBrix: { type: 'linear', position: 'right', title: { display: true, text: 'Brix / °C' }, grid: { drawOnChartArea: false } }
+                    }
+                }
+            });
+        }
+
+        // ==========================================
+        // ติดตามการกลั่น (Distillation Run + timer)
+        // 1 batch หลายหม้อ → readings ลง Log_DistillRun → ปิด batch เขียน Log_Distill 1 แถว
+        // ==========================================
+
+        // ===== ตารางปรับเทียบแอลกอฮอล์ (คัดลอกตรงจากเว็บแอป calal) =====
+        // row index = อุณหภูมิ 0-40°C | column header = ดีกรีที่วัด 0-100% | cell = ดีกรีจริง@20°C
+        // ⚠️ ห้ามแก้ตัวเลขในตาราง — ผลลัพธ์ต้องตรงกับ calal เป๊ะ
+</script>

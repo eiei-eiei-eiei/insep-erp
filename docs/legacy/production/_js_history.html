@@ -1,0 +1,562 @@
+<script>
+        // ===== ประวัติหมัก-กลั่น: hist* charts (Brix/pH/Temp + distill) =====
+        let histMode = 'single';
+        let histCharts = { brix: null, ph: null, temp: null };
+        let histCombinedChart = null;   // กราฟรวม Brix/pH/Temp (โหมดเดี่ยว)
+        let histStart = {};   // batch -> วันที่ลงหมัก (yyyy-MM-dd)
+        let histProduct = {}; // batch -> ชื่อสุรา (ไว้หาดีกรีเป้าหมาย)
+        let histList = [];
+        const HIST_PALETTE = ['#0891b2', '#dc2626', '#16a34a', '#d97706', '#7c3aed', '#db2777', '#2563eb', '#65a30d', '#9333ea', '#0d9488'];
+
+        /** โหลดรายชื่อ batch + วันลงหมัก (เรียกตอน populateData) */
+        function histInit() {
+            google.script.run
+                .withSuccessHandler(function(res) {
+                    if (!res || res.success === false) return;
+                    histList = res.data || [];
+                    histStart = {}; histProduct = {};
+                    histList.forEach(b => { histStart[b.batch] = b.startDate; histProduct[b.batch] = b.productName; });
+                    let so = '<option value="">-- เลือก Batch --</option>';
+                    histList.forEach(b => { so += `<option value="${b.batch}">${b.batch} (${b.productName})</option>`; });
+                    document.getElementById('hist-single-batch').innerHTML = so;
+                    let co = '';
+                    histList.forEach(b => { co += `<label class="flex items-center gap-2 p-1 text-sm cursor-pointer hover:bg-gray-50"><input type="checkbox" class="hist-cmp-chk" value="${b.batch}" onchange="histCompareChange()"> ${b.batch} <span class="text-xs text-gray-400">(${b.productName})</span></label>`; });
+                    document.getElementById('hist-compare-list').innerHTML = co || '<span class="text-gray-400 text-sm">ยังไม่มีข้อมูลการหมัก</span>';
+                })
+                .withFailureHandler(function() {})
+                .getFermentHistoryBatchList();
+        }
+
+        function histSetMode(mode) {
+            histMode = mode;
+            document.getElementById('hist-mode-single').className = 'flex-1 px-3 py-2 rounded text-sm font-bold ' + (mode === 'single' ? 'bg-cyan-600 text-white' : 'bg-gray-200 text-gray-600');
+            document.getElementById('hist-mode-compare').className = 'flex-1 px-3 py-2 rounded text-sm font-bold ' + (mode === 'compare' ? 'bg-cyan-600 text-white' : 'bg-gray-200 text-gray-600');
+            document.getElementById('hist-single-select').classList.toggle('hidden', mode !== 'single');
+            document.getElementById('hist-compare-select').classList.toggle('hidden', mode !== 'compare');
+            document.getElementById('hist-ferment-single').style.display = (mode === 'single') ? '' : 'none';
+            document.getElementById('hist-ferment-multi').style.display = (mode === 'compare') ? '' : 'none';
+            histClearCharts();
+            document.getElementById('hist-summary').innerHTML = '';
+            document.getElementById('hist-d-single-wrap').style.display = (mode === 'single') ? '' : 'none';
+            document.getElementById('hist-d-compare-wrap').style.display = (mode === 'compare') ? '' : 'none';
+            histDClear();
+            document.getElementById('hist-d-summary').innerHTML = '';
+            document.getElementById('hist-d-empty').classList.add('hidden');
+            document.getElementById('hist-d-pot-tabs').innerHTML = '';
+            histDViewPot = null;
+            if (mode === 'single') { document.getElementById('hist-single-batch').value = ''; }
+            else { histResetCompare(); }
+        }
+
+        function histToggleDropdown() { document.getElementById('hist-compare-panel').classList.toggle('hidden'); }
+
+        function histSelectAll(checked) {
+            document.querySelectorAll('.hist-cmp-chk').forEach(c => c.checked = checked);
+            histCompareChange();
+        }
+
+        function histResetCompare() {
+            document.querySelectorAll('.hist-cmp-chk').forEach(c => c.checked = false);
+            const sa = document.getElementById('hist-select-all'); if (sa) sa.checked = false;
+            document.getElementById('hist-compare-label').innerText = '-- เลือก Batch --';
+            document.getElementById('hist-compare-panel').classList.add('hidden');
+        }
+
+        function histSingleChange() {
+            const b = document.getElementById('hist-single-batch').value;
+            if (!b) { histClearCharts(); document.getElementById('hist-summary').innerHTML = ''; histDClear(); histDShowEmpty('เลือก Batch เพื่อดูข้อมูล'); return; }
+            histDViewPot = null;
+            histDraw([b]);
+            histDrawDistill([b]);
+        }
+
+        function histCompareChange() {
+            const batches = Array.from(document.querySelectorAll('.hist-cmp-chk:checked')).map(c => c.value);
+            document.getElementById('hist-compare-label').innerText = batches.length ? ('เลือก ' + batches.length + ' batch') : '-- เลือก Batch --';
+            const all = document.querySelectorAll('.hist-cmp-chk').length;
+            const sa = document.getElementById('hist-select-all'); if (sa) sa.checked = (all > 0 && batches.length === all);
+            histDraw(batches);
+            histDrawDistill(batches);
+        }
+
+        function histClearCharts() {
+            ['brix', 'ph', 'temp'].forEach(k => { if (histCharts[k]) { histCharts[k].destroy(); histCharts[k] = null; } });
+            if (histCombinedChart) { histCombinedChart.destroy(); histCombinedChart = null; }
+        }
+
+        /** กราฟรวม Brix/pH/Temp ในกราฟเดียว (โหมดเดี่ยว) — 3 แกน Y, แกนนอน = วันจากเริ่มหมัก */
+        function histDrawCombined(batch, reads) {
+            const canvas = document.getElementById('hist-combined-chart');
+            if (!canvas || typeof Chart === 'undefined') return;
+            if (histCombinedChart) { histCombinedChart.destroy(); histCombinedChart = null; }
+            const sorted = (reads || []).slice().sort((a, b) => (a.date + ' ' + a.time).localeCompare(b.date + ' ' + b.time));
+            const start = histStart[batch] || (sorted[0] && sorted[0].date) || '';
+            const t0 = new Date(start + 'T00:00').getTime();
+            const series = metric => sorted.map(r => {
+                const t = new Date(r.date + 'T' + (r.time || '00:00')).getTime();
+                const yv = r[metric];
+                return { x: isNaN(t) ? null : (t - t0) / 86400000, y: (yv === '' || yv == null) ? null : parseFloat(yv) };
+            }).filter(p => p.x != null);
+            histCombinedChart = new Chart(canvas.getContext('2d'), {
+                type: 'line',
+                data: { datasets: [
+                    { label: 'Brix (°Bx)', data: series('brix'), borderColor: '#0d9488', backgroundColor: '#0d9488', yAxisID: 'yB', tension: 0.3, spanGaps: true },
+                    { label: 'pH', data: series('ph'), borderColor: '#7c3aed', backgroundColor: '#7c3aed', yAxisID: 'yP', tension: 0.3, spanGaps: true, borderDash: [6, 4] },
+                    { label: 'อุณหภูมิ (°C)', data: series('temp'), borderColor: '#dc2626', backgroundColor: '#dc2626', yAxisID: 'yT', tension: 0.3, spanGaps: true, borderDash: [2, 3] }
+                ] },
+                options: {
+                    responsive: true, interaction: { mode: 'index', intersect: false },
+                    plugins: { legend: { position: 'bottom' } },
+                    scales: {
+                        x: { type: 'linear', title: { display: true, text: 'วันจากเริ่มหมัก' } },
+                        yB: { type: 'linear', position: 'left',  title: { display: true, text: 'Brix' } },
+                        yP: { type: 'linear', position: 'right', title: { display: true, text: 'pH' }, grid: { drawOnChartArea: false } },
+                        yT: { type: 'linear', position: 'right', title: { display: true, text: '°C' }, grid: { drawOnChartArea: false } }
+                    }
+                }
+            });
+        }
+
+        /** โหลดข้อมูล batch ที่เลือก แล้ววาด 3 กราฟ + สรุป */
+        function histDraw(batches) {
+            if (!batches.length) { histClearCharts(); document.getElementById('hist-summary').innerHTML = ''; return; }
+            google.script.run
+                .withSuccessHandler(function(res) {
+                    if (!res || res.success === false) { Swal.fire('Error', (res && res.message) || 'โหลดไม่สำเร็จ', 'error'); return; }
+                    const data = res.data || {};
+                    if (histMode === 'single') {
+                        histDrawCombined(batches[0], data[batches[0]] || []);
+                        histRenderCard(batches[0], data[batches[0]] || []);
+                    } else {
+                        histDrawMetric('brix', 'hist-brix-chart', 'brix', data);
+                        histDrawMetric('ph', 'hist-ph-chart', 'ph', data);
+                        histDrawMetric('temp', 'hist-temp-chart', 'temp', data);
+                        histRenderTable(data);
+                    }
+                })
+                .withFailureHandler(function(err) { Swal.fire('Error', err.message, 'error'); })
+                .getFermentMonitorMulti(batches);
+        }
+
+        /** วาด 1 กราฟ (metric เดียว) — แกนนอน = วันจากเริ่มหมัก, 1 เส้น/batch */
+        function histDrawMetric(metric, canvasId, chartKey, dataByBatch) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas || typeof Chart === 'undefined') return;
+            if (histCharts[chartKey]) { histCharts[chartKey].destroy(); histCharts[chartKey] = null; }
+            const datasets = []; let ci = 0;
+            Object.keys(dataByBatch).forEach(batch => {
+                const reads = (dataByBatch[batch] || []).slice().sort((a, b) => (a.date + ' ' + a.time).localeCompare(b.date + ' ' + b.time));
+                if (!reads.length) return;
+                const start = histStart[batch] || reads[0].date;
+                const t0 = new Date(start + 'T00:00').getTime();
+                const pts = reads.map(r => {
+                    const t = new Date(r.date + 'T' + (r.time || '00:00')).getTime();
+                    const yv = r[metric];
+                    return { x: isNaN(t) ? null : (t - t0) / 86400000, y: (yv === '' || yv == null) ? null : parseFloat(yv) };
+                }).filter(p => p.x != null);
+                const color = HIST_PALETTE[ci % HIST_PALETTE.length]; ci++;
+                datasets.push({ label: batch, data: pts, borderColor: color, backgroundColor: color, tension: 0.3, spanGaps: true });
+            });
+            histCharts[chartKey] = new Chart(canvas.getContext('2d'), {
+                type: 'line',
+                data: { datasets: datasets },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: datasets.length > 1, position: 'bottom' } },
+                    interaction: { mode: 'nearest', intersect: false },
+                    scales: { x: { type: 'linear', title: { display: true, text: 'วันจากเริ่มหมัก' } }, y: {} }
+                }
+            });
+        }
+
+        /** คำนวณค่าสรุปต่อ batch */
+        function histComputeSummary(batch, reads) {
+            const sorted = reads.slice().sort((a, b) => (a.date + ' ' + a.time).localeCompare(b.date + ' ' + b.time));
+            const firstOf = arr => { const v = arr.find(x => x !== '' && x != null && !isNaN(parseFloat(x))); return v == null ? NaN : parseFloat(v); };
+            const lastOf = arr => { const f = arr.filter(x => x !== '' && x != null && !isNaN(parseFloat(x))); return f.length ? parseFloat(f[f.length - 1]) : NaN; };
+            const brixArr = sorted.map(r => r.brix), phArr = sorted.map(r => r.ph);
+            const tempArr = sorted.map(r => parseFloat(r.temp)).filter(v => !isNaN(v));
+            const firstBrix = firstOf(brixArr), lastBrix = lastOf(brixArr);
+            let days = NaN;
+            if (sorted.length) {
+                const t0 = new Date((histStart[batch] || sorted[0].date) + 'T00:00').getTime();
+                const tEnd = new Date(sorted[sorted.length - 1].date + 'T' + (sorted[sorted.length - 1].time || '00:00')).getTime();
+                if (!isNaN(t0) && !isNaN(tEnd)) days = (tEnd - t0) / 86400000;
+            }
+            const atten = (!isNaN(firstBrix) && !isNaN(lastBrix) && firstBrix > 0) ? ((firstBrix - lastBrix) / firstBrix * 100) : NaN;
+            const estAbv = (!isNaN(firstBrix) && !isNaN(lastBrix)) ? ((firstBrix - lastBrix) * 0.55) : NaN;
+            return { days, firstBrix, lastBrix, atten, estAbv, firstPh: firstOf(phArr), lastPh: lastOf(phArr), tempPeak: tempArr.length ? Math.max.apply(null, tempArr) : NaN };
+        }
+
+        function histFmt(v, d) { return (v === null || v === undefined || isNaN(v)) ? '—' : v.toFixed(d); }
+
+        function histRenderCard(batch, reads) {
+            const el = document.getElementById('hist-summary');
+            if (!reads || !reads.length) { el.innerHTML = ''; return; }
+            const s = histComputeSummary(batch, reads);
+            el.innerHTML = `<div class="bg-white p-5 rounded-xl shadow-sm border">
+                <h3 class="font-bold text-gray-700 mb-3">สรุป Batch ${batch}</h3>
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                    <div><div class="text-gray-400 text-xs">จำนวนวันหมัก</div><div class="font-bold">${histFmt(s.days, 1)} วัน</div></div>
+                    <div><div class="text-gray-400 text-xs">Brix เริ่ม → จบ</div><div class="font-bold">${histFmt(s.firstBrix, 1)} → ${histFmt(s.lastBrix, 1)}</div></div>
+                    <div><div class="text-gray-400 text-xs">% Attenuation</div><div class="font-bold">${histFmt(s.atten, 1)}%</div></div>
+                    <div><div class="text-gray-400 text-xs">ดีกรีน้ำส่า ~</div><div class="font-bold">~${histFmt(s.estAbv, 1)}%</div></div>
+                    <div><div class="text-gray-400 text-xs">pH เริ่ม → จบ</div><div class="font-bold">${histFmt(s.firstPh, 2)} → ${histFmt(s.lastPh, 2)}</div></div>
+                    <div><div class="text-gray-400 text-xs">Temp พีค</div><div class="font-bold">${histFmt(s.tempPeak, 1)}°C</div></div>
+                </div>
+                <p class="text-xs text-gray-400 mt-3">~ ดีกรีน้ำส่าเป็นค่าประมาณจาก Brix (apparent) ไม่ใช่ค่าทางการ</p>
+            </div>`;
+        }
+
+        function histRenderTable(dataByBatch) {
+            const el = document.getElementById('hist-summary');
+            const batches = Object.keys(dataByBatch).filter(b => (dataByBatch[b] || []).length);
+            if (!batches.length) { el.innerHTML = ''; return; }
+            const rows = batches.map(b => {
+                const s = histComputeSummary(b, dataByBatch[b]);
+                return `<tr class="border-b border-gray-100">
+                    <td class="px-2 py-1.5 text-sm font-medium">${b}</td>
+                    <td class="px-2 py-1.5 text-sm text-right">${histFmt(s.days, 1)}</td>
+                    <td class="px-2 py-1.5 text-sm text-right">${histFmt(s.firstBrix, 1)}→${histFmt(s.lastBrix, 1)}</td>
+                    <td class="px-2 py-1.5 text-sm text-right">${histFmt(s.atten, 1)}%</td>
+                    <td class="px-2 py-1.5 text-sm text-right">~${histFmt(s.estAbv, 1)}</td>
+                    <td class="px-2 py-1.5 text-sm text-right">${histFmt(s.firstPh, 2)}→${histFmt(s.lastPh, 2)}</td>
+                    <td class="px-2 py-1.5 text-sm text-right">${histFmt(s.tempPeak, 1)}</td></tr>`;
+            }).join('');
+            el.innerHTML = `<div class="bg-white p-4 rounded-xl shadow-sm border overflow-x-auto">
+                <h3 class="font-bold text-gray-700 mb-3">ตารางสรุปเปรียบเทียบ</h3>
+                <table class="w-full text-left"><thead class="bg-gray-50 border-b text-xs text-gray-500 uppercase"><tr>
+                    <th class="px-2 py-1.5">Batch</th><th class="px-2 py-1.5 text-right">วันหมัก</th><th class="px-2 py-1.5 text-right">Brix</th><th class="px-2 py-1.5 text-right">Atten%</th><th class="px-2 py-1.5 text-right">ดีกรี~</th><th class="px-2 py-1.5 text-right">pH</th><th class="px-2 py-1.5 text-right">Temp พีค</th>
+                </tr></thead><tbody>${rows}</tbody></table>
+                <p class="text-xs text-gray-400 mt-2">~ ดีกรีน้ำส่าประมาณจาก Brix · แกนนอนกราฟ = วันจากเริ่มหมัก</p></div>`;
+        }
+
+        // ==========================================
+        // หน้าประวัติ — Section ช่วงกลั่น
+        // ==========================================
+        let histDChartA = null, histDChartB = null, histDCompareChart = null;
+        let histDBarCharts = { vol: null, abv: null, yield: null };   // กราฟแท่งสรุปต่อ batch (โหมดเทียบ)
+        let histDData = {};          // batch -> readings (จาก getDistillRunMulti)
+        let histDFinal = {};         // batch -> {vol, abv} ค่าหัวใจสุดท้ายจาก Log_Distill (ที่ผู้ใช้ยืนยัน)
+        let histDViewPot = null;
+        let histDSingleBatch = '';
+
+        function histToggleSection(sec) {
+            const el = document.getElementById('hist-sec-' + sec);
+            const caret = document.getElementById('hist-caret-' + sec);
+            const hidden = el.style.display === 'none';
+            el.style.display = hidden ? '' : 'none';
+            caret.className = 'fa-solid ' + (hidden ? 'fa-chevron-up' : 'fa-chevron-down');
+        }
+
+        function histDClear() {
+            if (histDChartA) { histDChartA.destroy(); histDChartA = null; }
+            if (histDChartB) { histDChartB.destroy(); histDChartB = null; }
+            if (histDCompareChart) { histDCompareChart.destroy(); histDCompareChart = null; }
+            ['vol', 'abv', 'yield'].forEach(k => { if (histDBarCharts[k]) { histDBarCharts[k].destroy(); histDBarCharts[k] = null; } });
+        }
+
+        function histDShowEmpty(msg) {
+            const e = document.getElementById('hist-d-empty');
+            e.innerText = msg; e.classList.remove('hidden');
+            document.getElementById('hist-d-single-wrap').style.display = 'none';
+            document.getElementById('hist-d-compare-wrap').style.display = 'none';
+            document.getElementById('hist-d-summary').innerHTML = '';
+        }
+
+        function histDHideEmpty() {
+            document.getElementById('hist-d-empty').classList.add('hidden');
+            document.getElementById('hist-d-single-wrap').style.display = (histMode === 'single') ? '' : 'none';
+            document.getElementById('hist-d-compare-wrap').style.display = (histMode === 'compare') ? '' : 'none';
+        }
+
+        function histDrawDistill(batches) {
+            histDClear();
+            document.getElementById('hist-d-summary').innerHTML = '';
+            if (!batches.length) { histDShowEmpty('เลือก Batch เพื่อดูข้อมูล'); return; }
+            google.script.run
+                .withSuccessHandler(function(res) {
+                    if (!res || res.success === false) { histDShowEmpty('โหลดข้อมูลกลั่นไม่สำเร็จ'); return; }
+                    histDData = res.data || {};
+                    histDFinal = res.final || {};
+                    const any = Object.keys(histDData).some(b => (histDData[b] || []).some(r => DT_PHASES.indexOf(r.phase) >= 0));
+                    if (!any) { histDShowEmpty('ยังไม่มีข้อมูลการกลั่นของ Batch ที่เลือก'); return; }
+                    histDHideEmpty();
+                    if (histMode === 'single') { histDSingleBatch = batches[0]; histDRenderSingle(batches[0]); }
+                    else histDistillCompareDraw();
+                })
+                .withFailureHandler(function() { histDShowEmpty('Error'); })
+                .getDistillRunMulti(batches);
+        }
+
+        function histDGroupPots(reads) {
+            const pots = {};
+            reads.forEach(r => { const p = parseInt(r.potNo, 10) || 0; (pots[p] = pots[p] || []).push(r); });
+            return pots;
+        }
+
+        /** reconstruct ปริมาณสะสมต่อเนื่องทั้งหม้อ (carry ข้ามช่วง เพราะ cumVol รีเซ็ตต่อช่วง) */
+        function histDGlobalCum(potRows) {
+            const rows = potRows.filter(r => DT_PHASES.indexOf(r.phase) >= 0)
+                                .sort((a, b) => (parseFloat(a.minute) || 0) - (parseFloat(b.minute) || 0));
+            let carry = 0, lastPhase = null, lastCumInPhase = 0;
+            return rows.map(r => {
+                const cum = parseFloat(r.cumVol);
+                if (r.phase !== lastPhase) { if (lastPhase !== null) carry += lastCumInPhase; lastPhase = r.phase; lastCumInPhase = 0; }
+                const c = isNaN(cum) ? lastCumInPhase : cum;
+                if (!isNaN(cum)) lastCumInPhase = cum;
+                return Object.assign({}, r, { globalCum: carry + c });
+            });
+        }
+
+        function histDNum(v) { return (v === '' || v == null) ? null : parseFloat(v); }
+        function histDSelectPot(n) { histDViewPot = n; histDRenderSingle(histDSingleBatch); }
+
+        function histDRenderSingle(batch) {
+            const reads = histDData[batch] || [];
+            const pots = histDGroupPots(reads);
+            const potNos = Object.keys(pots).map(Number).filter(n => pots[n].some(r => DT_PHASES.indexOf(r.phase) >= 0)).sort((a, b) => a - b);
+            if (!potNos.length) { histDShowEmpty('ยังไม่มีข้อมูลการกลั่น'); return; }
+            if (histDViewPot == null || potNos.indexOf(histDViewPot) < 0) histDViewPot = potNos[potNos.length - 1];
+            document.getElementById('hist-d-pot-tabs').innerHTML = potNos.length > 1
+                ? potNos.map(n => `<button type="button" onclick="histDSelectPot(${n})" class="px-3 py-1 rounded text-sm ${n === histDViewPot ? 'bg-orange-600 text-white' : 'bg-gray-200 text-gray-700'}">หม้อ ${n}</button>`).join('')
+                : '';
+            histDDrawChartA(pots[histDViewPot] || []);
+            histDDrawChartB(pots[histDViewPot] || []);
+            histDRenderCard(batch, reads);
+        }
+
+        function histDDrawChartA(potRows) {
+            const canvas = document.getElementById('hist-d-chartA');
+            if (!canvas || typeof Chart === 'undefined') return;
+            if (histDChartA) { histDChartA.destroy(); histDChartA = null; }
+            const g = histDGlobalCum(potRows);
+            histDChartA = new Chart(canvas.getContext('2d'), {
+                type: 'line',
+                data: { datasets: [
+                    { label: 'ดีกรี@20', data: g.map(r => ({ x: r.globalCum, y: histDNum(r.abv20) })), borderColor: '#534AB7', backgroundColor: '#534AB7', yAxisID: 'yA', tension: 0.3, spanGaps: true },
+                    { label: 'อุณหภูมิไอ', data: g.map(r => ({ x: r.globalCum, y: histDNum(r.vaporTemp) })), borderColor: '#E24B4A', backgroundColor: '#E24B4A', yAxisID: 'yT', tension: 0.3, spanGaps: true, borderDash: [6, 4] }
+                ] },
+                options: {
+                    responsive: true, interaction: { mode: 'index', intersect: false },
+                    plugins: { legend: { position: 'bottom' } },
+                    scales: {
+                        x: { type: 'linear', title: { display: true, text: 'ปริมาณสะสม (ล.)' } },
+                        yA: { type: 'linear', position: 'left', title: { display: true, text: '%ABV@20' } },
+                        yT: { type: 'linear', position: 'right', title: { display: true, text: '°C' }, grid: { drawOnChartArea: false } }
+                    }
+                }
+            });
+        }
+
+        function histDDrawChartB(potRows) {
+            const canvas = document.getElementById('hist-d-chartB');
+            if (!canvas || typeof Chart === 'undefined') return;
+            if (histDChartB) { histDChartB.destroy(); histDChartB = null; }
+            const rows = potRows.filter(r => DT_PHASES.indexOf(r.phase) >= 0).sort((a, b) => (parseFloat(a.minute) || 0) - (parseFloat(b.minute) || 0));
+            const pt = key => rows.map(r => ({ x: parseFloat(r.minute), y: histDNum(r[key]) })).filter(p => !isNaN(p.x));
+            histDChartB = new Chart(canvas.getContext('2d'), {
+                type: 'line',
+                data: { datasets: [
+                    { label: 'อัตราการไหล', data: pt('flowRate'), borderColor: '#185FA5', backgroundColor: '#185FA5', yAxisID: 'yF', tension: 0.3, spanGaps: true },
+                    { label: 'ดีกรี@20', data: pt('abv20'), borderColor: '#534AB7', backgroundColor: '#534AB7', yAxisID: 'yT', tension: 0.3, spanGaps: true, borderWidth: 2 },
+                    { label: 'อุณหภูมิไอ', data: pt('vaporTemp'), borderColor: '#E24B4A', backgroundColor: '#E24B4A', yAxisID: 'yT', tension: 0.3, spanGaps: true },
+                    { label: 'หม้อต้ม', data: pt('potTemp'), borderColor: '#BA7517', backgroundColor: '#BA7517', yAxisID: 'yT', tension: 0.3, spanGaps: true, borderDash: [6, 4] },
+                    { label: 'น้ำหล่อเย็น', data: pt('coolTemp'), borderColor: '#1D9E75', backgroundColor: '#1D9E75', yAxisID: 'yT', tension: 0.3, spanGaps: true, borderDash: [2, 3] }
+                ] },
+                options: {
+                    responsive: true, interaction: { mode: 'index', intersect: false },
+                    plugins: { legend: { position: 'bottom' } },
+                    scales: {
+                        x: { type: 'linear', title: { display: true, text: 'เวลา (นาที)' } },
+                        yF: { type: 'linear', position: 'left', title: { display: true, text: 'ml/min' } },
+                        yT: { type: 'linear', position: 'right', title: { display: true, text: '°C / %ABV' }, grid: { drawOnChartArea: false } }
+                    }
+                }
+            });
+        }
+
+        /** ค่าหัวใจของหม้อหนึ่ง: ใช้ค่าวัดจริงจากแถวจบหม้อถ้ามี ไม่งั้นคำนวณจากช่วงกลาง */
+        function histDPotHearts(potRows) {
+            const fin = potRows.find(r => r.phase === 'จบหม้อ');
+            if (fin && parseFloat(fin.cumVol) > 0) {
+                return { vol: parseFloat(fin.cumVol) || 0, abv: parseFloat(fin.abv20) || 0, src: 'วัด' };
+            }
+            const hearts = potRows.filter(r => r.phase === 'กลาง').sort((a, b) => (parseFloat(a.minute) || 0) - (parseFloat(b.minute) || 0));
+            let prev = 0, vol = 0, ws = 0;
+            hearts.forEach(r => { const cum = parseFloat(r.cumVol); if (isNaN(cum)) return; let d = cum - prev; if (d < 0) d = 0; prev = cum; const a = parseFloat(r.abv20); vol += d; if (!isNaN(a)) ws += d * a; });
+            return { vol: vol, abv: vol > 0 ? ws / vol : 0, src: 'คำนวณ' };
+        }
+
+        /** สรุปกลั่นต่อ batch — ต่อหม้อใช้ค่าจบหม้อ (วัดจริง) ถ้ามี */
+        function histDComputeDistill(reads) {
+            const pots = histDGroupPots(reads);
+            let totalVol = 0, totalWsum = 0, charge = 0, potCount = 0, totalMinutes = 0;
+            Object.values(pots).forEach(potRows => {
+                const h = histDPotHearts(potRows);   // ใช้ค่าจบหม้อถ้ามี ไม่งั้นคำนวณ
+                if (h.vol > 0) { totalVol += h.vol; totalWsum += h.vol * h.abv; potCount++; }
+                const marker = potRows.find(r => r.phase === 'เริ่มกลั่น');
+                if (marker) { const c = parseFloat(marker.fermCharge); if (!isNaN(c)) charge += c; }
+                let mx = 0; potRows.forEach(r => { const m = parseFloat(r.minute); if (!isNaN(m) && m > mx) mx = m; });
+                totalMinutes += mx;
+            });
+            const abv = totalVol > 0 ? totalWsum / totalVol : 0;
+            return { totalVol, abv, charge, potCount, totalMinutes };
+        }
+
+        /** ดีกรีเป้าหมายของ batch = ดีกรีสินค้าใน Master_Product (จาก globalProducts ที่โหลดไว้) */
+        function histDTargetAbv(batch) {
+            const name = histProduct[batch];
+            if (!name) return NaN;
+            const p = (globalProducts || []).find(x => String(x['ชื่อสุรา']) === String(name));
+            return p ? parseFloat(p['ดีกรี']) : NaN;
+        }
+
+        /** แปลงปริมาณหัวใจ@ดีกรีจริง → ปริมาณเทียบที่ดีกรีเป้าหมาย (อนุรักษ์แอลกอฮอล์บริสุทธิ์) */
+        function histDEquivVol(totalVol, abv, target) {
+            return (abv > 0 && !isNaN(target) && target > 0) ? totalVol * abv / target : NaN;
+        }
+
+        function histDFmtTime(min) {
+            if (isNaN(min)) return '—';
+            const h = Math.floor(min / 60), m = Math.round(min % 60);
+            return h + ':' + String(m).padStart(2, '0');
+        }
+
+        function histDCardCell(label, val) { return `<div class="bg-gray-50 rounded-lg p-3"><div class="text-xs text-gray-400">${label}</div><div class="text-lg font-bold">${val}</div></div>`; }
+
+        function histDRenderCard(batch, reads) {
+            const s = histDComputeDistill(reads);
+            const fin = histDFinal[batch];
+            const useLog = !!(fin && fin.vol > 0);
+            const vol = useLog ? fin.vol : s.totalVol;     // ใช้ค่าจาก Log_Distill ถ้าปิด batch แล้ว
+            const abv = useLog ? fin.abv : s.abv;
+            const target = histDTargetAbv(batch);
+            const equiv = histDEquivVol(vol, abv, target);
+            const yld = (!isNaN(equiv) && s.charge > 0) ? equiv / s.charge * 100 : NaN;
+            const tlabel = isNaN(target) ? 'เป้าหมาย' : ('@' + histFmt(target, 0) + '°');
+            const src = useLog
+                ? '<span class="text-green-600">หัวใจ: ค่าจริงจาก Log_Distill</span>'
+                : '<span class="text-amber-600">หัวใจ: ค่าคำนวณ (ยังไม่ปิด batch)</span>';
+            const warn = isNaN(target) ? '<p class="text-xs text-amber-600 mt-2">⚠️ ไม่พบดีกรีเป้าหมายของสินค้านี้ใน Master_Product — ปริมาณเป้าหมาย/Yield คำนวณไม่ได้</p>' : '';
+            // สรุปหม้อที่เลือกอยู่ (รายงานแยกหม้อ)
+            let potLine = '';
+            if (histDViewPot != null) {
+                const pr = (histDGroupPots(reads)[histDViewPot]) || [];
+                const h = histDPotHearts(pr);
+                potLine = `<div class="text-sm bg-slate-50 border rounded-lg p-3 mb-3">หม้อ ${histDViewPot} <span class="text-xs ${h.src === 'วัด' ? 'text-green-600' : 'text-gray-400'}">(${h.src})</span> — หัวใจ <b>${histFmt(h.vol, 2)}</b> ล. @ <b>${histFmt(h.abv, 1)}</b>% @20</div>`;
+            }
+            document.getElementById('hist-d-summary').innerHTML = potLine + `<div class="text-xs mb-2">รวมทั้ง batch · ${src}</div><div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                ${histDCardCell('ปริมาณหัวใจรวม', histFmt(vol, 2) + ' ล.')}
+                ${histDCardCell('ดีกรีหัวใจ @20', histFmt(abv, 1) + '%')}
+                ${histDCardCell('ปริมาณ ' + tlabel, isNaN(equiv) ? '—' : histFmt(equiv, 2) + ' ล.')}
+                ${histDCardCell('Yield (เป้าหมาย/น้ำหมัก)', isNaN(yld) ? '—' : histFmt(yld, 1) + '%')}
+                ${histDCardCell('จำนวนหม้อ', s.potCount + ' หม้อ')}
+                ${histDCardCell('เวลารวมกลั่น', histDFmtTime(s.totalMinutes) + ' ชม.')}
+            </div>${warn}`;
+        }
+
+        /** โหมดเทียบ: overlay 1 เส้น/หม้อ ของ metric ที่เลือก + ตารางสรุป */
+        function histDistillCompareDraw() {
+            const canvas = document.getElementById('hist-d-compare-chart');
+            if (!canvas || typeof Chart === 'undefined') return;
+            if (histDCompareChart) { histDCompareChart.destroy(); histDCompareChart = null; }
+            const metric = document.getElementById('hist-d-metric').value;
+            const xaxis = document.getElementById('hist-d-xaxis').value;   // 'minute' หรือ 'cum'
+            const palette = ['#2563eb', '#dc2626', '#16a34a', '#d97706', '#7c3aed', '#0d9488', '#db2777', '#65a30d', '#0891b2', '#9333ea'];
+            const datasets = []; let ci = 0;
+            Object.keys(histDData).forEach(batch => {
+                const reads = (histDData[batch] || []).filter(r => DT_PHASES.indexOf(r.phase) >= 0);
+                const pots = histDGroupPots(reads);
+                Object.keys(pots).map(Number).sort((a, b) => a - b).forEach(potNo => {
+                    let pts;
+                    if (xaxis === 'cum') {
+                        pts = histDGlobalCum(pots[potNo]).map(r => ({ x: r.globalCum, y: histDNum(r[metric]) })).filter(p => !isNaN(p.x));
+                    } else {
+                        pts = pots[potNo].sort((a, b) => (parseFloat(a.minute) || 0) - (parseFloat(b.minute) || 0))
+                            .map(r => ({ x: parseFloat(r.minute), y: histDNum(r[metric]) })).filter(p => !isNaN(p.x));
+                    }
+                    if (!pts.length) return;
+                    const color = palette[ci % palette.length]; ci++;
+                    datasets.push({ label: `${batch} · หม้อ ${potNo}`, data: pts, borderColor: color, backgroundColor: color, tension: 0.3, spanGaps: true });
+                });
+            });
+            const ylbl = { abv20: '%ABV@20', vaporTemp: '°C (ไอ)', cumVol: 'ลิตร', flowRate: 'ml/min', potTemp: '°C (หม้อต้ม)', coolTemp: '°C (น้ำหล่อเย็น)' }[metric] || '';
+            const xlbl = (xaxis === 'cum') ? 'ปริมาณสะสม (ล.)' : 'นาทีที่';
+            histDCompareChart = new Chart(canvas.getContext('2d'), {
+                type: 'line', data: { datasets: datasets },
+                options: {
+                    responsive: true, interaction: { mode: 'nearest', intersect: false },
+                    plugins: { legend: { position: 'bottom' } },
+                    scales: { x: { type: 'linear', title: { display: true, text: xlbl } }, y: { title: { display: true, text: ylbl } } }
+                }
+            });
+            histDRenderCompareTable();
+            histDrawBars();
+        }
+
+        /** กราฟแท่งสรุปต่อ batch: ปริมาณ@เป้าหมาย / ดีกรีหัวใจ / Yield */
+        function histDrawBars() {
+            const batches = Object.keys(histDData).filter(b => (histDData[b] || []).some(r => DT_PHASES.indexOf(r.phase) >= 0));
+            const volData = [], abvData = [], yieldData = [];
+            batches.forEach(b => {
+                const s = histDComputeDistill(histDData[b]);
+                const fin = histDFinal[b];
+                const useLog = !!(fin && fin.vol > 0);
+                const vol = useLog ? fin.vol : s.totalVol;
+                const abv = useLog ? fin.abv : s.abv;
+                const target = histDTargetAbv(b);
+                const equiv = histDEquivVol(vol, abv, target);
+                const yld = (!isNaN(equiv) && s.charge > 0) ? equiv / s.charge * 100 : NaN;
+                volData.push(isNaN(equiv) ? null : Math.round(equiv * 100) / 100);
+                abvData.push(Math.round(abv * 10) / 10);
+                yieldData.push(isNaN(yld) ? null : Math.round(yld * 10) / 10);
+            });
+            histDBar('hist-d-bar-vol', 'vol', batches, volData, '#16a34a');
+            histDBar('hist-d-bar-abv', 'abv', batches, abvData, '#7c3aed');
+            histDBar('hist-d-bar-yield', 'yield', batches, yieldData, '#d97706');
+        }
+
+        function histDBar(canvasId, key, labels, data, color) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas || typeof Chart === 'undefined') return;
+            if (histDBarCharts[key]) { histDBarCharts[key].destroy(); histDBarCharts[key] = null; }
+            histDBarCharts[key] = new Chart(canvas.getContext('2d'), {
+                type: 'bar',
+                data: { labels: labels, datasets: [{ data: data, backgroundColor: color }] },
+                options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+            });
+        }
+
+        function histDRenderCompareTable() {
+            const el = document.getElementById('hist-d-summary');
+            const batches = Object.keys(histDData).filter(b => (histDData[b] || []).some(r => DT_PHASES.indexOf(r.phase) >= 0));
+            if (!batches.length) { el.innerHTML = ''; return; }
+            const rows = batches.map(b => {
+                const s = histDComputeDistill(histDData[b]);
+                const fin = histDFinal[b];
+                const useLog = !!(fin && fin.vol > 0);
+                const vol = useLog ? fin.vol : s.totalVol;
+                const abv = useLog ? fin.abv : s.abv;
+                const target = histDTargetAbv(b);
+                const equiv = histDEquivVol(vol, abv, target);
+                const yld = (!isNaN(equiv) && s.charge > 0) ? equiv / s.charge * 100 : NaN;
+                return `<tr class="border-b border-gray-100">
+                    <td class="px-2 py-1.5 text-sm font-medium">${b}</td>
+                    <td class="px-2 py-1.5 text-sm text-right">${s.potCount}</td>
+                    <td class="px-2 py-1.5 text-sm text-right">${histFmt(vol, 2)}</td>
+                    <td class="px-2 py-1.5 text-sm text-right">${histFmt(abv, 1)}%</td>
+                    <td class="px-2 py-1.5 text-sm text-right">${isNaN(target) ? '—' : histFmt(target, 0) + '°'}</td>
+                    <td class="px-2 py-1.5 text-sm text-right">${isNaN(equiv) ? '—' : histFmt(equiv, 2)}</td>
+                    <td class="px-2 py-1.5 text-sm text-right">${isNaN(yld) ? '—' : histFmt(yld, 1) + '%'}</td>
+                    <td class="px-2 py-1.5 text-sm text-right">${histDFmtTime(s.totalMinutes)}</td></tr>`;
+            }).join('');
+            el.innerHTML = `<div class="bg-white p-4 rounded-xl shadow-sm border overflow-x-auto">
+                <h3 class="font-bold text-gray-700 mb-3">ตารางสรุปการกลั่น</h3>
+                <table class="w-full text-left"><thead class="bg-gray-50 border-b text-xs text-gray-500 uppercase"><tr>
+                    <th class="px-2 py-1.5">Batch</th><th class="px-2 py-1.5 text-right">หม้อ</th><th class="px-2 py-1.5 text-right">หัวใจ(ล.)</th><th class="px-2 py-1.5 text-right">ดีกรี@20</th><th class="px-2 py-1.5 text-right">เป้าหมาย°</th><th class="px-2 py-1.5 text-right">ปริมาณ(ล.)</th><th class="px-2 py-1.5 text-right">Yield</th><th class="px-2 py-1.5 text-right">เวลา</th>
+                </tr></thead><tbody>${rows}</tbody></table></div>`;
+        }
+
+        /** เติม dropdown Batch ที่หมักแล้วยังไม่กลั่น */
+</script>

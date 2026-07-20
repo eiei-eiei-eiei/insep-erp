@@ -1,0 +1,75 @@
+<script>
+        // ===== entry forms: batch no, material/ferment row helpers, fmon defaults =====
+        function generateBatchNumber() {
+            let dateVal = document.getElementById('ferm-date').value;
+            if (!dateVal) return;
+
+            Swal.showLoading();
+            google.script.run
+                .withSuccessHandler(function(result) {
+                    // รองรับ return format ใหม่ { success, data }
+                    if (result && result.success === false) {
+                        Swal.close();
+                        Swal.fire('ข้อผิดพลาด', result.message || 'ดึงเลข Batch ไม่สำเร็จ', 'error');
+                        return;
+                    }
+                    document.getElementById('ferm-batch').value = result.data || '';
+                    Swal.close();
+                })
+                .withFailureHandler(function(err) {
+                    Swal.close();
+                    Swal.fire('Error', err.message, 'error');
+                })
+                .getLatestBatchNumber(dateVal);
+        }
+
+        function updateContainerVol() {
+            let selectedId = document.getElementById('ferm-container').value;
+            let container  = globalContainers.find(c => c['รหัสภาชนะ'] === selectedId);
+            if (container) {
+                document.getElementById('ferm-vol-per-tank').value = container['ความจุ(ลิตร)'];
+                calculateMainMaterial();
+            }
+        }
+
+        function calculateMainMaterial() {
+            let vol = parseFloat(document.getElementById('ferm-vol-per-tank').value) || 0;
+            let qty = parseFloat(document.getElementById('ferm-qty').value) || 0;
+            document.querySelector('.ferm-mat-amount').value = (vol * qty).toFixed(2);
+        }
+
+        function addMaterialRow() {
+            let container  = document.getElementById('material-rows-container');
+            let matOptions = document.querySelector('.mat-dropdown').innerHTML;
+
+            let row = document.createElement('div');
+            row.className = 'flex gap-2 items-center mat-row mt-2';
+            row.innerHTML = `
+                <select class="w-2/3 p-2 border rounded mat-dropdown ferm-mat-id" required>${matOptions}</select>
+                <input type="number" step="0.01" class="w-1/3 p-2 border rounded ferm-mat-amount" placeholder="จำนวน (กรอกเอง)" required>
+                <button type="button" onclick="this.parentElement.remove()" class="w-10 h-10 bg-red-100 text-red-600 rounded hover:bg-red-200"><i class="fa-solid fa-trash"></i></button>
+            `;
+            container.appendChild(row);
+        }
+
+        // ==========================================
+        // ติดตามการหมัก (pH / Brix / อุณหภูมิ)
+        // ใช้ globalPendingBatches ร่วมกับหน้ากลั่น — Batch ที่กลั่นแล้วจะหายอัตโนมัติ
+        // ==========================================
+
+        /** คืนค่าเวลาปัจจุบันรูปแบบ HH:mm สำหรับ default ช่องเวลา */
+        function nowHHmm_() {
+            const d = new Date();
+            return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+        }
+
+        /** ตั้งค่า default เวลา ของฟอร์มติดตามหมัก (วันที่ถูกตั้งเป็นวันนี้โดย logic รวม) */
+        function setFmonDefaults() {
+            const t = document.getElementById('fmon-time');
+            if (t && !t.value) t.value = nowHHmm_();
+        }
+
+        // ==========================================
+        // หน้าประวัติการหมัก-กลั่น (small multiples Brix/pH/Temp)
+        // ==========================================
+</script>

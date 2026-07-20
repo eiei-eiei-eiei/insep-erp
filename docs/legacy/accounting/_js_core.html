@@ -1,0 +1,254 @@
+<script>
+  // =========================================================================
+  // JS [1/4] CORE — globals + boot/login/settings/tabs/entity
+  // ⚠️ ไฟล์นี้ต้องถูก include ก่อนไฟล์ js อื่น (ประกาศ global ที่ไฟล์อื่นใช้)
+  // =========================================================================
+
+  // ส่วนหน้าจอพื้นฐาน
+  let globalSettings = { accounts: [], expenseCats: [], incomeCats: [], whtRates: [], contacts: [], entities: [], accountsMeta: [] };
+  // [Multi-Entity] กิจการที่เลือกอยู่ปัจจุบัน — ส่งไปกับทุก backend call (default EID01)
+  let currentEntityId = 'EID01';
+  // [Phase 1] ผู้ใช้ที่ login อยู่ — { role, allowedEntityId, displayName } (null = ยังไม่ login)
+  let currentUser = null;
+  let myChartInstance = null;
+  let pendingWhtData = []; // เก็บข้อมูลรอออกเอกสาร
+  document.getElementById('transactionDate').valueAsDate = new Date();
+  const today = new Date();
+  document.getElementById('reportPeriod').value = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, '0');
+  // ไม่เรียก addItemRow() ที่นี่ — เรียกหลัง login สำเร็จแทน (ใน loadSettings)
+
+  // [Phase B/B1] เปิดเว็บ → โฟกัสช่อง username (หน่วงเวลาเพราะ GAS iframe ต้องรอ render ก่อน focus ถึงติด)
+  function focusUsername() { const u = document.getElementById('username'); if (u && !document.getElementById('login-section').classList.contains('hidden')) { u.focus(); u.select(); } }
+  window.addEventListener('load', function() { setTimeout(focusUsername, 300); });
+
+  function handleLoginKeyPress(e) { if (e.key === 'Enter') checkLogin(); }
+
+  // [Phase 1] login แบบ multi-user (verifyUser) แทน verifyPassword เดิม
+  function checkLogin() {
+    const usr = (document.getElementById('username') || {}).value || '';
+    const pwd = document.getElementById('password').value;
+    const btn = document.getElementById('btn-login');
+    const err = document.getElementById('login-error');
+    err.classList.add('hidden');
+    btn.innerText = "กำลังตรวจสอบ..."; btn.disabled = true;
+
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (res && res.success) {
+          currentUser = { role: res.role, allowedEntityId: res.allowedEntityId, displayName: res.displayName };
+          // currentEntityId จะถูกตั้งเป็น "กิจการแรกที่อนุญาต" ใน populateEntitySelector (หลัง loadSettings)
+          // ไม่ตั้งตรงนี้ — กัน currentEntityId กลายเป็น 'ALL'/'all' แล้วเขียนผิดลง col 20
+          document.getElementById('login-section').classList.add('hidden');
+          document.getElementById('app-section').classList.remove('hidden');
+          const un = document.getElementById('user-name');
+          if (un) un.innerText = res.displayName + (res.role === 'main' ? '' : ' (จำกัดสิทธิ์)');
+          applyRolePermissions();
+          loadSettings();
+        } else {
+          err.innerText = (res && res.message) ? res.message : 'username หรือรหัสผ่านไม่ถูกต้อง';
+          err.classList.remove('hidden');
+          btn.innerText = "เข้าสู่ระบบ"; btn.disabled = false;
+        }
+      })
+      .withFailureHandler(function(e) {
+        err.innerText = 'เชื่อมต่อระบบไม่ได้: ' + e.message;
+        err.classList.remove('hidden');
+        btn.innerText = "เข้าสู่ระบบ"; btn.disabled = false;
+      })
+      .verifyUser(usr, pwd);
+  }
+
+  // [Phase 1] ซ่อน/แสดง UI ตามสิทธิ์ — main เห็นทุกอย่าง, อื่น ๆ ดูอย่างเดียว
+  function applyRolePermissions() {
+    const isMain = currentUser && currentUser.role === 'main';
+    // หน้าบันทึกรายรับ-รายจ่าย: เฉพาะ main
+    const entryTab = document.getElementById('tab-entry');
+    if (entryTab) entryTab.style.display = isMain ? '' : 'none';
+    // ปุ่มโอนเงินระหว่างบัญชี: เฉพาะ main
+    const transferBtn = document.getElementById('btn-transfer');
+    if (transferBtn) transferBtn.classList.toggle('hidden', !isMain);
+    // [Phase 5] หน้าเช็คราคา = บันทึกข้อมูล → เฉพาะ main
+    const pcTab = document.getElementById('tab-pricecheck');
+    if (pcTab) pcTab.style.display = isMain ? '' : 'none';
+    // non-main: เริ่มที่หน้าบัญชี & เงินสด (ไม่เห็นหน้าบันทึก) + โหลดยอดทันที
+    if (!isMain) {
+      switchTab('accounts');
+      if (typeof loadAccountBalances === 'function') loadAccountBalances();
+    }
+  }
+
+  // [Phase 1] ออกจากระบบ — กลับไปหน้า login, ล้าง state
+  function logout() {
+    currentUser = null;
+    document.getElementById('app-section').classList.add('hidden');
+    document.getElementById('login-section').classList.remove('hidden');
+    const pw  = document.getElementById('password'); if (pw) pw.value = '';
+    const un  = document.getElementById('username'); if (un) { un.value = ''; un.focus(); }
+    const err = document.getElementById('login-error'); if (err) err.classList.add('hidden');
+  }
+  function loadSettings() {
+    google.script.run
+      .withSuccessHandler(function(data) {
+        if (!data.success) {
+          Swal.fire({ icon: 'warning', title: 'โหลด Settings ไม่สำเร็จ', text: data.message, timer: 4000, showConfirmButton: false });
+        }
+        globalSettings = data;
+        populateEntitySelector(data.entities);
+        refreshAccountTypeDropdown();   // [Multi-Entity] กรองบัญชีตาม entity ที่เลือก
+        // [Phase B/B5] datalist รายชื่อคู่ค้า (ใช้ในหน้าเช็คราคา ฯลฯ)
+        const clist = document.getElementById('contact-list');
+        if (clist) clist.innerHTML = (data.contacts || []).map(c => `<option value="${String(c.name || '').replace(/"/g, '&quot;')}">`).join('');
+        const whtOptions = data.whtRates.map(r => `<option value="${r}">${r}%</option>`).join('');
+        document.getElementById('whtRate').innerHTML = whtOptions;
+        // C2-6: sync whtRateReverse options พร้อมกัน
+        document.getElementById('whtRateReverse').innerHTML = whtOptions;
+        setType('');   // [Phase B/B2] ไม่เลือก type เริ่มต้น — ผู้ใช้ต้องกดเอง
+        // เพิ่มแถว item แรกหลัง settings โหลดเสร็จ — ทำที่นี่กัน timing issue ใน GAS iframe
+        if (document.getElementById('items-body').children.length === 0) addItemRow();
+        if (typeof loadItemSuggestions === 'function') loadItemSuggestions();   // [Phase A] datalist หมวดหมู่/งาน
+      })
+      .withFailureHandler(function(err) {
+        Swal.fire({ icon: 'error', title: 'เชื่อมต่อระบบไม่ได้', text: err.message });
+      })
+      .getSettingsData();
+  }
+  function populateDropdown(eid, items) { document.getElementById(eid).innerHTML = items.length === 0 ? '<option value="">ไม่มีข้อมูล</option>' : items.map(i => `<option value="${i}">${i}</option>`).join(''); }
+
+  // [Multi-Entity] กรอง accountType dropdown ตาม currentEntityId จาก accountsMeta (Accounts sheet col C)
+  function refreshAccountTypeDropdown() {
+    const meta = globalSettings.accountsMeta || [];
+    const names = meta
+      .filter(a => !a.entityIds || a.entityIds.length === 0 || a.entityIds.includes(currentEntityId))
+      .map(a => a.accountName);
+    populateDropdown('accountType', names.length ? names : (globalSettings.accounts || []));
+  }
+
+  // [Searchable Category] options ปัจจุบัน (set ตอน setType) — อ่านโดย filterCategory() ใน _js_entry
+  let _catOptions_ = [];
+  function populateCategoryDropdown_(items) {
+    _catOptions_ = items || [];
+    const searchEl = document.getElementById('categorySearch');
+    const hiddenEl = document.getElementById('category');
+    if (hiddenEl) hiddenEl.value = '';
+    if (searchEl) {
+      searchEl.value = '';
+      searchEl.placeholder = _catOptions_.length ? 'ค้นหาหมวดหมู่...' : '— เลือกรายรับ/รายจ่ายก่อน —';
+    }
+    const dd = document.getElementById('categoryDropdownList');
+    if (dd) dd.classList.add('hidden');
+  }
+
+  // [Phase 1] แปลง allowedEntityId (string จากชีท Users) → รายการกิจการที่ "อนุญาต"
+  //   - 'ALL' (ไม่สนตัวพิมพ์เล็ก/ใหญ่) → null = เข้าถึงได้ทุกกิจการ
+  //   - 'EID01,EID02'                  → ['EID01','EID02'] = เฉพาะที่ระบุ (คั่น comma)
+  //   หมายเหตุ: นี่คือ "allow-list" ไม่ใช่ "lock" — ถ้ามีหลายตัวยังเลือกได้ผ่าน dropdown
+  function getAllowedEntityIds_() {
+    if (!currentUser || !currentUser.allowedEntityId) return null;   // null = ทุกกิจการ
+    const raw = String(currentUser.allowedEntityId).trim();
+    if (raw === '' || raw.toUpperCase() === 'ALL') return null;
+    return raw.split(',').map(s => s.trim()).filter(s => s);          // คง case ของ EIDxx ไว้
+  }
+
+  // [Multi-Entity] เติม dropdown เลือกกิจการ จากชีท Entities
+  // [Phase 1] กรองตาม allow-list ของผู้ใช้ — เลือกได้ทุกกิจการที่มีสิทธิ์ (ไม่ล็อกตายตัว)
+  function populateEntitySelector(entities) {
+    const sel = document.getElementById('entitySelector');
+    if (!sel) return;
+
+    const allowed = getAllowedEntityIds_();   // null = ทุกกิจการ
+    let list = entities || [];
+    if (allowed) list = list.filter(e => allowed.indexOf(e.entityId) !== -1);
+
+    if (list.length === 0) {
+      // ยังไม่มีชีท Entities หรือ allow-list ไม่ตรง entity ใดเลย → fallback
+      if (allowed && allowed.length) {
+        // โชว์เฉพาะ id ที่อนุญาต (เผื่อ Entities sheet ยังไม่มีชื่อกิจการ)
+        sel.innerHTML = allowed.map(id => `<option value="${id}">กิจการ ${id}</option>`).join('');
+        if (allowed.indexOf(currentEntityId) === -1) currentEntityId = allowed[0];
+      } else {
+        sel.innerHTML = '<option value="EID01">กิจการหลัก (EID01)</option>';
+        currentEntityId = 'EID01';
+      }
+      sel.value = currentEntityId;
+      sel.disabled = (sel.options.length <= 1);
+      return;
+    }
+
+    sel.innerHTML = list.map(e => `<option value="${e.entityId}">${e.name} (${e.entityId})</option>`).join('');
+    // ถ้า currentEntityId เดิมไม่อยู่ในลิสต์ที่อนุญาต ให้ใช้ตัวแรก (กันค้างค่าเก่า/ผิด)
+    if (!list.some(e => e.entityId === currentEntityId)) currentEntityId = list[0].entityId;
+    sel.value = currentEntityId;
+    // ปิด dropdown เฉพาะเมื่อมีสิทธิ์กิจการเดียว (ไม่มีอะไรให้เลือก) — หลายตัว = เลือกได้
+    sel.disabled = (list.length <= 1);
+  }
+
+  // [Multi-Entity] เปลี่ยนกิจการ → reload หน้าที่กำลังเปิดอยู่
+  function onEntityChange() {
+    currentEntityId = document.getElementById('entitySelector').value;
+    refreshAccountTypeDropdown();   // [Multi-Entity] กรองบัญชีตาม entity ใหม่ทันที
+    // โหลดข้อมูลใหม่ตามแท็บที่เปิดอยู่
+    const dashVisible = !document.getElementById('view-dashboard').classList.contains('hidden');
+    const accVisible  = !document.getElementById('view-accounts').classList.contains('hidden');
+    if (dashVisible) loadDashboard();
+    if (accVisible && typeof loadAccountBalances === 'function') loadAccountBalances();
+  }
+
+  function switchTab(tabName) {
+    // [Phase B] entry, dashboard, accounts · [Phase 2] +apar
+    const tabs  = ['entry', 'dashboard', 'accounts', 'apar', 'bills', 'history', 'pricecheck'];
+    const views = { entry: 'view-entry', dashboard: 'view-dashboard', accounts: 'view-accounts', apar: 'view-apar',
+                    bills: 'view-bills', history: 'view-history', pricecheck: 'view-pricecheck' };
+
+    tabs.forEach(t => {
+      const tabEl  = document.getElementById('tab-' + t);
+      const viewEl = document.getElementById(views[t]);
+      if (!tabEl || !viewEl) return;
+      if (t === tabName) {
+        tabEl.className  = "tab-active py-3 px-4 text-sm md:text-base whitespace-nowrap transition-colors flex items-center focus:outline-none flex-shrink-0";
+        viewEl.classList.remove('hidden');
+      } else {
+        tabEl.className  = "tab-inactive py-3 px-4 text-sm md:text-base whitespace-nowrap transition-colors flex items-center focus:outline-none flex-shrink-0";
+        viewEl.classList.add('hidden');
+      }
+    });
+
+    // auto-load เมื่อสลับ tab
+    if (tabName === 'dashboard' && !myChartInstance) loadDashboard();
+    if (tabName === 'apar' && typeof loadApAr === 'function') loadApAr();           // [Phase 2]
+    if (tabName === 'bills' && typeof loadBills === 'function') loadBills();         // [Phase 4]
+    if (tabName === 'history' && typeof loadHistory === 'function') loadHistory();   // [Phase 4]
+    if (tabName === 'pricecheck' && typeof addPriceItem === 'function'              // [Phase 5]
+        && document.querySelectorAll('#pc-items .pc-item').length === 0) addPriceItem();
+    if (tabName === 'accounts') {
+      // [Phase D] เปิดมาโชว์ยอดคงเหลือทันที — ตั้งเดือนปัจจุบันถ้ายังว่าง แล้ว auto-load
+      const accPeriodEl = document.getElementById('accPeriod');
+      if (!accPeriodEl.value) {
+        const d = new Date();
+        accPeriodEl.value = document.getElementById('reportPeriod').value || (d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, '0'));
+      }
+      if (typeof loadAccountBalances === 'function') loadAccountBalances();
+    }
+  }
+
+  // ส่วนฟอร์มบันทึกข้อมูล
+  // [Phase B/B2] tv='' = ยังไม่เลือก (ปุ่มเทาทั้งคู่) · เปลี่ยน label คู่ค้า: รายจ่าย→ผู้ขาย, รายรับ→ลูกค้า
+  function setType(tv) {
+    document.getElementById('type').value = tv || '';
+    const bx = document.getElementById('btn-expense'), bi = document.getElementById('btn-income');
+    const lbl = document.getElementById('contact-label');
+    const gray = "flex-1 py-2.5 px-4 bg-gray-100 border border-gray-300 rounded-md shadow-sm text-sm font-bold";
+    if (tv === 'รายจ่าย') {
+      bx.className = "flex-1 py-2.5 px-4 bg-red-500 text-white rounded-md shadow-sm text-sm font-bold"; bi.className = gray;
+      populateCategoryDropdown_(globalSettings.expenseCats);
+      if (lbl) lbl.innerText = '👤 ผู้ขาย';
+    } else if (tv === 'รายรับ') {
+      bi.className = "flex-1 py-2.5 px-4 bg-emerald-500 text-white rounded-md shadow-sm text-sm font-bold"; bx.className = gray;
+      populateCategoryDropdown_(globalSettings.incomeCats);
+      if (lbl) lbl.innerText = '👤 ลูกค้า';
+    } else {
+      bx.className = gray; bi.className = gray;
+      populateCategoryDropdown_([]);
+      if (lbl) lbl.innerText = '👤 ชื่อคู่ค้า/ลูกค้า';
+    }
+  }
+</script>

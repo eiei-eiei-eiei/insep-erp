@@ -1,0 +1,206 @@
+<script>
+        // ===== submitForm, loadStockTable, doRecomputeStock =====
+        function submitForm(event, type) {
+            event.preventDefault();
+            Swal.fire({ title: 'กำลังบันทึกข้อมูล...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); }});
+
+            let payload = {};
+
+            if (type === 'material') {
+                payload = {
+                    date:      document.getElementById('mat-date').value,
+                    transType: document.getElementById('mat-type').value,
+                    materialId: document.getElementById('mat-id').value,
+                    amount:    document.getElementById('mat-amount').value,
+                    docRef:    document.getElementById('mat-doc').value,
+                    note:      document.getElementById('mat-note').value
+                };
+            } else if (type === 'ferment') {
+                let materialsUsed = [];
+                let matRows = document.querySelectorAll('#material-rows-container .mat-row');
+                matRows.forEach(row => {
+                    materialsUsed.push({
+                        id:     row.querySelector('.ferm-mat-id').value,
+                        amount: row.querySelector('.ferm-mat-amount').value
+                    });
+                });
+
+                payload = {
+                    date:        document.getElementById('ferm-date').value,
+                    batch:       document.getElementById('ferm-batch').value,
+                    productName: document.getElementById('ferm-product-name').value,
+                    containerId: document.getElementById('ferm-container').value,
+                    volPerTank:  document.getElementById('ferm-vol-per-tank').value,
+                    qty:         document.getElementById('ferm-qty').value,
+                    materials:   materialsUsed
+                };
+            } else if (type === 'dilute') {
+                payload = {
+                    date:        document.getElementById('dil-date').value,
+                    productName: document.getElementById('dil-product-name').value,
+                    startVol:    document.getElementById('dil-start-vol').value,
+                    startAbv:    document.getElementById('dil-start-abv').value,
+                    water:       document.getElementById('dil-water').value,
+                    finalVol:    document.getElementById('dil-final-vol').value,
+                    finalAbv:    document.getElementById('dil-final-abv').value,
+                    bottleSize:  document.getElementById('dil-bottle-size').value,
+                    note:        document.getElementById('dil-note').value
+                };
+            } else if (type === 'product') {
+                payload = {
+                    date:      document.getElementById('prd-date').value,
+                    transType: document.getElementById('prd-type').value,
+                    productId: document.getElementById('prd-id').value,
+                    amount:    document.getElementById('prd-amount').value,
+                    note:      document.getElementById('prd-note').value
+                };
+            } else if (type === 'fermentMonitor') {
+                lastFmonBatch = document.getElementById('fmon-batch').value;
+                payload = {
+                    date:        document.getElementById('fmon-date').value,
+                    time:        document.getElementById('fmon-time').value,
+                    batch:       lastFmonBatch,
+                    productName: document.getElementById('fmon-product-name').value,
+                    ph:          document.getElementById('fmon-ph').value,
+                    brix:        document.getElementById('fmon-brix').value,
+                    temp:        document.getElementById('fmon-temp').value,
+                    note:        document.getElementById('fmon-note').value
+                };
+            }
+
+            google.script.run
+                .withSuccessHandler(function(response) {
+                    if (response.success) {
+                        Swal.fire({ icon: 'success', title: 'สำเร็จ', text: response.message, timer: 1500, showConfirmButton: false });
+                        document.getElementById('form-' + type).reset();
+                        document.querySelectorAll('input[type="date"]').forEach(el => el.valueAsDate = new Date());
+
+                        // ติดตามหมัก: คงค่า Batch ที่เลือก + ตั้งเวลาใหม่ + รีโหลดประวัติ/กราฟ
+                        if (type === 'fermentMonitor') {
+                            const sel = document.getElementById('fmon-batch');
+                            sel.value = lastFmonBatch;
+                            document.getElementById('fmon-time').value = nowHHmm_();
+                            onFmonBatchChange();
+                        }
+
+                        // Refresh Batch dropdown หลังบันทึกหมัก/กลั่น
+                        if (type === 'ferment' || type === 'distill') {
+                            google.script.run
+                                .withSuccessHandler(populateData)
+                                .withFailureHandler(function(err) {
+                                    Swal.fire('Error', 'โหลด Batch ใหม่ไม่สำเร็จ: ' + err.message, 'error');
+                                })
+                                .getMasterAndInitialData();
+                        }
+                    } else {
+                        Swal.fire('ข้อผิดพลาด', response.message, 'error');
+                    }
+                })
+                .withFailureHandler(function(err) {
+                    Swal.fire('Error', 'ไม่สามารถติดต่อเซิร์ฟเวอร์ได้: ' + err.message, 'error');
+                })
+                .saveTransaction(type, payload);
+        }
+
+        // ==========================================
+        // Admin — Stock Functions (ข้อ 4-5)
+        // ==========================================
+
+        /**
+         * โหลดตารางสต็อกปัจจุบันจาก Stock_Product
+         */
+        function loadStockTable() {
+            const container = document.getElementById('stock-table-container');
+            container.innerHTML = '<div class="py-6 text-center text-gray-400"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>กำลังโหลด...</div>';
+
+            google.script.run
+                .withSuccessHandler(function(res) {
+                    if (!res.success) {
+                        container.innerHTML = `<div class="py-4 text-center text-red-500">โหลดไม่สำเร็จ: ${res.message || ''}</div>`;
+                        return;
+                    }
+                    if (!res.items || res.items.length === 0) {
+                        container.innerHTML = '<div class="py-4 text-center text-gray-400">ยังไม่มีข้อมูลสต็อก — กรุณารัน "คำนวณสต็อกใหม่ทั้งหมด" ก่อน</div>';
+                        return;
+                    }
+
+                    // หาชื่อสินค้าจาก Master (ที่โหลดไว้แล้ว)
+                    function getProductName(id) {
+                        const p = globalProducts.find(p => String(p['รหัสสินค้า']) === String(id));
+                        return p ? `${p['ชื่อสุรา']} ${p['ดีกรี']}% ${p['ขนาดขวด(ลิตร)']}L` : id;
+                    }
+
+                    let rows = res.items.map(item => {
+                        const balanceClass = item.balance < 0 ? 'text-red-600 font-bold' : (item.balance === 0 ? 'text-gray-400' : 'text-green-700 font-bold');
+                        return `
+                            <tr class="border-b border-gray-100 hover:bg-gray-50">
+                                <td class="px-4 py-2.5 text-xs text-gray-500">${item.productId}</td>
+                                <td class="px-4 py-2.5 text-sm">${getProductName(item.productId)}</td>
+                                <td class="px-4 py-2.5 text-sm text-right ${balanceClass}">${item.balance.toLocaleString('th-TH')}</td>
+                                <td class="px-4 py-2.5 text-xs text-gray-400 text-right">${item.lastUpdated}</td>
+                            </tr>`;
+                    }).join('');
+
+                    container.innerHTML = `
+                        <table class="w-full text-left">
+                            <thead class="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+                                <tr>
+                                    <th class="px-4 py-2">รหัส</th>
+                                    <th class="px-4 py-2">ชื่อสินค้า</th>
+                                    <th class="px-4 py-2 text-right">สต็อก (ขวด)</th>
+                                    <th class="px-4 py-2 text-right">อัปเดตล่าสุด</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                        </table>`;
+                })
+                .withFailureHandler(function(err) {
+                    container.innerHTML = `<div class="py-4 text-center text-red-500">เกิดข้อผิดพลาด: ${err.message}</div>`;
+                })
+                .getAllProductStock();
+        }
+
+        /**
+         * กด "คำนวณสต็อกใหม่ทั้งหมด" — confirm แล้วเรียก recompute
+         */
+        function doRecomputeStock() {
+            Swal.fire({
+                title: 'ยืนยันคำนวณสต็อกใหม่?',
+                html: 'ระบบจะอ่าน <strong>Log_Product ทั้งหมด</strong> แล้วคำนวณยอดใหม่จากศูนย์<br><span class="text-sm text-gray-500">ใช้เวลาประมาณ 5-15 วินาที</span>',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d97706',
+                cancelButtonColor: '#6b7280',
+                confirmButtonText: 'ยืนยัน คำนวณใหม่',
+                cancelButtonText: 'ยกเลิก'
+            }).then(result => {
+                if (!result.isConfirmed) return;
+
+                Swal.fire({
+                    title: 'กำลังคำนวณ...',
+                    html: 'กรุณารอสักครู่',
+                    allowOutsideClick: false,
+                    didOpen: () => { Swal.showLoading(); }
+                });
+
+                google.script.run
+                    .withSuccessHandler(function(res) {
+                        if (res.success) {
+                            Swal.fire({
+                                icon: 'success',
+                                title: 'สำเร็จ',
+                                text: res.message,
+                                timer: 2000,
+                                showConfirmButton: false
+                            }).then(() => loadStockTable()); // โหลดตารางใหม่หลัง recompute
+                        } else {
+                            Swal.fire('ข้อผิดพลาด', res.message, 'error');
+                        }
+                    })
+                    .withFailureHandler(function(err) {
+                        Swal.fire('Error', 'เกิดข้อผิดพลาด: ' + err.message, 'error');
+                    })
+                    .runRecomputeStock();
+            });
+        }
+</script>

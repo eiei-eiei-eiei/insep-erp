@@ -1,0 +1,37 @@
+<!-- =========================================================================
+     VIEW: _view_pricecheck — [Phase 5 / N3] เช็คราคา (เก็บประวัติราคา ไม่กระทบบัญชี)
+     ========================================================================= -->
+<div id="view-pricecheck" class="hidden">
+  <div class="bg-white rounded-2xl shadow-sm p-4 md:p-6 max-w-3xl mx-auto">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-xl font-bold text-gray-800">เช็คราคา</h2>
+      <span class="text-xs text-gray-400">บันทึกไว้ดูประวัติราคา — ไม่เข้าบัญชี/ภาษี</span>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-3 mb-3">
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1">ผู้ขาย/ร้าน (ถ้ามี)</label>
+        <input type="text" id="pcContact" list="contact-list" placeholder="พิมพ์ค้น/เลือกคู่ค้า" class="w-full border-gray-300 rounded-xl border p-3">
+        <datalist id="contact-list"></datalist>
+      </div>
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1">วันที่</label>
+        <input type="date" id="pcDate" class="w-full border-gray-300 rounded-xl border p-3">
+      </div>
+    </div>
+    <div class="mb-3">
+      <label class="block text-sm font-semibold text-gray-700 mb-1">หมายเหตุ</label>
+      <input type="text" id="pcNote" placeholder="เช่น เช็คราคาก่อนสั่งซื้อ" class="w-full border-gray-300 rounded-xl border p-3">
+    </div>
+
+    <div class="border-t pt-3">
+      <div class="flex items-center justify-between mb-2">
+        <label class="text-sm font-bold text-gray-700">รายการสินค้า</label>
+        <button type="button" onclick="addPriceItem()" class="text-sm text-blue-600 border border-blue-200 rounded-lg px-3 py-1 hover:bg-blue-50">+ เพิ่มรายการ</button>
+      </div>
+      <div id="pc-items"></div>
+    </div>
+
+    <button type="button" onclick="submitPriceCheck()" id="pc-submit" class="mt-4 w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl shadow">💾 บันทึกเช็คราคา</button>
+  </div>
+</div>

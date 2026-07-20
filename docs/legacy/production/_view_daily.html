@@ -1,0 +1,131 @@
+<!-- ===== view: วัตถุดิบ + การหมัก + ติดตามการหมัก ===== -->
+        <!-- 1. วัตถุดิบ -->
+        <div id="tab-material" class="tab-content active max-w-2xl mx-auto">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800 border-b pb-2"><i class="fa-solid fa-wheat-awn text-amber-600 mr-2"></i> บันทึกรับ-จ่าย วัตถุดิบ</h2>
+            <form id="form-material" onsubmit="submitForm(event, 'material')" class="bg-white p-6 rounded-xl shadow-sm border space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div><label class="block text-sm font-medium text-gray-700">วันที่</label><input type="date" id="mat-date" required class="mt-1 w-full p-2 border rounded"></div>
+                    <div><label class="block text-sm font-medium text-gray-700">ประเภท</label>
+                        <select id="mat-type" class="mt-1 w-full p-2 border rounded">
+                            <option value="รับ">รับเข้า (ซื้อ/รับโอน)</option>
+                            <option value="จ่าย">จ่ายออก (ผลิตสินค้าตามพิกัดฯ)</option>
+                            <option value="ผลิตสินค้าอื่น">นำไปผลิตสินค้าอื่น</option>
+                            <option value="เสียหาย">เสียหาย</option>
+                            <option value="อื่นๆ">อื่น ๆ</option>
+                        </select>
+                    </div>
+                </div>
+                <div><label class="block text-sm font-medium text-gray-700">วัตถุดิบ</label><select id="mat-id" required class="mt-1 w-full p-2 border rounded mat-dropdown"></select></div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div><label class="block text-sm font-medium text-gray-700">จำนวน</label><input type="number" step="0.01" id="mat-amount" required class="mt-1 w-full p-2 border rounded"></div>
+                    <div><label class="block text-sm font-medium text-gray-700">เลขที่เอกสาร</label><input type="text" id="mat-doc" class="mt-1 w-full p-2 border rounded" placeholder="(ถ้ามี)"></div>
+                </div>
+                <div><label class="block text-sm font-medium text-gray-700">หมายเหตุ</label><input type="text" id="mat-note" class="mt-1 w-full p-2 border rounded"></div>
+                <button type="submit" class="w-full bg-blue-600 text-white p-3 rounded font-bold hover:bg-blue-700">บันทึกข้อมูลวัตถุดิบ</button>
+            </form>
+        </div>
+
+        <!-- 2. การหมัก -->
+        <div id="tab-ferment" class="tab-content max-w-3xl mx-auto">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800 border-b pb-2"><i class="fa-solid fa-bubbles text-purple-600 mr-2"></i> บันทึกการลงหมักส่า</h2>
+            <form id="form-ferment" onsubmit="submitForm(event, 'ferment')" class="bg-white p-6 rounded-xl shadow-sm border space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div><label class="block text-sm font-medium text-gray-700">วันที่ลงหมัก</label>
+                        <input type="date" id="ferm-date" required class="mt-1 w-full p-2 border rounded" onchange="generateBatchNumber()">
+                    </div>
+                    <div><label class="block text-sm font-medium text-gray-700">รหัส Batch <span class="text-xs text-gray-400">(Auto แต่แก้ได้)</span></label>
+                        <div class="flex">
+                            <input type="text" id="ferm-batch" required placeholder="เช่น 1/69" class="mt-1 w-full p-2 border rounded bg-yellow-50">
+                            <button type="button" onclick="generateBatchNumber()" class="mt-1 ml-2 bg-gray-200 px-3 rounded hover:bg-gray-300" title="ดึงเลขล่าสุด"><i class="fa-solid fa-rotate"></i></button>
+                        </div>
+                    </div>
+                </div>
+                <div><label class="block text-sm font-medium text-gray-700">ชื่อสุราเป้าหมาย (ที่จะกลั่น)</label>
+                    <select id="ferm-product-name" required class="mt-1 w-full p-2 border rounded prd-name-dropdown"></select>
+                </div>
+                <div class="grid grid-cols-3 gap-4">
+                    <div><label class="block text-sm font-medium text-gray-700">ภาชนะหมัก</label>
+                        <select id="ferm-container" required class="mt-1 w-full p-2 border rounded con-dropdown" onchange="updateContainerVol()"></select>
+                    </div>
+                    <div><label class="block text-sm font-medium text-gray-700">ปริมาณต่อถัง <span class="text-xs">(แก้ไขได้)</span></label>
+                        <input type="number" step="0.01" id="ferm-vol-per-tank" required class="mt-1 w-full p-2 border rounded bg-blue-50" oninput="calculateMainMaterial()">
+                    </div>
+                    <div><label class="block text-sm font-medium text-gray-700">จำนวนภาชนะ (ถัง)</label>
+                        <input type="number" id="ferm-qty" required class="mt-1 w-full p-2 border rounded" oninput="calculateMainMaterial()">
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 p-4 rounded border">
+                    <div class="flex justify-between items-center mb-2">
+                        <label class="block text-sm font-bold text-gray-700">วัตถุดิบที่เบิกใช้ <span class="text-xs font-normal text-red-500">(ระบบจะตัดสต็อกอัตโนมัติ)</span></label>
+                        <button type="button" onclick="addMaterialRow()" class="text-sm bg-purple-100 text-purple-700 px-3 py-1 rounded hover:bg-purple-200"><i class="fa-solid fa-plus mr-1"></i> เพิ่มวัตถุดิบ</button>
+                    </div>
+                    
+                    <div id="material-rows-container" class="space-y-2">
+                        <div class="flex gap-2 items-center mat-row">
+                            <select class="w-2/3 p-2 border rounded mat-dropdown ferm-mat-id" required></select>
+                            <input type="number" step="0.01" class="w-1/3 p-2 border rounded ferm-mat-amount bg-yellow-50" placeholder="จำนวน (คูณออโต้)" required>
+                            <button type="button" class="w-10 h-10 text-gray-400 cursor-not-allowed" disabled><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    </div>
+                </div>
+                <button type="submit" class="w-full bg-purple-600 text-white p-3 rounded font-bold hover:bg-purple-700">บันทึกการหมัก และตัดสต็อกวัตถุดิบ</button>
+            </form>
+        </div>
+
+        <!-- 2.5 ติดตามการหมัก (pH/Brix/อุณหภูมิ) -->
+        <div id="tab-fermentMonitor" class="tab-content max-w-3xl mx-auto">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800 border-b pb-2"><i class="fa-solid fa-temperature-half text-indigo-600 mr-2"></i> ติดตามผลการหมัก (pH / Brix / อุณหภูมิ)</h2>
+
+            <form id="form-fermentMonitor" onsubmit="submitForm(event, 'fermentMonitor')" class="bg-white p-6 rounded-xl shadow-sm border space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div><label class="block text-sm font-medium text-gray-700">เลือก Batch <span class="text-xs text-gray-400" id="fmon-batch-hint">(ยังไม่กลั่น)</span></label>
+                        <select id="fmon-batch" required class="mt-1 w-full p-2 border rounded bg-yellow-50" onchange="onFmonBatchChange()">
+                            <option value="">-- กำลังโหลด Batch ที่กำลังหมัก --</option>
+                        </select>
+                    </div>
+                    <div><label class="block text-sm font-medium text-gray-700">ชื่อสุรา <span class="text-xs text-gray-400">(ดึงอัตโนมัติ)</span></label>
+                        <input type="text" id="fmon-product-name" readonly class="mt-1 w-full p-2 border rounded bg-gray-100 text-gray-600">
+                    </div>
+                </div>
+                <div id="fmon-input-section" class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div><label class="block text-sm font-medium text-gray-700">วันที่วัด</label>
+                        <input type="date" id="fmon-date" required class="mt-1 w-full p-2 border rounded">
+                    </div>
+                    <div><label class="block text-sm font-medium text-gray-700">เวลาที่วัด</label>
+                        <input type="time" id="fmon-time" required class="mt-1 w-full p-2 border rounded">
+                    </div>
+                </div>
+                <div class="grid grid-cols-3 gap-4">
+                    <div><label class="block text-sm font-medium text-gray-700">pH</label>
+                        <input type="number" step="0.01" id="fmon-ph" required placeholder="เช่น 4.20" class="mt-1 w-full p-2 border rounded">
+                    </div>
+                    <div><label class="block text-sm font-medium text-gray-700">Brix (°Bx)</label>
+                        <input type="number" step="0.1" id="fmon-brix" required placeholder="เช่น 12.5" class="mt-1 w-full p-2 border rounded">
+                    </div>
+                    <div><label class="block text-sm font-medium text-gray-700">อุณหภูมิ (°C)</label>
+                        <input type="number" step="0.1" id="fmon-temp" required placeholder="เช่น 30.0" class="mt-1 w-full p-2 border rounded">
+                    </div>
+                </div>
+                <div><label class="block text-sm font-medium text-gray-700">หมายเหตุ</label>
+                    <input type="text" id="fmon-note" placeholder="กลิ่น / ฟอง / สังเกตการณ์" class="mt-1 w-full p-2 border rounded">
+                </div>
+                <button type="submit" class="w-full bg-indigo-600 text-white p-3 rounded font-bold hover:bg-indigo-700">บันทึกผลการวัด</button>
+                </div>
+            </form>
+
+            <!-- ประวัติ + กราฟแนวโน้ม (โหมดปกติ) -->
+            <div id="fmon-history-card" class="bg-white p-6 rounded-xl shadow-sm border mt-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold text-gray-700"><i class="fa-solid fa-chart-line mr-2 text-indigo-500"></i>ประวัติการวัด <span id="fmon-hist-batch" class="text-sm font-normal text-gray-400"></span></h3>
+                    <button onclick="loadFermentHistory()" class="text-xs text-blue-600 hover:underline flex items-center gap-1"><i class="fa-solid fa-arrows-rotate"></i> รีเฟรช</button>
+                </div>
+                <div class="mb-4"><canvas id="fmon-chart" height="120"></canvas></div>
+                <div id="fmon-history-container" class="overflow-x-auto">
+                    <p class="text-center text-gray-400 italic py-4">เลือก Batch เพื่อดูประวัติ</p>
+                </div>
+            </div>
+
+        </div>
+

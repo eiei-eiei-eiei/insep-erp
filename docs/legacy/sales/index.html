@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sep Bar - ERP (B2B & Warehouse)</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <?!= include('_styles'); ?>
+</head>
+<body>
+    <div id="app" class="h-screen overflow-hidden bg-gray-100 flex flex-col">
+        
+        <!-- Header & Main Tabs -->
+        <header class="bg-slate-900 text-white p-2 md:p-4 shadow-md flex flex-wrap justify-between items-center z-10 flex-shrink-0 gap-2">
+            <div class="flex items-center gap-1 md:gap-4 flex-1">
+                <h1 class="text-base md:text-xl font-bold text-amber-400 flex items-center gap-1 md:gap-2">
+                    <span class="text-xl md:text-2xl">📦</span> <span class="hidden sm:inline">Sep Bar ERP</span>
+                </h1>
+                
+                <div v-if="loggedInUser && loggedInUser.role === 'all'" class="flex bg-slate-800 rounded-lg p-1 ml-1 md:ml-4 border border-slate-700 w-auto">
+                    <button @click="b2bMode = 'sales'" :class="['px-2 md:px-3 py-1 md:py-1.5 rounded-md text-xs md:text-sm font-medium transition whitespace-nowrap', b2bMode === 'sales' ? 'bg-amber-600 text-white shadow' : 'text-slate-300 hover:text-white']">
+                        💼 <span class="hidden sm:inline">เซลล์ (Sales)</span><span class="sm:hidden">Sales</span>
+                    </button>
+                    <button @click="b2bMode = 'warehouse'" :class="['px-2 md:px-3 py-1 md:py-1.5 rounded-md text-xs md:text-sm font-medium transition whitespace-nowrap', b2bMode === 'warehouse' ? 'bg-teal-600 text-white shadow' : 'text-slate-300 hover:text-white']">
+                        🏢 <span class="hidden sm:inline">คลัง (WH)</span><span class="sm:hidden">WH</span>
+                    </button>
+                </div>
+                <div v-else-if="loggedInUser" class="ml-1 md:ml-4">
+                    <span v-if="b2bMode === 'sales'" class="px-2 md:px-3 py-1 md:py-1.5 rounded-md text-xs md:text-sm font-medium bg-amber-600 text-white shadow">💼 <span class="hidden sm:inline">เซลล์ (Sales)</span></span>
+                    <span v-else class="px-2 md:px-3 py-1 md:py-1.5 rounded-md text-xs md:text-sm font-medium bg-teal-600 text-white shadow">🏢 <span class="hidden sm:inline">คลังสินค้า</span></span>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-1 md:gap-2">
+                <span v-if="loggedInUser" class="text-[10px] md:text-sm text-slate-300 hidden md:inline mr-2">
+                    <span class="bg-slate-700 px-2 py-0.5 rounded mr-1 uppercase">{{ loggedInUser.role }}</span>
+                    <b class="text-white">{{ loggedInUser.name }}</b>
+                </span>
+                <button v-if="loggedInUser && b2bMode === 'sales'" @click="openB2BHistory" class="bg-amber-100 hover:bg-amber-200 text-amber-900 px-3 md:px-4 py-1.5 md:py-2 rounded-lg transition shadow-md font-bold text-sm md:text-base whitespace-nowrap flex items-center gap-1 active:scale-95">
+                    <span class="text-lg md:text-xl">📋</span> <span class="hidden sm:inline">จัดการออเดอร์</span>
+                </button>
+                <!-- ปุ่มคิว sync บัญชี + badge จำนวนงานค้าง (แดง=มี failed) -->
+                <button v-if="loggedInUser && b2bMode === 'sales'" @click="openAccQueue" class="relative bg-slate-700 hover:bg-slate-600 text-slate-100 px-2.5 md:px-3 py-1.5 md:py-2 rounded-lg transition shadow-md text-sm md:text-base whitespace-nowrap flex items-center gap-1 active:scale-95" title="คิวรอ sync บัญชี">
+                    <span class="text-lg md:text-xl">🔁</span> <span class="hidden md:inline">คิว</span>
+                    <span v-if="accQueue.length" :class="['absolute -top-1 -right-1 text-[10px] font-bold text-white rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none', accQueue.some(j => j.status === 'failed') ? 'bg-red-600' : 'bg-amber-500']">{{ accQueue.length }}</span>
+                </button>
+                <button v-if="loggedInUser" @click="logout" class="bg-red-600 hover:bg-red-700 text-white px-2 md:px-3 py-1 md:py-1.5 rounded-lg transition text-xs md:text-sm">
+                    ออก
+                </button>
+            </div>
+        </header>
+
+        <div v-if="isLoading" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-[60]">
+            <div class="bg-white p-6 rounded-lg text-center shadow-xl">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900 mx-auto mb-4"></div>
+                <p class="text-lg font-medium text-gray-800">กำลังโหลดข้อมูล...</p>
+            </div>
+        </div>
+
+        <!-- หน้าต่าง Login -->
+        <div v-if="!loggedInUser" class="absolute inset-0 bg-slate-800 bg-opacity-95 z-50 flex justify-center items-center p-4">
+            <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
+                <div class="text-center mb-6">
+                    <div class="text-5xl mb-2">🔐</div>
+                    <h2 class="text-2xl font-bold text-slate-800">เข้าสู่ระบบ ERP</h2>
+                    <p class="text-sm text-slate-500 mt-1">Sales & Warehouse Management</p>
+                </div>
+                <form @submit.prevent="login" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-1">เลือกผู้ใช้งาน</label>
+                        <select v-model="loginForm.name" required class="w-full border-2 border-slate-200 rounded-lg p-3 text-slate-700 focus:outline-none focus:border-blue-500">
+                            <option value="" disabled>-- เลือกชื่อของคุณ --</option>
+                            <option v-for="u in inTeam" :key="u.name" :value="u.name">{{ u.name }}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-1">รหัสผ่าน</label>
+                        <input v-model="loginForm.password" type="password" required class="w-full border-2 border-slate-200 rounded-lg p-3 text-slate-700 focus:outline-none focus:border-blue-500">
+                    </div>
+                    <button type="submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 px-4 rounded-lg shadow transition mt-4">
+                        เข้าสู่ระบบ
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <?!= include('_view_warehouse'); ?>
+        <?!= include('_view_sales'); ?>
+        <?!= include('_templates_print'); ?>
+            </div>
+
+    <?!= include('_js_core'); ?>
+    <?!= include('_js_warehouse'); ?>
+    <?!= include('_js_b2b'); ?>
+    <?!= include('_js_orders'); ?>
+</body>
+</html>

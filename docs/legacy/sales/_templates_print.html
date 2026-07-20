@@ -1,0 +1,200 @@
+        <!-- HTML Templates for Printing -->
+        <div id="print-a4-template">
+            <div class="a4-container" style="font-family: 'Kanit', sans-serif; color: #111; line-height: 1.5;">
+                <table style="width: 100%; margin-bottom: 15px; border-bottom: 2px solid #1e293b; padding-bottom: 10px;">
+                    <tr>
+                        <td style="width: 50%; vertical-align: top;">
+                            <h1 style="margin: 0; font-size: 24px; color: #0f172a; font-weight: 600;">บริษัท อินทร์ เสพเทมเบ้อ จำกัด<br>IN SEPTEMBER CO.,LTD.</h1>
+                            <p style="margin: 5px 0 0 0; font-size: 11px; color: #334155; line-height: 1.4;">(สำนักงานใหญ่) 5/15 ม.8 ต.ท่าน้ำอ้อย อ.พยุหะคีรี จ.นครสวรรค์ 60130<br>เลขประจำตัวผู้เสียภาษี (Tax ID): 0605567002178 | โทร: 088-818-1804</p>
+                        </td>
+                        <td style="width: 50%; vertical-align: top; text-align: right; white-space: nowrap;">
+                            <h2 style="margin: 0; font-size: 28px; color: #0f172a; font-weight: 600;">ใบเสนอราคา</h2>
+                            <p style="margin: 0; font-size: 18px; font-weight: 500; color: #0f172a; letter-spacing: 1px;">Quotation</p>
+                        </td>
+                    </tr>
+                </table>
+                <div style="display: flex; justify-content: space-between; width: 100%; margin-bottom: 15px; font-size: 14px; box-sizing: border-box;">
+                    <div style="width: 57%; border: 2px solid #cbd5e1; padding: 12px 15px; border-radius: 8px; background-color: #f8fafc; box-sizing: border-box;">
+                        <div style="font-weight: 600; margin-bottom: 8px; font-size: 15px; color: #0f172a;">ลูกค้า / Customer:</div>
+                        <div style="font-size: 15px; font-weight: 500; margin-bottom: 4px;">{{ b2bPrintData.customerName }}</div>
+                        <div style="margin-bottom: 6px; line-height: 1.4;">{{ b2bPrintData.customerAddress }}</div>
+                        <div style="white-space: nowrap;"><span style="font-weight: 500;">เลขประจำตัวผู้เสียภาษี / Tax ID:</span> {{ b2bPrintData.customerTaxId || '-' }} <span v-if="b2bPrintData.customerBranch" style="margin-left: 5px;">{{ b2bPrintData.customerBranch }}</span></div>
+                    </div>
+                    <div style="width: 41%; border: 2px solid #cbd5e1; padding: 12px 15px; border-radius: 8px; background-color: #f8fafc; box-sizing: border-box;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                            <tr><td style="padding: 3px 0; font-weight: 600; width: 60%;">เลขที่ / Quotation No.</td><td style="padding: 3px 0; font-weight: 500; text-align: right;">{{ b2bPrintData.quNo }}</td></tr>
+                            <tr><td style="padding: 3px 0; font-weight: 600;">วันที่ / Date</td><td style="padding: 3px 0; text-align: right;">{{ b2bPrintData.date }}</td></tr>
+                            <tr><td style="padding: 3px 0; font-weight: 600;">ยืนราคาถึงวันที่ / Validity</td><td style="padding: 3px 0; text-align: right;">{{ b2bPrintData.quExp }}</td></tr>
+                            <tr><td style="padding: 3px 0; font-weight: 600;">เครดิตเทอม / Credit Term</td><td style="padding: 3px 0; text-align: right;">{{ b2bPrintData.creditTerm > 0 ? b2bPrintData.creditTerm + ' วัน' : '-' }}</td></tr>
+                        </table>
+                    </div>
+                </div>
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 14px;">
+                    <thead>
+                        <tr style="background-color: #f1f5f9; color: #0f172a;">
+                            <th style="padding: 4px 6px; border: 1px solid #94a3b8; width: 8%; text-align: center; font-weight: 600; font-size: 13px;">ลำดับ</th>
+                            <th style="padding: 4px 12px; border: 1px solid #94a3b8; text-align: center; font-weight: 600; font-size: 13px;">รายการสินค้า</th>
+                            <th style="padding: 4px 6px; border: 1px solid #94a3b8; width: 10%; text-align: center; font-weight: 600; font-size: 13px;">จำนวน</th>
+                            <th style="padding: 4px 10px; border: 1px solid #94a3b8; width: 16%; text-align: center; font-weight: 600; font-size: 13px;">หน่วยละ (฿)</th>
+                            <th style="padding: 4px 10px; border: 1px solid #94a3b8; width: 20%; text-align: center; font-weight: 600; font-size: 13px;">จำนวนเงิน (฿)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="(item, index) in b2bPrintData.items" :key="index">
+                            <td style="padding: 2px 6px 1px 6px; border: 1px solid #94a3b8; text-align: center; vertical-align: top;">{{ index + 1 }}</td>
+                            <td style="padding: 2px 12px 1px 12px; border: 1px solid #94a3b8; vertical-align: top; white-space: pre-wrap;">{{ item.name }}</td>
+                            <td style="padding: 2px 6px 1px 6px; border: 1px solid #94a3b8; text-align: center; vertical-align: top;">{{ item.qty }}</td>
+                            <td style="padding: 2px 10px 1px 10px; border: 1px solid #94a3b8; text-align: right; vertical-align: top;">{{ item.price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td>
+                            <td style="padding: 2px 10px 1px 10px; border: 1px solid #94a3b8; text-align: right; font-weight: 500; vertical-align: top;">{{ roundTo2(item.price * item.qty).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td>
+                        </tr>
+                        <tr v-if="b2bPrintData.items.length < 5">
+                            <td style="padding: 8px; border: 1px solid #94a3b8; border-bottom: none;"></td><td style="padding: 8px; border: 1px solid #94a3b8; border-bottom: none;"></td><td style="padding: 8px; border: 1px solid #94a3b8; border-bottom: none;"></td><td style="padding: 8px; border: 1px solid #94a3b8; border-bottom: none;"></td><td style="padding: 8px; border: 1px solid #94a3b8; border-bottom: none;"></td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div style="page-break-inside: avoid; break-inside: avoid;">
+                    <table style="width: 100%; font-size: 14px;">
+                        <tr>
+                            <td style="width: 55%; vertical-align: bottom; padding-right: 20px;">
+                                <div style="border: 2px solid #cbd5e1; padding: 12px 15px; border-radius: 8px; min-height: 120px; background-color: #fffbeb; box-sizing: border-box;">
+                                    <div style="font-weight: 600; margin-bottom: 4px; color: #0f172a; font-size: 13px;">ช่องทางการโอนเงิน / Bank Transfer:</div>
+                                    <div style="color: #0f172a; line-height: 1.4; margin-bottom: 10px; font-size: 14px; font-weight: 500;">ธนาคารกสิกรไทย เลขที่บัญชี 195-1-19799-4<br>ชื่อบัญชี บริษัท อินทร์ เสพเท้มเบ้อ จำกัด</div>
+                                    <div style="font-weight: 600; margin-bottom: 4px; color: #b45309; font-size: 13px;">หมายเหตุ / Remarks:</div>
+                                    <div style="color: #475569; line-height: 1.4; font-size: 13px; white-space: pre-wrap;">{{ b2bPrintData.remarks || '-' }}</div>
+                                </div>
+                            </td>
+                            <td style="width: 45%; vertical-align: top;">
+                                <table style="width: 100%; border-collapse: collapse;">
+                                    <tr><td style="padding: 4px 12px; text-align: left; font-size: 13px; line-height: 1.2;">รวมเป็นเงิน</td><td style="padding: 4px 12px; text-align: right; width: 120px; border: 2px solid #cbd5e1; border-bottom: 1px solid #cbd5e1; vertical-align: bottom;">{{ b2bPrintData.subTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td></tr>
+                                    <tr><td style="padding: 4px 12px; text-align: left; font-size: 13px; line-height: 1.2;">หักส่วนลดพิเศษ</td><td style="padding: 4px 12px; text-align: right; border-left: 2px solid #cbd5e1; border-right: 2px solid #cbd5e1; border-bottom: 1px solid #cbd5e1; vertical-align: bottom;">{{ b2bPrintData.discount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td></tr>
+                                    <tr><td style="padding: 4px 12px; text-align: left; font-size: 13px; line-height: 1.2;">ยอดหลังหักส่วนลด</td><td style="padding: 4px 12px; text-align: right; border-left: 2px solid #cbd5e1; border-right: 2px solid #cbd5e1; border-bottom: 1px solid #cbd5e1; vertical-align: bottom;">{{ b2bPrintData.subDiscount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td></tr>
+                                    <tr><td style="padding: 4px 12px; text-align: left; font-size: 13px; line-height: 1.2;">ภาษีมูลค่าเพิ่ม 7%</td><td style="padding: 4px 12px; text-align: right; border-left: 2px solid #cbd5e1; border-right: 2px solid #cbd5e1; border-bottom: 2px solid #cbd5e1; vertical-align: bottom;">{{ b2bPrintData.vat.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td></tr>
+                                    <tr :style="!b2bPrintData.whtPercent ? 'background-color: #f8fafc;' : ''"><td style="padding: 8px 12px; text-align: left; font-weight: bold; font-size: 14px; line-height: 1.2;" :style="!b2bPrintData.whtPercent ? 'border-bottom: 4px double #0f172a;' : ''">ยอดรวมทั้งสิ้น</td><td style="padding: 8px 12px; text-align: right; font-weight: bold; font-size: 15px; border-left: 2px solid #cbd5e1; border-right: 2px solid #cbd5e1; color: #0f172a; vertical-align: bottom;" :style="!b2bPrintData.whtPercent ? 'border-bottom: 4px double #0f172a; background-color: #f1f5f9;' : 'border-bottom: 1px solid #cbd5e1;'">{{ b2bPrintData.grandTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td></tr>
+                                    <tr v-if="b2bPrintData.whtPercent > 0"><td style="padding: 4px 12px; text-align: left; font-size: 13px; line-height: 1.2;">หัก ณ ที่จ่าย {{ b2bPrintData.whtPercent }}%</td><td style="padding: 4px 12px; text-align: right; border-left: 2px solid #cbd5e1; border-right: 2px solid #cbd5e1; border-bottom: 2px solid #cbd5e1; vertical-align: bottom;">-{{ b2bPrintData.whtAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td></tr>
+                                    <tr v-if="b2bPrintData.whtPercent > 0" style="background-color: #f8fafc;"><td style="padding: 8px 12px; text-align: left; font-weight: bold; font-size: 14px; border-bottom: 4px double #0f172a; line-height: 1.2;">ยอดชำระสุทธิ</td><td style="padding: 8px 12px; text-align: right; font-weight: bold; font-size: 15px; border: 2px solid #cbd5e1; border-bottom: 4px double #0f172a; color: #0f172a; background-color: #f1f5f9; vertical-align: bottom;">{{ b2bPrintData.netPayable.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td></tr>
+                                </table>
+                            </td>
+                        </tr>
+                    </table>
+                    <table style="width: 100%; margin-top: 40px; text-align: center; font-size: 14px;">
+                        <tr>
+                            <td style="width: 50%; vertical-align: top;"><div style="height: 24px; font-weight: 500; font-size: 16px; color: #334155; display: flex; align-items: flex-end; justify-content: center;">{{ b2bPrintData.saleName }}</div><div style="margin-top: 5px; width: 220px; border-top: 1px dashed #64748b; margin-left: auto; margin-right: auto;"></div><div style="margin-top: 5px; color: #475569;">( ผู้เสนอราคา / Prepared By )</div><div style="margin-top: 5px; color: #64748b; font-size: 13px;">วันที่ / Date: ______/______/________</div></td>
+                            <td style="width: 50%; vertical-align: top;"><div style="height: 24px;"></div><div style="margin-top: 5px; width: 220px; border-top: 1px dashed #64748b; margin-left: auto; margin-right: auto;"></div><div style="margin-top: 5px; color: #475569;">( ผู้รับเสนอราคา / Approved By )</div><div style="margin-top: 5px; color: #64748b; font-size: 13px;">วันที่ / Date: ______/______/________</div></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="print-b2b-doc-template">
+            <div v-for="(doc, idx) in b2bPrintDocs" :key="idx" class="a4-container" :style="idx > 0 ? 'page-break-before: always; break-before: page; margin-top: 15px;' : ''" style="font-family: 'Kanit', sans-serif; color: #111; line-height: 1.5;">
+                <table style="width: 100%; margin-bottom: 15px; border-bottom: 2px solid #1e293b; padding-bottom: 10px;">
+                    <tr>
+                        <td style="width: 50%; vertical-align: top;">
+                            <h1 style="margin: 0; font-size: 24px; color: #0f172a; font-weight: 600;">บริษัท อินทร์ เสพเทมเบ้อ จำกัด<br>IN SEPTEMBER CO.,LTD.</h1>
+                            <p style="margin: 5px 0 0 0; font-size: 11px; color: #334155; line-height: 1.4;">(สำนักงานใหญ่) 5/15 ม.8 ต.ท่าน้ำอ้อย อ.พยุหะคีรี จ.นครสวรรค์ 60130<br>เลขประจำตัวผู้เสียภาษี (Tax ID): 0605567002178 | โทร: 088-818-1804</p>
+                        </td>
+                        <td style="width: 50%; vertical-align: top; text-align: right; white-space: nowrap;">
+                            <h2 style="margin: 0; font-size: 20px; color: #0f172a; font-weight: 600;">{{ doc.receiptTitle }}</h2>
+                            <p style="margin: 0; font-size: 14px; font-weight: 500; color: #0f172a; letter-spacing: 0.5px;">{{ doc.receiptTitleEng }}</p>
+                            <p style="margin: 5px 0 0 0; font-size: 14px; font-weight: 500; color: #64748b;">{{ doc.copyType }}</p>
+                        </td>
+                    </tr>
+                </table>
+                <div style="display: flex; justify-content: space-between; width: 100%; margin-bottom: 15px; font-size: 14px; box-sizing: border-box;">
+                    <div style="width: 57%; border: 2px solid #cbd5e1; padding: 12px 15px; border-radius: 8px; background-color: #f8fafc; box-sizing: border-box;">
+                        <div style="font-weight: 600; margin-bottom: 8px; font-size: 15px; color: #0f172a;">ลูกค้า / Customer:</div>
+                        <div style="font-size: 15px; font-weight: 500; margin-bottom: 4px;">{{ doc.customerName }}</div>
+                        <div style="margin-bottom: 6px; line-height: 1.4;">{{ doc.customerAddress || '-' }}</div>
+                        <div style="white-space: nowrap;"><span style="font-weight: 500;">เลขประจำตัวผู้เสียภาษี / Tax ID:</span> {{ doc.customerTaxId || '-' }} <span v-if="doc.customerBranch" style="margin-left: 5px;">{{ doc.customerBranch }}</span></div>
+                    </div>
+                    <div style="width: 41%; border: 2px solid #cbd5e1; padding: 12px 15px; border-radius: 8px; background-color: #f8fafc; box-sizing: border-box;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                            <tr><td style="padding: 3px 0; font-weight: 600; width: 50%;">เลขที่ / Doc No.</td><td style="padding: 3px 0; font-weight: 500; text-align: right;">{{ doc.docNo }}</td></tr>
+                            <tr><td style="padding: 3px 0; font-weight: 600;">วันที่ / Date</td><td style="padding: 3px 0; text-align: right;">{{ doc.documentDate }}</td></tr>
+                            <tr><td style="padding: 3px 0; font-weight: 600;">อ้างอิง / Ref No.</td><td style="padding: 3px 0; text-align: right;">{{ doc.quNo }}</td></tr>
+                        </table>
+                    </div>
+                </div>
+
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 14px;">
+                    <thead>
+                        <tr style="background-color: #f1f5f9; color: #0f172a;">
+                            <th style="padding: 4px 6px; border: 1px solid #94a3b8; width: 8%; text-align: center; font-weight: 600; font-size: 13px;">ลำดับ</th>
+                            <th style="padding: 4px 12px; border: 1px solid #94a3b8; text-align: center; font-weight: 600; font-size: 13px;">รายการสินค้า</th>
+                            <th style="padding: 4px 6px; border: 1px solid #94a3b8; width: 10%; text-align: center; font-weight: 600; font-size: 13px;">จำนวน</th>
+                            <th style="padding: 4px 10px; border: 1px solid #94a3b8; width: 16%; text-align: center; font-weight: 600; font-size: 13px;">หน่วยละ</th>
+                            <th style="padding: 4px 10px; border: 1px solid #94a3b8; width: 20%; text-align: center; font-weight: 600; font-size: 13px;">จำนวนเงิน</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="(item, index) in doc.items" :key="index">
+                            <td style="padding: 2px 6px 1px 6px; border: 1px solid #94a3b8; text-align: center; vertical-align: top;">{{ index + 1 }}</td>
+                            <td style="padding: 2px 12px 1px 12px; border: 1px solid #94a3b8; vertical-align: top; white-space: pre-wrap;">{{ item.name }}</td>
+                            <td style="padding: 2px 6px 1px 6px; border: 1px solid #94a3b8; text-align: center; vertical-align: top;">{{ item.qty }}</td>
+                            <td style="padding: 2px 10px 1px 10px; border: 1px solid #94a3b8; text-align: right; vertical-align: top;">{{ (item.price || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td>
+                            <td style="padding: 2px 10px 1px 10px; border: 1px solid #94a3b8; text-align: right; font-weight: 500; vertical-align: top;">{{ roundTo2((item.price || 0) * (item.qty || 0)).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div style="page-break-inside: avoid; break-inside: avoid;">
+                    <table style="width: 100%; font-size: 14px;">
+                        <tr>
+                            <td style="width: 55%; vertical-align: bottom; padding-right: 20px;">
+                                <div v-if="(doc.docType.includes('invoice') && !doc.docType.includes('tax-')) && doc.outstandingBalance > 0" style="border: 2px solid #cbd5e1; padding: 12px 15px; border-radius: 8px; background-color: #fffbeb; box-sizing: border-box;">
+                                    <div style="font-weight: 600; margin-bottom: 4px; color: #0f172a; font-size: 13px;">ช่องทางการโอนเงิน / Bank Transfer:</div>
+                                    <div style="color: #0f172a; line-height: 1.4; margin-bottom: 10px; font-size: 14px; font-weight: 500;">ธนาคารกสิกรไทย เลขที่บัญชี 195-1-19799-4<br>ชื่อบัญชี บริษัท อินทร์ เสพเท้มเบ้อ จำกัด</div>
+                                </div>
+                                <div v-else style="border: 2px solid #cbd5e1; padding: 12px 15px; border-radius: 8px; background-color: #f8fafc; box-sizing: border-box;">
+                                    <div style="font-weight: 600; color: #0f172a; font-size: 13px;">การชำระเงินจะสมบูรณ์เมื่อบริษัทได้รับเงินเรียบร้อยแล้ว</div>
+                                    <div style="color: #475569; font-size: 13px; margin-top: 4px;">อ้างอิงวิธีชำระ: {{ doc.paymentMethod || 'ไม่ระบุ' }}</div>
+                                    <div v-if="doc.paymentMethod === 'เช็ค' && doc.chequeDetails" style="color: #475569; font-size: 13px; margin-top: 2px;">
+                                        <span class="font-semibold text-slate-700">ข้อมูลเช็ค:</span> {{ doc.chequeDetails }}
+                                    </div>
+                                </div>
+                            </td>
+                            <td style="width: 45%; vertical-align: top;">
+                                <table style="width: 100%; border-collapse: collapse;">
+                                    <tr>
+                                        <td style="padding: 4px 12px; text-align: left; font-size: 13px;">รวมเป็นเงิน</td>
+                                        <td style="padding: 4px 12px; text-align: right; width: 120px; border: 2px solid #cbd5e1; border-bottom: 1px solid #cbd5e1; vertical-align: bottom;">{{ (doc.subDiscount || doc.subTotal || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td>
+                                    </tr>
+                                    <template v-if="doc.docType === 'tax-invoice-deposit'">
+                                        <tr><td style="padding: 4px 12px; text-align: left; font-size: 13px; font-weight: bold; color: #15803d; border-top: 2px dashed #94a3b8;">ยอดมัดจำ</td><td style="padding: 4px 12px; text-align: right; border-left: 2px solid #cbd5e1; border-right: 2px solid #cbd5e1; border-bottom: 1px solid #cbd5e1; border-top: 2px dashed #94a3b8; font-weight: bold; color: #15803d;">{{ (doc.receiptPreVat || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td></tr>
+                                        <tr><td style="padding: 4px 12px; text-align: left; font-size: 13px;">ภาษีมูลค่าเพิ่ม 7%</td><td style="padding: 4px 12px; text-align: right; border-left: 2px solid #cbd5e1; border-right: 2px solid #cbd5e1; border-bottom: 1px solid #cbd5e1;">{{ (doc.receiptVat || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td></tr>
+                                        <tr v-if="doc.whtPercent > 0"><td style="padding: 4px 12px; text-align: left; font-size: 13px;">หัก ณ ที่จ่าย {{ doc.whtPercent }}%</td><td style="padding: 4px 12px; text-align: right; border-left: 2px solid #cbd5e1; border-right: 2px solid #cbd5e1; border-bottom: 1px solid #cbd5e1;">-{{ (doc.receiptWht || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td></tr>
+                                        <tr style="background-color: #f0fdf4;"><td style="padding: 8px 12px; text-align: left; font-weight: bold; font-size: 14px; border-bottom: 4px double #15803d; color: #15803d;">ยอดเงินรับสุทธิ</td><td style="padding: 8px 12px; text-align: right; font-weight: bold; font-size: 15px; border: 2px solid #cbd5e1; border-bottom: 4px double #15803d; color: #15803d;">{{ (doc.receiptAmount || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td></tr>
+                                    </template>
+                                    <template v-else-if="['tax-invoice-balance', 'invoice'].includes(doc.docType) && doc.deposit > 0">
+                                        <tr><td style="padding: 4px 12px; text-align: left; font-size: 13px; font-weight: 600; color: #15803d; border-top: 2px dashed #94a3b8;">หัก มัดจำรับแล้ว</td><td style="padding: 4px 12px; text-align: right; border-left: 2px solid #cbd5e1; border-right: 2px solid #cbd5e1; border-bottom: 1px solid #cbd5e1; border-top: 2px dashed #94a3b8; color: #15803d; font-weight: 600;">-{{ (doc.depositPreVat || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td></tr>
+                                        <tr><td style="padding: 4px 12px; text-align: left; font-size: 13px; font-weight: bold; color: #be123c;">ยอดคงค้างยกมา</td><td style="padding: 4px 12px; text-align: right; border-left: 2px solid #cbd5e1; border-right: 2px solid #cbd5e1; border-bottom: 1px solid #cbd5e1; font-weight: bold; color: #be123c;">{{ (doc.receiptPreVat || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td></tr>
+                                        <tr><td style="padding: 4px 12px; text-align: left; font-size: 13px;">ภาษีมูลค่าเพิ่ม 7%</td><td style="padding: 4px 12px; text-align: right; border-left: 2px solid #cbd5e1; border-right: 2px solid #cbd5e1; border-bottom: 1px solid #cbd5e1;">{{ (doc.receiptVat || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td></tr>
+                                        <tr v-if="doc.whtPercent > 0"><td style="padding: 4px 12px; text-align: left; font-size: 13px;">หัก ณ ที่จ่าย {{ doc.whtPercent }}%</td><td style="padding: 4px 12px; text-align: right; border-left: 2px solid #cbd5e1; border-right: 2px solid #cbd5e1; border-bottom: 1px solid #cbd5e1;">-{{ (doc.receiptWht || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td></tr>
+                                        <tr v-if="doc.docType === 'tax-invoice-balance'" style="background-color: #f0fdf4;"><td style="padding: 8px 12px; text-align: left; font-weight: bold; font-size: 14px; border-bottom: 4px double #15803d; color: #15803d;">ยอดเงินรับสุทธิ</td><td style="padding: 8px 12px; text-align: right; font-weight: bold; font-size: 15px; border: 2px solid #cbd5e1; border-bottom: 4px double #15803d; color: #15803d;">{{ (doc.receiptAmount || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td></tr>
+                                        <tr v-else style="background-color: #fff1f2;"><td style="padding: 8px 12px; text-align: left; font-weight: bold; font-size: 14px; border-bottom: 4px double #be123c; color: #be123c;">ยอดค้างชำระสุทธิ</td><td style="padding: 8px 12px; text-align: right; font-weight: bold; font-size: 15px; border: 2px solid #cbd5e1; border-bottom: 4px double #be123c; color: #be123c;">{{ (doc.outstandingBalance || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td></tr>
+                                    </template>
+                                    <template v-else>
+                                        <tr><td style="padding: 4px 12px; text-align: left; font-size: 13px;">ภาษีมูลค่าเพิ่ม 7%</td><td style="padding: 4px 12px; text-align: right; border-left: 2px solid #cbd5e1; border-right: 2px solid #cbd5e1; border-bottom: 1px solid #cbd5e1;">{{ (doc.vatAmount || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td></tr>
+                                        <tr style="background-color: #f8fafc;"><td style="padding: 6px 12px; text-align: left; font-weight: bold; font-size: 13px; border-bottom: 1px solid #cbd5e1;">ยอดรวมทั้งสิ้น</td><td style="padding: 6px 12px; text-align: right; font-weight: bold; font-size: 14px; border-left: 2px solid #cbd5e1; border-right: 2px solid #cbd5e1; color: #0f172a; border-bottom: 1px solid #cbd5e1; background-color: #f1f5f9;">{{ (doc.grandTotal || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td></tr>
+                                        <tr v-if="doc.whtPercent > 0"><td style="padding: 4px 12px; text-align: left; font-size: 13px;">หัก ณ ที่จ่าย {{ doc.whtPercent }}%</td><td style="padding: 4px 12px; text-align: right; border-left: 2px solid #cbd5e1; border-right: 2px solid #cbd5e1; border-bottom: 1px solid #cbd5e1;">-{{ (doc.whtAmount || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td></tr>
+                                        <tr v-if="!doc.docType.includes('invoice-only') && doc.outstandingBalance === 0" style="background-color: #f0fdf4;"><td style="padding: 8px 12px; text-align: left; font-weight: bold; font-size: 14px; border-bottom: 4px double #15803d; color: #15803d;">ยอดเงินรับสุทธิ</td><td style="padding: 8px 12px; text-align: right; font-weight: bold; font-size: 15px; border: 2px solid #cbd5e1; border-bottom: 4px double #15803d; color: #15803d;">{{ (doc.netPayable || doc.grandTotal).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td></tr>
+                                        <tr v-if="doc.docType.includes('invoice-only') || (doc.docType === 'invoice' && doc.outstandingBalance > 0)" style="background-color: #fff1f2;"><td style="padding: 8px 12px; text-align: left; font-weight: bold; font-size: 14px; border-bottom: 4px double #be123c; color: #be123c;">ยอดค้างชำระสุทธิ</td><td style="padding: 8px 12px; text-align: right; font-weight: bold; font-size: 15px; border: 2px solid #cbd5e1; border-bottom: 4px double #be123c; color: #be123c;">{{ (doc.outstandingBalance).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td></tr>
+                                    </template>
+                                </table>
+                            </td>
+                        </tr>
+                    </table>
+                    <table style="width: 100%; margin-top: 40px; text-align: center; font-size: 13px;">
+                        <tr>
+                            <td v-if="doc.docType === 'invoice-only'" style="width: 50%; vertical-align: top;"><div style="height: 24px;"></div><div style="margin-top: 5px; width: 200px; border-top: 1px dashed #64748b; margin-left: auto; margin-right: auto;"></div><div style="margin-top: 5px; color: #475569;">( ผู้ชำระเงิน / Payer )</div><div style="margin-top: 5px; color: #64748b; font-size: 12px;">วันที่ / Date: ______/______/________</div></td>
+                            <td v-if="doc.docType === 'invoice' || doc.docType === 'tax-invoice-receipt-do'" style="vertical-align: top;"><div style="height: 24px;"></div><div style="margin-top: 5px; width: 180px; border-top: 1px dashed #64748b; margin-left: auto; margin-right: auto;"></div><div style="margin-top: 5px; color: #475569;">( ผู้รับสินค้า / Receiver )</div><div style="margin-top: 5px; color: #64748b; font-size: 12px;">วันที่ / Date: ______/______/________</div></td>
+                            <td v-if="['invoice', 'tax-invoice-receipt-do'].includes(doc.docType)" style="vertical-align: top;"><div style="height: 24px;"></div><div style="margin-top: 5px; width: 180px; border-top: 1px dashed #64748b; margin-left: auto; margin-right: auto;"></div><div style="margin-top: 5px; color: #475569;">( ผู้ส่งสินค้า / Deliverer )</div><div style="margin-top: 5px; color: #64748b; font-size: 12px;">วันที่ / Date: ______/______/________</div></td>
+                            <td v-if="['tax-invoice-deposit', 'tax-invoice-balance', 'tax-invoice-receipt', 'tax-invoice-receipt-do'].includes(doc.docType)" style="vertical-align: top;"><div style="height: 24px;"></div><div style="margin-top: 5px; width: 180px; border-top: 1px dashed #64748b; margin-left: auto; margin-right: auto;"></div><div style="margin-top: 5px; color: #475569;">( ผู้รับเงิน / Collector )</div><div style="margin-top: 5px; color: #64748b; font-size: 12px;">วันที่ / Date: ______/______/________</div></td>
+                            <td style="vertical-align: top;"><div style="height: 24px;"></div><div style="margin-top: 5px; width: 180px; border-top: 1px dashed #64748b; margin-left: auto; margin-right: auto;"></div><div style="margin-top: 5px; color: #475569;">( ผู้มีอำนาจลงนาม / Auth. Signature )</div><div style="margin-top: 5px; color: #64748b; font-size: 12px;">วันที่ / Date: ______/______/________</div></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+

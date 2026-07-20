@@ -1,0 +1,329 @@
+<script>
+  // =========================================================================
+  // JS [4/4] ACCOUNTS — ยอดคงเหลือ + statement + โอนเงินระหว่างบัญชี
+  // =========================================================================
+
+  /**
+   * โหลดยอดคงเหลือทุกบัญชี ณ สิ้นเดือนที่เลือก
+   * แล้ว render เป็น card grid
+   */
+  function loadAccountBalances() {
+    const period = document.getElementById('accPeriod').value;
+    if (!period) { Swal.fire('แจ้งเตือน', 'กรุณาเลือกเดือนที่ต้องการดูก่อน', 'warning'); return; }
+
+    const btn = document.getElementById('btn-load-acc');
+    btn.innerText = 'กำลังโหลด...'; btn.disabled = true;
+
+    google.script.run.withSuccessHandler(function(res) {
+      btn.innerText = 'ดึงข้อมูล'; btn.disabled = false;
+      if (!res.success) { Swal.fire('Error', res.message, 'error'); return; }
+
+      // render cards
+      const grid = document.getElementById('acc-cards-grid');
+      grid.innerHTML = res.balances.map(acc => {
+        const balanceColor = acc.balance >= 0 ? 'text-gray-800' : 'text-red-600';
+        const borderColor  = acc.isTaxAccount ? 'border-blue-500' : 'border-gray-300';
+        const badge = acc.isTaxAccount
+          ? `<span class="text-xs bg-blue-100 text-blue-700 font-semibold px-2 py-0.5 rounded-full">ในระบบภาษี</span>`
+          : `<span class="text-xs bg-gray-100 text-gray-500 font-semibold px-2 py-0.5 rounded-full">นอกระบบ</span>`;
+
+        return `
+          <div class="bg-white rounded-lg shadow-md p-5 border-l-4 ${borderColor} cursor-pointer hover:shadow-lg transition-shadow"
+               onclick="loadStatement('${acc.accountType}', '${period}')">
+            <div class="flex items-start justify-between mb-2">
+              <h3 class="text-sm font-bold text-gray-600 leading-tight">${acc.accountType}</h3>
+              ${badge}
+            </div>
+            <p class="text-2xl font-bold ${balanceColor} mt-2">${formatMoney(acc.balance)}</p>
+            <div class="mt-3 pt-3 border-t border-gray-100 flex justify-between text-xs text-gray-500">
+              <span>รับรวม: <span class="text-green-600 font-semibold">${formatMoney(acc.totalIn)}</span></span>
+              <span>จ่ายรวม: <span class="text-red-500 font-semibold">${formatMoney(acc.totalOut)}</span></span>
+            </div>
+            <p class="text-xs text-blue-500 mt-2 text-right font-medium">กดดูรายการ →</p>
+          </div>`;
+      }).join('');
+
+      // grand total
+      const gt = res.grandTotal;
+      const gtEl = document.getElementById('acc-grand-total');
+      gtEl.innerText = formatMoney(gt);
+      gtEl.className = gt >= 0 ? 'text-2xl font-bold text-white' : 'text-2xl font-bold text-red-300';
+
+      document.getElementById('acc-balance-section').classList.remove('hidden');
+      // ซ่อน statement เก่าถ้ามี
+      document.getElementById('acc-statement-section').classList.add('hidden');
+
+    }).getAccountBalances(period, currentEntityId);
+  }
+
+  /**
+   * โหลด statement ของบัญชีที่กดเลือก
+   * @param {string} accountType - ชื่อบัญชี
+   * @param {string} period      - "yyyy-MM"
+   */
+  let _stmtAccount = '', _stmtPeriod = '';   // [Phase 2/N4] เก็บ context ไว้สั่งพิมพ์
+  // [Phase D] เปลี่ยนเดือน statement ของบัญชีที่กำลังดู
+  function changeStmtMonth() {
+    const m = document.getElementById('stmt-month').value;
+    if (_stmtAccount && m) loadStatement(_stmtAccount, m);
+  }
+  function loadStatement(accountType, period) {
+    _stmtAccount = accountType; _stmtPeriod = period;
+    const sm = document.getElementById('stmt-month'); if (sm) sm.value = period;
+    Swal.fire({ title: `กำลังโหลด ${accountType}...`, didOpen: () => Swal.showLoading() });
+
+    google.script.run.withSuccessHandler(function(res) {
+      Swal.close();
+      if (!res.success) { Swal.fire('Error', res.message, 'error'); return; }
+
+      // แปลง period เป็น label ภาษาไทย
+      const [y, m] = period.split('-');
+      const thMonths = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+      const monthLabel = `${thMonths[parseInt(m)-1]} ${parseInt(y)+543}`;
+
+      document.getElementById('stmt-title').innerText   = `การเคลื่อนไหว: ${accountType}`;
+      document.getElementById('stmt-subtitle').innerText = `เดือน ${monthLabel} (${res.rows.length} รายการ)`;
+      document.getElementById('stmt-opening').innerText  = formatMoney(res.openingBalance);
+      document.getElementById('stmt-closing').innerText  = formatMoney(res.closingBalance);
+
+      // สีของ opening/closing balance
+      document.getElementById('stmt-opening').className =
+        res.openingBalance >= 0 ? 'text-base font-bold text-blue-800' : 'text-base font-bold text-red-600';
+      document.getElementById('stmt-closing').className =
+        res.closingBalance >= 0 ? 'text-base font-bold text-gray-700' : 'text-base font-bold text-red-600';
+
+      // render rows
+      const tbody = document.getElementById('stmt-tbody');
+      if (res.rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-gray-400">ไม่มีรายการในเดือนนี้</td></tr>`;
+      } else {
+        tbody.innerHTML = res.rows.map(row => {
+          const balColor = row.runningBalance >= 0 ? 'text-gray-700' : 'text-red-600';
+          const isTransfer = row.type === 'โอนระหว่างบัญชี';
+
+          // [Phase C] badge ต่างกันตาม type
+          let typeTag;
+          if (isTransfer) {
+            typeTag = `<span class="text-xs bg-amber-100 text-amber-700 font-bold px-1.5 py-0.5 rounded">↔ โอน</span>`;
+          } else if (row.type === 'รายรับ') {
+            typeTag = `<span class="text-xs bg-green-100 text-green-700 font-bold px-1.5 py-0.5 rounded">รับ</span>`;
+          } else {
+            typeTag = `<span class="text-xs bg-red-100 text-red-600 font-bold px-1.5 py-0.5 rounded">จ่าย</span>`;
+          }
+
+          const desc     = row.description && row.description !== '-' ? row.description : '';
+          const contact  = row.contactName || '';
+          // [Phase C] transfer ใช้ description แทน contact (มีข้อมูลชัดอยู่แล้ว)
+          const detail   = isTransfer ? desc : [contact, desc].filter(Boolean).join(' · ');
+
+          // [Phase C] transfer row มีพื้นหลังต่างกันเล็กน้อย
+          const rowBg = isTransfer ? 'bg-amber-50/40 hover:bg-amber-50' : 'hover:bg-gray-50';
+
+          return `
+            <tr class="${rowBg}">
+              <td class="px-3 py-2.5 text-sm text-gray-600 whitespace-nowrap">${row.date}</td>
+              <td class="px-3 py-2.5 text-xs text-gray-500 hidden md:table-cell">
+                ${typeTag}
+              </td>
+              <td class="px-3 py-2.5 text-sm text-gray-700 max-w-[160px] truncate" title="${detail}">${detail || '-'}</td>
+              <td class="px-3 py-2.5 text-sm text-right font-medium ${row.debit > 0 ? 'text-red-500' : 'text-gray-300'}">
+                ${row.debit > 0 ? formatMoney(row.debit) : '-'}
+              </td>
+              <td class="px-3 py-2.5 text-sm text-right font-medium ${row.credit > 0 ? 'text-green-600' : 'text-gray-300'}">
+                ${row.credit > 0 ? formatMoney(row.credit) : '-'}
+              </td>
+              <td class="px-3 py-2.5 text-sm text-right font-bold ${balColor}">
+                ${formatMoney(row.runningBalance)}
+              </td>
+            </tr>`;
+        }).join('');
+      }
+
+      // scroll ไปที่ statement section
+      const stmtEl = document.getElementById('acc-statement-section');
+      stmtEl.classList.remove('hidden');
+      stmtEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    }).getAccountStatement(accountType, period);
+  }
+
+  // [Phase 2 / N4] พิมพ์ statement ของบัญชีที่กำลังดู เป็น HTML/PDF (เปิดหน้าต่างใหม่)
+  function printStatement() {
+    if (!_stmtAccount || !_stmtPeriod) { Swal.fire('แจ้งเตือน', 'ยังไม่ได้เลือกบัญชี', 'warning'); return; }
+    Swal.fire({ title: 'กำลังสร้างเอกสาร...', didOpen: () => Swal.showLoading() });
+    google.script.run
+      .withSuccessHandler(function(res) {
+        Swal.close();
+        if (!res || !res.success) { Swal.fire('ผิดพลาด', (res && res.message) || 'สร้างเอกสารไม่สำเร็จ', 'error'); return; }
+        const w = window.open('', '_blank');
+        w.document.write(res.htmlContent); w.document.close();
+      })
+      .withFailureHandler(function(e) { Swal.fire('เชื่อมต่อไม่ได้', e.message, 'error'); })
+      .generateStatementHTML(_stmtAccount, _stmtPeriod);
+  }
+
+  /** ปิด statement panel */
+  function closeStatement() {
+    document.getElementById('acc-statement-section').classList.add('hidden');
+  }
+
+  // =========================================================================
+  // [Phase C] โอนเงินระหว่างบัญชี
+  // =========================================================================
+
+  /**
+   * เปิด modal ฟอร์มโอนเงิน
+   * - ดึงรายชื่อบัญชีจาก globalSettings.accounts
+   * - validate ฝั่ง client ก่อนส่ง GAS
+   */
+  function openTransferModal() {
+    const accounts = (globalSettings && globalSettings.accounts) || [];
+    if (accounts.length < 2) {
+      Swal.fire('แจ้งเตือน', 'ต้องมีบัญชีอย่างน้อย 2 บัญชีในระบบ', 'warning');
+      return;
+    }
+
+    // สร้าง <option> สำหรับทั้ง 2 select
+    const opts = accounts.map(a => `<option value="${a}">${a}</option>`).join('');
+
+    // วันที่ default = วันนี้ (ดึงจาก input accPeriod หรือ today)
+    const today = new Date().toISOString().substring(0, 10);
+
+    Swal.fire({
+      title: '💸 โอนเงินระหว่างบัญชี',
+      width: '480px',
+      html: `
+        <div style="text-align:left; font-size:14px;">
+          <div style="margin-bottom:12px;">
+            <label style="display:block; font-weight:600; color:#374151; margin-bottom:4px;">วันที่โอน</label>
+            <input type="date" id="swal-trf-date" value="${today}"
+              style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:8px 12px; font-size:14px; box-sizing:border-box;">
+          </div>
+          <div style="margin-bottom:12px;">
+            <label style="display:block; font-weight:600; color:#374151; margin-bottom:4px;">จากบัญชี (ต้นทาง)</label>
+            <select id="swal-trf-from" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:8px 12px; font-size:14px; background:#fff; box-sizing:border-box;">
+              ${opts}
+            </select>
+          </div>
+          <div style="margin-bottom:12px; display:flex; align-items:center; justify-content:center; color:#6b7280; font-size:20px; font-weight:bold;">
+            ↓
+          </div>
+          <div style="margin-bottom:12px;">
+            <label style="display:block; font-weight:600; color:#374151; margin-bottom:4px;">ไปยังบัญชี (ปลายทาง)</label>
+            <select id="swal-trf-to" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:8px 12px; font-size:14px; background:#fff; box-sizing:border-box;">
+              ${opts}
+            </select>
+          </div>
+          <div style="margin-bottom:12px;">
+            <label style="display:block; font-weight:600; color:#374151; margin-bottom:4px;">จำนวนเงิน (บาท)</label>
+            <input type="number" id="swal-trf-amount" min="0.01" step="0.01" placeholder="0.00"
+              style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:8px 12px; font-size:16px; font-weight:600; text-align:right; box-sizing:border-box;">
+          </div>
+          <div>
+            <label style="display:block; font-weight:600; color:#374151; margin-bottom:4px;">หมายเหตุ <span style="font-weight:400; color:#9ca3af;">(ถ้ามี)</span></label>
+            <input type="text" id="swal-trf-note" placeholder="เช่น เติมเงินสดประจำสัปดาห์"
+              style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:8px 12px; font-size:14px; box-sizing:border-box;">
+          </div>
+        </div>
+      `,
+      showCancelButton   : true,
+      confirmButtonText  : 'ยืนยันการโอน',
+      cancelButtonText   : 'ยกเลิก',
+      confirmButtonColor : '#f59e0b',
+      focusConfirm       : false,
+      preConfirm: () => {
+        const fromAcc = document.getElementById('swal-trf-from').value;
+        const toAcc   = document.getElementById('swal-trf-to').value;
+        const amount  = parseFloat(document.getElementById('swal-trf-amount').value);
+        const date    = document.getElementById('swal-trf-date').value;
+        const note    = document.getElementById('swal-trf-note').value.trim();
+
+        // client-side validation
+        if (fromAcc === toAcc) {
+          Swal.showValidationMessage('บัญชีต้นทางและปลายทางต้องไม่ใช่บัญชีเดียวกัน');
+          return false;
+        }
+        if (!amount || amount <= 0) {
+          Swal.showValidationMessage('กรุณาระบุจำนวนเงินที่ต้องการโอน');
+          return false;
+        }
+        if (!date) {
+          Swal.showValidationMessage('กรุณาระบุวันที่โอน');
+          return false;
+        }
+        return { fromAccount: fromAcc, toAccount: toAcc, amount, transferDate: date, note };
+      }
+    }).then(result => {
+      if (!result.isConfirmed) return;
+
+      // ยืนยันก่อน submit จริง
+      const d = result.value;
+      Swal.fire({
+        title: 'ยืนยันการโอนเงิน?',
+        html: `
+          <div style="font-size:14px; text-align:left; line-height:2;">
+            <div>จาก: <b>${d.fromAccount}</b></div>
+            <div>ไป: <b>${d.toAccount}</b></div>
+            <div>จำนวน: <b style="color:#d97706; font-size:18px;">${formatMoney(d.amount)}</b></div>
+            ${d.note ? `<div>หมายเหตุ: ${d.note}</div>` : ''}
+          </div>
+        `,
+        icon              : 'question',
+        showCancelButton  : true,
+        confirmButtonText : 'ยืนยัน',
+        cancelButtonText  : 'แก้ไข',
+        confirmButtonColor: '#f59e0b',
+      }).then(confirm => {
+        if (!confirm.isConfirmed) return;
+        executeTransfer(d);
+      });
+    });
+
+    // auto-select บัญชีที่ 2 ใน "ไปยัง" เพื่อกัน default เหมือนกัน
+    setTimeout(() => {
+      const toEl = document.getElementById('swal-trf-to');
+      if (toEl && toEl.options.length > 1) toEl.selectedIndex = 1;
+    }, 100);
+  }
+
+  /**
+   * ส่งคำสั่งโอนเงินไป GAS แล้ว reload ยอดบัญชี
+   */
+  function executeTransfer(data) {
+    data.entityId = currentEntityId;   // [Multi-Entity] โอนภายในกิจการที่เลือก
+    Swal.fire({ title: 'กำลังบันทึกการโอนเงิน...', didOpen: () => Swal.showLoading() });
+
+    google.script.run.withSuccessHandler(function(res) {
+      if (res.success) {
+        Swal.fire({
+          icon : 'success',
+          title: 'โอนเงินสำเร็จ',
+          html : `<div style="font-size:13px; color:#6b7280;">Transfer ID: <b>${res.transferId}</b></div>`,
+          timer: 2500,
+          showConfirmButton: false
+        });
+        // reload ยอดคงเหลือเพื่อเห็นผลทันที
+        loadAccountBalances();
+        // ถ้า statement กำลังแสดงอยู่ → reload ด้วย
+        const stmtEl = document.getElementById('acc-statement-section');
+        if (!stmtEl.classList.contains('hidden')) {
+          const period = document.getElementById('accPeriod').value;
+          const title  = document.getElementById('stmt-title').innerText.replace('การเคลื่อนไหว: ', '');
+          if (period && title) loadStatement(title, period);
+        }
+      } else {
+        Swal.fire('เกิดข้อผิดพลาด', res.message, 'error');
+      }
+    }).withFailureHandler(function(err) {
+      Swal.fire('เกิดข้อผิดพลาด', err.message || 'ไม่สามารถเชื่อมต่อได้', 'error');
+    }).saveTransfer(data);
+  }
+
+  // Autofocus fallback for iframe (รับประกันว่าโฟกัสจะทำงานแม้จะรันผ่าน GAS)
+  window.addEventListener('DOMContentLoaded', () => {
+    const pwdInput = document.getElementById('password');
+    if (pwdInput) {
+      setTimeout(() => pwdInput.focus(), 100);
+    }
+  });
+</script>

@@ -1,0 +1,33 @@
+<!-- =========================================================================
+     VIEW: _view_apar — [Phase 2 / #5] ลูกหนี้-เจ้าหนี้ (AP/AR) ยอดค้าง
+     ========================================================================= -->
+<div id="view-apar" class="hidden">
+  <div class="bg-white rounded-2xl shadow-sm p-4 md:p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-xl font-bold text-gray-800">ลูกหนี้ - เจ้าหนี้ (ยอดค้าง)</h2>
+      <button onclick="loadApAr()" class="text-sm text-blue-600 border border-blue-200 rounded-lg px-3 py-1.5 hover:bg-blue-50">🔄 รีเฟรช</button>
+    </div>
+
+    <div id="apar-loading" class="text-center text-gray-400 py-8 hidden">กำลังโหลด...</div>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <!-- เจ้าหนี้ (AP) — เราต้องจ่าย -->
+      <div>
+        <div class="flex items-center justify-between bg-red-50 rounded-t-xl px-4 py-2.5 border border-red-100">
+          <span class="font-bold text-red-700">เจ้าหนี้ (เราต้องจ่าย)</span>
+          <span id="apar-total-ap" class="font-bold text-red-700">0.00</span>
+        </div>
+        <div id="apar-payable" class="border border-t-0 border-red-100 rounded-b-xl divide-y divide-gray-100"></div>
+      </div>
+
+      <!-- ลูกหนี้ (AR) — รอรับเงิน -->
+      <div>
+        <div class="flex items-center justify-between bg-emerald-50 rounded-t-xl px-4 py-2.5 border border-emerald-100">
+          <span class="font-bold text-emerald-700">ลูกหนี้ (รอรับเงิน)</span>
+          <span id="apar-total-ar" class="font-bold text-emerald-700">0.00</span>
+        </div>
+        <div id="apar-receivable" class="border border-t-0 border-emerald-100 rounded-b-xl divide-y divide-gray-100"></div>
+      </div>
+    </div>
+  </div>
+</div>
