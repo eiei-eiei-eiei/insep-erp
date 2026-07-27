@@ -36,7 +36,11 @@
 - แก้ schema ผ่านไฟล์ migration ใน `supabase/migrations/` เท่านั้น (ห้ามแก้มือใน dashboard แล้วไม่จด)
 - Logic เงิน/ดีกรี/สต็อก อยู่ใน `lib/` หรือ Postgres function — ห้ามฝังใน component
 - ไฟล์ยาวให้แตกตามโดเมนเหมือนโครงเดิม (`_js_*.html` เดิม → module แยก) — ผู้ใช้เคยเจ็บจากไฟล์ monolith มาแล้ว
-- ทุกครั้งที่จบ phase: อัปเดตตาราง progress ด้านล่าง + จด decision ใหม่ใน `docs/DECISIONS.md`
+- **Definition of Done ต่อ phase (ทำครบทุกข้อ):**
+  1. `npm run build` && `npm run lint` && `npm run test` ผ่าน (สูตรเงิน/ภาษี/สรรพสามิตมี golden test เทียบระบบเดิม)
+  2. อัปเดตตาราง progress ด้านล่าง + จด decision ใหม่ใน `docs/DECISIONS.md`
+  3. **จดสิ่งที่ผู้ใช้ต้องทำตอน setup จริง** (ค่า config/ข้อมูลจริงที่ต้องกรอกเอง เช่น เลขภาษี/บัญชี/สิทธิ์) → เพิ่มหัวข้อของ phase นั้นใน `docs/GOLIVE_CHECKLIST.md`
+  4. **ทำ/ต่อไกด์เทส** ใน `docs/TESTING.md` แบบ step-by-step (ทุกคำสั่งแยกบรรทัด + บอก "ควรเห็นอะไร") พร้อม seed + cleanup ใน `supabase/seed/` ที่ใช้ marker ลบทีเดียวได้ (entity ทดสอบ `EID99` · master id ขึ้นต้น `T-` · ชื่อ/หมายเหตุมีคำว่า "ทดสอบ") — ให้ผู้ใช้เทสเองได้โดยไม่ต้องคีย์ข้อมูลทีละอัน
 - **ทุกจุดที่ผู้ใช้บันทึกข้อมูลได้ ต้องมีปุ่มแก้/ลบจากแอป** (role main) + ความสอดคล้องอัตโนมัติ (stock trigger ครอบ INSERT/UPDATE/DELETE) + audit `edit_log` — ดู FLOW_REDESIGN sec 10 (ผู้ใช้ย้ายมาจาก Sheets ที่แก้มือได้ทุกอย่าง — ห้ามทำให้ความสามารถนี้หาย)
 
 ## Sheet → Table mapping (สรุป — รายละเอียด+SQL เต็มใน MIGRATION_PLAN sec 2)
@@ -57,11 +61,11 @@
 
 | Phase | งาน | สถานะ |
 |---|---|---|
-| 1 | Scaffold + Supabase schema + RLS + Auth + login + Storage templates | ☐ |
-| 2 | แอปผลิต (ทุกแท็บ + ABV golden test + ฟอร์ม ภส. 4 ตัว) | ☐ |
-| 3 | แอปบัญชี (ทุกแท็บ + ภพ.30/ภงด./50ทวิ) | ☐ |
-| 4 | แอปขาย (quotation/orders/warehouse + integrations) | ☐ |
-| 5 | Migration scripts + reconcile | ☐ |
+| 1 | Scaffold + Supabase schema + RLS + Auth + login + Storage templates | ✅ เสร็จ + ผู้ใช้ setup แล้ว (login/RLS/templates ครบ) · +หน้าจัดการผู้ใช้ (username auth) |
+| 2 | แอปผลิต (ทุกแท็บ + ABV golden test + ฟอร์ม ภส. 4 ตัว) | ✅ เสร็จ + ผู้ใช้เทสผ่าน (flow ผลิตครบ · PDF ภส. 4 ตัว อารบิก+เลขสรรพสามิต 17 หลัก · แท็บจัดการข้อมูล CRUD · กราฟติดตาม + หน้าประวัติเทียบหลาย batch) · ชุดเทส: `docs/TESTING.md` + `supabase/seed/` · ฟอนต์ = THSARABUN |
+| 3 | แอปบัญชี (ทุกแท็บ + ภพ.30/ภงด./50ทวิ) | ✅ เสร็จ (รอผู้ใช้ push+test) · build/lint/test 102 ผ่าน · lib/accounting (calc/ledger/wht) golden A1-A11,A13 · RPC 0011 (save/installments/transfer/settle/void/issue-wht + T6 forward) · UI 8 แท็บ (entry+สแกน A15/dashboard/บัญชี&เงินสด/AP-AR+ยอดค้างออเดอร์/ค้นบิล/แบ่งงวด/ประวัติราคา/เช็คราคา) · PDF: ภพ.30+ภงด. (HTML→print) · 50ทวิ (AcroForm 89 fields) ใน /reports แท็บสรรพากร · ชุดเทส: seed_accounting.sql + docs/TESTING.md |
+| 4 | แอปขาย (quotation/orders/warehouse + integrations) | ✅ เสร็จ (รอผู้ใช้ push+test) · build/lint/test 147 ผ่าน · lib/sales (calc/orders) golden S1-S8 (38 เทส) · RPC 0013 (quotation save/update · apply_order_action S2+RECEIVE_REVENUE idempotent · confirm_fulfillment S3+SELL_PRODUCT inline · manual_stock_move · cancel_order ย้อน side effect) · UI 4 แท็บ (สร้างใบเสนอราคา+ตะกร้า/จัดการออเดอร์ timeline+state machine 6 action/คลังจัดส่ง+สต็อกรวม/ประวัติเชื่อมระบบ) · พิมพ์: ใบเสนอราคา A4 + เอกสาร B2B (invoice/tax-invoice/receipt) client-side · docToPrint แก้ตาม D26 · config บัญชี+กิจการรับรายได้ (app_settings) · LINE `lib/line.ts` · ชุดเทส: seed_sales.sql + docs/TESTING.md |
+| 5 | Migration scripts + reconcile | ✅ **รันจริงสำเร็จ** (2026-07-24) · reconcile 26/0 · build/lint/test 166 ผ่าน · `migration/` (lib clean/loader/client/transform + split/import/reconcile/export · npm `migrate:*`) · migration 0014-0017 · import จริง 468 tx/725 items/116 log/29 batch/contacts 35 · tz-safe date + พ.ศ.→ค.ศ. + remap ลูกค้า + contact ซ้ำ reassign + counters seed · +**type บันทึกภาษี** (D29) +**คู่ค้าหลายสาขา contact_id** (D30) +CLI บล็อก→apply ผ่าน dashboard (D31) · clean.test 15 เทส · D27-D31 · เหลือเทียบมือ: ยอดบัญชี+PDF ภพ.30/ภส. |
 | 6 | UAT + shadow verification + cutover kit | ☐ |
 
 *Definition of Done ต่อ phase อยู่ใน MIGRATION_PLAN section 12 · คำถามค้างตัดสินใจอยู่ section 11 — ถ้างานชนคำถามเหล่านั้น ให้ถามผู้ใช้ก่อน อย่าเดา*

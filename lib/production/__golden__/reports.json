@@ -1,0 +1,860 @@
+{
+ "entity": {
+  "company": "บริษัททดสอบ",
+  "exciseId": "EX-TEST"
+ },
+ "month": "2026-07",
+ "materialId": "T-MAT01",
+ "productId": "T-PROD01",
+ "db": {
+  "materials": [
+   {
+    "material_id": "T-MAT01",
+    "name": "ข้าวเหนียว",
+    "unit": "กก."
+   },
+   {
+    "material_id": "T-MAT02",
+    "name": "น้ำตาล",
+    "unit": "กก."
+   }
+  ],
+  "products": [
+   {
+    "product_id": "T-PROD01",
+    "name": "สาโททดสอบ",
+    "degree": 40,
+    "bottle_size_l": 0.75,
+    "liquor_type": "สุราแช่",
+    "liquor_kind": "สาโท"
+   }
+  ],
+  "logMaterial": [
+   {
+    "doc_date": "2026-06-20",
+    "trans_type": "รับ",
+    "material_id": "T-MAT01",
+    "amount": 100,
+    "doc_ref": "PO-1"
+   },
+   {
+    "doc_date": "2026-07-05",
+    "trans_type": "รับ",
+    "material_id": "T-MAT01",
+    "amount": 200,
+    "doc_ref": "PO-2"
+   },
+   {
+    "doc_date": "2026-07-06",
+    "trans_type": "จ่าย",
+    "material_id": "T-MAT01",
+    "amount": 120,
+    "doc_ref": "1/69"
+   },
+   {
+    "doc_date": "2026-07-08",
+    "trans_type": "เสียหาย",
+    "material_id": "T-MAT02",
+    "amount": 3,
+    "doc_ref": ""
+   }
+  ],
+  "logFerment": [
+   {
+    "ferment_date": "2026-07-06",
+    "product_name": "สาโททดสอบ",
+    "batch": "1/69",
+    "container_qty": 2,
+    "material_amounts": "120, 5"
+   }
+  ],
+  "logDistill": [
+   {
+    "distill_date": "2026-07-10",
+    "product_name": "สาโททดสอบ",
+    "batch": "1/69",
+    "vol": 40,
+    "abv": 70
+   }
+  ],
+  "logDilute": [
+   {
+    "dilute_date": "2026-07-12",
+    "product_name": "สาโททดสอบ",
+    "start_vol": 40,
+    "final_vol": 80,
+    "final_abv": 40
+   }
+  ],
+  "logProduct": [
+   {
+    "doc_date": "2026-07-15",
+    "trans_type": "รับ",
+    "product_id": "T-PROD01",
+    "amount": 100,
+    "note": ""
+   },
+   {
+    "doc_date": "2026-07-20",
+    "trans_type": "จ่าย",
+    "product_id": "T-PROD01",
+    "amount": 30,
+    "note": "ส่ง ORD260720-001"
+   }
+  ]
+ },
+ "expected": {
+  "material": {
+   "company": "บริษัททดสอบ",
+   "exciseId": "EX-TEST",
+   "monthThai": "กรกฎาคม 2569",
+   "materialName": "ข้าวเหนียว",
+   "unit": "กก.",
+   "liquorType": "สุราแช่",
+   "bfBalance": 100,
+   "monthIn": 200,
+   "monthOut": 120,
+   "yearIn": 300,
+   "yearOut": 120,
+   "grid": [
+    {
+     "day": 1,
+     "date": "01/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 100
+    },
+    {
+     "day": 2,
+     "date": "02/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 100
+    },
+    {
+     "day": 3,
+     "date": "03/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 100
+    },
+    {
+     "day": 4,
+     "date": "04/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 100
+    },
+    {
+     "day": 5,
+     "date": "05/07/69",
+     "desc": "ข้าวเหนียว",
+     "ref": "PO-2",
+     "inv": 200,
+     "outv": null,
+     "bal": 300
+    },
+    {
+     "day": 6,
+     "date": "06/07/69",
+     "desc": "ข้าวเหนียว 1/69",
+     "ref": "",
+     "inv": null,
+     "outv": 120,
+     "bal": 180
+    },
+    {
+     "day": 7,
+     "date": "07/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 180
+    },
+    {
+     "day": 8,
+     "date": "08/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 180
+    },
+    {
+     "day": 9,
+     "date": "09/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 180
+    },
+    {
+     "day": 10,
+     "date": "10/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 180
+    },
+    {
+     "day": 11,
+     "date": "11/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 180
+    },
+    {
+     "day": 12,
+     "date": "12/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 180
+    },
+    {
+     "day": 13,
+     "date": "13/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 180
+    },
+    {
+     "day": 14,
+     "date": "14/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 180
+    },
+    {
+     "day": 15,
+     "date": "15/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 180
+    },
+    {
+     "day": 16,
+     "date": "16/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 180
+    },
+    {
+     "day": 17,
+     "date": "17/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 180
+    },
+    {
+     "day": 18,
+     "date": "18/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 180
+    },
+    {
+     "day": 19,
+     "date": "19/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 180
+    },
+    {
+     "day": 20,
+     "date": "20/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 180
+    },
+    {
+     "day": 21,
+     "date": "21/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 180
+    },
+    {
+     "day": 22,
+     "date": "22/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 180
+    },
+    {
+     "day": 23,
+     "date": "23/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 180
+    },
+    {
+     "day": 24,
+     "date": "24/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 180
+    },
+    {
+     "day": 25,
+     "date": "25/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 180
+    },
+    {
+     "day": 26,
+     "date": "26/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 180
+    },
+    {
+     "day": 27,
+     "date": "27/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 180
+    },
+    {
+     "day": 28,
+     "date": "28/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 180
+    },
+    {
+     "day": 29,
+     "date": "29/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 180
+    },
+    {
+     "day": 30,
+     "date": "30/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 180
+    },
+    {
+     "day": 31,
+     "date": "31/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 180
+    }
+   ]
+  },
+  "product": {
+   "company": "บริษัททดสอบ",
+   "exciseId": "EX-TEST",
+   "monthThai": "กรกฎาคม 2569",
+   "productName": "สาโททดสอบ",
+   "degree": 40,
+   "bottleSize": "0.750",
+   "unit": "ขวด",
+   "liquorType": "สุราแช่",
+   "liquorKind": "สาโท",
+   "bfBalance": 0,
+   "monthIn": 100,
+   "monthOut": 30,
+   "yearIn": 100,
+   "yearOut": 30,
+   "grid": [
+    {
+     "day": 1,
+     "date": "01/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 0
+    },
+    {
+     "day": 2,
+     "date": "02/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 0
+    },
+    {
+     "day": 3,
+     "date": "03/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 0
+    },
+    {
+     "day": 4,
+     "date": "04/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 0
+    },
+    {
+     "day": 5,
+     "date": "05/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 0
+    },
+    {
+     "day": 6,
+     "date": "06/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 0
+    },
+    {
+     "day": 7,
+     "date": "07/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 0
+    },
+    {
+     "day": 8,
+     "date": "08/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 0
+    },
+    {
+     "day": 9,
+     "date": "09/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 0
+    },
+    {
+     "day": 10,
+     "date": "10/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 0
+    },
+    {
+     "day": 11,
+     "date": "11/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 0
+    },
+    {
+     "day": 12,
+     "date": "12/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 0
+    },
+    {
+     "day": 13,
+     "date": "13/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 0
+    },
+    {
+     "day": 14,
+     "date": "14/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 0
+    },
+    {
+     "day": 15,
+     "date": "15/07/69",
+     "desc": "สาโททดสอบ 40% 0.750L",
+     "ref": "",
+     "inv": 100,
+     "outv": null,
+     "bal": 100
+    },
+    {
+     "day": 16,
+     "date": "16/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 100
+    },
+    {
+     "day": 17,
+     "date": "17/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 100
+    },
+    {
+     "day": 18,
+     "date": "18/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 100
+    },
+    {
+     "day": 19,
+     "date": "19/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 100
+    },
+    {
+     "day": 20,
+     "date": "20/07/69",
+     "desc": "สาโททดสอบ 40% 0.750L",
+     "ref": "ORD260720-001",
+     "inv": null,
+     "outv": 30,
+     "bal": 70
+    },
+    {
+     "day": 21,
+     "date": "21/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 70
+    },
+    {
+     "day": 22,
+     "date": "22/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 70
+    },
+    {
+     "day": 23,
+     "date": "23/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 70
+    },
+    {
+     "day": 24,
+     "date": "24/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 70
+    },
+    {
+     "day": 25,
+     "date": "25/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 70
+    },
+    {
+     "day": 26,
+     "date": "26/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 70
+    },
+    {
+     "day": 27,
+     "date": "27/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 70
+    },
+    {
+     "day": 28,
+     "date": "28/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 70
+    },
+    {
+     "day": 29,
+     "date": "29/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 70
+    },
+    {
+     "day": 30,
+     "date": "30/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 70
+    },
+    {
+     "day": 31,
+     "date": "31/07/69",
+     "desc": "",
+     "ref": "",
+     "inv": null,
+     "outv": null,
+     "bal": 70
+    }
+   ]
+  },
+  "production": {
+   "company": "บริษัททดสอบ",
+   "exciseId": "EX-TEST",
+   "monthThai": "กรกฎาคม 2569",
+   "productName": "สาโททดสอบ",
+   "liquorType": "สุราแช่",
+   "degree": 40,
+   "bfSaa": 0,
+   "bfDistill": 0,
+   "bfDilute": 0,
+   "monthFermSaa": 120,
+   "monthDistSaa": 120,
+   "monthDiluStart": 40,
+   "monthPackVol": 75,
+   "yearFermSaa": 120,
+   "yearDistSaa": 120,
+   "yearDiluStart": 40,
+   "yearPackVol": 75,
+   "endSaa": 0,
+   "endDist": 0,
+   "endDilu": 5,
+   "grid": [
+    {
+     "day": 6,
+     "date": "06/07/69",
+     "fermBatch": "1/69",
+     "fermQty": 2,
+     "avgFermVol": 60,
+     "fermSaa": 120,
+     "distBatch": "",
+     "distFermQty": null,
+     "avgDistFermVol": null,
+     "distSaa": null,
+     "curSaa": 120,
+     "avgAbv": null,
+     "distVol": null,
+     "diluStartVol": null,
+     "curDist": 0,
+     "packSize": "",
+     "packQty": null,
+     "packVol": null,
+     "curDilu": 0,
+     "note": ""
+    },
+    {
+     "day": 10,
+     "date": "10/07/69",
+     "fermBatch": "",
+     "fermQty": null,
+     "avgFermVol": null,
+     "fermSaa": null,
+     "distBatch": "1/69",
+     "distFermQty": 2,
+     "avgDistFermVol": 60,
+     "distSaa": 120,
+     "curSaa": 0,
+     "avgAbv": 70,
+     "distVol": 40,
+     "diluStartVol": null,
+     "curDist": 40,
+     "packSize": "",
+     "packQty": null,
+     "packVol": null,
+     "curDilu": 0,
+     "note": ""
+    },
+    {
+     "day": 12,
+     "date": "12/07/69",
+     "fermBatch": "",
+     "fermQty": null,
+     "avgFermVol": null,
+     "fermSaa": null,
+     "distBatch": "",
+     "distFermQty": null,
+     "avgDistFermVol": null,
+     "distSaa": null,
+     "curSaa": 0,
+     "avgAbv": null,
+     "distVol": null,
+     "diluStartVol": 40,
+     "curDist": 0,
+     "packSize": "",
+     "packQty": null,
+     "packVol": null,
+     "curDilu": 80,
+     "note": "ปรุงปรับดีกรี 40 ได้ปริมาณ 80.00 ลิตร"
+    },
+    {
+     "day": 15,
+     "date": "15/07/69",
+     "fermBatch": "",
+     "fermQty": null,
+     "avgFermVol": null,
+     "fermSaa": null,
+     "distBatch": "",
+     "distFermQty": null,
+     "avgDistFermVol": null,
+     "distSaa": null,
+     "curSaa": 0,
+     "avgAbv": null,
+     "distVol": null,
+     "diluStartVol": null,
+     "curDist": 0,
+     "packSize": "0.750",
+     "packQty": 100,
+     "packVol": 75,
+     "curDilu": 5,
+     "note": ""
+    }
+   ]
+  },
+  "summary": {
+   "company": "บริษัททดสอบ",
+   "exciseId": "EX-TEST",
+   "monthThai": "กรกฎาคม 2569",
+   "liquorType": "สุราแช่",
+   "liquorKind": "สาโท",
+   "materials": [
+    {
+     "name": "ข้าวเหนียว",
+     "unit": "กก.",
+     "bf": 100,
+     "inv": 200,
+     "total": 300,
+     "outMain": 120,
+     "outOther": 0,
+     "damage": 0,
+     "misc": 0,
+     "balance": 180
+    },
+    {
+     "name": "น้ำตาล",
+     "unit": "กก.",
+     "bf": 0,
+     "inv": 0,
+     "total": 0,
+     "outMain": 0,
+     "outOther": 0,
+     "damage": 3,
+     "misc": 0,
+     "balance": -3
+    }
+   ],
+   "products": [
+    {
+     "name": "สาโททดสอบ",
+     "degree": 40,
+     "size": "0.750",
+     "unit": "ขวด",
+     "bf": 0,
+     "inv": 100,
+     "total": 100,
+     "outLocal": 30,
+     "outExport": 0,
+     "damage": 0,
+     "misc": 0,
+     "balance": 70
+    }
+   ]
+  }
+ }
+}

@@ -1,0 +1,10 @@
+# Supabase config — Insep ERP
+# หลัง `supabase link --project-ref <ref>` แล้ว push ด้วย `supabase db push`
+project_id = "insep-erp"
+
+[db]
+major_version = 15
+
+[db.migrations]
+# ใช้ไฟล์ใน supabase/migrations/ ตามลำดับชื่อ (timestamp)
+schema_paths = []

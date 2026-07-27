@@ -1,0 +1,10 @@
+# ห้าม commit ข้อมูลจริง (ยอดเงิน/ภาษี/ลูกค้า) ขึ้น git
+# วางไฟล์ CSV ที่ export จาก Google Sheets ในโฟลเดอร์นี้
+*.csv
+*.CSV
+*.xlsx
+
+# แต่คงตัวโฟลเดอร์ + ไฟล์ตัวอย่าง/คู่มือไว้ใน repo
+!.gitignore
+!README.md
+!*.example.csv

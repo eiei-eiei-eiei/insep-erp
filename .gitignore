@@ -8,6 +8,7 @@
 /out/
 /build
 /dist
+*.tsbuildinfo
 
 # env / secrets  ⛔ never commit
 .env
