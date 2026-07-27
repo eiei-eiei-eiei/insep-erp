@@ -111,7 +111,25 @@ npm run migrate:split                  # 4) (ทางเลือก) เก็
 - GAS เดิมไม่ถูกแตะ → เปิดชีทกลับ editable + ถอด banner = กลับไปใช้ระบบเดิมได้ในไม่กี่นาที
 
 ## Phase 6 — Cutover
-_(ยังไม่ทำ — ดู MIGRATION_PLAN sec 8, 10: UAT.md, shadow verification รอบสุดท้าย, ตั้งชีทเดิม read-only + banner, rollback)_
+_(ข้ามตามที่ผู้ใช้ตัดสินใจ — ไป go-live ตรง)_
+
+## 🚀 Deployment / Go-Live (ทำจริงแล้ว 2026-07-27)
+
+- [x] **โค้ดขึ้น GitHub** — commit ทั้ง repo + push `main` → `github.com/eiei-eiei-eiei/insep-erp`
+- [x] **อัป Next.js 15.1.6 → 15.5.22** (Vercel บล็อก deploy เวอร์ชันมีช่องโหว่) · build/lint/test 167 ผ่าน
+- [x] **Deploy Vercel production** — โปรเจกต์ `eieieiei/insep-erp` · **URL: https://insep-erp.vercel.app** · login 200 + anon key ต่อ Supabase auth 200
+- [x] **ตั้ง env ใน Vercel** (production/preview/development): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SCAN_DAILY_LIMIT`, `DEFAULT_ENTITY_ID=EID01`, `LIQUOR_ENTITY_ID=EID01`
+  - ⚠️ **บทเรียน**: `.env.local` มี inline comment (` # ...`) ต่อท้าย 3 ค่า (anon/service/anthropic) — รอบแรก push ทั้ง comment ทำให้ key เสีย ต้อง re-push แบบตัด comment (dotenv ตัดให้เองตอน dev แต่สคริปต์ต้องตัดเอง)
+- [x] **ข้อมูลจริงใน Supabase ยืนยันครบ**: transactions 468 / items 725 / sales_orders 7 / log_distill 29 / contacts 35 / products 10 / entities 2 · ข้อมูลทดสอบสะอาดแล้ว (EID99=0)
+
+### ยังเหลือ (ผู้ใช้ต้องทำ — ดูสรุปในแชท)
+- [ ] **`entities.excise_id` (EID01) = null** → กรอกเลขทะเบียนสรรพสามิต 17 หลักจริง (บล็อกการพิมพ์ฟอร์ม ภส.)
+- [ ] **`app_settings` ไม่มี `sales_revenue_entity`/`sales_revenue_account`** → เพิ่ม 2 แถว (EID01 + "กสิกร insep") ไม่งั้นกดรับเงินออเดอร์ error
+- [ ] **`bank_accounts.opening_balance` = 0 ทุกบัญชี** → ถ้าเริ่มใช้กลางปีต้องใส่ยอดยกมาจริง
+- [ ] **`ANTHROPIC_API_KEY`** ยังไม่ตั้ง (ค่าใน .env.local ว่าง) → สร้าง key ใหม่ ใส่ใน Vercel ถ้าจะใช้สแกนใบเสร็จ
+- [ ] **`LINE_CHANNEL_TOKEN`/`LINE_GROUP_ID`** ว่าง → ตั้งถ้าจะใช้แจ้งเตือน
+- [ ] **GitHub auto-deploy ยังไม่เชื่อม** (Vercel เชื่อม repo ตอน link ไม่สำเร็จ) → ติดตั้ง Vercel GitHub App ใน dashboard ถ้าอยาก auto-deploy ทุก push (ไม่งั้น deploy ด้วย `vercel --prod`)
+- [ ] **ล็อกอินจริง** ที่ https://insep-erp.vercel.app ด้วย user `ceo` แล้วตรวจแต่ละแอป
 
 ---
 
