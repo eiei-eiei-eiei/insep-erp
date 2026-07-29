@@ -246,6 +246,90 @@ export async function searchBills(params: {
   return rows;
 }
 
+/** C2-5 — บิลล่าสุดของคู่ค้า (เติม description/หมวดหมู่/รายการอัตโนมัติ) เทียบ legacy getRecentTransactionsByContact */
+export async function getRecentBillsByContact(contactName: string, limit = 5, entityId?: string) {
+  const supabase = await db();
+  if (!contactName?.trim()) return [] as RecentBill[];
+  let q = supabase
+    .from("transactions")
+    .select("tx_id, transaction_date, type, category, description, net_amount, entity_id")
+    .eq("contact_name", contactName)
+    .eq("status", "ปกติ")
+    .order("transaction_date", { ascending: false })
+    .order("tx_id", { ascending: false })
+    .limit(limit);
+  if (entityId && entityId !== "ALL") q = q.eq("entity_id", entityId);
+  const { data } = await q;
+  const rows = (data ?? []) as {
+    tx_id: string; transaction_date: string | null; type: string; category: string | null; description: string | null; net_amount: number | string | null;
+  }[];
+  if (rows.length === 0) return [] as RecentBill[];
+  // ดึง items ของบิลเหล่านี้มาพร้อมกัน (เติมรายการทั้งใบได้)
+  const ids = rows.map((r) => r.tx_id);
+  const { data: itemsData } = await supabase
+    .from("transaction_items")
+    .select("tx_id, item_name, quantity, in_vat, ex_vat, total_price, discount_pct, discount_baht, item_category, item_job")
+    .in("tx_id", ids)
+    .order("item_id");
+  const itemsByTx: Record<string, RecentBillItem[]> = {};
+  for (const it of (itemsData ?? []) as Record<string, unknown>[]) {
+    const tid = it.tx_id as string;
+    (itemsByTx[tid] ??= []).push({
+      itemName: (it.item_name as string) ?? "",
+      quantity: Number(it.quantity) || 0,
+      inVat: Number(it.in_vat) || 0,
+      exVat: Number(it.ex_vat) || 0,
+      discountPct: Number(it.discount_pct) || 0,
+      discountBaht: Number(it.discount_baht) || 0,
+      itemCategory: (it.item_category as string) ?? "",
+      itemJob: (it.item_job as string) ?? "",
+    });
+  }
+  return rows.map((r) => ({
+    txId: r.tx_id,
+    date: r.transaction_date ?? "",
+    type: r.type,
+    category: r.category ?? "",
+    description: r.description ?? "",
+    netAmount: Number(r.net_amount) || 0,
+    items: itemsByTx[r.tx_id] ?? [],
+  })) as RecentBill[];
+}
+
+export type RecentBillItem = {
+  itemName: string; quantity: number; inVat: number; exVat: number;
+  discountPct: number; discountBaht: number; itemCategory: string; itemJob: string;
+};
+export type RecentBill = {
+  txId: string; date: string; type: string; category: string; description: string; netAmount: number; items: RecentBillItem[];
+};
+
+/** รายการค่าไม่ซ้ำจากประวัติ (ชื่อสินค้า/หมวดหมู่/งาน) → เติมดรอปดาวน์หน้าบันทึก */
+export async function getItemHistory(entityId?: string) {
+  const supabase = await db();
+  let q = supabase
+    .from("transaction_items")
+    .select("item_name, item_category, item_job, transactions!inner(entity_id, status)")
+    .limit(5000);
+  if (entityId && entityId !== "ALL") q = q.eq("transactions.entity_id", entityId);
+  const { data } = await q;
+  const names = new Set<string>();
+  const cats = new Set<string>();
+  const jobs = new Set<string>();
+  for (const r of (data ?? []) as unknown as { item_name: string | null; item_category: string | null; item_job: string | null; transactions: { status: string } | null }[]) {
+    if (r.transactions && r.transactions.status !== "ปกติ") continue;
+    if (r.item_name?.trim()) names.add(r.item_name.trim());
+    if (r.item_category?.trim()) cats.add(r.item_category.trim());
+    if (r.item_job?.trim()) jobs.add(r.item_job.trim());
+  }
+  const sortTh = (a: string, b: string) => a.localeCompare(b, "th");
+  return {
+    itemNames: [...names].sort(sortTh),
+    itemCategories: [...cats].sort(sortTh),
+    itemJobs: [...jobs].sort(sortTh),
+  };
+}
+
 /** รายละเอียดบิล + items */
 export async function getBillDetail(txId: string) {
   const supabase = await db();

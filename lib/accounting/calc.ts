@@ -459,7 +459,7 @@ export type DashPending = {
   whtRate: number;
 };
 export type DashboardData = {
-  dash: { income: number; expense: number; vatOut: number; vatIn: number };
+  dash: { income: number; expense: number; netIncome: number; netExpense: number; vatOut: number; vatIn: number };
   whtPending: DashPending[];
 };
 
@@ -477,6 +477,8 @@ export function dashboardData(
 ): DashboardData {
   let income = 0;
   let expense = 0;
+  let netIncome = 0;
+  let netExpense = 0;
   let vatOut = 0;
   let vatIn = 0;
   const whtPending: DashPending[] = [];
@@ -488,14 +490,17 @@ export function dashboardData(
     if (monthOf(filterDate) !== period) continue;
 
     const amount = num(tx.amount_after_discount);
+    const net = num(tx.net_amount);
     const vat = num(tx.vat_amount);
     const whtAmount = num(tx.wht_amount);
 
     if (tx.type === "รายรับ") {
       income += amount;
+      netIncome += net;
       vatOut += vat;
     } else if (tx.type === "รายจ่าย") {
       expense += amount;
+      netExpense += net;
       vatIn += vat;
       if (whtAmount > 0 && !issuedTxIds.has(tx.tx_id)) {
         whtPending.push({
@@ -512,5 +517,5 @@ export function dashboardData(
     }
   }
 
-  return { dash: { income, expense, vatOut, vatIn }, whtPending };
+  return { dash: { income, expense, netIncome, netExpense, vatOut, vatIn }, whtPending };
 }

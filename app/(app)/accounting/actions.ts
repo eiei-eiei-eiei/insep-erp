@@ -15,6 +15,8 @@ import {
   getInstallmentGroup,
   getWhtBundle,
   getTaxReportBundle,
+  getRecentBillsByContact,
+  getItemHistory,
 } from "./data";
 
 export type SaveResult = { ok: boolean; error?: string; data?: unknown };
@@ -43,6 +45,12 @@ export async function searchBillsAction(params: Parameters<typeof searchBills>[0
 }
 export async function getBillDetailAction(txId: string) {
   return getBillDetail(txId);
+}
+export async function getRecentBillsByContactAction(contactName: string, limit?: number, entityId?: string) {
+  return getRecentBillsByContact(contactName, limit, entityId);
+}
+export async function getItemHistoryAction(entityId?: string) {
+  return getItemHistory(entityId);
 }
 export async function searchPriceHistoryAction(params: Parameters<typeof searchPriceHistory>[0]) {
   return searchPriceHistory(params);
@@ -119,6 +127,17 @@ export async function saveTransactionAction(input: SaveTxInput, items: TxItemInp
   if (error) return fail(error.message);
   revalidatePath("/accounting");
   const res = data as { ok: boolean; tx_id: string; warning?: string | null };
+  return { ok: true, data: res };
+}
+
+/** แก้บิลเดี่ยวย้อนหลัง (ค้นบิล → แก้ไข) — fn_edit_transaction (0019) */
+export async function updateTransactionAction(txId: string, input: SaveTxInput, items: TxItemInput[]): Promise<SaveResult> {
+  const supabase = await db();
+  const { data, error } = await supabase.rpc("fn_edit_transaction", { p_tx_id: txId, p: input, p_items: items });
+  if (error) return fail(error.message);
+  const res = data as { ok: boolean; error?: string };
+  if (!res.ok) return fail(res.error ?? "แก้ไขไม่สำเร็จ");
+  revalidatePath("/accounting");
   return { ok: true, data: res };
 }
 

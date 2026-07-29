@@ -10,7 +10,7 @@ import {
   deleteContactAction,
 } from "../actions";
 import type { AccountRow, Bootstrap, Contact } from "./types";
-import { Card, Field, Msg, NumInput, SaveButton, Select, TextInput, fmt, useSaver } from "./ui";
+import { Card, Field, Msg, NumInput, SaveButton, Select, TextInput, cleanTaxId13, fmt, useSaver } from "./ui";
 
 export function SettingsTab({ boot }: { boot: Bootstrap }) {
   return (
@@ -110,7 +110,7 @@ function BankAccounts({ boot }: { boot: Bootstrap }) {
 }
 
 function Contacts({ initial }: { initial: Contact[] }) {
-  const { pending, msg, run } = useSaver();
+  const { pending, msg, run, setMsg } = useSaver();
   const [rows, setRows] = useState<Contact[]>(initial);
   const [edit, setEdit] = useState<Contact | null>(null);
   const [q, setQ] = useState("");
@@ -118,13 +118,16 @@ function Contacts({ initial }: { initial: Contact[] }) {
 
   function blank(): Contact { return { contact_id: "", name: "", tax_id: "", branch: "สำนักงานใหญ่", address: "", contact_type: "ทั้งสอง", roles: [] }; }
   function save(c: Contact) {
-    if (!c.name.trim()) return;
+    if (!c.name.trim()) { setMsg({ ok: false, text: "กรุณากรอกชื่อคู่ค้า" }); return; }
+    const tax = cleanTaxId13(c.tax_id);
+    if (!tax) { setMsg({ ok: false, text: "เลขประจำตัวผู้เสียภาษีต้องมี 13 หลัก" }); return; }
+    const saved = { ...c, tax_id: tax };
     if (c.contact_id) {
-      run(() => updateContactAction({ contactId: c.contact_id, name: c.name, taxId: c.tax_id ?? "", branch: c.branch ?? "", address: c.address ?? "", contactType: c.contact_type ?? "" }), "แก้ไขแล้ว",
-        () => { setRows((p) => p.map((x) => x.contact_id === c.contact_id ? c : x)); setEdit(null); });
+      run(() => updateContactAction({ contactId: c.contact_id, name: c.name, taxId: tax, branch: c.branch ?? "", address: c.address ?? "", contactType: c.contact_type ?? "" }), "แก้ไขแล้ว",
+        () => { setRows((p) => p.map((x) => x.contact_id === c.contact_id ? saved : x)); setEdit(null); });
     } else {
-      run(() => addContactAction({ name: c.name, taxId: c.tax_id ?? "", branch: c.branch ?? "", address: c.address ?? "", contactType: c.contact_type ?? "" }), "เพิ่มแล้ว",
-        (data) => { const id = (data as { contactId: string }).contactId; setRows((p) => [...p, { ...c, contact_id: id }]); setEdit(null); });
+      run(() => addContactAction({ name: c.name, taxId: tax, branch: c.branch ?? "", address: c.address ?? "", contactType: c.contact_type ?? "" }), "เพิ่มแล้ว",
+        (data) => { const id = (data as { contactId: string }).contactId; setRows((p) => [...p, { ...saved, contact_id: id }]); setEdit(null); });
     }
   }
   function del(id: string) {

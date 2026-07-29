@@ -219,7 +219,7 @@ describe("A10 — ภงด.3/53", () => {
 describe("A11 — dashboard + WHT pending", () => {
   it("สรุปเดือน (filter tax_invoice_date ก่อน)", () => {
     const d = dashboardData("2026-07", EID, txs, TAX_ACCOUNTS, new Set());
-    expect(d.dash).toEqual({ income: 1500, expense: 3000, vatOut: 105, vatIn: 140 });
+    expect(d.dash).toEqual({ income: 1500, expense: 3000, netIncome: 1605, netExpense: 3070, vatOut: 105, vatIn: 140 });
     expect(d.whtPending.map((p) => p.transactionId)).toEqual(["P1", "P2"]);
   });
   it("ตัดที่ออก 50ทวิ แล้วออกจาก pending", () => {

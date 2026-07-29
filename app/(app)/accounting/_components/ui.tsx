@@ -23,6 +23,12 @@ export function fmt(n: number | string | null | undefined): string {
   });
 }
 
+/** เลขประจำตัวผู้เสียภาษี 13 หลัก (ตัวเลขล้วน) — คืน digits ที่ clean แล้ว หรือ null ถ้าไม่ครบ 13 หลัก */
+export function cleanTaxId13(raw: string | null | undefined): string | null {
+  const d = (raw ?? "").replace(/\D/g, "");
+  return d.length === 13 ? d : null;
+}
+
 export function useSaver() {
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);

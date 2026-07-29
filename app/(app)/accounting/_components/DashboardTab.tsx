@@ -18,18 +18,18 @@ export function DashboardTab({ period, entityId }: { period: string; entityId: s
   }, [period, entityId]);
 
   if (loading || !data) return <p className="text-slate-400">กำลังโหลด…</p>;
-  const { income, expense, vatOut, vatIn } = data.dash;
+  const { netIncome, netExpense, vatOut, vatIn } = data.dash;
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="รายรับ (เดือนนี้)" value={fmt(income)} tone="green" />
-        <Stat label="รายจ่าย (เดือนนี้)" value={fmt(expense)} tone="red" />
+        <Stat label="รายรับสุทธิ (เดือนนี้)" value={fmt(netIncome)} tone="green" />
+        <Stat label="รายจ่ายสุทธิ (เดือนนี้)" value={fmt(netExpense)} tone="red" />
         <Stat label="ภาษีขาย (VAT out)" value={fmt(vatOut)} />
         <Stat label="ภาษีซื้อ (VAT in)" value={fmt(vatIn)} />
       </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-2">
-        <Stat label="กำไรเบื้องต้น (รับ − จ่าย)" value={fmt(income - expense)} tone={income - expense >= 0 ? "green" : "red"} />
+        <Stat label="กำไรสุทธิ (รับ − จ่าย)" value={fmt(netIncome - netExpense)} tone={netIncome - netExpense >= 0 ? "green" : "red"} />
         <Stat label="VAT สุทธิเดือนนี้ (ขาย − ซื้อ)" value={fmt(vatOut - vatIn)} />
       </div>
 

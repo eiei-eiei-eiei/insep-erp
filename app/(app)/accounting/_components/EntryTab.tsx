@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   entryCalc,
   itemTotal,
@@ -16,24 +16,37 @@ import {
   saveInstallmentsAction,
   scanReceiptAction,
   addContactAction,
+  getRecentBillsByContactAction,
+  getItemHistoryAction,
   type TxItemInput,
 } from "../actions";
 import type { Bootstrap, Contact } from "./types";
-import { Card, Field, Msg, NumInput, SaveButton, Select, TextInput, fmt, todayISO, useSaver } from "./ui";
+import { Card, Field, Msg, NumInput, SaveButton, Select, TextInput, cleanTaxId13, fmt, todayISO, useSaver } from "./ui";
 
+type Qty = number | "";
 type Item = {
   itemName: string;
   itemCategory: string;
   itemJob: string;
-  quantity: number;
+  quantity: Qty;
   exVat: number;
   inVat: number;
   discPct: number;
   discBaht: number;
 };
 type Inst = { percent: number; dueDate: string };
+type RecentBill = Awaited<ReturnType<typeof getRecentBillsByContactAction>>[number];
+type ItemHist = Awaited<ReturnType<typeof getItemHistoryAction>>;
 
 const emptyItem = (cat = "", job = ""): Item => ({ itemName: "", itemCategory: cat, itemJob: job, quantity: 1, exVat: 0, inVat: 0, discPct: 0, discBaht: 0 });
+const qn = (q: Qty): number => (q === "" ? 0 : q); // จำนวนสำหรับคำนวณ (ช่องว่าง = 0)
+
+const DRAFT_KEY = "acc-entry-draft-v1";
+type Draft = {
+  type: "รายรับ" | "รายจ่าย"; category: string; accountName: string; contactName: string; description: string;
+  txDate: string; taxInvoiceNo: string; taxInvoiceDate: string; discount: number; hasVat: boolean; hasWht: boolean;
+  whtRate: number; items: Item[]; isApAr: boolean; dueDate: string; isInst: boolean; insts: Inst[]; branchId: string;
+};
 
 export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string }) {
   const { pending, msg, run, setMsg } = useSaver();
@@ -46,7 +59,7 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
   const [taxInvoiceNo, setTaxInvoiceNo] = useState("");
   const [taxInvoiceDate, setTaxInvoiceDate] = useState("");
   const [discount, setDiscount] = useState(0);
-  const [hasVat, setHasVat] = useState(true);
+  const [hasVat, setHasVat] = useState(false); // ออโต้ติ๊กเมื่อกรอกเลขใบกำกับ (ผู้ใช้ override เองได้)
   const [hasWht, setHasWht] = useState(false);
   const [whtRate, setWhtRate] = useState(0);
   const [items, setItems] = useState<Item[]>([emptyItem()]);
@@ -61,6 +74,11 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
   const [showContactModal, setShowContactModal] = useState(false);
   const [branchId, setBranchId] = useState(""); // สาขาที่เลือก (เมื่อชื่อซ้ำหลายสาขา, D30)
 
+  // ประวัติ (บิลล่าสุดของคู่ค้า + ค่าไม่ซ้ำของรายการสินค้า → ดรอปดาวน์)
+  const [recentBills, setRecentBills] = useState<RecentBill[]>([]);
+  const [showRecent, setShowRecent] = useState(false);
+  const [itemHist, setItemHist] = useState<ItemHist>({ itemNames: [], itemCategories: [], itemJobs: [] });
+
   // reverse WHT
   const [revNet, setRevNet] = useState(0);
   const [revRate, setRevRate] = useState(3);
@@ -68,6 +86,78 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
 
   const isCost = type === "รายจ่าย" && category === "ต้นทุนสุรา";
   const cats = type === "รายรับ" ? boot.incomeCats : boot.expenseCats;
+
+  // ── กู้/เก็บร่างที่ยังไม่บันทึก (localStorage) — สลับแท็บ/รีเฟรชแล้วข้อมูลไม่หาย ──
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (raw) {
+        const d = JSON.parse(raw) as Partial<Draft>;
+        if (d.type) setType(d.type);
+        if (d.category != null) setCategory(d.category);
+        if (d.accountName != null) setAccountName(d.accountName);
+        if (d.contactName != null) setContactName(d.contactName);
+        if (d.description != null) setDescription(d.description);
+        if (d.txDate) setTxDate(d.txDate);
+        if (d.taxInvoiceNo != null) setTaxInvoiceNo(d.taxInvoiceNo);
+        if (d.taxInvoiceDate != null) setTaxInvoiceDate(d.taxInvoiceDate);
+        if (d.discount != null) setDiscount(d.discount);
+        if (d.hasVat != null) setHasVat(d.hasVat);
+        if (d.hasWht != null) setHasWht(d.hasWht);
+        if (d.whtRate != null) setWhtRate(d.whtRate);
+        if (Array.isArray(d.items) && d.items.length) setItems(d.items);
+        if (d.isApAr != null) setIsApAr(d.isApAr);
+        if (d.dueDate != null) setDueDate(d.dueDate);
+        if (d.isInst != null) setIsInst(d.isInst);
+        if (Array.isArray(d.insts) && d.insts.length) setInsts(d.insts);
+        if (d.branchId != null) setBranchId(d.branchId);
+      }
+    } catch { /* ignore */ }
+    setHydrated(true);
+  }, []);
+  useEffect(() => {
+    if (!hydrated) return;
+    const draft: Draft = { type, category, accountName, contactName, description, txDate, taxInvoiceNo, taxInvoiceDate, discount, hasVat, hasWht, whtRate, items, isApAr, dueDate, isInst, insts, branchId };
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); } catch { /* ignore */ }
+  }, [hydrated, type, category, accountName, contactName, description, txDate, taxInvoiceNo, taxInvoiceDate, discount, hasVat, hasWht, whtRate, items, isApAr, dueDate, isInst, insts, branchId]);
+  function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ } }
+  function clearForm() {
+    setType("รายจ่าย"); setCategory(""); setAccountName(""); setContactName(""); setDescription("");
+    setTxDate(todayISO()); setTaxInvoiceNo(""); setTaxInvoiceDate(""); setDiscount(0); setHasVat(false);
+    setHasWht(false); setWhtRate(0); setItems([emptyItem()]); setIsApAr(false); setDueDate("");
+    setIsInst(false); setInsts([{ percent: 50, dueDate: "" }, { percent: 50, dueDate: "" }]); setBranchId("");
+    setRecentBills([]); setShowRecent(false); clearDraft(); setMsg(null);
+  }
+
+  // ── ประวัติค่าไม่ซ้ำของรายการสินค้า (โหลดตอนเข้า + รีเฟรชหลังบันทึกบิล) ──
+  const refreshItemHist = useCallback(() => { getItemHistoryAction(entityId).then(setItemHist); }, [entityId]);
+  useEffect(() => { refreshItemHist(); }, [refreshItemHist]);
+
+  // ── บิลล่าสุดของคู่ค้า (เมื่อชื่อตรงกับคู่ค้าในระบบ) ──
+  const norm = (s: string) => s.trim().toLowerCase();
+  useEffect(() => {
+    const name = contactName.trim();
+    if (!name || !contacts.some((c) => norm(c.name) === norm(name))) { setRecentBills([]); setShowRecent(false); return; }
+    let alive = true;
+    const h = setTimeout(() => {
+      getRecentBillsByContactAction(name, 5, entityId).then((r) => { if (alive) { setRecentBills(r); setShowRecent(r.length > 0); } });
+    }, 300);
+    return () => { alive = false; clearTimeout(h); };
+  }, [contactName, entityId, contacts]);
+
+  function applyRecentBill(b: RecentBill) {
+    setDescription(b.description);
+    if (b.category) setCategory(b.category);
+    if (b.items.length) {
+      setItems(b.items.map((it) => ({
+        itemName: it.itemName, itemCategory: it.itemCategory, itemJob: it.itemJob,
+        quantity: it.quantity || 1, exVat: it.exVat, inVat: it.inVat || inVatFromExVat(it.exVat),
+        discPct: it.discountPct, discBaht: it.discountBaht,
+      })));
+    }
+    setShowRecent(false);
+  }
 
   // บัญชี: แสดงเฉพาะที่ผูกกับกิจการนี้ (entity_ids ว่าง = ใช้ร่วมทุกกิจการ)
   const accountOptions = boot.accounts.filter((a) => {
@@ -81,7 +171,6 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
     return type === "รายรับ" ? t === "ลูกค้า" : t === "ผู้ขาย";
   });
   // multi-branch (D30): คู่ค้าที่ชื่อตรงกับที่พิมพ์ — ถ้ามีหลายสาขาให้เลือกสาขา → ส่ง contact_id ที่แน่นอน
-  const norm = (s: string) => s.trim().toLowerCase();
   const nameMatches = contacts.filter((c) => norm(c.name) === norm(contactName));
   const multiBranch = nameMatches.length > 1;
   const effBranchId = multiBranch
@@ -91,7 +180,7 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
     nameMatches.length === 1 ? nameMatches[0].contact_id : multiBranch ? effBranchId : undefined;
 
   const calc = useMemo(
-    () => entryCalc({ items: items.map((it) => ({ quantity: it.quantity, exVat: it.exVat, discBaht: it.discBaht })), discount, hasVat, hasWht, whtRate }),
+    () => entryCalc({ items: items.map((it) => ({ quantity: qn(it.quantity), exVat: it.exVat, discBaht: it.discBaht })), discount, hasVat, hasWht, whtRate }),
     [items, discount, hasVat, hasWht, whtRate],
   );
   const instRows = useMemo(() => splitInstallments(calc.amountAfterDiscount, insts, hasVat, hasWht ? whtRate : 0), [calc.amountAfterDiscount, insts, hasVat, hasWht, whtRate]);
@@ -101,27 +190,30 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
     setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
   }
   // แก้ราคา: in↔ex VAT สลับกัน · ส่วนลด %↔บาท
-  function onExVat(i: number, v: number) { setItem(i, { exVat: v, inVat: inVatFromExVat(v), discBaht: round2(v * items[i].quantity * items[i].discPct / 100) }); }
-  function onInVat(i: number, v: number) { const ex = exVatFromInVat(v); setItem(i, { inVat: v, exVat: ex, discBaht: round2(ex * items[i].quantity * items[i].discPct / 100) }); }
-  function onQty(i: number, v: number) { setItem(i, { quantity: v, discBaht: itemDiscBahtFromPct(v, items[i].exVat, items[i].discPct) }); }
-  function onDiscPct(i: number, v: number) { setItem(i, { discPct: v, discBaht: itemDiscBahtFromPct(items[i].quantity, items[i].exVat, v) }); }
-  function onDiscBaht(i: number, v: number) { const gross = items[i].quantity * items[i].exVat; setItem(i, { discBaht: v, discPct: gross > 0 ? round2((v / gross) * 100) : 0 }); }
+  function onExVat(i: number, v: number) { setItem(i, { exVat: v, inVat: inVatFromExVat(v), discBaht: round2(v * qn(items[i].quantity) * items[i].discPct / 100) }); }
+  function onInVat(i: number, v: number) { const ex = exVatFromInVat(v); setItem(i, { inVat: v, exVat: ex, discBaht: round2(ex * qn(items[i].quantity) * items[i].discPct / 100) }); }
+  function onQty(i: number, raw: string) { const q: Qty = raw === "" ? "" : Number(raw); setItem(i, { quantity: q, discBaht: itemDiscBahtFromPct(qn(q), items[i].exVat, items[i].discPct) }); }
+  function onDiscPct(i: number, v: number) { setItem(i, { discPct: v, discBaht: itemDiscBahtFromPct(qn(items[i].quantity), items[i].exVat, v) }); }
+  function onDiscBaht(i: number, v: number) { const gross = qn(items[i].quantity) * items[i].exVat; setItem(i, { discBaht: v, discPct: gross > 0 ? round2((v / gross) * 100) : 0 }); }
   function addItem() { const last = items[items.length - 1]; setItems((p) => [...p, emptyItem(last?.itemCategory ?? "", last?.itemJob ?? "")]); }
 
   function buildItemInputs(): TxItemInput[] {
     return items
       .filter((it) => it.itemName || it.exVat)
-      .map((it) => ({
-        item_name: it.itemName,
-        quantity: it.quantity,
-        in_vat: it.inVat || inVatFromExVat(it.exVat),
-        ex_vat: it.exVat,
-        total_price: itemTotal(it.quantity, it.exVat, it.discBaht),
-        discount_pct: it.discPct,
-        discount_baht: it.discBaht,
-        item_category: it.itemCategory,
-        item_job: it.itemJob,
-      }));
+      .map((it) => {
+        const q = it.quantity === "" ? 1 : it.quantity; // ช่องว่าง = 1 ตอนบันทึก
+        return {
+          item_name: it.itemName,
+          quantity: q,
+          in_vat: it.inVat || inVatFromExVat(it.exVat),
+          ex_vat: it.exVat,
+          total_price: itemTotal(q, it.exVat, it.discBaht),
+          discount_pct: it.discPct,
+          discount_baht: it.discBaht,
+          item_category: it.itemCategory,
+          item_job: it.itemJob,
+        };
+      });
   }
 
   function validate(): string | null {
@@ -140,7 +232,7 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
     if (isInst) {
       if (Math.abs(instSumPct - 100) > 0.01) { setMsg({ ok: false, text: `ผลรวมงวด = ${instSumPct}% (ต้อง 100%)` }); return; }
       const rows = instRows.map((r) => ({ ...r, description: `${description}${description ? " " : ""}(งวด ${r.installmentNo}/${r.installmentTotal})` }));
-      run(() => saveInstallmentsAction({ transaction_date: txDate, type, category, contact_name: contactName, contact_id: resolvedContactId, entity_id: entityId }, rows, itemInputs), `บันทึก ${rows.length} งวดเรียบร้อย (เป็นหนี้ค้างทั้งหมด)`, resetItems);
+      run(() => saveInstallmentsAction({ transaction_date: txDate, type, category, contact_name: contactName, contact_id: resolvedContactId, entity_id: entityId }, rows, itemInputs), `บันทึก ${rows.length} งวดเรียบร้อย (เป็นหนี้ค้างทั้งหมด)`, () => { resetItems(); refreshItemHist(); });
       return;
     }
     run(
@@ -152,10 +244,11 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
         ap_ar_status: isApAr ? (type === "รายรับ" ? "AR" : "AP") : "", due_date: isApAr ? dueDate : "", forward_material: isCost,
       }, itemInputs),
       "บันทึกข้อมูลเรียบร้อยแล้ว",
-      (data) => { const d = data as { warning?: string | null } | undefined; if (d?.warning) setMsg({ ok: true, text: d.warning }); resetItems(); },
+      (data) => { const d = data as { warning?: string | null } | undefined; if (d?.warning) setMsg({ ok: true, text: d.warning }); resetItems(); refreshItemHist(); },
     );
   }
-  function resetItems() { setItems([emptyItem()]); setDescription(""); setTaxInvoiceNo(""); }
+  // หลังบันทึก: ล้างเฉพาะรายการ/รายละเอียด/เลขใบกำกับ (คงคู่ค้า/หมวดหมู่ไว้กรอกบิลถัดไปเร็วขึ้น)
+  function resetItems() { setItems([emptyItem()]); setDescription(""); setTaxInvoiceNo(""); setHasVat(false); }
 
   // ── สแกนใบเสร็จ ──
   const fileRef = useRef<HTMLInputElement>(null);
@@ -186,114 +279,139 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
     reader.readAsDataURL(file);
   }
 
+  // ค่ารวมสำหรับดรอปดาวน์รายการสินค้า (ประวัติ + ที่กรอกในบิลปัจจุบัน)
+  const itemCatOptions = useMemo(() => [...new Set([...itemHist.itemCategories, ...items.map((it) => it.itemCategory).filter(Boolean)])], [itemHist.itemCategories, items]);
+  const itemJobOptions = useMemo(() => [...new Set([...itemHist.itemJobs, ...items.map((it) => it.itemJob).filter(Boolean)])], [itemHist.itemJobs, items]);
+
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-      <div className="space-y-4 lg:col-span-2">
-        <Card title="ข้อมูลบิล">
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-            <Field label="ประเภท">
-              <Select value={type} onChange={(e) => { setType(e.target.value as "รายรับ" | "รายจ่าย"); setCategory(""); }}>
-                <option value="รายจ่าย">รายจ่าย</option>
-                <option value="รายรับ">รายรับ</option>
-              </Select>
-            </Field>
-            <Field label="หมวดหมู่">
-              <Select value={category} onChange={(e) => setCategory(e.target.value)}>
-                <option value="">— เลือก —</option>
-                {cats.map((c) => (<option key={c} value={c}>{c}</option>))}
-                {type === "รายจ่าย" && !cats.includes("ต้นทุนสุรา") && <option value="ต้นทุนสุรา">ต้นทุนสุรา</option>}
-              </Select>
-            </Field>
-            <Field label="บัญชี">
-              <Select value={accountName} onChange={(e) => setAccountName(e.target.value)} disabled={isApAr || isInst}>
-                <option value="">{isApAr || isInst ? "(ตั้งค้าง — เติมตอนชำระ)" : "— เลือก —"}</option>
-                {accountOptions.map((a) => (<option key={a.account_name} value={a.account_name}>{a.account_name}</option>))}
-              </Select>
-            </Field>
-            <Field label="คู่ค้า">
-              <div className="flex gap-1">
-                <input list="contact-list" value={contactName} onChange={(e) => setContactName(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 outline-none" />
-                <button type="button" onClick={() => setShowContactModal(true)} title="เพิ่มคู่ค้าใหม่" className="rounded-lg border border-slate-300 px-2 text-slate-600 hover:bg-slate-50">＋</button>
+    <div className="space-y-4">
+      <Card title="ข้อมูลบิล">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+          <Field label="ประเภท">
+            <Select value={type} onChange={(e) => { setType(e.target.value as "รายรับ" | "รายจ่าย"); setCategory(""); }}>
+              <option value="รายจ่าย">รายจ่าย</option>
+              <option value="รายรับ">รายรับ</option>
+            </Select>
+          </Field>
+          <Field label="หมวดหมู่">
+            <input list="bill-cat-list" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="พิมพ์เพื่อค้นหา / เลือก" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200" />
+            <datalist id="bill-cat-list">
+              {cats.map((c) => (<option key={c} value={c} />))}
+              {type === "รายจ่าย" && !cats.includes("ต้นทุนสุรา") && <option value="ต้นทุนสุรา" />}
+            </datalist>
+          </Field>
+          <Field label="บัญชี">
+            <Select value={accountName} onChange={(e) => setAccountName(e.target.value)} disabled={isApAr || isInst}>
+              <option value="">{isApAr || isInst ? "(ตั้งค้าง — เติมตอนชำระ)" : "— เลือก —"}</option>
+              {accountOptions.map((a) => (<option key={a.account_name} value={a.account_name}>{a.account_name}</option>))}
+            </Select>
+          </Field>
+          <Field label="คู่ค้า">
+            <div className="flex gap-1">
+              <input list="contact-list" value={contactName} onChange={(e) => setContactName(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 outline-none" />
+              <button type="button" onClick={() => setShowContactModal(true)} title="เพิ่มคู่ค้าใหม่" className="rounded-lg border border-slate-300 px-2 text-slate-600 hover:bg-slate-50">＋</button>
+            </div>
+            <datalist id="contact-list">{contactOptions.map((c) => (<option key={c.contact_id} value={c.name} />))}</datalist>
+            {multiBranch && (
+              <div className="mt-1">
+                <Select value={effBranchId} onChange={(e) => setBranchId(e.target.value)}>
+                  {nameMatches.map((c) => (
+                    <option key={c.contact_id} value={c.contact_id}>
+                      สาขา {c.branch || "สำนักงานใหญ่"}
+                    </option>
+                  ))}
+                </Select>
+                <p className="mt-0.5 text-xs text-amber-600">คู่ค้านี้มี {nameMatches.length} สาขา — เลือกสาขาให้ถูกก่อนบันทึก (ออกเอกสาร/ภพ.30 ตามสาขานี้)</p>
               </div>
-              <datalist id="contact-list">{contactOptions.map((c) => (<option key={c.contact_id} value={c.name} />))}</datalist>
-              {multiBranch && (
-                <div className="mt-1">
-                  <Select value={effBranchId} onChange={(e) => setBranchId(e.target.value)}>
-                    {nameMatches.map((c) => (
-                      <option key={c.contact_id} value={c.contact_id}>
-                        สาขา {c.branch || "สำนักงานใหญ่"}
-                      </option>
-                    ))}
-                  </Select>
-                  <p className="mt-0.5 text-xs text-amber-600">คู่ค้านี้มี {nameMatches.length} สาขา — เลือกสาขาให้ถูกก่อนบันทึก (ออกเอกสาร/ภพ.30 ตามสาขานี้)</p>
-                </div>
-              )}
-            </Field>
-            <Field label="วันที่รายการ"><TextInput type="date" value={txDate} onChange={(e) => setTxDate(e.target.value)} /></Field>
-            <Field label="เลขที่ใบกำกับภาษี"><TextInput value={taxInvoiceNo} onChange={(e) => setTaxInvoiceNo(e.target.value)} /></Field>
-            <Field label="วันที่ใบกำกับ"><TextInput type="date" value={taxInvoiceDate} onChange={(e) => setTaxInvoiceDate(e.target.value)} /></Field>
-            <div className="col-span-2 md:col-span-3"><Field label="รายละเอียด"><TextInput value={description} onChange={(e) => setDescription(e.target.value)} /></Field></div>
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <button type="button" onClick={() => fileRef.current?.click()} disabled={scanning} className="rounded-lg border border-purple-300 bg-purple-50 px-3 py-2 text-sm font-medium text-purple-700 hover:bg-purple-100 disabled:opacity-50">{scanning ? "กำลังสแกน…" : "🔍 สแกนใบเสร็จด้วย AI"}</button>
-            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onScan(f); e.target.value = ""; }} />
-            <button type="button" onClick={() => setShowOpt((v) => !v)} className="text-xs text-slate-500 hover:text-slate-700">{showOpt ? "🙈 ซ่อนคอลัมน์เสริม" : "👁️ แสดงคอลัมน์เสริม (หมวด/งาน/ส่วนลด)"}</button>
-            {isCost && <span className="text-xs text-amber-600">ต้นทุนสุรา — จะรับวัตถุดิบเข้าสต็อกผลิตอัตโนมัติ (ชื่อรายการต้องตรง master)</span>}
-          </div>
-        </Card>
+            )}
+          </Field>
+          <Field label="วันที่รายการ"><TextInput type="date" value={txDate} onChange={(e) => setTxDate(e.target.value)} /></Field>
+          <Field label="เลขที่ใบกำกับภาษี"><TextInput value={taxInvoiceNo} onChange={(e) => { setTaxInvoiceNo(e.target.value); setHasVat(e.target.value.trim() !== ""); }} placeholder="มีเลข = ติ๊ก VAT อัตโนมัติ" /></Field>
+          <Field label="วันที่ใบกำกับ"><TextInput type="date" value={taxInvoiceDate} onChange={(e) => setTaxInvoiceDate(e.target.value)} /></Field>
+          <div className="col-span-2 md:col-span-3"><Field label="รายละเอียด"><TextInput value={description} onChange={(e) => setDescription(e.target.value)} /></Field></div>
+        </div>
 
-        <Card title="รายการสินค้า">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-slate-500">
-                  <th className="p-1">ชื่อรายการ</th>
-                  {showOpt && <th className="p-1 w-24">หมวดหมู่</th>}
-                  {showOpt && <th className="p-1 w-20">งาน</th>}
-                  <th className="p-1 w-14">จำนวน</th>
-                  <th className="p-1 w-24">รวม VAT</th>
-                  <th className="p-1 w-24">ไม่รวม VAT</th>
-                  {showOpt && <th className="p-1 w-14">ลด %</th>}
-                  {showOpt && <th className="p-1 w-20">ลด บาท</th>}
-                  <th className="p-1 w-24 text-right">รวม</th>
-                  <th className="p-1 w-8"></th>
+        {showRecent && recentBills.length > 0 && (
+          <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50/50 p-2">
+            <div className="mb-1 flex items-center justify-between text-xs text-blue-700">
+              <span>📋 บิลล่าสุดของคู่ค้านี้ — กดเพื่อเติมรายละเอียด/หมวดหมู่/รายการ</span>
+              <button type="button" onClick={() => setShowRecent(false)} className="text-blue-400 hover:text-blue-600">ซ่อน</button>
+            </div>
+            <div className="divide-y divide-blue-100">
+              {recentBills.map((b) => (
+                <button key={b.txId} type="button" onClick={() => applyRecentBill(b)} className="flex w-full items-center gap-2 px-1 py-1.5 text-left text-xs hover:bg-blue-100/60">
+                  <span className="flex-shrink-0 text-slate-400">{b.date}</span>
+                  <span className="flex-1 truncate font-medium text-slate-700">{b.description || "-"}</span>
+                  <span className="flex-shrink-0 text-slate-500">{b.category}</span>
+                  <span className="flex-shrink-0 font-semibold text-blue-700">฿{fmt(b.netAmount)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <button type="button" onClick={() => fileRef.current?.click()} disabled={scanning} className="rounded-lg border border-purple-300 bg-purple-50 px-3 py-2 text-sm font-medium text-purple-700 hover:bg-purple-100 disabled:opacity-50">{scanning ? "กำลังสแกน…" : "🔍 สแกนใบเสร็จด้วย AI"}</button>
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onScan(f); e.target.value = ""; }} />
+          <button type="button" onClick={() => setShowOpt((v) => !v)} className="text-xs text-slate-500 hover:text-slate-700">{showOpt ? "🙈 ซ่อนคอลัมน์เสริม" : "👁️ แสดงคอลัมน์เสริม (หมวด/งาน/ส่วนลด)"}</button>
+          <button type="button" onClick={() => { if (confirm("ล้างฟอร์มทั้งหมด? (ข้อมูลที่กรอกค้างจะหาย)")) clearForm(); }} className="text-xs text-slate-400 hover:text-red-500">🗑️ ล้างฟอร์ม</button>
+          {isCost && <span className="text-xs text-amber-600">ต้นทุนสุรา — จะรับวัตถุดิบเข้าสต็อกผลิตอัตโนมัติ (ชื่อรายการต้องตรง master)</span>}
+        </div>
+      </Card>
+
+      <Card title="รายการสินค้า">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-slate-500">
+                <th className="p-1">ชื่อรายการ</th>
+                {showOpt && <th className="p-1 w-28">หมวดหมู่</th>}
+                {showOpt && <th className="p-1 w-24">งาน</th>}
+                <th className="p-1 w-16">จำนวน</th>
+                <th className="p-1 w-28">รวม VAT</th>
+                <th className="p-1 w-28">ไม่รวม VAT</th>
+                {showOpt && <th className="p-1 w-16">ลด %</th>}
+                {showOpt && <th className="p-1 w-24">ลด บาท</th>}
+                <th className="p-1 w-28 text-right">รวม</th>
+                <th className="p-1 w-8"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((it, i) => (
+                <tr key={i} className="border-t border-slate-100">
+                  <td className="p-1">
+                    {isCost ? (
+                      <Select value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })}>
+                        <option value="">— เลือกวัตถุดิบ —</option>
+                        {boot.materials.map((m) => (<option key={m.material_id} value={m.name}>{m.name}</option>))}
+                      </Select>
+                    ) : (
+                      <TextInput list="hist-item-names" value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })} placeholder="ชื่อสินค้า/บริการ" />
+                    )}
+                  </td>
+                  {showOpt && <td className="p-1"><TextInput list="hist-item-cats" value={it.itemCategory} onChange={(e) => setItem(i, { itemCategory: e.target.value })} placeholder="หมวดหมู่" /></td>}
+                  {showOpt && <td className="p-1"><TextInput list="hist-item-jobs" value={it.itemJob} onChange={(e) => setItem(i, { itemJob: e.target.value })} placeholder="งาน" /></td>}
+                  <td className="p-1"><NumInput value={it.quantity} onChange={(e) => onQty(i, e.target.value)} /></td>
+                  <td className="p-1"><NumInput value={it.inVat || ""} onChange={(e) => onInVat(i, Number(e.target.value))} /></td>
+                  <td className="p-1"><NumInput value={it.exVat || ""} onChange={(e) => onExVat(i, Number(e.target.value))} /></td>
+                  {showOpt && <td className="p-1"><NumInput value={it.discPct || ""} onChange={(e) => onDiscPct(i, Number(e.target.value))} /></td>}
+                  {showOpt && <td className="p-1"><NumInput value={it.discBaht || ""} onChange={(e) => onDiscBaht(i, Number(e.target.value))} /></td>}
+                  <td className="p-1 text-right font-medium">{fmt(itemTotal(qn(it.quantity), it.exVat, it.discBaht))}</td>
+                  <td className="p-1"><button type="button" onClick={() => setItems((p) => p.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700">✕</button></td>
                 </tr>
-              </thead>
-              <tbody>
-                {items.map((it, i) => (
-                  <tr key={i} className="border-t border-slate-100">
-                    <td className="p-1">
-                      {isCost ? (
-                        <Select value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })}>
-                          <option value="">— เลือกวัตถุดิบ —</option>
-                          {boot.materials.map((m) => (<option key={m.material_id} value={m.name}>{m.name}</option>))}
-                        </Select>
-                      ) : (
-                        <TextInput value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })} placeholder="ชื่อสินค้า/บริการ" />
-                      )}
-                    </td>
-                    {showOpt && <td className="p-1"><input list="cat-item-list" value={it.itemCategory} onChange={(e) => setItem(i, { itemCategory: e.target.value })} className="w-full rounded-lg border border-slate-300 px-2 py-2 text-sm outline-none" placeholder="หมวดหมู่" /></td>}
-                    {showOpt && <td className="p-1"><TextInput value={it.itemJob} onChange={(e) => setItem(i, { itemJob: e.target.value })} placeholder="งาน" /></td>}
-                    <td className="p-1"><NumInput value={it.quantity} onChange={(e) => onQty(i, Number(e.target.value))} /></td>
-                    <td className="p-1"><NumInput value={it.inVat || ""} onChange={(e) => onInVat(i, Number(e.target.value))} /></td>
-                    <td className="p-1"><NumInput value={it.exVat || ""} onChange={(e) => onExVat(i, Number(e.target.value))} /></td>
-                    {showOpt && <td className="p-1"><NumInput value={it.discPct || ""} onChange={(e) => onDiscPct(i, Number(e.target.value))} /></td>}
-                    {showOpt && <td className="p-1"><NumInput value={it.discBaht || ""} onChange={(e) => onDiscBaht(i, Number(e.target.value))} /></td>}
-                    <td className="p-1 text-right font-medium">{fmt(itemTotal(it.quantity, it.exVat, it.discBaht))}</td>
-                    <td className="p-1"><button type="button" onClick={() => setItems((p) => p.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700">✕</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <datalist id="cat-item-list">{[...new Set(items.map((it) => it.itemCategory).filter(Boolean))].map((c) => (<option key={c} value={c} />))}</datalist>
-          </div>
-          <button type="button" onClick={addItem} className="mt-2 text-sm text-slate-600 hover:text-slate-800">+ เพิ่มรายการ</button>
-          <p className="mt-1 text-xs text-slate-400">กรอกราคาช่องรวม VAT หรือ ไม่รวม VAT ช่องใดช่องหนึ่ง อีกช่องคำนวณให้ · ส่วนลด % ↔ บาท คิดจากราคาไม่รวม VAT × จำนวน</p>
-        </Card>
-      </div>
+              ))}
+            </tbody>
+          </table>
+          <datalist id="hist-item-names">{itemHist.itemNames.map((v) => (<option key={v} value={v} />))}</datalist>
+          <datalist id="hist-item-cats">{itemCatOptions.map((v) => (<option key={v} value={v} />))}</datalist>
+          <datalist id="hist-item-jobs">{itemJobOptions.map((v) => (<option key={v} value={v} />))}</datalist>
+        </div>
+        <button type="button" onClick={addItem} className="mt-2 text-sm text-slate-600 hover:text-slate-800">+ เพิ่มรายการ</button>
+        <p className="mt-1 text-xs text-slate-400">กรอกราคาช่องรวม VAT หรือ ไม่รวม VAT ช่องใดช่องหนึ่ง อีกช่องคำนวณให้ · ส่วนลด % ↔ บาท คิดจากราคาไม่รวม VAT × จำนวน · ชื่อ/หมวด/งาน พิมพ์แล้วเลือกจากประวัติได้</p>
+      </Card>
 
-      {/* สรุป + ออปชัน */}
-      <div className="space-y-4">
+      {/* สรุป + ออปชัน (ย้ายมาไว้ล่าง เพื่อให้ตารางรายการสินค้าเต็มความกว้าง) */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card title="สรุปยอด">
           <div className="grid grid-cols-2 gap-2">
             <Field label="ยอดก่อนหักส่วนลดบิล"><TextInput readOnly value={fmt(calc.baseAmount)} /></Field>
@@ -365,7 +483,7 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
 }
 
 function ContactModal({ defaultName, onClose, onSaved }: { defaultName: string; onClose: () => void; onSaved: (c: Contact) => void }) {
-  const { pending, msg, run } = useSaver();
+  const { pending, msg, run, setMsg } = useSaver();
   const [name, setName] = useState(defaultName);
   const [taxId, setTaxId] = useState("");
   const [branch, setBranch] = useState("สำนักงานใหญ่");
@@ -373,10 +491,12 @@ function ContactModal({ defaultName, onClose, onSaved }: { defaultName: string; 
   const [contactType, setContactType] = useState("ทั้งสอง");
 
   function save() {
-    if (!name.trim()) return;
-    run(() => addContactAction({ name: name.trim(), taxId, branch, address, contactType }), "เพิ่มคู่ค้าเรียบร้อย", (data) => {
+    if (!name.trim()) { setMsg({ ok: false, text: "กรุณากรอกชื่อคู่ค้า" }); return; }
+    const tax = cleanTaxId13(taxId);
+    if (!tax) { setMsg({ ok: false, text: "เลขประจำตัวผู้เสียภาษีต้องมี 13 หลัก" }); return; }
+    run(() => addContactAction({ name: name.trim(), taxId: tax, branch, address, contactType }), "เพิ่มคู่ค้าเรียบร้อย", (data) => {
       const id = (data as { contactId: string }).contactId;
-      onSaved({ contact_id: id, name: name.trim(), tax_id: taxId, branch, address, contact_type: contactType, roles: [] });
+      onSaved({ contact_id: id, name: name.trim(), tax_id: tax, branch, address, contact_type: contactType, roles: [] });
     });
   }
 
@@ -387,7 +507,7 @@ function ContactModal({ defaultName, onClose, onSaved }: { defaultName: string; 
         <div className="space-y-3">
           <Field label="ชื่อคู่ค้า"><TextInput value={name} onChange={(e) => setName(e.target.value)} /></Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="เลขภาษี"><TextInput value={taxId} onChange={(e) => setTaxId(e.target.value)} /></Field>
+            <Field label="เลขภาษี (13 หลัก)"><TextInput value={taxId} onChange={(e) => setTaxId(e.target.value)} inputMode="numeric" placeholder="เลข 13 หลัก" /></Field>
             <Field label="สาขา"><TextInput value={branch} onChange={(e) => setBranch(e.target.value)} /></Field>
           </div>
           <Field label="ที่อยู่"><TextInput value={address} onChange={(e) => setAddress(e.target.value)} /></Field>
