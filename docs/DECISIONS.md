@@ -425,6 +425,14 @@
 - **เล็ก ๆ**: Ctrl+Enter บันทึก (หน้าบันทึก) · ปุ่ม ‹เดือนก่อน/ถัดไป› ข้าง month picker · searchBills เตือน "500 รายการแรก" · ซ่อนปุ่มแก้/ยกเลิกในค้นบิลเมื่อ role≠main · แทน alert() ด้วย Msg (QuotationTab) · แก้ hint 50ทวิ ล้าสมัย
 - **ยังเหลือ** (ไม่ใช่ quick win): validate ไฮไลต์ช่องผิด · Enter-เพิ่มแถว (ชน datalist) · report_runs checklist UI · prefill มัดจำตอนแก้ใบเสนอราคา · mobile card layout · แก้/ลบ log ผลิต
 
+### D38 — Mobile/tablet responsive (จากรีวิว)
+- **แพทเทิร์น**: `hidden md:block` (ตาราง desktop) + `md:hidden` (การ์ด mobile) → เดสก์ท็อปไม่เปลี่ยน · การ์ดเห็นเฉพาะ < 768px
+- nav + แถบแท็บทั้ง 3 แอป: `flex-wrap` → `overflow-x-auto` (เลื่อนแนวนอน ไม่ห่อสูง) + ปุ่ม `shrink-0 whitespace-nowrap`
+- **card layout ต่อรายการ** (แชร์ handler เดิม สกัดปุ่มเป็น render fn): จัดการออเดอร์ (`orderActions`), ค้นบิล (`billActions`),
+  รายการสินค้าหน้าบันทึก (การ์ด 2 คอลัมน์) · ปุ่ม action ใหญ่ขึ้น (ActBtn 11px→text-xs, ปุ่มค้นบิลมีขอบ)
+- ใบเสนอราคา: แถบตะกร้าลอยล่างจอ (`fixed bottom lg:hidden`) — เพิ่มของแล้วเห็นยอด + กระโดดไปตะกร้า (cartRef scrollIntoView)
+- **ยังเหลือ**: nav แบบ bottom-tab เต็มรูปแบบ (ตอนนี้แค่ scroll) · touch target บางจุดยังต่ำกว่า 44px
+
 ## ค้างต้องถามผู้ใช้ (ยังไม่ตัดสิน — MIGRATION_PLAN sec 11)
 - ~~อีเมล login (ข้อ 9)~~ → **ตัดสินแล้ว (D9)**: username-based `<username>@insep.local`
 - ~~ไฟล์ wh3 (50ทวิ)~~ → **ผู้ใช้ยืนยันว่าเป็นเทมเพลตเปล่า** — อัปโหลดด้วย `--include-wh3` เป็น `wht/wh3_template.pdf`

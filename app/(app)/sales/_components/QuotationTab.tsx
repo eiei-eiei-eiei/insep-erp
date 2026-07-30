@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SalesBoot, CustomerRow, MenuRow, OrderRow, OrderItem } from "./types";
 import { Card, Combobox, Msg, NumBox, NumInput, Select, TextInput, useSaver, fmt } from "./ui";
 import { quotationTotals, inclFromExVat } from "@/lib/sales/calc";
@@ -134,10 +134,12 @@ export function QuotationTab({
     }
   }
 
+  const cartRef = useRef<HTMLDivElement>(null);
+
   if (!canWrite) return <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">ไม่มีสิทธิ์สร้างใบเสนอราคา</div>;
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_400px]">
+    <div className={`grid gap-4 lg:grid-cols-[1fr_400px] lg:pb-0 ${items.length > 0 ? "pb-16" : ""}`}>
       {/* ซ้าย: ลูกค้า + เมนู */}
       <div className="space-y-4">
         <Card>
@@ -200,6 +202,7 @@ export function QuotationTab({
       </div>
 
       {/* ขวา: ตะกร้า + สรุป */}
+      <div ref={cartRef} className="scroll-mt-4">
       <Card className="h-fit">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="font-semibold text-amber-900">ออเดอร์ (B2B)</h2>
@@ -312,6 +315,7 @@ export function QuotationTab({
           )}
         </div>
       </Card>
+      </div>
 
       {showAddCust && (
         <AddCustomerModal
@@ -332,6 +336,14 @@ export function QuotationTab({
             setShowCustom(false);
           }}
         />
+      )}
+
+      {/* Mobile: แถบตะกร้าลอยล่างจอ (เพิ่มของแล้วเห็นยอด + กระโดดไปตะกร้า) */}
+      {items.length > 0 && (
+        <div className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-between gap-2 border-t border-slate-200 bg-white/95 px-4 py-2 shadow-lg backdrop-blur lg:hidden">
+          <span className="text-sm text-slate-700">🛒 {items.length} รายการ · <b className="text-amber-700">฿{fmt(totals.grandTotal)}</b></span>
+          <button onClick={() => cartRef.current?.scrollIntoView({ behavior: "smooth" })} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-bold text-white">ดูตะกร้า / บันทึก</button>
+        </div>
       )}
     </div>
   );

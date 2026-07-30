@@ -70,9 +70,9 @@ export function AccountingApp({ boot }: { boot: Bootstrap }) {
       {readOnly && <div className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">บทบาท <b>{boot.role}</b> — ดูได้อย่างเดียว (การบันทึก/แก้ไขต้องเป็น main)</div>}
       {boot.entities.length === 0 && <div className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">ยังไม่มีข้อมูลกิจการ (entities) — เพิ่มก่อนใช้งาน</div>}
 
-      <div className="mb-5 flex flex-wrap gap-1 border-b border-slate-200">
+      <div className="mb-5 -mx-4 flex gap-1 overflow-x-auto border-b border-slate-200 px-4">
         {TABS.map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={`rounded-t-lg px-4 py-2 text-sm font-medium transition ${tab === t ? "border-b-2 border-slate-800 text-slate-800" : "text-slate-500 hover:text-slate-700"}`}>{t}</button>
+          <button key={t} onClick={() => setTab(t)} className={`shrink-0 whitespace-nowrap rounded-t-lg px-4 py-2 text-sm font-medium transition ${tab === t ? "border-b-2 border-slate-800 text-slate-800" : "text-slate-500 hover:text-slate-700"}`}>{t}</button>
         ))}
       </div>
 

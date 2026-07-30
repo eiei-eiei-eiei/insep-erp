@@ -108,6 +108,39 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
     });
   }
 
+  // ปุ่มจัดการออเดอร์ (ใช้ร่วมทั้งตาราง desktop และการ์ด mobile)
+  const orderActions = (o: OrderRow) => (
+    <>
+      {canWrite && o.status === "รอคอนเฟิร์ม" && (
+        <>
+          <ActBtn color="amber" onClick={() => setDialog({ order: o, action: "DEPOSIT_AND_SEND" })}>💰 มัดจำ&ส่งคลัง</ActBtn>
+          <ActBtn color="indigo" onClick={() => setDialog({ order: o, action: "ISSUE_INVOICE_FULL" })}>📄 ใบแจ้งหนี้(เต็ม)</ActBtn>
+          <ActBtn color="purple" onClick={() => setDialog({ order: o, action: "SEND_TO_WH" })}>📦 ส่งคลัง(เครดิต)</ActBtn>
+          <ActBtn color="slate" onClick={() => onEdit(o)}>✏️ แก้ไข</ActBtn>
+        </>
+      )}
+      {o.status !== "รอคอนเฟิร์ม" && o.status !== "ยกเลิก" && (
+        <ActBtn color="slate" onClick={() => doPrintFirst(o)}>🖨️ ชุดแรก</ActBtn>
+      )}
+      {canWrite && o.status === "รอชำระเงิน (จ่ายเต็ม)" && (
+        <ActBtn color="blue" onClick={() => setDialog({ order: o, action: "FULL_PAYMENT_AND_SEND" })}>💳 รับเต็ม&ส่งคลัง</ActBtn>
+      )}
+      {o.status === "รอคลังจัดส่ง" && <span className="rounded bg-orange-50 px-2 py-1 text-[10px] text-orange-600">⏳ รอคลังแพ็ค</span>}
+      {canWrite && o.status === "ส่งของแล้วรอชำระยอดค้าง" && (
+        <ActBtn color="blue" onClick={() => setDialog({ order: o, action: "PAY_BALANCE" })}>💳 รับยอดค้าง</ActBtn>
+      )}
+      {canWrite && o.status.includes("ส่งของแล้วรอชำระเงิน") && (
+        <ActBtn color="blue" onClick={() => setDialog({ order: o, action: "FULL_PAYMENT_LATER" })}>💳 รับเต็มจำนวน</ActBtn>
+      )}
+      {o.status === "ปิดการขาย" && (
+        <ActBtn color="teal" onClick={() => doPrintClosed(o)}>🖨️ ใบกำกับฯ</ActBtn>
+      )}
+      {canWrite && boot.role === "main" && o.status !== "ยกเลิก" && (
+        <ActBtn color="red" onClick={() => cancel(o)}>🗑️ ยกเลิก</ActBtn>
+      )}
+    </>
+  );
+
   return (
     <Card>
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -129,104 +162,70 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
 
       {loading ? (
         <div className="py-10 text-center text-slate-400">กำลังโหลด…</div>
+      ) : filtered.length === 0 ? (
+        <div className="p-8 text-center text-slate-400">ไม่พบออเดอร์</div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px] text-left text-sm">
-            <thead className="bg-slate-100 text-xs text-slate-600">
-              <tr>
-                <th className="p-2">วันที่</th>
-                <th className="p-2">QU / Order</th>
-                <th className="p-2">ลูกค้า</th>
-                <th className="p-2 text-right">ยอดสุทธิ</th>
-                <th className="p-2 text-right">ค้างชำระ</th>
-                <th className="p-2 text-center">สถานะ</th>
-                <th className="p-2 text-center" style={{ width: 340 }}>
-                  จัดการ
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((o) => (
-                <tr key={o.quNo} className="border-b hover:bg-slate-50">
-                  <td className="whitespace-nowrap p-2 text-slate-600">{o.timestamp}</td>
-                  <td className="whitespace-nowrap p-2 font-medium text-slate-800">
-                    <div className="flex items-center gap-1">
-                      {o.quNo}
-                      <button onClick={() => doReprintQuotation(o)} title="พิมพ์ใบเสนอราคาซ้ำ" className="rounded border border-slate-200 p-1 text-slate-500 hover:text-amber-600">
-                        🖨️
-                      </button>
-                    </div>
-                    <div className="text-[10px] text-slate-400">{o.orderNo}</div>
-                  </td>
-                  <td className="p-2 text-slate-800">{o.customerName}</td>
-                  <td className="whitespace-nowrap p-2 text-right font-semibold text-blue-600">฿{fmt(o.netPayable)}</td>
-                  <td className="whitespace-nowrap p-2 text-right font-semibold text-red-500">฿{fmt(o.outstandingBalance)}</td>
-                  <td className="whitespace-nowrap p-2 text-center">
-                    <StatusBadge status={o.status} />
-                  </td>
-                  <td className="p-2">
-                    <div className="flex flex-wrap items-center justify-center gap-1">
-                      {canWrite && o.status === "รอคอนเฟิร์ม" && (
-                        <>
-                          <ActBtn color="amber" onClick={() => setDialog({ order: o, action: "DEPOSIT_AND_SEND" })}>
-                            💰 มัดจำ&ส่งคลัง
-                          </ActBtn>
-                          <ActBtn color="indigo" onClick={() => setDialog({ order: o, action: "ISSUE_INVOICE_FULL" })}>
-                            📄 ใบแจ้งหนี้(เต็ม)
-                          </ActBtn>
-                          <ActBtn color="purple" onClick={() => setDialog({ order: o, action: "SEND_TO_WH" })}>
-                            📦 ส่งคลัง(เครดิต)
-                          </ActBtn>
-                          <ActBtn color="slate" onClick={() => onEdit(o)}>
-                            ✏️ แก้ไข
-                          </ActBtn>
-                        </>
-                      )}
-                      {o.status !== "รอคอนเฟิร์ม" && o.status !== "ยกเลิก" && (
-                        <ActBtn color="slate" onClick={() => doPrintFirst(o)}>
-                          🖨️ ชุดแรก
-                        </ActBtn>
-                      )}
-                      {canWrite && o.status === "รอชำระเงิน (จ่ายเต็ม)" && (
-                        <ActBtn color="blue" onClick={() => setDialog({ order: o, action: "FULL_PAYMENT_AND_SEND" })}>
-                          💳 รับเต็ม&ส่งคลัง
-                        </ActBtn>
-                      )}
-                      {o.status === "รอคลังจัดส่ง" && <span className="rounded bg-orange-50 px-2 py-1 text-[10px] text-orange-600">⏳ รอคลังแพ็ค</span>}
-                      {canWrite && o.status === "ส่งของแล้วรอชำระยอดค้าง" && (
-                        <ActBtn color="blue" onClick={() => setDialog({ order: o, action: "PAY_BALANCE" })}>
-                          💳 รับยอดค้าง
-                        </ActBtn>
-                      )}
-                      {canWrite && o.status.includes("ส่งของแล้วรอชำระเงิน") && (
-                        <ActBtn color="blue" onClick={() => setDialog({ order: o, action: "FULL_PAYMENT_LATER" })}>
-                          💳 รับเต็มจำนวน
-                        </ActBtn>
-                      )}
-                      {o.status === "ปิดการขาย" && (
-                        <ActBtn color="teal" onClick={() => doPrintClosed(o)}>
-                          🖨️ ใบกำกับฯ
-                        </ActBtn>
-                      )}
-                      {canWrite && boot.role === "main" && o.status !== "ยกเลิก" && (
-                        <ActBtn color="red" onClick={() => cancel(o)}>
-                          🗑️ ยกเลิก
-                        </ActBtn>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
+        <>
+          {/* Desktop: ตาราง */}
+          <div className="hidden overflow-x-auto md:block">
+            <table className="w-full min-w-[820px] text-left text-sm">
+              <thead className="bg-slate-100 text-xs text-slate-600">
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-slate-400">
-                    ไม่พบออเดอร์
-                  </td>
+                  <th className="p-2">วันที่</th>
+                  <th className="p-2">QU / Order</th>
+                  <th className="p-2">ลูกค้า</th>
+                  <th className="p-2 text-right">ยอดสุทธิ</th>
+                  <th className="p-2 text-right">ค้างชำระ</th>
+                  <th className="p-2 text-center">สถานะ</th>
+                  <th className="p-2 text-center" style={{ width: 340 }}>จัดการ</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {filtered.map((o) => (
+                  <tr key={o.quNo} className="border-b hover:bg-slate-50">
+                    <td className="whitespace-nowrap p-2 text-slate-600">{o.timestamp}</td>
+                    <td className="whitespace-nowrap p-2 font-medium text-slate-800">
+                      <div className="flex items-center gap-1">
+                        {o.quNo}
+                        <button onClick={() => doReprintQuotation(o)} title="พิมพ์ใบเสนอราคาซ้ำ" className="rounded border border-slate-200 p-1 text-slate-500 hover:text-amber-600">🖨️</button>
+                      </div>
+                      <div className="text-[10px] text-slate-400">{o.orderNo}</div>
+                    </td>
+                    <td className="p-2 text-slate-800">{o.customerName}</td>
+                    <td className="whitespace-nowrap p-2 text-right font-semibold text-blue-600">฿{fmt(o.netPayable)}</td>
+                    <td className="whitespace-nowrap p-2 text-right font-semibold text-red-500">฿{fmt(o.outstandingBalance)}</td>
+                    <td className="whitespace-nowrap p-2 text-center"><StatusBadge status={o.status} /></td>
+                    <td className="p-2"><div className="flex flex-wrap items-center justify-center gap-1">{orderActions(o)}</div></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile: การ์ด */}
+          <div className="space-y-3 md:hidden">
+            {filtered.map((o) => (
+              <div key={o.quNo} className="rounded-xl border border-slate-200 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1 font-medium text-slate-800">
+                      {o.quNo}
+                      <button onClick={() => doReprintQuotation(o)} title="พิมพ์ใบเสนอราคาซ้ำ" className="rounded border border-slate-200 p-1 text-slate-500 hover:text-amber-600">🖨️</button>
+                    </div>
+                    <div className="text-[10px] text-slate-400">{o.orderNo} · {o.timestamp}</div>
+                    <div className="mt-0.5 truncate text-sm text-slate-700">{o.customerName}</div>
+                  </div>
+                  <StatusBadge status={o.status} />
+                </div>
+                <div className="mt-2 flex flex-wrap gap-x-4 text-sm">
+                  <span className="text-slate-500">สุทธิ <b className="text-blue-600">฿{fmt(o.netPayable)}</b></span>
+                  {o.outstandingBalance > 0 && <span className="text-slate-500">ค้าง <b className="text-red-500">฿{fmt(o.outstandingBalance)}</b></span>}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">{orderActions(o)}</div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       {dialog && (
@@ -257,7 +256,7 @@ const COLORS: Record<string, string> = {
 };
 function ActBtn({ color, onClick, children }: { color: string; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} className={`whitespace-nowrap rounded px-2 py-1 text-[11px] font-medium text-white shadow-sm transition ${COLORS[color]}`}>
+    <button onClick={onClick} className={`whitespace-nowrap rounded px-2.5 py-1.5 text-xs font-medium text-white shadow-sm transition ${COLORS[color]}`}>
       {children}
     </button>
   );

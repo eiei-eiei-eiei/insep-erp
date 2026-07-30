@@ -24,7 +24,7 @@ export function Nav({
           Insep&nbsp;ERP
         </Link>
 
-        <nav className="flex flex-1 flex-wrap gap-1">
+        <nav className="flex flex-1 gap-1 overflow-x-auto">
           {workspaces.map((w) => {
             const active =
               pathname === w.href || pathname.startsWith(w.href + "/");
@@ -32,7 +32,7 @@ export function Nav({
               <Link
                 key={w.key}
                 href={w.href as Route}
-                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition ${
                   active
                     ? "bg-slate-800 text-white"
                     : "text-slate-600 hover:bg-slate-100"

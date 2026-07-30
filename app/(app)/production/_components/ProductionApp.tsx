@@ -52,12 +52,12 @@ export function ProductionApp({
         <h1 className="text-2xl font-bold text-slate-800">ผลิต</h1>
       </div>
 
-      <div className="mb-5 flex flex-wrap gap-1 border-b border-slate-200">
+      <div className="mb-5 -mx-4 flex gap-1 overflow-x-auto border-b border-slate-200 px-4">
         {TABS.map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`rounded-t-lg px-4 py-2 text-sm font-medium transition ${
+            className={`shrink-0 whitespace-nowrap rounded-t-lg px-4 py-2 text-sm font-medium transition ${
               tab === t
                 ? "border-b-2 border-slate-800 text-slate-800"
                 : "text-slate-500 hover:text-slate-700"

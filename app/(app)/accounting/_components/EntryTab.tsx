@@ -394,7 +394,8 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
       </Card>
 
       <Card title="รายการสินค้า">
-        <div className="overflow-x-auto">
+        {/* Desktop: ตาราง */}
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-slate-500">
@@ -436,10 +437,42 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
               ))}
             </tbody>
           </table>
-          <datalist id="hist-item-names">{itemHist.itemNames.map((v) => (<option key={v} value={v} />))}</datalist>
-          <datalist id="hist-item-cats">{itemCatOptions.map((v) => (<option key={v} value={v} />))}</datalist>
-          <datalist id="hist-item-jobs">{itemJobOptions.map((v) => (<option key={v} value={v} />))}</datalist>
         </div>
+
+        {/* Mobile: การ์ดต่อรายการ */}
+        <div className="space-y-3 md:hidden">
+          {items.map((it, i) => (
+            <div key={i} className="rounded-lg border border-slate-200 p-3">
+              <div className="mb-2 flex items-start gap-2">
+                <div className="flex-1">
+                  {isCost ? (
+                    <Select value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })}>
+                      <option value="">— เลือกวัตถุดิบ —</option>
+                      {boot.materials.map((m) => (<option key={m.material_id} value={m.name}>{m.name}</option>))}
+                    </Select>
+                  ) : (
+                    <TextInput list="hist-item-names" value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })} placeholder="ชื่อสินค้า/บริการ" />
+                  )}
+                </div>
+                <button type="button" onClick={() => setItems((p) => p.filter((_, idx) => idx !== i))} className="px-2 py-1 text-red-500 hover:text-red-700">✕</button>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <label className="block"><span className="mb-0.5 block text-slate-500">จำนวน</span><NumBox value={it.quantity} onChange={(v) => onQty(i, v)} /></label>
+                <label className="block"><span className="mb-0.5 block text-slate-500">ราคา/หน่วย (รวม VAT)</span><NumBox value={it.inVat} blankZero onChange={(v) => onInVat(i, v === "" ? 0 : v)} /></label>
+                <label className="col-span-2 block"><span className="mb-0.5 block text-slate-500">ราคา/หน่วย (ไม่รวม VAT)</span><NumBox value={it.exVat} blankZero onChange={(v) => onExVat(i, v === "" ? 0 : v)} /></label>
+                {showOpt && <label className="block"><span className="mb-0.5 block text-slate-500">หมวดหมู่</span><TextInput list="hist-item-cats" value={it.itemCategory} onChange={(e) => setItem(i, { itemCategory: e.target.value })} /></label>}
+                {showOpt && <label className="block"><span className="mb-0.5 block text-slate-500">งาน</span><TextInput list="hist-item-jobs" value={it.itemJob} onChange={(e) => setItem(i, { itemJob: e.target.value })} /></label>}
+                {showOpt && <label className="block"><span className="mb-0.5 block text-slate-500">ลด %</span><NumBox value={it.discPct} blankZero onChange={(v) => onDiscPct(i, v === "" ? 0 : v)} /></label>}
+                {showOpt && <label className="block"><span className="mb-0.5 block text-slate-500">ลด บาท</span><NumBox value={it.discBaht} blankZero onChange={(v) => onDiscBaht(i, v === "" ? 0 : v)} /></label>}
+              </div>
+              <div className="mt-2 text-right text-sm font-medium text-slate-700">รวม ฿{fmt(itemTotal(qn(it.quantity), it.exVat, it.discBaht))}</div>
+            </div>
+          ))}
+        </div>
+
+        <datalist id="hist-item-names">{itemHist.itemNames.map((v) => (<option key={v} value={v} />))}</datalist>
+        <datalist id="hist-item-cats">{itemCatOptions.map((v) => (<option key={v} value={v} />))}</datalist>
+        <datalist id="hist-item-jobs">{itemJobOptions.map((v) => (<option key={v} value={v} />))}</datalist>
         <button type="button" onClick={addItem} className="mt-2 text-sm text-slate-600 hover:text-slate-800">+ เพิ่มรายการ</button>
         <p className="mt-1 text-xs text-slate-400">กรอกราคาช่องรวม VAT หรือ ไม่รวม VAT ช่องใดช่องหนึ่ง อีกช่องคำนวณให้ · ส่วนลด % ↔ บาท คิดจากราคาไม่รวม VAT × จำนวน · ชื่อ/หมวด/งาน พิมพ์แล้วเลือกจากประวัติได้</p>
       </Card>

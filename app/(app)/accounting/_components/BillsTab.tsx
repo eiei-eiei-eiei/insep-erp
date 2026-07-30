@@ -54,6 +54,15 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
     run(() => voidTransactionAction(txId), "ยกเลิกเรียบร้อย", () => { setDetail(null); setRows((p) => p.map((r) => r.tx_id === txId ? { ...r, status: "ยกเลิก" } : r)); });
   }
 
+  // ปุ่มต่อบิล (ใช้ร่วมทั้งตาราง desktop และการ์ด mobile)
+  const billActions = (r: Bills[number]) => (
+    <>
+      <button onClick={() => openDetail(r.tx_id)} className="rounded border border-slate-300 px-3 py-1 text-slate-700 hover:bg-slate-50">ดู</button>
+      {!readOnly && canEdit(r as BillRow) && <button onClick={() => setEditId(r.tx_id)} disabled={pending} className="rounded border border-blue-300 px-3 py-1 text-blue-600 hover:bg-blue-50 disabled:opacity-50">แก้ไข</button>}
+      {!readOnly && r.status !== "ยกเลิก" && <button onClick={() => doVoid(r.tx_id)} disabled={pending} className="rounded border border-red-300 px-3 py-1 text-red-500 hover:bg-red-50 disabled:opacity-50">ยกเลิก</button>}
+    </>
+  );
+
   return (
     <div className="space-y-4">
       <Card title="ค้นบิล">
@@ -74,25 +83,44 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
       <Card title={`ผลลัพธ์ (${shown.length})`}>
         {rows.length >= 500 && <p className="mb-2 text-xs text-amber-600">⚠️ แสดง 500 รายการแรก — ถ้าไม่เจอที่ต้องการ ให้แคบด้วยเดือน/คู่ค้า/ประเภท</p>}
         {loading ? <p className="text-slate-400">กำลังโหลด…</p> : shown.length === 0 ? <p className="text-sm text-slate-400">— ไม่มีรายการ —</p> : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead><tr className="text-left text-slate-500"><th className="p-1">วันที่</th><th className="p-1">เลขที่</th><th className="p-1">ประเภท</th><th className="p-1">คู่ค้า</th><th className="p-1">รายละเอียด</th><th className="p-1 text-right">สุทธิ</th><th className="p-1">สถานะ</th><th className="p-1"></th></tr></thead>
-              <tbody>
-                {shown.map((r) => (
-                  <tr key={r.tx_id} className="border-t border-slate-100">
-                    <td className="p-1 whitespace-nowrap">{r.transaction_date}</td><td className="p-1">{r.tx_id}</td><td className="p-1">{r.type}</td>
-                    <td className="p-1">{r.contact_name}</td><td className="p-1">{r.description}</td><td className="p-1 text-right">{fmt(r.net_amount as number)}</td>
-                    <td className="p-1">{r.status}{r.ap_ar_status ? ` (${r.ap_ar_status})` : ""}</td>
-                    <td className="p-1 whitespace-nowrap">
-                      <button onClick={() => openDetail(r.tx_id)} className="text-slate-700 hover:underline">ดู</button>
-                      {!readOnly && canEdit(r as BillRow) && <button onClick={() => setEditId(r.tx_id)} disabled={pending} className="ml-2 text-blue-600 hover:underline">แก้ไข</button>}
-                      {!readOnly && r.status !== "ยกเลิก" && <button onClick={() => doVoid(r.tx_id)} disabled={pending} className="ml-2 text-red-500 hover:underline">ยกเลิก</button>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <>
+            {/* Desktop: ตาราง */}
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full text-sm">
+                <thead><tr className="text-left text-slate-500"><th className="p-1">วันที่</th><th className="p-1">เลขที่</th><th className="p-1">ประเภท</th><th className="p-1">คู่ค้า</th><th className="p-1">รายละเอียด</th><th className="p-1 text-right">สุทธิ</th><th className="p-1">สถานะ</th><th className="p-1"></th></tr></thead>
+                <tbody>
+                  {shown.map((r) => (
+                    <tr key={r.tx_id} className="border-t border-slate-100">
+                      <td className="p-1 whitespace-nowrap">{r.transaction_date}</td><td className="p-1">{r.tx_id}</td><td className="p-1">{r.type}</td>
+                      <td className="p-1">{r.contact_name}</td><td className="p-1">{r.description}</td><td className="p-1 text-right">{fmt(r.net_amount as number)}</td>
+                      <td className="p-1">{r.status}{r.ap_ar_status ? ` (${r.ap_ar_status})` : ""}</td>
+                      <td className="p-1 whitespace-nowrap"><div className="flex gap-1">{billActions(r)}</div></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile: การ์ด */}
+            <div className="space-y-2 md:hidden">
+              {shown.map((r) => (
+                <div key={r.tx_id} className="rounded-xl border border-slate-200 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-xs text-slate-400">{r.transaction_date} · {r.tx_id}</div>
+                      <div className="truncate text-sm font-medium text-slate-800">{r.contact_name || "—"}</div>
+                      <div className="truncate text-xs text-slate-500">{r.type} · {r.description}</div>
+                    </div>
+                    <div className="whitespace-nowrap text-right">
+                      <div className="font-semibold text-slate-800">฿{fmt(r.net_amount as number)}</div>
+                      <div className="text-[10px] text-slate-400">{r.status}{r.ap_ar_status ? ` (${r.ap_ar_status})` : ""}</div>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex gap-1.5">{billActions(r)}</div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </Card>
 
