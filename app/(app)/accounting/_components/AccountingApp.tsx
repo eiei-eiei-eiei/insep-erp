@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Bootstrap } from "./types";
 import { nowMonth } from "./ui";
 import { EntryTab } from "./EntryTab";
@@ -27,13 +27,20 @@ const TABS = [
   "ตั้งค่า",
 ] as const;
 
+type Tab = (typeof TABS)[number];
+
 export function AccountingApp({ boot }: { boot: Bootstrap }) {
-  const [tab, setTab] = useState<(typeof TABS)[number]>("บันทึก");
+  const [tab, setTab] = useState<Tab>("บันทึก");
   const [entityId, setEntityId] = useState(boot.entities[0]?.entity_id ?? "");
   const [month, setMonth] = useState(nowMonth());
   const readOnly = boot.role !== "main";
   const firstEntity = boot.entities[0]?.entity_id ?? "";
   const entryEntity = entityId === "ALL" ? firstEntity : entityId;
+
+  // เก็บแท็บที่เคยเปิดไว้ (mount ครั้งเดียว แล้วคงไว้ ซ่อนด้วย CSS) → สลับแท็บลื่น ไม่ refetch ซ้ำ
+  const [visited, setVisited] = useState<Set<Tab>>(() => new Set<Tab>(["บันทึก"]));
+  useEffect(() => { setVisited((v) => (v.has(tab) ? v : new Set(v).add(tab))); }, [tab]);
+  const show = (t: Tab) => (tab === t ? "" : "hidden");
 
   return (
     <div>
@@ -58,16 +65,16 @@ export function AccountingApp({ boot }: { boot: Bootstrap }) {
         ))}
       </div>
 
-      {tab === "บันทึก" && <EntryTab boot={boot} entityId={entryEntity} />}
-      {tab === "แดชบอร์ด" && <DashboardTab period={month} entityId={entityId} />}
-      {tab === "บัญชี & เงินสด" && <AccountsTab boot={boot} period={month} entityId={entityId} />}
-      {tab === "ลูกหนี้-เจ้าหนี้" && <ApArTab boot={boot} entityId={entityId} />}
-      {tab === "ค้นบิล" && <BillsTab boot={boot} period={month} entityId={entityId} />}
-      {tab === "แบ่งงวด" && <InstallmentsTab />}
-      {tab === "ประวัติราคา" && <HistoryTab boot={boot} entityId={entityId} />}
-      {tab === "เช็คราคา" && <PriceCheckTab boot={boot} entityId={entryEntity} />}
-      {tab === "เอกสารสรรพากร" && <TaxDocsTab period={month} entityId={entityId} />}
-      {tab === "ตั้งค่า" && <SettingsTab boot={boot} />}
+      {visited.has("บันทึก") && <div className={show("บันทึก")}><EntryTab boot={boot} entityId={entryEntity} /></div>}
+      {visited.has("แดชบอร์ด") && <div className={show("แดชบอร์ด")}><DashboardTab period={month} entityId={entityId} /></div>}
+      {visited.has("บัญชี & เงินสด") && <div className={show("บัญชี & เงินสด")}><AccountsTab boot={boot} period={month} entityId={entityId} /></div>}
+      {visited.has("ลูกหนี้-เจ้าหนี้") && <div className={show("ลูกหนี้-เจ้าหนี้")}><ApArTab boot={boot} entityId={entityId} /></div>}
+      {visited.has("ค้นบิล") && <div className={show("ค้นบิล")}><BillsTab boot={boot} period={month} entityId={entityId} /></div>}
+      {visited.has("แบ่งงวด") && <div className={show("แบ่งงวด")}><InstallmentsTab /></div>}
+      {visited.has("ประวัติราคา") && <div className={show("ประวัติราคา")}><HistoryTab boot={boot} entityId={entityId} /></div>}
+      {visited.has("เช็คราคา") && <div className={show("เช็คราคา")}><PriceCheckTab boot={boot} entityId={entryEntity} /></div>}
+      {visited.has("เอกสารสรรพากร") && <div className={show("เอกสารสรรพากร")}><TaxDocsTab period={month} entityId={entityId} /></div>}
+      {visited.has("ตั้งค่า") && <div className={show("ตั้งค่า")}><SettingsTab boot={boot} /></div>}
     </div>
   );
 }

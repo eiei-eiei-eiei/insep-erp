@@ -11,7 +11,7 @@ import {
   saveCustomerAction,
   type QuotationPayload,
 } from "../actions";
-import { printQuotation } from "./print";
+import { printQuotation, openPrintWindow } from "./print";
 
 const REVENUE_CATS = ["รายได้ค่าสินค้า", "รายได้ค่าบริการ", "รายได้ค่าที่ปรึกษา", "รายได้อื่น ๆ"];
 
@@ -105,6 +105,7 @@ export function QuotationTab({
     if (editOrder) {
       run(() => updateQuotationAction(editOrder.quNo, payload), `อัปเดต ${editOrder.quNo} แล้ว`, () => reset());
     } else {
+      const w = openPrintWindow(); // เปิดก่อน await กัน popup blocker (มือถือ/iPad)
       run(() => saveQuotationAction(payload), "สร้างใบเสนอราคาแล้ว", (data) => {
         const res = data as { qu_no: string; qu_expire: string };
         printQuotation({
@@ -127,7 +128,7 @@ export function QuotationTab({
           netPayable: totals.netPayable,
           remarks,
           saleName,
-        });
+        }, w);
         reset();
       });
     }

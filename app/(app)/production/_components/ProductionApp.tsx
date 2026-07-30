@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Container, Material, PendingBatch, Product, StockRow } from "./types";
 import { MaterialTab } from "./MaterialTab";
 import { FermentTab } from "./FermentTab";
@@ -23,6 +23,7 @@ const TABS = [
   "สต็อก",
   "จัดการข้อมูล",
 ] as const;
+type Tab = (typeof TABS)[number];
 
 export function ProductionApp({
   materials,
@@ -37,7 +38,12 @@ export function ProductionApp({
   pending: PendingBatch[];
   stock: StockRow[];
 }) {
-  const [tab, setTab] = useState<(typeof TABS)[number]>("วัตถุดิบ");
+  const [tab, setTab] = useState<Tab>("วัตถุดิบ");
+
+  // mount แท็บครั้งเดียวแล้วคงไว้ (ซ่อนด้วย CSS) → สลับแท็บลื่น + คงสถานะ (เช่น หม้อกลั่นที่เลือก/ค่าที่กรอกค้าง)
+  const [visited, setVisited] = useState<Set<Tab>>(() => new Set<Tab>(["วัตถุดิบ"]));
+  useEffect(() => { setVisited((v) => (v.has(tab) ? v : new Set(v).add(tab))); }, [tab]);
+  const show = (t: Tab) => (tab === t ? "" : "hidden");
 
   return (
     <div>
@@ -62,18 +68,18 @@ export function ProductionApp({
         ))}
       </div>
 
-      {tab === "วัตถุดิบ" && <MaterialTab materials={materials} />}
-      {tab === "ลงหมัก" && (
-        <FermentTab materials={materials} containers={containers} products={products} />
+      {visited.has("วัตถุดิบ") && <div className={show("วัตถุดิบ")}><MaterialTab materials={materials} /></div>}
+      {visited.has("ลงหมัก") && (
+        <div className={show("ลงหมัก")}><FermentTab materials={materials} containers={containers} products={products} /></div>
       )}
-      {tab === "ติดตามหมัก" && <MonitorTab pending={pending} />}
-      {tab === "กลั่น" && <DistillTab pending={pending} />}
-      {tab === "ปรุง/ปรับดีกรี" && <DiluteTab products={products} />}
-      {tab === "บรรจุ/จ่าย" && <ProductTab products={products} />}
-      {tab === "ประวัติ/เทียบ" && <HistoryTab products={products} />}
-      {tab === "สต็อก" && <StockTab stock={stock} />}
-      {tab === "จัดการข้อมูล" && (
-        <MasterTab materials={materials} containers={containers} products={products} />
+      {visited.has("ติดตามหมัก") && <div className={show("ติดตามหมัก")}><MonitorTab pending={pending} /></div>}
+      {visited.has("กลั่น") && <div className={show("กลั่น")}><DistillTab pending={pending} /></div>}
+      {visited.has("ปรุง/ปรับดีกรี") && <div className={show("ปรุง/ปรับดีกรี")}><DiluteTab products={products} /></div>}
+      {visited.has("บรรจุ/จ่าย") && <div className={show("บรรจุ/จ่าย")}><ProductTab products={products} /></div>}
+      {visited.has("ประวัติ/เทียบ") && <div className={show("ประวัติ/เทียบ")}><HistoryTab products={products} /></div>}
+      {visited.has("สต็อก") && <div className={show("สต็อก")}><StockTab stock={stock} /></div>}
+      {visited.has("จัดการข้อมูล") && (
+        <div className={show("จัดการข้อมูล")}><MasterTab materials={materials} containers={containers} products={products} /></div>
       )}
     </div>
   );

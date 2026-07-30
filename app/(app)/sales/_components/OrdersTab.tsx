@@ -6,7 +6,7 @@ import { Card, Msg, StatusBadge, TextInput, useSaver, fmt } from "./ui";
 import { todayISO } from "./ui";
 import { getOrdersAction, getOrderItemsAction, processOrderActionAction, cancelOrderAction } from "../actions";
 import type { OrderAction, ActionPayload } from "@/lib/sales/orders";
-import { printSalesDocs, printQuotation, type OrderLike } from "./print";
+import { printSalesDocs, printQuotation, openPrintWindow, type OrderLike } from "./print";
 import { roundTo2 } from "@/lib/sales/calc";
 
 const itemsCache = new Map<string, OrderItem[]>();
@@ -45,22 +45,28 @@ export function OrdersTab({ boot, canWrite, onEdit }: { boot: SalesBoot; canWrit
     });
 
   async function doPrintFirst(o: OrderRow) {
+    const w = openPrintWindow(); // เปิดก่อน await กัน popup blocker (มือถือ/iPad)
+    if (!w) { alert("เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — โปรดอนุญาต popup แล้วลองใหม่"); return; }
     const items = await loadItems(o.quNo);
     let docs: string[];
     if (o.deposit > 0) docs = ["invoice", "tax-invoice-deposit"];
     else if (o.status === "รอชำระเงิน (จ่ายเต็ม)") docs = ["invoice-only"];
     else docs = ["invoice"];
-    printSalesDocs(o as OrderLike, items, docs);
+    printSalesDocs(o as OrderLike, items, docs, w);
   }
   async function doPrintClosed(o: OrderRow) {
+    const w = openPrintWindow();
+    if (!w) { alert("เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — โปรดอนุญาต popup แล้วลองใหม่"); return; }
     const items = await loadItems(o.quNo);
     let docs: string[];
     if (o.deposit > 0) docs = ["tax-invoice-balance"];
     else if (o.dueDate === "" && o.deposit === 0) docs = ["tax-invoice-receipt-do"];
     else docs = ["tax-invoice-receipt"];
-    printSalesDocs(o as OrderLike, items, docs);
+    printSalesDocs(o as OrderLike, items, docs, w);
   }
   async function doReprintQuotation(o: OrderRow) {
+    const w = openPrintWindow();
+    if (!w) { alert("เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — โปรดอนุญาต popup แล้วลองใหม่"); return; }
     const items = await loadItems(o.quNo);
     let estDiscount = roundTo2(o.subTotal + o.vatAmount - o.grandTotal);
     if (Math.abs(estDiscount) < 0.1) estDiscount = 0;
@@ -84,7 +90,7 @@ export function OrdersTab({ boot, canWrite, onEdit }: { boot: SalesBoot; canWrit
       netPayable: o.netPayable,
       remarks: o.remarks,
       saleName: "",
-    });
+    }, w);
   }
 
   function cancel(o: OrderRow) {

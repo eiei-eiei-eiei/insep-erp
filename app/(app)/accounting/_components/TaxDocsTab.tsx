@@ -37,9 +37,9 @@ type Pending = WhtBundle["pending"][number];
 type History = WhtBundle["history"][number];
 type Summaries = Awaited<ReturnType<typeof listTaxSummariesAction>>;
 
-function openHtml(html: string) {
-  const w = window.open("", "_blank");
-  if (w) { w.document.write(html); w.document.close(); }
+/** เปิดแท็บเปล่าทันทีใน onClick (ก่อน await) — กัน popup blocker บนมือถือ/iPad */
+function openBlankTab(): Window | null {
+  return window.open("", "_blank");
 }
 
 export function TaxDocsTab({ period, entityId }: { period: string; entityId: string }) {
@@ -78,37 +78,45 @@ export function TaxDocsTab({ period, entityId }: { period: string; entityId: str
   }, [period, realEntity]);
 
   async function genPhorPor30() {
+    const w = openBlankTab(); // เปิดก่อน await กัน popup blocker
     setBusy(true); setMsg(null);
     try {
       const b = await getTaxReportBundleAction(period, realEntity);
-      openHtml(taxReportHtml(period, b.entity, b.taxReport));
       await recordTaxSummaryAction(period, realEntity, b.taxReport);
       await markReportRunAction("phor_por_30", period, realEntity);
-      setMsg({ ok: true, text: "สร้าง ภพ.30 แล้ว (บันทึกยอดยกไป — ถ้าเคยสร้างเดือนนี้จะทับของเดิม ไม่ซ้ำ)" });
+      if (w) { w.document.write(taxReportHtml(period, b.entity, b.taxReport)); w.document.close(); }
+      setMsg({ ok: true, text: w
+        ? "สร้าง ภพ.30 แล้ว (บันทึกยอดยกไป — สร้างซ้ำเดือนเดิมจะทับของเดิม ไม่ซ้ำ)"
+        : "บันทึกยอด ภพ.30 แล้ว แต่เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — อนุญาต popup แล้วกดสร้างใหม่เพื่อพิมพ์" });
       reload();
-    } catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : "ผิดพลาด" }); }
+    } catch (e) { if (w) w.close(); setMsg({ ok: false, text: e instanceof Error ? e.message : "ผิดพลาด" }); }
     setBusy(false);
   }
   async function genPnd() {
+    const w = openBlankTab();
     setBusy(true); setMsg(null);
     try {
       const b = await getTaxReportBundleAction(period, realEntity);
-      openHtml(whtReportHtml(period, b.entity, b.whtReport));
       await markReportRunAction("pnd_3_53", period, realEntity);
-      setMsg({ ok: true, text: "สร้าง ภงด.3/53 แล้ว — พิมพ์/บันทึก PDF จากแท็บใหม่" });
-    } catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : "ผิดพลาด" }); }
+      if (w) { w.document.write(whtReportHtml(period, b.entity, b.whtReport)); w.document.close(); }
+      setMsg({ ok: true, text: w
+        ? "สร้าง ภงด.3/53 แล้ว — พิมพ์/บันทึก PDF จากแท็บใหม่"
+        : "เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — อนุญาต popup แล้วลองใหม่" });
+    } catch (e) { if (w) w.close(); setMsg({ ok: false, text: e instanceof Error ? e.message : "ผิดพลาด" }); }
     setBusy(false);
   }
 
-  async function buildAndOpenWht(doc: Wht50Doc) {
+  async function buildAndOpenWht(doc: Wht50Doc, target?: Window | null) {
+    const win = target ?? window.open("", "_blank");
     const [tpl, font] = await Promise.all([fetchAsset(WHT_TEMPLATE_KEY), fetchAsset(FONT_KEY)]);
     const bytes = await buildWht50Pdf([doc], tpl, font);
     const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" }));
-    window.open(url, "_blank");
+    if (win) win.location.href = url; else window.open(url, "_blank");
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
 
   async function reprint(h: History) {
+    const w = openBlankTab(); // เปิดก่อน await
     setBusy(true); setMsg(null);
     try {
       const ctx = await getWht50ContextAction(h.entityId || realEntity, h.contactName);
@@ -118,8 +126,8 @@ export function TaxDocsTab({ period, entityId }: { period: string; entityId: str
         docNo: h.docNo, entInfo: ctx.entInfo, payeeName: ctx.payee.name, payeeAddress: ctx.payee.address, payeeTaxId: ctx.payee.taxId,
         pndType: h.pndType, seq: h.incomeSeq, otherDesc: h.incomeType, amount: h.baseAmount, whtAmount: h.whtAmount,
         dateText: print.dateText, bahtText: print.bahtText, issueDateISO: h.issueDate,
-      });
-    } catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : "ผิดพลาด" }); }
+      }, w);
+    } catch (e) { if (w) w.close(); setMsg({ ok: false, text: e instanceof Error ? e.message : "ผิดพลาด" }); }
     setBusy(false);
   }
 
@@ -199,7 +207,7 @@ export function TaxDocsTab({ period, entityId }: { period: string; entityId: str
 
 // ── แถวออกหนังสือ (ฟอร์มกรอกก่อนออก) ─────────────────────────────────────────
 function IssueRow({ p, entityId, onIssued, onBuild, setMsg }: {
-  p: Pending; entityId: string; onIssued: () => void; onBuild: (d: Wht50Doc) => Promise<void>;
+  p: Pending; entityId: string; onIssued: () => void; onBuild: (d: Wht50Doc, w?: Window | null) => Promise<void>;
   setMsg: (m: { ok: boolean; text: string } | null) => void;
 }) {
   const { pending, run } = useSaver();
@@ -217,13 +225,14 @@ function IssueRow({ p, entityId, onIssued, onBuild, setMsg }: {
   }
   function issue() {
     if (!docNo.trim()) { setMsg({ ok: false, text: "กรอกเลขที่หนังสือ" }); return; }
+    const w = window.open("", "_blank"); // เปิดก่อน await กัน popup blocker (ถ้าบันทึกไม่ผ่าน = แท็บว่าง ปิดเองได้)
     run(
       () => issueWhtAction({ docNo: docNo.trim(), txIds: [p.transactionId], contactName: p.contactName, whtAmount: p.whtAmount, pndType, incomeType: otherDesc, incomeSeq: seq, baseAmount: p.amount, issueDate, paymentDate, entityId }),
       "ออกหนังสือแล้ว",
       async () => {
         const ctx = await getWht50ContextAction(entityId, p.contactName);
         const print = buildWht50PrintData({ docNo: docNo.trim(), whtAmount: p.whtAmount, transactionDate: issueDate, paymentDate });
-        await onBuild({ docNo: docNo.trim(), entInfo: ctx.entInfo, payeeName: ctx.payee.name, payeeAddress: ctx.payee.address, payeeTaxId: ctx.payee.taxId, pndType, seq, otherDesc, amount: p.amount, whtAmount: p.whtAmount, dateText: print.dateText, bahtText: print.bahtText, issueDateISO: issueDate });
+        await onBuild({ docNo: docNo.trim(), entInfo: ctx.entInfo, payeeName: ctx.payee.name, payeeAddress: ctx.payee.address, payeeTaxId: ctx.payee.taxId, pndType, seq, otherDesc, amount: p.amount, whtAmount: p.whtAmount, dateText: print.dateText, bahtText: print.bahtText, issueDateISO: issueDate }, w);
         setMsg({ ok: true, text: `ออก 50ทวิ เลขที่ ${docNo.trim()} แล้ว` });
         onIssued();
       },

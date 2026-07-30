@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { SalesBoot, OrderRow } from "./types";
 import { QuotationTab } from "./QuotationTab";
 import { OrdersTab } from "./OrdersTab";
@@ -31,6 +31,11 @@ export function SalesApp({ boot }: { boot: SalesBoot }) {
   const [tab, setTab] = useState<Tab>(allowed[0]);
   const [editOrder, setEditOrder] = useState<OrderRow | null>(null);
   const canWrite = boot.role === "main" || boot.role === "sale";
+
+  // mount แท็บครั้งเดียวแล้วคงไว้ (ซ่อนด้วย CSS) → สลับแท็บลื่น ไม่โหลดใหม่
+  const [visited, setVisited] = useState<Set<Tab>>(() => new Set<Tab>([allowed[0]]));
+  useEffect(() => { setVisited((v) => (v.has(tab) ? v : new Set(v).add(tab))); }, [tab]);
+  const show = (t: Tab) => (tab === t ? "" : "hidden");
 
   function startEdit(order: OrderRow) {
     setEditOrder(order);
@@ -63,13 +68,13 @@ export function SalesApp({ boot }: { boot: SalesBoot }) {
         ))}
       </div>
 
-      {tab === "create" && (
-        <QuotationTab boot={boot} canWrite={canWrite} editOrder={editOrder} onDoneEdit={() => setEditOrder(null)} />
+      {visited.has("create") && (
+        <div className={show("create")}><QuotationTab boot={boot} canWrite={canWrite} editOrder={editOrder} onDoneEdit={() => setEditOrder(null)} /></div>
       )}
-      {tab === "orders" && <OrdersTab boot={boot} canWrite={canWrite} onEdit={startEdit} />}
-      {tab === "warehouse" && <WarehouseTab role={boot.role} />}
-      {tab === "sync" && <SyncHistoryTab />}
-      {tab === "manage" && <MenuTab />}
+      {visited.has("orders") && <div className={show("orders")}><OrdersTab boot={boot} canWrite={canWrite} onEdit={startEdit} /></div>}
+      {visited.has("warehouse") && <div className={show("warehouse")}><WarehouseTab role={boot.role} /></div>}
+      {visited.has("sync") && <div className={show("sync")}><SyncHistoryTab /></div>}
+      {visited.has("manage") && <div className={show("manage")}><MenuTab /></div>}
     </div>
   );
 }

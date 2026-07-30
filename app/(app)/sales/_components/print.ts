@@ -184,10 +184,16 @@ function quotationHtml(d: QuotationDoc): string {
   </div>`;
 }
 
-function openPrint(inner: string) {
-  const w = window.open("", "_blank", "width=900,height=1200");
+/** เปิดหน้าต่างพิมพ์ทันทีใน onClick (ก่อน await) แล้วส่งเข้ามาที่นี่ → กัน popup blocker บนมือถือ/iPad */
+export function openPrintWindow(): Window | null {
+  return window.open("", "_blank", "width=900,height=1200");
+}
+
+function openPrint(inner: string, pre?: Window | null) {
+  // pre ที่ส่งเข้ามา (แม้เป็น null) = caller เปิดเอง; ไม่ส่ง = เปิดใหม่ (backward-compat)
+  const w = pre !== undefined ? pre : window.open("", "_blank", "width=900,height=1200");
   if (!w) {
-    alert("เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — โปรดอนุญาต popup");
+    alert("เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — โปรดอนุญาต popup แล้วลองใหม่");
     return;
   }
   w.document.open();
@@ -223,8 +229,8 @@ function openPrint(inner: string) {
   }, 300);
 }
 
-export function printQuotation(d: QuotationDoc) {
-  openPrint(quotationHtml(d));
+export function printQuotation(d: QuotationDoc, w?: Window | null) {
+  openPrint(quotationHtml(d), w);
 }
 
 // ── เอกสารขาย B2B (setupDoc + template) ──────────────────────────────────────
@@ -449,11 +455,11 @@ function b2bDocHtml(doc: PreparedDoc, idx: number): string {
 }
 
 /** พิมพ์เอกสารขาย (ต้นฉบับ + สำเนา ต่อ docType) */
-export function printSalesDocs(order: OrderLike, items: OrderItem[], docTypes: string[]) {
+export function printSalesDocs(order: OrderLike, items: OrderItem[], docTypes: string[], w?: Window | null) {
   const docs: PreparedDoc[] = [];
   for (const dt of docTypes) {
     docs.push(setupDoc(order, items, dt, "(ต้นฉบับ / Original)"));
     docs.push(setupDoc(order, items, dt, "(สำเนา / Copy)"));
   }
-  openPrint(docs.map((d, i) => b2bDocHtml(d, i)).join(""));
+  openPrint(docs.map((d, i) => b2bDocHtml(d, i)).join(""), w);
 }
