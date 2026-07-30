@@ -32,7 +32,8 @@ export default async function AppLayout({
   return (
     <div className="min-h-screen bg-slate-50">
       <Nav workspaces={workspacesFor(role)} displayName={displayName} role={role} />
-      <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+      {/* pb ล่างบนมือถือ กันเนื้อหาโดน bottom-tab บัง */}
+      <main className="mx-auto max-w-6xl px-4 py-6 pb-24 md:pb-6">{children}</main>
     </div>
   );
 }

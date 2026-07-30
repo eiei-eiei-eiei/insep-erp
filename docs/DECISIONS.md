@@ -442,6 +442,12 @@
 - **ยังไม่ทำ — FermentTab (ลงหมัก `log_ferment`)**: ลบ batch ต้องมี RPC ย้อนเบิกวัตถุดิบ + จัดการแถวลูก (monitor/distill) — เสี่ยง เลื่อนเป็นงานแยก
 - **แก้ inline เต็มรูปแบบ** ของ material/dilute/product: ยังเป็น "ลบ+บันทึกใหม่" (delete พอสำหรับแก้ typo) — edit inline ทำเพิ่มได้ภายหลัง
 
+### D40 — เก็บ loose ends จากรีวิว (quick wins 2 + mobile 2)
+- **หน้าบันทึก**: Enter ในช่องตัวเลข (ไม่ใช่ช่อง datalist) = เพิ่มแถวรายการ · validate ล้มเหลว → ไฮไลต์ช่องผิดสีแดง (กิจการ/หมวดหมู่/บัญชี/รายการ) + `scrollIntoView` ไปหา (errField + refs)
+- **nav bottom-tab มือถือ**: `md:hidden` fixed bottom (workspace + ตั้งค่า/สำรอง) · ลิงก์ด้านบนซ่อนบนมือถือ (`hidden md:flex`) · layout เพิ่ม `pb-24 md:pb-0`
+- **EditBillModal**: เต็มจอบนมือถือ (`min-h-dvh rounded-none`) → dialog กลางจอบน `sm:` ขึ้นไป
+- ครบงานจากรีวิว (ยกเว้นที่จดว่าเลื่อน: ลบ batch หมัก · edit inline log ผลิต · prefill มัดจำแก้ใบเสนอราคา · เลข INV/TAX ใน RPC)
+
 ## ค้างต้องถามผู้ใช้ (ยังไม่ตัดสิน — MIGRATION_PLAN sec 11)
 - ~~อีเมล login (ข้อ 9)~~ → **ตัดสินแล้ว (D9)**: username-based `<username>@insep.local`
 - ~~ไฟล์ wh3 (50ทวิ)~~ → **ผู้ใช้ยืนยันว่าเป็นเทมเพลตเปล่า** — อัปโหลดด้วย `--include-wh3` เป็น `wht/wh3_template.pdf`

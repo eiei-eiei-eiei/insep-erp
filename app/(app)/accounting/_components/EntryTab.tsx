@@ -90,6 +90,12 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   const [showRecent, setShowRecent] = useState(false);
   const [itemHist, setItemHist] = useState<ItemHist>({ itemNames: [], itemCategories: [], itemJobs: [] });
 
+  // validate: ไฮไลต์ช่องที่ผิด + เลื่อนไปหา
+  const [errField, setErrField] = useState<string | null>(null);
+  const catRef = useRef<HTMLInputElement>(null);
+  const billCardRef = useRef<HTMLDivElement>(null);
+  const itemsCardRef = useRef<HTMLDivElement>(null);
+
   // reverse WHT
   const [revNet, setRevNet] = useState(0);
   const [revRate, setRevRate] = useState(3);
@@ -220,6 +226,12 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   function onDiscPct(i: number, v: number) { setItem(i, { discPct: v, discBaht: itemDiscBahtFromPct(qn(items[i].quantity), items[i].exVat, v) }); }
   function onDiscBaht(i: number, v: number) { const gross = qn(items[i].quantity) * items[i].exVat; setItem(i, { discBaht: v, discPct: gross > 0 ? round2((v / gross) * 100) : 0 }); }
   function addItem() { const last = items[items.length - 1]; setItems((p) => [...p, emptyItem(last?.itemCategory ?? "", last?.itemJob ?? "")]); }
+  // Enter ในช่องตัวเลข (ไม่ใช่ช่องมี datalist) = เพิ่มแถวใหม่ · Ctrl+Enter = บันทึก (จับที่ระดับบน)
+  function onItemsKeyDown(e: React.KeyboardEvent) {
+    if (e.key !== "Enter" || e.ctrlKey || e.metaKey) return;
+    const t = e.target as HTMLInputElement;
+    if (t.tagName === "INPUT" && !t.getAttribute("list")) { e.preventDefault(); addItem(); }
+  }
 
   function buildItemInputs(): TxItemInput[] {
     return items
@@ -240,17 +252,24 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
       });
   }
 
-  function validate(): string | null {
-    if (!effEntity) return "เลือกกิจการก่อน";
-    if (!category) return "เลือกหมวดหมู่";
-    if (!isApAr && !isInst && !accountName && type !== "รายรับ") return "เลือกบัญชี (หรือติ๊กตั้งค้าง)";
-    if (items.every((it) => !it.itemName && !it.exVat)) return "เพิ่มรายการอย่างน้อย 1 รายการ";
+  type ErrField = "entity" | "category" | "account" | "items";
+  function validate(): { text: string; field: ErrField } | null {
+    if (!effEntity) return { text: "เลือกกิจการก่อน", field: "entity" };
+    if (!category) return { text: "เลือกหมวดหมู่", field: "category" };
+    if (!isApAr && !isInst && !accountName && type !== "รายรับ") return { text: "เลือกบัญชี (หรือติ๊กตั้งค้าง)", field: "account" };
+    if (items.every((it) => !it.itemName && !it.exVat)) return { text: "เพิ่มรายการอย่างน้อย 1 รายการ", field: "items" };
     return null;
+  }
+  function flagError(field: ErrField) {
+    setErrField(field);
+    const target = field === "items" ? itemsCardRef.current : field === "category" ? catRef.current : billCardRef.current;
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (field === "category") catRef.current?.focus();
   }
 
   function doSave() {
     const err = validate();
-    if (err) { setMsg({ ok: false, text: err }); return; }
+    if (err) { setMsg({ ok: false, text: err.text }); flagError(err.field); return; }
     const itemInputs = buildItemInputs();
 
     if (isInst) {
@@ -309,11 +328,12 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
 
   return (
     <div className="space-y-4" onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); doSave(); } }}>
+      <div ref={billCardRef}>
       <Card title="ข้อมูลบิล">
         {ambiguous ? (
-          <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-2">
+          <div className={`mb-3 rounded-lg border p-2 ${errField === "entity" ? "border-red-400 bg-red-50" : "border-amber-300 bg-amber-50"}`}>
             <span className="mb-1 block text-xs font-medium text-amber-700">⚠️ ด้านบนเลือก “ทุกกิจการ” — เลือกกิจการที่จะบันทึกเข้าให้ชัดเจนก่อน</span>
-            <Select value={effEntity} onChange={(e) => setPickedEntity(e.target.value)}>
+            <Select value={effEntity} onChange={(e) => { setPickedEntity(e.target.value); setErrField(null); }}>
               {boot.entities.map((en) => (<option key={en.entity_id} value={en.entity_id}>{en.entity_id} — {en.name}</option>))}
             </Select>
           </div>
@@ -328,14 +348,14 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
             </Select>
           </Field>
           <Field label="หมวดหมู่">
-            <input list="bill-cat-list" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="พิมพ์เพื่อค้นหา / เลือก" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200" />
+            <input ref={catRef} list="bill-cat-list" value={category} onChange={(e) => { setCategory(e.target.value); setErrField(null); }} placeholder="พิมพ์เพื่อค้นหา / เลือก" className={`w-full rounded-lg border px-3 py-2 text-slate-800 outline-none focus:ring-2 ${errField === "category" ? "border-red-400 ring-2 ring-red-200" : "border-slate-300 focus:border-slate-500 focus:ring-slate-200"}`} />
             <datalist id="bill-cat-list">
               {cats.map((c) => (<option key={c} value={c} />))}
               {type === "รายจ่าย" && !cats.includes("ต้นทุนสุรา") && <option value="ต้นทุนสุรา" />}
             </datalist>
           </Field>
           <Field label="บัญชี">
-            <Select value={accountName} onChange={(e) => setAccountName(e.target.value)} disabled={isApAr || isInst}>
+            <Select value={accountName} onChange={(e) => { setAccountName(e.target.value); setErrField(null); }} disabled={isApAr || isInst} className={errField === "account" ? "border-red-400 ring-2 ring-red-200" : ""}>
               <option value="">{isApAr || isInst ? "(ตั้งค้าง — เติมตอนชำระ)" : "— เลือก —"}</option>
               {accountOptions.map((a) => (<option key={a.account_name} value={a.account_name}>{a.account_name}</option>))}
             </Select>
@@ -392,7 +412,9 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
           {isCost && <span className="text-xs text-amber-600">ต้นทุนสุรา — จะรับวัตถุดิบเข้าสต็อกผลิตอัตโนมัติ (ชื่อรายการต้องตรง master)</span>}
         </div>
       </Card>
+      </div>
 
+      <div ref={itemsCardRef} onKeyDown={onItemsKeyDown}>
       <Card title="รายการสินค้า">
         {/* Desktop: ตาราง */}
         <div className="hidden overflow-x-auto md:block">
@@ -474,8 +496,9 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
         <datalist id="hist-item-cats">{itemCatOptions.map((v) => (<option key={v} value={v} />))}</datalist>
         <datalist id="hist-item-jobs">{itemJobOptions.map((v) => (<option key={v} value={v} />))}</datalist>
         <button type="button" onClick={addItem} className="mt-2 text-sm text-slate-600 hover:text-slate-800">+ เพิ่มรายการ</button>
-        <p className="mt-1 text-xs text-slate-400">กรอกราคาช่องรวม VAT หรือ ไม่รวม VAT ช่องใดช่องหนึ่ง อีกช่องคำนวณให้ · ส่วนลด % ↔ บาท คิดจากราคาไม่รวม VAT × จำนวน · ชื่อ/หมวด/งาน พิมพ์แล้วเลือกจากประวัติได้</p>
+        <p className="mt-1 text-xs text-slate-400">กรอกราคาช่องรวม VAT หรือ ไม่รวม VAT ช่องใดช่องหนึ่ง อีกช่องคำนวณให้ · ส่วนลด % ↔ บาท คิดจากราคาไม่รวม VAT × จำนวน · Enter ในช่องตัวเลข = เพิ่มแถว</p>
       </Card>
+      </div>
 
       {/* สรุป + ออปชัน (ย้ายมาไว้ล่าง เพื่อให้ตารางรายการสินค้าเต็มความกว้าง) */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">

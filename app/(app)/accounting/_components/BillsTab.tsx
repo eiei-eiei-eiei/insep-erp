@@ -273,8 +273,8 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/30 p-4" onClick={onClose}>
-      <div className="my-8 w-full max-w-3xl rounded-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/30 p-0 sm:p-4" onClick={onClose}>
+      <div className="min-h-dvh w-full rounded-none bg-white p-5 sm:my-8 sm:min-h-0 sm:max-w-3xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
         <h3 className="mb-3 font-semibold text-slate-800">แก้ไขบิล {txId}</h3>
         {loading ? <p className="text-slate-400">กำลังโหลด…</p> : (
           <>
