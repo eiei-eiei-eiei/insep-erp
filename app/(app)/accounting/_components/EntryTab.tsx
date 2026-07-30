@@ -21,7 +21,7 @@ import {
   type TxItemInput,
 } from "../actions";
 import type { Bootstrap, Contact } from "./types";
-import { Card, Field, Msg, NumInput, SaveButton, Select, TextInput, cleanTaxId13, fmt, todayISO, useSaver } from "./ui";
+import { Card, Field, Msg, NumBox, NumInput, SaveButton, Select, TextInput, cleanTaxId13, fmt, todayISO, useSaver } from "./ui";
 
 type Qty = number | "";
 type Item = {
@@ -46,6 +46,7 @@ type Draft = {
   type: "รายรับ" | "รายจ่าย"; category: string; accountName: string; contactName: string; description: string;
   txDate: string; taxInvoiceNo: string; taxInvoiceDate: string; discount: number; hasVat: boolean; hasWht: boolean;
   whtRate: number; items: Item[]; isApAr: boolean; dueDate: string; isInst: boolean; insts: Inst[]; branchId: string;
+  manualAmt: boolean; ovAfterDisc: number; ovVat: number; ovWht: number;
 };
 
 export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string }) {
@@ -68,6 +69,12 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
   const [isInst, setIsInst] = useState(false);
   const [insts, setInsts] = useState<Inst[]>([{ percent: 50, dueDate: "" }, { percent: 50, dueDate: "" }]);
   const [showOpt, setShowOpt] = useState(false);
+
+  // แก้ยอดเอง (ยอดหลังหักส่วนลด/VAT/หัก ณ ที่จ่าย) — ล็อกไว้ ต้องกดปลดล็อกก่อนแก้ (กันเผลอ)
+  const [manualAmt, setManualAmt] = useState(false);
+  const [ovAfterDisc, setOvAfterDisc] = useState(0);
+  const [ovVat, setOvVat] = useState(0);
+  const [ovWht, setOvWht] = useState(0);
 
   // คู่ค้า (state ท้องถิ่น — เพิ่มใหม่ได้ทันที)
   const [contacts, setContacts] = useState<Contact[]>(boot.contacts);
@@ -112,21 +119,26 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
         if (d.isInst != null) setIsInst(d.isInst);
         if (Array.isArray(d.insts) && d.insts.length) setInsts(d.insts);
         if (d.branchId != null) setBranchId(d.branchId);
+        if (d.manualAmt != null) setManualAmt(d.manualAmt);
+        if (d.ovAfterDisc != null) setOvAfterDisc(d.ovAfterDisc);
+        if (d.ovVat != null) setOvVat(d.ovVat);
+        if (d.ovWht != null) setOvWht(d.ovWht);
       }
     } catch { /* ignore */ }
     setHydrated(true);
   }, []);
   useEffect(() => {
     if (!hydrated) return;
-    const draft: Draft = { type, category, accountName, contactName, description, txDate, taxInvoiceNo, taxInvoiceDate, discount, hasVat, hasWht, whtRate, items, isApAr, dueDate, isInst, insts, branchId };
+    const draft: Draft = { type, category, accountName, contactName, description, txDate, taxInvoiceNo, taxInvoiceDate, discount, hasVat, hasWht, whtRate, items, isApAr, dueDate, isInst, insts, branchId, manualAmt, ovAfterDisc, ovVat, ovWht };
     try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); } catch { /* ignore */ }
-  }, [hydrated, type, category, accountName, contactName, description, txDate, taxInvoiceNo, taxInvoiceDate, discount, hasVat, hasWht, whtRate, items, isApAr, dueDate, isInst, insts, branchId]);
+  }, [hydrated, type, category, accountName, contactName, description, txDate, taxInvoiceNo, taxInvoiceDate, discount, hasVat, hasWht, whtRate, items, isApAr, dueDate, isInst, insts, branchId, manualAmt, ovAfterDisc, ovVat, ovWht]);
   function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ } }
   function clearForm() {
     setType("รายจ่าย"); setCategory(""); setAccountName(""); setContactName(""); setDescription("");
     setTxDate(todayISO()); setTaxInvoiceNo(""); setTaxInvoiceDate(""); setDiscount(0); setHasVat(false);
     setHasWht(false); setWhtRate(0); setItems([emptyItem()]); setIsApAr(false); setDueDate("");
     setIsInst(false); setInsts([{ percent: 50, dueDate: "" }, { percent: 50, dueDate: "" }]); setBranchId("");
+    setManualAmt(false); setOvAfterDisc(0); setOvVat(0); setOvWht(0);
     setRecentBills([]); setShowRecent(false); clearDraft(); setMsg(null);
   }
 
@@ -183,7 +195,15 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
     () => entryCalc({ items: items.map((it) => ({ quantity: qn(it.quantity), exVat: it.exVat, discBaht: it.discBaht })), discount, hasVat, hasWht, whtRate }),
     [items, discount, hasVat, hasWht, whtRate],
   );
-  const instRows = useMemo(() => splitInstallments(calc.amountAfterDiscount, insts, hasVat, hasWht ? whtRate : 0), [calc.amountAfterDiscount, insts, hasVat, hasWht, whtRate]);
+  // ยอดที่ใช้จริง: โหมดปกติ = คำนวณอัตโนมัติ · โหมดแก้เอง = ค่าที่ผู้ใช้กรอก (แก้ทศนิยมให้ตรงเจ้าอื่น)
+  const effAfterDisc = manualAmt ? ovAfterDisc : calc.amountAfterDiscount;
+  const effVat = manualAmt ? ovVat : calc.vatAmount;
+  const effWht = manualAmt ? ovWht : calc.whtAmount;
+  const effNet = round2(effAfterDisc + effVat - effWht);
+  function unlockAmounts() { setOvAfterDisc(effAfterDisc); setOvVat(effVat); setOvWht(effWht); setManualAmt(true); }
+  function lockAmounts() { setManualAmt(false); }
+
+  const instRows = useMemo(() => splitInstallments(effAfterDisc, insts, hasVat, hasWht ? whtRate : 0), [effAfterDisc, insts, hasVat, hasWht, whtRate]);
   const instSumPct = insts.reduce((s, i) => s + (Number(i.percent) || 0), 0);
 
   function setItem(i: number, patch: Partial<Item>) {
@@ -192,7 +212,7 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
   // แก้ราคา: in↔ex VAT สลับกัน · ส่วนลด %↔บาท
   function onExVat(i: number, v: number) { setItem(i, { exVat: v, inVat: inVatFromExVat(v), discBaht: round2(v * qn(items[i].quantity) * items[i].discPct / 100) }); }
   function onInVat(i: number, v: number) { const ex = exVatFromInVat(v); setItem(i, { inVat: v, exVat: ex, discBaht: round2(ex * qn(items[i].quantity) * items[i].discPct / 100) }); }
-  function onQty(i: number, raw: string) { const q: Qty = raw === "" ? "" : Number(raw); setItem(i, { quantity: q, discBaht: itemDiscBahtFromPct(qn(q), items[i].exVat, items[i].discPct) }); }
+  function onQty(i: number, q: Qty) { setItem(i, { quantity: q, discBaht: itemDiscBahtFromPct(qn(q), items[i].exVat, items[i].discPct) }); }
   function onDiscPct(i: number, v: number) { setItem(i, { discPct: v, discBaht: itemDiscBahtFromPct(qn(items[i].quantity), items[i].exVat, v) }); }
   function onDiscBaht(i: number, v: number) { const gross = qn(items[i].quantity) * items[i].exVat; setItem(i, { discBaht: v, discPct: gross > 0 ? round2((v / gross) * 100) : 0 }); }
   function addItem() { const last = items[items.length - 1]; setItems((p) => [...p, emptyItem(last?.itemCategory ?? "", last?.itemJob ?? "")]); }
@@ -238,8 +258,8 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
     run(
       () => saveTransactionAction({
         transaction_date: txDate, type, account_name: isApAr ? "" : accountName, category, contact_name: contactName, contact_id: resolvedContactId, description,
-        base_amount: calc.baseAmount, discount, amount_after_discount: calc.amountAfterDiscount, vat_amount: calc.vatAmount,
-        wht_rate: calc.whtRate, wht_amount: calc.whtAmount, net_amount: calc.netAmount,
+        base_amount: calc.baseAmount, discount, amount_after_discount: effAfterDisc, vat_amount: effVat,
+        wht_rate: calc.whtRate, wht_amount: effWht, net_amount: effNet,
         tax_invoice_no: taxInvoiceNo, tax_invoice_date: taxInvoiceDate, entity_id: entityId,
         ap_ar_status: isApAr ? (type === "รายรับ" ? "AR" : "AP") : "", due_date: isApAr ? dueDate : "", forward_material: isCost,
       }, itemInputs),
@@ -248,7 +268,7 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
     );
   }
   // หลังบันทึก: ล้างเฉพาะรายการ/รายละเอียด/เลขใบกำกับ (คงคู่ค้า/หมวดหมู่ไว้กรอกบิลถัดไปเร็วขึ้น)
-  function resetItems() { setItems([emptyItem()]); setDescription(""); setTaxInvoiceNo(""); setHasVat(false); }
+  function resetItems() { setItems([emptyItem()]); setDescription(""); setTaxInvoiceNo(""); setHasVat(false); setManualAmt(false); setOvAfterDisc(0); setOvVat(0); setOvWht(0); setDiscount(0); }
 
   // ── สแกนใบเสร็จ ──
   const fileRef = useRef<HTMLInputElement>(null);
@@ -391,11 +411,11 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
                   </td>
                   {showOpt && <td className="p-1"><TextInput list="hist-item-cats" value={it.itemCategory} onChange={(e) => setItem(i, { itemCategory: e.target.value })} placeholder="หมวดหมู่" /></td>}
                   {showOpt && <td className="p-1"><TextInput list="hist-item-jobs" value={it.itemJob} onChange={(e) => setItem(i, { itemJob: e.target.value })} placeholder="งาน" /></td>}
-                  <td className="p-1"><NumInput value={it.quantity} onChange={(e) => onQty(i, e.target.value)} /></td>
-                  <td className="p-1"><NumInput value={it.inVat || ""} onChange={(e) => onInVat(i, Number(e.target.value))} /></td>
-                  <td className="p-1"><NumInput value={it.exVat || ""} onChange={(e) => onExVat(i, Number(e.target.value))} /></td>
-                  {showOpt && <td className="p-1"><NumInput value={it.discPct || ""} onChange={(e) => onDiscPct(i, Number(e.target.value))} /></td>}
-                  {showOpt && <td className="p-1"><NumInput value={it.discBaht || ""} onChange={(e) => onDiscBaht(i, Number(e.target.value))} /></td>}
+                  <td className="p-1"><NumBox value={it.quantity} onChange={(v) => onQty(i, v)} /></td>
+                  <td className="p-1"><NumBox value={it.inVat} blankZero onChange={(v) => onInVat(i, v === "" ? 0 : v)} /></td>
+                  <td className="p-1"><NumBox value={it.exVat} blankZero onChange={(v) => onExVat(i, v === "" ? 0 : v)} /></td>
+                  {showOpt && <td className="p-1"><NumBox value={it.discPct} blankZero onChange={(v) => onDiscPct(i, v === "" ? 0 : v)} /></td>}
+                  {showOpt && <td className="p-1"><NumBox value={it.discBaht} blankZero onChange={(v) => onDiscBaht(i, v === "" ? 0 : v)} /></td>}
                   <td className="p-1 text-right font-medium">{fmt(itemTotal(qn(it.quantity), it.exVat, it.discBaht))}</td>
                   <td className="p-1"><button type="button" onClick={() => setItems((p) => p.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700">✕</button></td>
                 </tr>
@@ -415,7 +435,7 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
         <Card title="สรุปยอด">
           <div className="grid grid-cols-2 gap-2">
             <Field label="ยอดก่อนหักส่วนลดบิล"><TextInput readOnly value={fmt(calc.baseAmount)} /></Field>
-            <Field label="ส่วนลดบิล"><NumInput value={discount || ""} onChange={(e) => setDiscount(Number(e.target.value))} /></Field>
+            <Field label="ส่วนลดบิล"><NumBox value={discount} blankZero onChange={(v) => setDiscount(v === "" ? 0 : v)} /></Field>
           </div>
           <div className="mt-2 flex items-center gap-4 text-sm">
             <label className="flex items-center gap-2"><input type="checkbox" checked={hasVat} onChange={(e) => setHasVat(e.target.checked)} /> มี VAT 7%</label>
@@ -429,12 +449,29 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
               </Select>
             </Field></div>
           )}
-          <dl className="mt-3 space-y-1 text-sm">
-            <Row k="ยอดหลังหักส่วนลด" v={fmt(calc.amountAfterDiscount)} />
-            <Row k="VAT" v={fmt(calc.vatAmount)} />
-            <Row k="หัก ณ ที่จ่าย" v={fmt(calc.whtAmount)} />
-            <Row k="ยอดสุทธิ" v={fmt(calc.netAmount)} bold />
+          <div className="mt-3 flex items-center justify-between">
+            <span className="text-xs text-slate-500">ยอดคำนวณ</span>
+            {manualAmt
+              ? <button type="button" onClick={lockAmounts} className="text-xs text-slate-500 hover:underline">↩️ กลับไปคำนวณอัตโนมัติ</button>
+              : <button type="button" onClick={unlockAmounts} className="text-xs text-blue-600 hover:underline">✏️ แก้ยอดเอง</button>}
+          </div>
+          <dl className="mt-1 space-y-1 text-sm">
+            {manualAmt ? (
+              <>
+                <RowEdit k="ยอดหลังหักส่วนลด" value={ovAfterDisc} onChange={setOvAfterDisc} />
+                <RowEdit k="VAT" value={ovVat} onChange={setOvVat} />
+                <RowEdit k="หัก ณ ที่จ่าย" value={ovWht} onChange={setOvWht} />
+              </>
+            ) : (
+              <>
+                <Row k="ยอดหลังหักส่วนลด" v={fmt(effAfterDisc)} />
+                <Row k="VAT" v={fmt(effVat)} />
+                <Row k="หัก ณ ที่จ่าย" v={fmt(effWht)} />
+              </>
+            )}
+            <Row k="ยอดสุทธิ" v={fmt(effNet)} bold />
           </dl>
+          {manualAmt && <p className="mt-1 text-xs text-amber-600">โหมดแก้ยอดเอง — 3 ค่านี้จะไม่คำนวณอัตโนมัติจนกดกลับ (ยอดสุทธิ = หลังหักส่วนลด + VAT − หัก ณ ที่จ่าย)</p>}
         </Card>
 
         <Card title="ออปชัน">
@@ -479,6 +516,14 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
 
   function Row({ k, v, bold }: { k: string; v: string; bold?: boolean }) {
     return <div className={`flex justify-between ${bold ? "border-t border-slate-200 pt-1 font-semibold text-slate-800" : "text-slate-600"}`}><dt>{k}</dt><dd>{v}</dd></div>;
+  }
+  function RowEdit({ k, value, onChange }: { k: string; value: number; onChange: (n: number) => void }) {
+    return (
+      <div className="flex items-center justify-between gap-2">
+        <dt className="text-slate-600">{k}</dt>
+        <dd className="w-32"><NumBox value={value} onChange={(v) => onChange(v === "" ? 0 : v)} className="py-1 text-right" /></dd>
+      </div>
+    );
   }
 }
 
