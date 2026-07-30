@@ -394,6 +394,26 @@
   - audit อัตโนมัติผ่าน trigger `audit_transactions` (before/after → edit_log) ตามกติกา FLOW sec 10
 - ✅ **apply migration 0019 ด้วย `npm run db:push` แล้ว** (2026-07-29 — supabase CLI ใช้ได้แล้ว ดู D31 ที่แก้)
 
+### D36 — รีวิวทั้งแอป (Fable) → ชุด A (UX ลื่น) + ชุด B (กันข้อมูลผิด)
+- **ที่มา**: รีวิว read-only ทั้ง 3 แอป (บันทึกใน `docs/APP_REVIEW_2026-07.md` — ไม่ push git ตามผู้ใช้) พบปัญหาอยู่ชั้น UI/data-fetch เป็นหลัก
+- **ชุด A (perf/UX, commit 90c5599)**:
+  - mount แท็บครั้งเดียวแล้วซ่อนด้วย CSS (lazy-once ผ่าน `visited` Set) ทั้ง 3 App → สลับแท็บ 0ms คงสถานะฟอร์ม
+  - `loading.tsx` ทุก workspace (skeleton `_components/WorkspaceSkeleton`) → กดข้าม workspace ไม่ค้างจอ
+  - เปิดหน้าต่างพิมพ์ **ก่อน await** ทุกจุด (ภพ.30/ภงด./50ทวิ/ใบเสนอราคา/เอกสารขาย) → กัน popup blocker มือถือ/iPad
+- **ชุด B (correctness)**:
+  - **P0 — query ไม่มี limit → PostgREST cap ~1000 แถวตัดเงียบ**: เพิ่ม `fetchAllTransactions`/`fetchAllOrders`
+    วน `.range()` จนได้หน้าเปล่า (เลื่อนตามจำนวนจริง — ครบทุกแถวไม่ว่า max_rows เท่าใด) ใช้กับ dashboard/ยอดบัญชี/
+    statement/ภพ.30/ภงด./AP-AR + ประวัติออเดอร์ · **ไม่แตะสูตร** แค่การันตีข้อมูลครบ
+  - **แก้ยอดยกมาบัญชี (D23#3)**: `saveBankAccountAction` เปลี่ยนเป็น "มีชื่อ→update ตามชื่อ, ไม่มี→insert"
+    (เลิก gen id ใหม่ที่ชน unique `account_name`) + SettingsTab replace แถวแทน append (กัน state ซ้ำ)
+- **Freshness (แก้ผลข้างเคียงของ lazy-once)**: แท็บที่ mount ค้างไม่ refetch เอง → หลัง mutation อีกแท็บอาจเห็นเลขเก่า
+  - **แก้แบบ stale-while-revalidate**: ส่ง prop `active` (แท็บนี้กำลังแสดงไหม) ให้ทุกแท็บที่โหลดข้อมูล
+    (บัญชี: Dashboard/Accounts/ApAr/Bills/TaxDocs · ขาย: Orders/Warehouse/Menu/Sync) → refetch เมื่อ active
+    แต่ **โชว์ข้อมูลเดิมค้างไว้ระหว่างโหลด** (`firstLoad` ref กัน loading flash หลังครั้งแรก) → ลื่น + สด
+  - inactive tab ไม่ fetch → เปลี่ยนเดือน/กิจการไม่ยิง burst ทุกแท็บที่ mount ค้าง
+  - **#9 cache รายการออเดอร์ค้าง**: `OrdersTab.refresh()` เรียก `itemsCache.clear()` → พิมพ์หลังแก้ใบเสนอราคาได้รายการล่าสุด
+- **ยังไม่ทำ** (ชุดถัดไป): bundle 634 kB (dynamic import pdf-lib) · mobile card layout 3 หน้าหลัก · แก้/ลบ log ผลิต · resume หม้อกลั่น
+
 ## ค้างต้องถามผู้ใช้ (ยังไม่ตัดสิน — MIGRATION_PLAN sec 11)
 - ~~อีเมล login (ข้อ 9)~~ → **ตัดสินแล้ว (D9)**: username-based `<username>@insep.local`
 - ~~ไฟล์ wh3 (50ทวิ)~~ → **ผู้ใช้ยืนยันว่าเป็นเทมเพลตเปล่า** — อัปโหลดด้วย `--include-wh3` เป็น `wht/wh3_template.pdf`

@@ -8,7 +8,7 @@ import { Card, Field, Msg, NumInput, SaveButton, Select, TextInput, fmt, todayIS
 type Balances = Awaited<ReturnType<typeof getBalancesAction>>;
 type Statement = Awaited<ReturnType<typeof getStatementAction>>;
 
-export function AccountsTab({ boot, period, entityId }: { boot: Bootstrap; period: string; entityId: string }) {
+export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstrap; period: string; entityId: string; active: boolean }) {
   const [bal, setBal] = useState<Balances | null>(null);
   const [stmt, setStmt] = useState<Statement | null>(null);
   const [openAcc, setOpenAcc] = useState<string | null>(null);
@@ -28,12 +28,13 @@ export function AccountsTab({ boot, period, entityId }: { boot: Bootstrap; perio
     getBalancesAction(period, entityId).then(setBal);
   }
   useEffect(() => {
+    if (!active) return;
     let alive = true;
     getBalancesAction(period, entityId).then((d) => { if (alive) setBal(d); });
     setStmt(null);
     setOpenAcc(null);
     return () => { alive = false; };
-  }, [period, entityId]);
+  }, [period, entityId, active]);
 
   function openStatement(acc: string) {
     setOpenAcc(acc);

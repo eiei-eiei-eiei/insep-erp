@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SyncRow } from "./types";
 import { Card } from "./ui";
 import { getSyncHistoryAction } from "../actions";
@@ -10,20 +10,22 @@ const ACTION_LABEL: Record<string, string> = {
   RECEIVE_REVENUE: "ขาย → บัญชี (รายรับ)",
 };
 
-export function SyncHistoryTab() {
+export function SyncHistoryTab({ active }: { active: boolean }) {
   const [rows, setRows] = useState<SyncRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const firstLoad = useRef(true);
 
   function refresh() {
-    setLoading(true);
+    if (firstLoad.current) setLoading(true);
     getSyncHistoryAction().then((d) => {
       setRows(d);
       setLoading(false);
+      firstLoad.current = false;
     });
   }
   useEffect(() => {
-    refresh();
-  }, []);
+    if (active) refresh();
+  }, [active]);
 
   return (
     <Card title="🔁 ประวัติเชื่อมระบบ (แทนหน้าคิว sync เดิม)">

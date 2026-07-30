@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SalesBoot, OrderRow, OrderItem } from "./types";
 import { Card, Msg, StatusBadge, TextInput, useSaver, fmt } from "./ui";
 import { todayISO } from "./ui";
@@ -17,7 +17,7 @@ async function loadItems(quNo: string): Promise<OrderItem[]> {
   return its;
 }
 
-export function OrdersTab({ boot, canWrite, onEdit }: { boot: SalesBoot; canWrite: boolean; onEdit: (o: OrderRow) => void }) {
+export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot; canWrite: boolean; onEdit: (o: OrderRow) => void; active: boolean }) {
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"open" | "closed">("open");
@@ -25,16 +25,20 @@ export function OrdersTab({ boot, canWrite, onEdit }: { boot: SalesBoot; canWrit
   const [dialog, setDialog] = useState<{ order: OrderRow; action: OrderAction } | null>(null);
   const { msg, setMsg } = useSaver();
 
+  const firstLoad = useRef(true);
   function refresh() {
-    setLoading(true);
+    itemsCache.clear(); // ล้าง cache รายการสินค้า → พิมพ์หลังแก้ใบเสนอราคาได้รายการล่าสุด (#9)
+    if (firstLoad.current) setLoading(true);
     getOrdersAction().then((data) => {
       setOrders(data);
       setLoading(false);
+      firstLoad.current = false;
     });
   }
+  // โหลด/รีเฟรชเมื่อเข้าแท็บ (active) — ครอบคลุมกรณีสร้าง/แก้ใบเสนอราคาแล้วกลับมา
   useEffect(() => {
-    refresh();
-  }, []);
+    if (active) refresh();
+  }, [active]);
 
   const filtered = orders
     .filter((o) => (tab === "closed" ? o.status === "ปิดการขาย" || o.status === "ยกเลิก" : o.status !== "ปิดการขาย" && o.status !== "ยกเลิก"))

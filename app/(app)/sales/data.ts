@@ -172,14 +172,35 @@ async function contactInfoMap(supabase: Awaited<ReturnType<typeof db>>) {
   return map;
 }
 
+/** ดึงออเดอร์ทุกแถวแบบแบ่งหน้า — กัน PostgREST cap `max_rows` ตัดออเดอร์เก่าเงียบ ๆ (ประวัติขาด) */
+async function fetchAllOrders(supabase: Awaited<ReturnType<typeof db>>): Promise<SoRow[]> {
+  const CHUNK = 1000;
+  const all: SoRow[] = [];
+  let from = 0;
+  for (let i = 0; i < 1000; i++) {
+    const { data, error } = await supabase
+      .from("sales_orders")
+      .select(ORDER_COLS)
+      .order("created_at", { ascending: false })
+      .order("qu_no", { ascending: false })
+      .range(from, from + CHUNK - 1);
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as SoRow[];
+    all.push(...rows);
+    if (rows.length === 0) break;
+    from += rows.length;
+  }
+  return all;
+}
+
 /** ประวัติออเดอร์ทั้งหมด (ใหม่สุดก่อน) */
 export async function getOrders(): Promise<OrderRow[]> {
   const supabase = await db();
   const [orders, cmap] = await Promise.all([
-    supabase.from("sales_orders").select(ORDER_COLS).order("created_at", { ascending: false }),
+    fetchAllOrders(supabase),
     contactInfoMap(supabase),
   ]);
-  return (orders.data ?? []).map((r) => mapOrder(r as SoRow, cmap));
+  return orders.map((r) => mapOrder(r, cmap));
 }
 
 export async function getOrderItems(quNo: string) {

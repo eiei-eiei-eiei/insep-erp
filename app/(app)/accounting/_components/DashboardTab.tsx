@@ -6,16 +6,17 @@ import { Card, Stat, fmt } from "./ui";
 
 type Dash = Awaited<ReturnType<typeof getDashboardAction>>;
 
-export function DashboardTab({ period, entityId }: { period: string; entityId: string }) {
+export function DashboardTab({ period, entityId, active }: { period: string; entityId: string; active: boolean }) {
   const [data, setData] = useState<Dash | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // โหลดเมื่อแท็บถูกเปิด (active) + refetch ทุกครั้งที่กลับมา — โชว์ข้อมูลเดิมค้างไว้ระหว่างโหลด (ไม่กระพริบ)
   useEffect(() => {
+    if (!active) return;
     let alive = true;
-    setLoading(true);
     getDashboardAction(period, entityId).then((d) => { if (alive) { setData(d); setLoading(false); } });
     return () => { alive = false; };
-  }, [period, entityId]);
+  }, [period, entityId, active]);
 
   if (loading || !data) return <p className="text-slate-400">กำลังโหลด…</p>;
   const { netIncome, netExpense, vatOut, vatIn } = data.dash;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card, Msg, NumInput, Select, TextInput, useSaver, fmt } from "./ui";
 import { getSaleMenuAction, getMenuLinkOptionsAction, saveSaleMenuAction, deleteSaleMenuAction } from "../actions";
 import type { SaleMenuRow } from "../data";
@@ -8,24 +8,26 @@ import type { SaleMenuRow } from "../data";
 type LinkOpts = { products: { id: string; name: string }[]; warehouse: { id: string; name: string }[] };
 const EMPTY = { id: 0, menuName: "", price: 0, category: "สุรา", productId: "", multiplier: 1 };
 
-export function MenuTab() {
+export function MenuTab({ active }: { active: boolean }) {
   const [rows, setRows] = useState<SaleMenuRow[]>([]);
   const [opts, setOpts] = useState<LinkOpts>({ products: [], warehouse: [] });
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<{ id: number; menuName: string; price: number; category: string; productId: string; multiplier: number }>({ ...EMPTY });
   const { pending, msg, run, setMsg } = useSaver();
+  const firstLoad = useRef(true);
 
   function refresh() {
-    setLoading(true);
+    if (firstLoad.current) setLoading(true);
     Promise.all([getSaleMenuAction(), getMenuLinkOptionsAction()]).then(([m, o]) => {
       setRows(m);
       setOpts(o as LinkOpts);
       setLoading(false);
+      firstLoad.current = false;
     });
   }
   useEffect(() => {
-    refresh();
-  }, []);
+    if (active) refresh();
+  }, [active]);
 
   function edit(r: SaleMenuRow) {
     setMsg(null);

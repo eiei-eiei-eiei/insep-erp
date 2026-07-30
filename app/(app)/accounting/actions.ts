@@ -405,22 +405,33 @@ export async function saveBankAccountAction(input: {
   openingBalance: number;
 }): Promise<SaveResult> {
   const supabase = await db();
-  let accountId = input.accountId;
-  if (!accountId) {
-    const { data: seq, error: e } = await supabase.rpc("next_serial", { p_key: "BANK_ACC" });
-    if (e) return fail(e.message);
-    accountId = "ACC-" + String(seq).padStart(3, "0");
+  const name = input.accountName.trim();
+  if (!name) return fail("กรอกชื่อบัญชี");
+  // มีชื่อบัญชีนี้แล้ว → อัปเดตตามชื่อ (D23#3 upsert by ชื่อ) ไม่สร้าง id ใหม่ กัน account_name ซ้ำ (unique)
+  const { data: existing } = await supabase.from("bank_accounts").select("account_id").eq("account_name", name).maybeSingle();
+  if (existing?.account_id || input.accountId) {
+    const { error } = await supabase.from("bank_accounts").update({
+      entity_ids: input.entityIds,
+      kind: input.kind ?? null,
+      opening_balance: input.openingBalance,
+    }).eq("account_name", name);
+    if (error) return fail(error.message);
+    revalidatePath("/accounting");
+    return { ok: true, data: { updated: true } };
   }
-  const { error } = await supabase.from("bank_accounts").upsert({
+  const { data: seq, error: e } = await supabase.rpc("next_serial", { p_key: "BANK_ACC" });
+  if (e) return fail(e.message);
+  const accountId = "ACC-" + String(seq).padStart(3, "0");
+  const { error } = await supabase.from("bank_accounts").insert({
     account_id: accountId,
-    account_name: input.accountName,
+    account_name: name,
     entity_ids: input.entityIds,
     kind: input.kind ?? null,
     opening_balance: input.openingBalance,
   });
   if (error) return fail(error.message);
   revalidatePath("/accounting");
-  return { ok: true };
+  return { ok: true, data: { updated: false } };
 }
 export async function deleteBankAccountAction(accountId: string): Promise<SaveResult> {
   const supabase = await db();

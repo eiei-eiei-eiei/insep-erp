@@ -24,6 +24,36 @@ async function db() {
   return createClient();
 }
 
+function txBase(supabase: Awaited<ReturnType<typeof db>>) {
+  return supabase.from("transactions").select(TX_COLS);
+}
+type TxBuilder = ReturnType<typeof txBase>;
+
+/**
+ * ดึงทุกแถวของ transactions แบบแบ่งหน้า (range) — กัน PostgREST cap `max_rows` ตัดเงียบ
+ * ทำให้รายงานเงิน/ภาษี (dashboard/ยอดบัญชี/ภพ.30/statement) ขาดแถวเก่าโดยไม่มี error เมื่อข้อมูลโต
+ * วนจนกว่าจะได้หน้าเปล่า → ครบทุกแถวแม้ max_rows จะเท่าใด (เลื่อนตามจำนวนที่ได้จริง)
+ */
+async function fetchAllTransactions(
+  supabase: Awaited<ReturnType<typeof db>>,
+  applyFilters?: (q: TxBuilder) => TxBuilder,
+): Promise<Record<string, unknown>[]> {
+  const CHUNK = 1000;
+  const all: Record<string, unknown>[] = [];
+  let from = 0;
+  for (let i = 0; i < 1000; i++) { // safety cap 1,000,000 แถว
+    let q = txBase(supabase);
+    if (applyFilters) q = applyFilters(q);
+    const { data, error } = await q.order("tx_id", { ascending: true }).range(from, from + CHUNK - 1);
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as Record<string, unknown>[];
+    all.push(...rows);
+    if (rows.length === 0) break;
+    from += rows.length;
+  }
+  return all;
+}
+
 /** ชื่อบัญชีในระบบภาษี (app_settings kind='tax_account') — fallback บัญชีบริษัท */
 async function loadTaxAccounts(supabase: Awaited<ReturnType<typeof db>>): Promise<Set<string>> {
   const { data } = await supabase.from("app_settings").select("value").eq("kind", "tax_account");
@@ -83,31 +113,27 @@ export async function getBootstrap() {
 /** A11 — Dashboard + WHT pending (issuedTxIds จาก wht_certificates.tx_ids) */
 export async function getDashboard(period: string, entityId: string) {
   const supabase = await db();
-  const [txRes, taxAccounts, wht] = await Promise.all([
-    supabase.from("transactions").select(TX_COLS),
+  const [txAll, taxAccounts, wht] = await Promise.all([
+    fetchAllTransactions(supabase),
     loadTaxAccounts(supabase),
     supabase.from("wht_certificates").select("tx_ids"),
   ]);
   const issued = new Set<string>();
   for (const w of wht.data ?? []) for (const id of (w.tx_ids as string[]) ?? []) if (id) issued.add(id);
-  return dashboardData(period, entityId, (txRes.data ?? []) as unknown as Tx[], taxAccounts, issued);
+  return dashboardData(period, entityId, txAll as unknown as Tx[], taxAccounts, issued);
 }
 
 /** A2/A5 — AP/AR ค้าง + (union) ยอดค้างจากออเดอร์ขาย (read-only, แก้ T2) */
 export async function getApAr(entityId: string) {
   const supabase = await db();
-  const { data } = await supabase
-    .from("transactions")
-    .select(TX_COLS)
-    .eq("status", "ปกติ")
-    .not("ap_ar_status", "is", null);
+  const data = await fetchAllTransactions(supabase, (q) => q.eq("status", "ปกติ").not("ap_ar_status", "is", null));
 
   const inScope = (e: string) => !entityId || entityId === "ALL" || e === entityId;
   const payable: ApArRow[] = [];
   const receivable: ApArRow[] = [];
   let totalAP = 0;
   let totalAR = 0;
-  for (const r of (data ?? []) as unknown as Tx[]) {
+  for (const r of data as unknown as Tx[]) {
     if (!inScope(r.entity_id)) continue;
     const amount = Number(r.net_amount) || 0;
     const rec: ApArRow = {
@@ -189,8 +215,8 @@ export type SalesOutstandingRow = {
 /** A8 — ยอดคงเหลือทุกบัญชี ณ สิ้นเดือน */
 export async function getBalances(upToPeriod: string, entityId: string) {
   const supabase = await db();
-  const [txRes, accRes, taxAccounts] = await Promise.all([
-    supabase.from("transactions").select(TX_COLS),
+  const [txAll, accRes, taxAccounts] = await Promise.all([
+    fetchAllTransactions(supabase),
     supabase.from("bank_accounts").select("account_name, entity_ids, opening_balance"),
     loadTaxAccounts(supabase),
   ]);
@@ -199,18 +225,18 @@ export async function getBalances(upToPeriod: string, entityId: string) {
     openingBalance: Number(a.opening_balance) || 0,
     entityIds: (a.entity_ids as string[]) ?? [],
   }));
-  return accountBalances(upToPeriod, (txRes.data ?? []) as unknown as LedgerTx[], accounts, entityId, taxAccounts);
+  return accountBalances(upToPeriod, txAll as unknown as LedgerTx[], accounts, entityId, taxAccounts);
 }
 
 /** A8 — statement บัญชีรายเดือน */
 export async function getStatement(accountName: string, period: string) {
   const supabase = await db();
-  const [txRes, accRes] = await Promise.all([
-    supabase.from("transactions").select(TX_COLS).eq("account_name", accountName),
+  const [txAll, accRes] = await Promise.all([
+    fetchAllTransactions(supabase, (q) => q.eq("account_name", accountName)),
     supabase.from("bank_accounts").select("opening_balance").eq("account_name", accountName).maybeSingle(),
   ]);
   const opening = Number(accRes.data?.opening_balance) || 0;
-  return accountStatement(accountName, period, (txRes.data ?? []) as unknown as LedgerTx[], opening);
+  return accountStatement(accountName, period, txAll as unknown as LedgerTx[], opening);
 }
 
 /** ค้นบิล (ค้นบิลแท็บ) — filter entity/เดือน/type/คู่ค้า/ข้อความ */
@@ -462,14 +488,14 @@ export async function getWhtBundle(period: string, entityId: string) {
 /** ชุดข้อมูล ภพ.30 / ภงด. สำหรับ PDF (เรียกจาก /reports) */
 export async function getTaxReportBundle(period: string, entityId: string) {
   const supabase = await db();
-  const [txRes, contactMap, taxAccounts, summaries, entity] = await Promise.all([
-    supabase.from("transactions").select(TX_COLS),
+  const [txAll, contactMap, taxAccounts, summaries, entity] = await Promise.all([
+    fetchAllTransactions(supabase),
     loadContactMap(supabase),
     loadTaxAccounts(supabase),
     supabase.from("tax_summaries").select("report_month, forwarded_vat_out, entity_id, created_at"),
     supabase.from("entities").select("name, tax_id, branch, excise_id").eq("entity_id", entityId).maybeSingle(),
   ]);
-  const txs = (txRes.data ?? []) as unknown as Tx[];
+  const txs = txAll as unknown as Tx[];
   const fwdIn = previousVat(period, entityId, (summaries.data ?? []) as unknown as TaxSummaryRow[]);
   return {
     entity: entity.data ?? { name: "", tax_id: "", branch: "", excise_id: "" },

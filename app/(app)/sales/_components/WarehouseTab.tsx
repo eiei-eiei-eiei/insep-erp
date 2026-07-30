@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { WarehouseOrder, StockItem } from "./types";
 import { Card, Msg, NumInput, Select, TextInput, useSaver, fmt } from "./ui";
 import { getPendingWarehouseAction, getWarehouseStockAction, confirmFulfillmentAction, manualStockMoveAction } from "../actions";
 import { printSalesDocs, type OrderLike } from "./print";
 
-export function WarehouseTab({ role }: { role: string }) {
+export function WarehouseTab({ role, active }: { role: string; active: boolean }) {
   const [sub, setSub] = useState<"orders" | "stock">("orders");
   const canWrite = role === "main" || role === "warehouse";
   return (
@@ -19,27 +19,29 @@ export function WarehouseTab({ role }: { role: string }) {
           📊 สต็อกรวม
         </button>
       </div>
-      {sub === "orders" ? <PendingOrders canWrite={canWrite} /> : <StockPanel canWrite={canWrite} />}
+      {sub === "orders" ? <PendingOrders canWrite={canWrite} active={active} /> : <StockPanel canWrite={canWrite} active={active} />}
     </div>
   );
 }
 
-function PendingOrders({ canWrite }: { canWrite: boolean }) {
+function PendingOrders({ canWrite, active }: { canWrite: boolean; active: boolean }) {
   const [orders, setOrders] = useState<WarehouseOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const { msg, setMsg } = useSaver();
   const [busy, setBusy] = useState<string | null>(null);
+  const firstLoad = useRef(true);
 
   function refresh() {
-    setLoading(true);
+    if (firstLoad.current) setLoading(true);
     getPendingWarehouseAction().then((d) => {
       setOrders(d);
       setLoading(false);
+      firstLoad.current = false;
     });
   }
   useEffect(() => {
-    refresh();
-  }, []);
+    if (active) refresh();
+  }, [active]);
 
   function confirm(o: WarehouseOrder) {
     if (!window.confirm(`ยืนยันจัดส่ง ${o.orderNo}? ระบบจะตัดสต็อกทันที`)) return;
@@ -112,24 +114,26 @@ function PendingOrders({ canWrite }: { canWrite: boolean }) {
   );
 }
 
-function StockPanel({ canWrite }: { canWrite: boolean }) {
+function StockPanel({ canWrite, active }: { canWrite: boolean; active: boolean }) {
   const [stock, setStock] = useState<StockItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState({ itemCode: "", actionType: "IN" as "IN" | "OUT" | "ADJUST", qty: 1, refNo: "", remarks: "" });
   const { msg, setMsg } = useSaver();
   const [pending, setPending] = useState(false);
+  const firstLoad = useRef(true);
 
   function refresh() {
-    setLoading(true);
+    if (firstLoad.current) setLoading(true);
     getWarehouseStockAction().then((d) => {
       setStock(d);
       setLoading(false);
+      firstLoad.current = false;
     });
   }
   useEffect(() => {
-    refresh();
-  }, []);
+    if (active) refresh();
+  }, [active]);
 
   const general = stock.filter((s) => !s.isLive);
   const filtered = stock.filter((s) => !search || (s.itemCode + s.itemName + s.category).toLowerCase().includes(search.toLowerCase()));

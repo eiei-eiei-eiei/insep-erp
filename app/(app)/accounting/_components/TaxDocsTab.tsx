@@ -42,7 +42,7 @@ function openBlankTab(): Window | null {
   return window.open("", "_blank");
 }
 
-export function TaxDocsTab({ period, entityId }: { period: string; entityId: string }) {
+export function TaxDocsTab({ period, entityId, active }: { period: string; entityId: string; active: boolean }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [fwd, setFwd] = useState<number | null>(null);
@@ -69,13 +69,14 @@ export function TaxDocsTab({ period, entityId }: { period: string; entityId: str
     listTaxSummariesAction(realEntity).then(setSummaries);
   }
   useEffect(() => {
+    if (!active) return;
     if (!realEntity) { setWht(null); setFwd(null); setSummaries([]); return; }
     let alive = true;
     getWhtBundleAction(period, realEntity).then((d) => { if (alive) setWht(d); });
     getForwardedVatAction(period, realEntity).then((d) => { if (alive) setFwd(d); });
     listTaxSummariesAction(realEntity).then((d) => { if (alive) setSummaries(d); });
     return () => { alive = false; };
-  }, [period, realEntity]);
+  }, [period, realEntity, active]);
 
   async function genPhorPor30() {
     const w = openBlankTab(); // เปิดก่อน await กัน popup blocker

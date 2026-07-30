@@ -7,7 +7,7 @@ import { Card, Field, Msg, Select, TextInput, fmt, todayISO, useSaver } from "./
 
 type ApAr = Awaited<ReturnType<typeof getApArAction>>;
 
-export function ApArTab({ boot, entityId }: { boot: Bootstrap; entityId: string }) {
+export function ApArTab({ boot, entityId, active }: { boot: Bootstrap; entityId: string; active: boolean }) {
   const [data, setData] = useState<ApAr | null>(null);
   const [loading, setLoading] = useState(true);
   const { pending, msg, run, setMsg } = useSaver();
@@ -21,11 +21,11 @@ export function ApArTab({ boot, entityId }: { boot: Bootstrap; entityId: string 
     getApArAction(entityId).then((d) => { setData(d); setLoading(false); });
   }
   useEffect(() => {
+    if (!active) return;
     let alive = true;
-    setLoading(true);
     getApArAction(entityId).then((d) => { if (alive) { setData(d); setLoading(false); } });
     return () => { alive = false; };
-  }, [entityId]);
+  }, [entityId, active]);
 
   function doSettle(txId: string) {
     if (!acc) { setMsg({ ok: false, text: "เลือกบัญชีที่ใช้ชำระ" }); return; }

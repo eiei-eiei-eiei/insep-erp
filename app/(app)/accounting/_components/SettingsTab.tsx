@@ -68,9 +68,12 @@ function BankAccounts({ boot }: { boot: Bootstrap }) {
   const [ents, setEnts] = useState<string[]>([]);
 
   function add() {
-    if (!name.trim()) return;
-    run(() => saveBankAccountAction({ accountName: name.trim(), entityIds: ents, kind, openingBalance: opening }), "บันทึกบัญชีแล้ว", () => {
-      setRows((p) => [...p, { account_name: name.trim(), entity_ids: ents, opening_balance: opening, kind }]);
+    const nm = name.trim();
+    if (!nm) return;
+    run(() => saveBankAccountAction({ accountName: nm, entityIds: ents, kind, openingBalance: opening }), "บันทึกบัญชีแล้ว", (data) => {
+      const updated = (data as { updated?: boolean } | undefined)?.updated;
+      const row = { account_name: nm, entity_ids: ents, opening_balance: opening, kind };
+      setRows((p) => (updated ? p.map((a) => (a.account_name === nm ? row : a)) : [...p, row]));
       setName(""); setOpening(0); setEnts([]); setKind("");
     });
   }

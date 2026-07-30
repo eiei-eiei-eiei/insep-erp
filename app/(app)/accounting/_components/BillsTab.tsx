@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { searchBillsAction, getBillDetailAction, voidTransactionAction, updateTransactionAction } from "../actions";
 import {
   entryCalc, itemTotal, itemDiscBahtFromPct, inVatFromExVat, exVatFromInVat, round2,
@@ -16,7 +16,7 @@ type BillRow = Bills[number] & { po_group_id?: string | null; transfer_id?: stri
 const canEdit = (r: BillRow) =>
   r.status !== "ยกเลิก" && (r.type === "รายรับ" || r.type === "รายจ่าย") && !r.po_group_id && !r.transfer_id;
 
-export function BillsTab({ boot, period, entityId }: { boot: Bootstrap; period: string; entityId: string }) {
+export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; period: string; entityId: string; active: boolean }) {
   const [rows, setRows] = useState<Bills>([]);
   const [text, setText] = useState("");
   const [type, setType] = useState("");
@@ -29,14 +29,16 @@ export function BillsTab({ boot, period, entityId }: { boot: Bootstrap; period: 
   const [reloadKey, setReloadKey] = useState(0);
   const { pending, msg, run } = useSaver();
 
-  // ดึงข้อมูลใหม่เมื่อฟิลเตอร์ (ที่ไม่ใช่ข้อความ) เปลี่ยน — ข้อความกรอง live ฝั่ง client
+  // ดึงข้อมูลใหม่เมื่อฟิลเตอร์เปลี่ยน/กลับเข้าแท็บ — โชว์ผลเดิมค้างระหว่างโหลด (loading เฉพาะครั้งแรก)
+  const firstLoad = useRef(true);
   useEffect(() => {
+    if (!active) return;
     let alive = true;
-    setLoading(true);
+    if (firstLoad.current) setLoading(true);
     searchBillsAction({ entityId, month: useMonth ? period : undefined, type: type || undefined, contact: contact || undefined, includeVoid })
-      .then((r) => { if (alive) { setRows(r); setLoading(false); } });
+      .then((r) => { if (alive) { setRows(r); setLoading(false); firstLoad.current = false; } });
     return () => { alive = false; };
-  }, [entityId, period, type, contact, useMonth, includeVoid, reloadKey]);
+  }, [entityId, period, type, contact, useMonth, includeVoid, reloadKey, active]);
 
   // กรอง live จากรายละเอียดบิล (พิมพ์แล้วกรองทันที ไม่ต้องกดค้นหา)
   const shown = useMemo(() => {

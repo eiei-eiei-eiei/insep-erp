@@ -71,10 +71,10 @@ export function SalesApp({ boot }: { boot: SalesBoot }) {
       {visited.has("create") && (
         <div className={show("create")}><QuotationTab boot={boot} canWrite={canWrite} editOrder={editOrder} onDoneEdit={() => setEditOrder(null)} /></div>
       )}
-      {visited.has("orders") && <div className={show("orders")}><OrdersTab boot={boot} canWrite={canWrite} onEdit={startEdit} /></div>}
-      {visited.has("warehouse") && <div className={show("warehouse")}><WarehouseTab role={boot.role} /></div>}
-      {visited.has("sync") && <div className={show("sync")}><SyncHistoryTab /></div>}
-      {visited.has("manage") && <div className={show("manage")}><MenuTab /></div>}
+      {visited.has("orders") && <div className={show("orders")}><OrdersTab boot={boot} canWrite={canWrite} onEdit={startEdit} active={tab === "orders"} /></div>}
+      {visited.has("warehouse") && <div className={show("warehouse")}><WarehouseTab role={boot.role} active={tab === "warehouse"} /></div>}
+      {visited.has("sync") && <div className={show("sync")}><SyncHistoryTab active={tab === "sync"} /></div>}
+      {visited.has("manage") && <div className={show("manage")}><MenuTab active={tab === "manage"} /></div>}
     </div>
   );
 }
