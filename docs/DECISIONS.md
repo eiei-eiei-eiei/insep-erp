@@ -433,6 +433,15 @@
 - ใบเสนอราคา: แถบตะกร้าลอยล่างจอ (`fixed bottom lg:hidden`) — เพิ่มของแล้วเห็นยอด + กระโดดไปตะกร้า (cartRef scrollIntoView)
 - **ยังเหลือ**: nav แบบ bottom-tab เต็มรูปแบบ (ตอนนี้แค่ scroll) · touch target บางจุดยังต่ำกว่า 44px
 
+### D39 — แอปผลิต: แก้/ลบ log จากแอป (ปิดช่องกติกาเหล็ก "ทุกจุดบันทึกได้ต้องแก้/ลบได้")
+- **ที่มา**: รีวิว #6 — log ผลิตแก้/ลบจากแอปไม่ได้ (พิมพ์ผิดต้องเข้า Supabase) · หลังบ้านพร้อม (RLS main + stock trigger DELETE + edit_log)
+- **ติดตามหมัก** (`log_ferment_monitor`): แก้ inline (✏️) + ลบ (🗑️) ต่อแถว — `update/deleteFermentMonitorAction` · getFermentMonitor เพิ่ม `id`
+- **กลั่น** (`log_distill_run`): **resume หม้ออัตโนมัติ** (แก้ #5 phantom) — เลือก batch → หม้อล่าสุดที่ยังไม่มี "จบหม้อ" = activeRun ให้เลย (ใช้ run_id เดิม ไม่แตะสูตร P8) · + ลบ reading ต่อแถว · RunRow เพิ่ม id/run_id
+- **วัตถุดิบ/ปรุง/บรรจุ** (`log_material`/`log_dilute`/`log_product`): เพิ่มการ์ด "รายการล่าสุด 30" + ปุ่มลบ
+  (แก้ = ลบแล้วบันทึกใหม่) — `getRecent*Action` + `delete*LogAction` · stock: log_product trigger ปรับเอง · material/dilute คิดตอนอ่าน
+- **ยังไม่ทำ — FermentTab (ลงหมัก `log_ferment`)**: ลบ batch ต้องมี RPC ย้อนเบิกวัตถุดิบ + จัดการแถวลูก (monitor/distill) — เสี่ยง เลื่อนเป็นงานแยก
+- **แก้ inline เต็มรูปแบบ** ของ material/dilute/product: ยังเป็น "ลบ+บันทึกใหม่" (delete พอสำหรับแก้ typo) — edit inline ทำเพิ่มได้ภายหลัง
+
 ## ค้างต้องถามผู้ใช้ (ยังไม่ตัดสิน — MIGRATION_PLAN sec 11)
 - ~~อีเมล login (ข้อ 9)~~ → **ตัดสินแล้ว (D9)**: username-based `<username>@insep.local`
 - ~~ไฟล์ wh3 (50ทวิ)~~ → **ผู้ใช้ยืนยันว่าเป็นเทมเพลตเปล่า** — อัปโหลดด้วย `--include-wh3` เป็น `wht/wh3_template.pdf`

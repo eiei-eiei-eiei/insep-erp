@@ -77,10 +77,42 @@ export async function getFermentMonitor(batch: string) {
   const supabase = await createClient();
   const { data } = await supabase
     .from("log_ferment_monitor")
-    .select("measure_date, measure_time, ph, brix, temp, note")
+    .select("id, measure_date, measure_time, ph, brix, temp, note")
     .eq("batch", batch)
     .order("measure_date")
     .order("measure_time");
+  return data ?? [];
+}
+
+/** รายการล่าสุด (สำหรับแก้/ลบในแท็บ) — log_material / log_dilute / log_product */
+export async function getRecentMaterials() {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("log_material")
+    .select("id, doc_date, trans_type, material_id, amount, doc_ref, note")
+    .order("doc_date", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(30);
+  return data ?? [];
+}
+export async function getRecentDilutes() {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("log_dilute")
+    .select("id, dilute_date, product_name, bottle_size, start_vol, start_abv, final_vol, final_abv, note")
+    .order("dilute_date", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(30);
+  return data ?? [];
+}
+export async function getRecentProducts() {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("log_product")
+    .select("id, doc_date, trans_type, product_id, amount, note")
+    .order("doc_date", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(30);
   return data ?? [];
 }
 

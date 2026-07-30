@@ -8,12 +8,15 @@ import {
   getDistillRunsAction,
   saveDistillReadingAction,
   startDistillRunAction,
+  deleteDistillRunAction,
 } from "../actions";
 import { Card, Field, Msg, NumInput, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import { LineChart } from "./LineChart";
 import { DISTILL_PHASES, type PendingBatch } from "./types";
 
 type RunRow = {
+  id: number;
+  run_id: string;
   pot_no: number;
   phase: string | null;
   minute: number | null;
@@ -55,16 +58,31 @@ export function DistillTab({ pending: batches }: { pending: PendingBatch[] }) {
   const loadReadings = useCallback(async (b: string) => {
     if (!b) {
       setReadings([]);
+      setActiveRun(null);
       return;
     }
     const rows = (await getDistillRunsAction(b)) as RunRow[];
     setReadings(rows);
+    // resume: หม้อล่าสุดที่ยังไม่มีแถว "จบหม้อ" = กำลังกลั่นอยู่ → ตั้ง activeRun อัตโนมัติ
+    // (กันหม้อ phantom เมื่อรีเฟรช/สลับ browser ระหว่างกลั่น — ใช้ข้อมูลที่มีอยู่ ไม่แตะสูตร P8)
+    const maxPot = rows.reduce((m, r) => Math.max(m, Number(r.pot_no) || 0), 0);
+    if (maxPot > 0) {
+      const potRows = rows.filter((r) => r.pot_no === maxPot);
+      const finished = potRows.some((r) => r.phase === "จบหม้อ");
+      setActiveRun(finished ? null : { runId: potRows[0].run_id, potNo: maxPot });
+    } else {
+      setActiveRun(null);
+    }
   }, []);
 
   useEffect(() => {
     loadReadings(batch);
-    setActiveRun(null);
   }, [batch, loadReadings]);
+
+  function delReading(r: RunRow) {
+    if (!confirm(`ลบค่าที่บันทึก (หม้อ ${r.pot_no} · ${r.phase ?? ""})?`)) return;
+    run(() => deleteDistillRunAction(r.id), "ลบค่าเรียบร้อย", () => loadReadings(batch));
+  }
 
   // สรุปปิด batch จากแถว 'จบหม้อ'
   const finishRows = readings
@@ -166,8 +184,8 @@ export function DistillTab({ pending: batches }: { pending: PendingBatch[] }) {
                 + เริ่มหม้อใหม่
               </SaveButton>
               {activeRun && (
-                <span className="ml-3 self-center text-sm text-slate-500">
-                  กำลังกลั่นหม้อที่ {activeRun.potNo}
+                <span className="ml-3 self-center text-sm text-emerald-600">
+                  ● กำลังกลั่นหม้อที่ {activeRun.potNo} — บันทึกค่าต่อได้เลย
                 </span>
               )}
             </div>
@@ -239,17 +257,19 @@ export function DistillTab({ pending: batches }: { pending: PendingBatch[] }) {
                     <th className="px-2 py-1">อุณหภูมิ</th>
                     <th className="px-2 py-1">ดีกรี@20</th>
                     <th className="px-2 py-1">สะสม</th>
+                    <th className="px-2 py-1"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {readings.map((r, i) => (
-                    <tr key={i} className="border-b border-slate-100">
+                  {readings.map((r) => (
+                    <tr key={r.id} className="border-b border-slate-100">
                       <td className="px-2 py-1">{r.pot_no}</td>
                       <td className="px-2 py-1">{r.phase}</td>
                       <td className="px-2 py-1">{r.abv_obs ?? "—"}</td>
                       <td className="px-2 py-1">{r.temp_spirit ?? "—"}</td>
                       <td className="px-2 py-1">{r.abv20 ?? "—"}</td>
                       <td className="px-2 py-1">{r.cum_vol ?? "—"}</td>
+                      <td className="px-2 py-1"><button onClick={() => delReading(r)} className="text-red-500 hover:text-red-700" title="ลบค่านี้">🗑️</button></td>
                     </tr>
                   ))}
                 </tbody>

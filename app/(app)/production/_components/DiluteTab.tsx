@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { diluteCalc } from "@/lib/production/calc";
-import { getRemainingDistillVolAction, saveDiluteAction } from "../actions";
+import { getRemainingDistillVolAction, saveDiluteAction, getRecentDilutesAction, deleteDiluteLogAction } from "../actions";
 import { Card, Field, Msg, NumInput, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import type { Product } from "./types";
+
+type RecentDilute = Awaited<ReturnType<typeof getRecentDilutesAction>>[number];
 
 export function DiluteTab({ products }: { products: Product[] }) {
   const { pending, msg, run } = useSaver();
@@ -21,8 +23,16 @@ export function DiluteTab({ products }: { products: Product[] }) {
   const [c2, setC2] = useState(""); // ดีกรีปลายทาง
   const [v2, setV2] = useState(""); // ปริมาตรปลายทาง
   const [water, setWater] = useState("");
+  const [recent, setRecent] = useState<RecentDilute[]>([]);
 
   const productNames = Array.from(new Set(products.map((p) => p.name)));
+
+  function loadRecent() { getRecentDilutesAction().then((r) => setRecent(r as RecentDilute[])); }
+  useEffect(() => { loadRecent(); }, []);
+  function del(r: RecentDilute) {
+    if (!confirm(`ลบรายการปรุง ${r.product_name} (${String(r.dilute_date).slice(0, 10)})?`)) return;
+    run(() => deleteDiluteLogAction(r.id as number), "ลบรายการเรียบร้อย", loadRecent);
+  }
 
   useEffect(() => {
     if (!productName) {
@@ -75,11 +85,13 @@ export function DiluteTab({ products }: { products: Product[] }) {
       () => {
         setV1(""); setC1(""); setC2(""); setV2(""); setWater(""); setNote("");
         if (productName) getRemainingDistillVolAction(productName).then(setRemaining);
+        loadRecent();
       },
     );
   }
 
   return (
+    <div className="space-y-5">
     <Card title="ปรุง / ปรับดีกรี (C1·V1 = C2·V2)">
       <Msg msg={msg} />
       <div className="mb-4 flex flex-wrap items-center gap-4">
@@ -136,5 +148,29 @@ export function DiluteTab({ products }: { products: Product[] }) {
         </SaveButton>
       </div>
     </Card>
+
+    <Card title="รายการล่าสุด (แก้ = ลบแล้วบันทึกใหม่)">
+      {recent.length === 0 ? <p className="text-sm text-slate-400">— ยังไม่มีรายการ —</p> : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="border-b border-slate-200 text-left text-slate-500"><tr><th className="px-2 py-1">วันที่</th><th className="px-2 py-1">ชื่อสุรา</th><th className="px-2 py-1 text-right">V1→V2 (ล.)</th><th className="px-2 py-1 text-right">ดีกรี</th><th className="px-2 py-1">หมายเหตุ</th><th className="px-2 py-1"></th></tr></thead>
+            <tbody>
+              {recent.map((r) => (
+                <tr key={r.id as number} className="border-b border-slate-100">
+                  <td className="whitespace-nowrap px-2 py-1">{String(r.dilute_date).slice(0, 10)}</td>
+                  <td className="px-2 py-1">{r.product_name as string}</td>
+                  <td className="whitespace-nowrap px-2 py-1 text-right">{(r.start_vol as number) ?? "—"} → {(r.final_vol as number) ?? "—"}</td>
+                  <td className="whitespace-nowrap px-2 py-1 text-right">{(r.start_abv as number) ?? "—"}° → {(r.final_abv as number) ?? "—"}°</td>
+                  <td className="px-2 py-1 text-slate-500">{(r.note as string) ?? ""}</td>
+                  <td className="px-2 py-1"><button onClick={() => del(r)} disabled={pending} className="text-red-500 hover:text-red-700" title="ลบ">🗑️</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-1 text-xs text-slate-400">แสดง 30 รายการล่าสุด · ลบแล้วปริมาณคงเหลือรอปรุงปรับให้อัตโนมัติ</p>
+        </div>
+      )}
+    </Card>
+    </div>
   );
 }

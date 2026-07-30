@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { mapDbError } from "@/lib/shared/dbError";
 import {
   getNextBatchNumber,
   getRemainingDistillVol,
@@ -10,6 +11,9 @@ import {
   getHistoryBatches,
   getFermentMulti,
   getDistillMulti,
+  getRecentMaterials,
+  getRecentDilutes,
+  getRecentProducts,
 } from "./data";
 
 export type SaveResult = { ok: boolean; error?: string; data?: unknown };
@@ -45,6 +49,65 @@ function fail(error: string): SaveResult {
 
 async function db() {
   return createClient();
+}
+
+// ── แก้/ลบ ค่าติดตามหมัก (log_ferment_monitor) — RLS main + stock ไม่กระทบ + edit_log auto ──
+export async function updateFermentMonitorAction(id: number, patch: {
+  measureDate: string; measureTime: string | null; ph: number | null; brix: number | null; temp: number | null; note: string;
+}): Promise<SaveResult> {
+  const supabase = await db();
+  const { error } = await supabase.from("log_ferment_monitor").update({
+    measure_date: patch.measureDate,
+    measure_time: patch.measureTime || null,
+    ph: patch.ph, brix: patch.brix, temp: patch.temp,
+    note: patch.note || null,
+  }).eq("id", id);
+  if (error) return fail(mapDbError(error));
+  revalidatePath("/production");
+  return { ok: true };
+}
+export async function deleteFermentMonitorAction(id: number): Promise<SaveResult> {
+  const supabase = await db();
+  const { error } = await supabase.from("log_ferment_monitor").delete().eq("id", id);
+  if (error) return fail(mapDbError(error));
+  revalidatePath("/production");
+  return { ok: true };
+}
+
+// ── ลบ reading ระหว่างกลั่น (log_distill_run) — แก้ค่าที่บันทึกผิดก่อนปิด batch ──
+export async function deleteDistillRunAction(id: number): Promise<SaveResult> {
+  const supabase = await db();
+  const { error } = await supabase.from("log_distill_run").delete().eq("id", id);
+  if (error) return fail(mapDbError(error));
+  revalidatePath("/production");
+  return { ok: true };
+}
+
+// ── รายการล่าสุด + ลบ: วัตถุดิบ/ปรุง/บรรจุ (stock ปรับเอง: log_product trigger · material/dilute คิดตอนอ่าน) ──
+export async function getRecentMaterialsAction() { return getRecentMaterials(); }
+export async function getRecentDilutesAction() { return getRecentDilutes(); }
+export async function getRecentProductsAction() { return getRecentProducts(); }
+
+export async function deleteMaterialLogAction(id: number): Promise<SaveResult> {
+  const supabase = await db();
+  const { error } = await supabase.from("log_material").delete().eq("id", id);
+  if (error) return fail(mapDbError(error));
+  revalidatePath("/production");
+  return { ok: true };
+}
+export async function deleteDiluteLogAction(id: number): Promise<SaveResult> {
+  const supabase = await db();
+  const { error } = await supabase.from("log_dilute").delete().eq("id", id);
+  if (error) return fail(mapDbError(error));
+  revalidatePath("/production");
+  return { ok: true };
+}
+export async function deleteProductLogAction(id: number): Promise<SaveResult> {
+  const supabase = await db();
+  const { error } = await supabase.from("log_product").delete().eq("id", id);
+  if (error) return fail(mapDbError(error));
+  revalidatePath("/production");
+  return { ok: true };
 }
 
 // ── บันทึกวัตถุดิบ (รับ/จ่าย/ฯลฯ) — Log_Material ────────────────────────────────
