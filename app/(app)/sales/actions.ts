@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { sendLine } from "@/lib/line";
+import { mapDbError } from "@/lib/shared/dbError";
 import { quotationTotals, type CartItem } from "@/lib/sales/calc";
 import {
   processOrder,
@@ -67,7 +68,7 @@ export async function saveSaleMenuAction(input: {
   const { error } = input.id
     ? await supabase.from("sale_menu").update(row).eq("id", input.id)
     : await supabase.from("sale_menu").insert(row);
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   revalidatePath("/sales");
   return { ok: true };
 }
@@ -75,7 +76,7 @@ export async function saveSaleMenuAction(input: {
 export async function deleteSaleMenuAction(id: number): Promise<SaveResult> {
   const supabase = await db();
   const { error } = await supabase.from("sale_menu").delete().eq("id", id);
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   revalidatePath("/sales");
   return { ok: true };
 }
@@ -121,7 +122,7 @@ export async function saveQuotationAction(input: QuotationPayload): Promise<Save
   const supabase = await db();
   const { p, items, totals } = buildQuotationDbPayload(input);
   const { data, error } = await supabase.rpc("fn_save_quotation", { p, p_items: items });
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   const res = data as { ok: boolean; qu_no: string; order_no: string; qu_expire: string };
   await sendLine(`🛒 ออเดอร์ใหม่\n[${res.qu_no}] ${input.customer.name}\n${items.length} รายการ | ยอด ฿${totals.grandTotal.toLocaleString("th-TH", { minimumFractionDigits: 0 })}`);
   revalidatePath("/sales");
@@ -132,7 +133,7 @@ export async function updateQuotationAction(quNo: string, input: QuotationPayloa
   const supabase = await db();
   const { p, items, totals } = buildQuotationDbPayload(input);
   const { data, error } = await supabase.rpc("fn_update_quotation", { p_qu_no: quNo, p, p_items: items });
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   const res = data as { ok: boolean; error?: string; qu_no?: string };
   if (!res.ok) return fail(res.error ?? "แก้ไขไม่สำเร็จ");
   await sendLine(`✏️ แก้ไขออเดอร์\n[${quNo}] ${input.customer.name}\n${items.length} รายการ | ยอด ฿${totals.grandTotal.toLocaleString("th-TH", { minimumFractionDigits: 0 })}`);
@@ -193,7 +194,7 @@ export async function processOrderActionAction(quNo: string, action: OrderAction
     p_update: result.update,
     p_revenue: result.revenue,
   });
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   const res = data as { ok: boolean; duplicate: boolean; tx_id?: string };
 
   // LINE หลัง commit (silent fail) — ไม่ส่งซ้ำถ้าเป็น duplicate
@@ -208,7 +209,7 @@ export async function processOrderActionAction(quNo: string, action: OrderAction
 export async function confirmFulfillmentAction(quNo: string, userName: string): Promise<SaveResult> {
   const supabase = await db();
   const { data, error } = await supabase.rpc("fn_confirm_fulfillment", { p_qu_no: quNo, p_user: userName });
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   const res = data as {
     ok: boolean;
     error?: string;
@@ -241,7 +242,7 @@ export async function manualStockMoveAction(
 ): Promise<SaveResult> {
   const supabase = await db();
   const { data, error } = await supabase.rpc("fn_manual_stock_move", { p: input, p_user: userName });
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   const res = data as { ok: boolean; error?: string; newStock?: number };
   if (!res.ok) return fail(res.error ?? "ปรับสต็อกไม่สำเร็จ");
   revalidatePath("/sales");
@@ -252,7 +253,7 @@ export async function manualStockMoveAction(
 export async function cancelOrderAction(quNo: string): Promise<SaveResult> {
   const supabase = await db();
   const { data, error } = await supabase.rpc("fn_cancel_order", { p_qu_no: quNo });
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   const res = data as { ok: boolean; error?: string; reversed_stock?: number };
   if (!res.ok) return fail(res.error ?? "ยกเลิกไม่สำเร็จ");
   revalidatePath("/sales");
@@ -273,7 +274,7 @@ export async function saveCustomerAction(input: {
 }): Promise<SaveResult> {
   const supabase = await db();
   const { data: seq, error: seqErr } = await supabase.rpc("next_serial", { p_key: "CONTACT" });
-  if (seqErr) return fail(seqErr.message);
+  if (seqErr) return fail(mapDbError(seqErr));
   const contactId = "C-" + String(seq).padStart(4, "0");
   const { error } = await supabase.from("contacts").insert({
     contact_id: contactId,
@@ -288,7 +289,7 @@ export async function saveCustomerAction(input: {
     contact_type: "ลูกค้า",
     roles: ["ลูกค้า"],
   });
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   revalidatePath("/sales");
   return { ok: true, data: { id: contactId } };
 }

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { getBalancesAction, getStatementAction, saveTransferAction } from "../actions";
 import type { Bootstrap } from "./types";
-import { Card, Field, Msg, NumInput, SaveButton, Select, TextInput, fmt, todayISO, useSaver } from "./ui";
+import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, fmt, todayISO, useSaver } from "./ui";
 
 type Balances = Awaited<ReturnType<typeof getBalancesAction>>;
 type Statement = Awaited<ReturnType<typeof getStatementAction>>;
@@ -101,7 +101,7 @@ export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstra
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <Field label="จากบัญชี"><Select value={from} onChange={(e) => setFrom(e.target.value)}><option value="">— เลือก —</option>{accountOptions.map((a) => <option key={a.account_name} value={a.account_name}>{a.account_name}</option>)}</Select></Field>
           <Field label="ไปบัญชี"><Select value={to} onChange={(e) => setTo(e.target.value)}><option value="">— เลือก —</option>{accountOptions.map((a) => <option key={a.account_name} value={a.account_name}>{a.account_name}</option>)}</Select></Field>
-          <Field label="จำนวนเงิน"><NumInput value={amount || ""} onChange={(e) => setAmount(Number(e.target.value))} /></Field>
+          <Field label="จำนวนเงิน"><NumBox value={amount} blankZero onChange={(v) => setAmount(v === "" ? 0 : v)} /></Field>
           <Field label="วันที่"><TextInput type="date" value={tdate} onChange={(e) => setTdate(e.target.value)} /></Field>
           <div className="col-span-2 md:col-span-4"><Field label="หมายเหตุ"><TextInput value={note} onChange={(e) => setNote(e.target.value)} /></Field></div>
         </div>

@@ -7,7 +7,7 @@
 import { PDFDocument, TextAlignment, type PDFPage, type PDFForm } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 
-export const WHT_TEMPLATE_KEY = "wht/wh3_template.pdf";
+export { WHT_TEMPLATE_KEY } from "./keys";
 
 export type Wht50Doc = {
   docNo: string;

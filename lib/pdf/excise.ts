@@ -18,7 +18,7 @@ export const EXCISE_TEMPLATE_KEY: Record<ExciseKind, string> = {
   "0704": "excise/pso_07-04_1.pdf",
 };
 // THSARABUN.TTF = เลขอารบิก (123) · ถ้าอยากได้เลขไทย (๑๒๓) เปลี่ยนเป็น fonts/THSARABUNIT9.TTF
-export const FONT_KEY = "fonts/THSARABUN.TTF";
+export { FONT_KEY } from "./keys";
 
 // ── helpers (verbatim) ────────────────────────────────────────────────────────
 function rfFmt(v: any): string {

@@ -28,6 +28,7 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
   const [editId, setEditId] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const { pending, msg, run } = useSaver();
+  const readOnly = boot.role !== "main"; // viewer/sale/warehouse: ดูได้ แต่ซ่อนปุ่มแก้/ยกเลิก (กัน RLS error)
 
   // ดึงข้อมูลใหม่เมื่อฟิลเตอร์เปลี่ยน/กลับเข้าแท็บ — โชว์ผลเดิมค้างระหว่างโหลด (loading เฉพาะครั้งแรก)
   const firstLoad = useRef(true);
@@ -71,6 +72,7 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
       </Card>
 
       <Card title={`ผลลัพธ์ (${shown.length})`}>
+        {rows.length >= 500 && <p className="mb-2 text-xs text-amber-600">⚠️ แสดง 500 รายการแรก — ถ้าไม่เจอที่ต้องการ ให้แคบด้วยเดือน/คู่ค้า/ประเภท</p>}
         {loading ? <p className="text-slate-400">กำลังโหลด…</p> : shown.length === 0 ? <p className="text-sm text-slate-400">— ไม่มีรายการ —</p> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -83,8 +85,8 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
                     <td className="p-1">{r.status}{r.ap_ar_status ? ` (${r.ap_ar_status})` : ""}</td>
                     <td className="p-1 whitespace-nowrap">
                       <button onClick={() => openDetail(r.tx_id)} className="text-slate-700 hover:underline">ดู</button>
-                      {canEdit(r as BillRow) && <button onClick={() => setEditId(r.tx_id)} disabled={pending} className="ml-2 text-blue-600 hover:underline">แก้ไข</button>}
-                      {r.status !== "ยกเลิก" && <button onClick={() => doVoid(r.tx_id)} disabled={pending} className="ml-2 text-red-500 hover:underline">ยกเลิก</button>}
+                      {!readOnly && canEdit(r as BillRow) && <button onClick={() => setEditId(r.tx_id)} disabled={pending} className="ml-2 text-blue-600 hover:underline">แก้ไข</button>}
+                      {!readOnly && r.status !== "ยกเลิก" && <button onClick={() => doVoid(r.tx_id)} disabled={pending} className="ml-2 text-red-500 hover:underline">ยกเลิก</button>}
                     </td>
                   </tr>
                 ))}

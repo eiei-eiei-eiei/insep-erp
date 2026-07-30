@@ -49,8 +49,12 @@ type Draft = {
   manualAmt: boolean; ovAfterDisc: number; ovVat: number; ovWht: number;
 };
 
-export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string }) {
+export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entityId: string; ambiguous: boolean }) {
   const { pending, msg, run, setMsg } = useSaver();
+  // เมื่อ header เลือก "ทุกกิจการ" → กิจการปลายทางกำกวม ให้ผู้ใช้เลือกชัดเจนในฟอร์ม (กันบันทึกเข้ากิจการผิดเงียบ ๆ)
+  const [pickedEntity, setPickedEntity] = useState(entityId);
+  const effEntity = ambiguous ? (pickedEntity || entityId) : entityId;
+  const effEntityName = boot.entities.find((e) => e.entity_id === effEntity)?.name ?? "";
   const [type, setType] = useState<"รายรับ" | "รายจ่าย">("รายจ่าย");
   const [category, setCategory] = useState("");
   const [accountName, setAccountName] = useState("");
@@ -143,7 +147,7 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
   }
 
   // ── ประวัติค่าไม่ซ้ำของรายการสินค้า (โหลดตอนเข้า + รีเฟรชหลังบันทึกบิล) ──
-  const refreshItemHist = useCallback(() => { getItemHistoryAction(entityId).then(setItemHist); }, [entityId]);
+  const refreshItemHist = useCallback(() => { getItemHistoryAction(effEntity).then(setItemHist); }, [effEntity]);
   useEffect(() => { refreshItemHist(); }, [refreshItemHist]);
 
   // ── บิลล่าสุดของคู่ค้า (เมื่อชื่อตรงกับคู่ค้าในระบบ) ──
@@ -153,10 +157,10 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
     if (!name || !contacts.some((c) => norm(c.name) === norm(name))) { setRecentBills([]); setShowRecent(false); return; }
     let alive = true;
     const h = setTimeout(() => {
-      getRecentBillsByContactAction(name, 5, entityId).then((r) => { if (alive) { setRecentBills(r); setShowRecent(r.length > 0); } });
+      getRecentBillsByContactAction(name, 5, effEntity).then((r) => { if (alive) { setRecentBills(r); setShowRecent(r.length > 0); } });
     }, 300);
     return () => { alive = false; clearTimeout(h); };
-  }, [contactName, entityId, contacts]);
+  }, [contactName, effEntity, contacts]);
 
   function applyRecentBill(b: RecentBill) {
     setDescription(b.description);
@@ -174,7 +178,7 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
   // บัญชี: แสดงเฉพาะที่ผูกกับกิจการนี้ (entity_ids ว่าง = ใช้ร่วมทุกกิจการ)
   const accountOptions = boot.accounts.filter((a) => {
     const ids = a.entity_ids ?? [];
-    return ids.length === 0 || ids.includes(entityId);
+    return ids.length === 0 || ids.includes(effEntity);
   });
   // คู่ค้า: รายรับ→ลูกค้า, รายจ่าย→ผู้ขาย · เว้นว่าง/"ทั้งสอง" = โผล่ทั้งคู่
   const contactOptions = contacts.filter((c) => {
@@ -237,7 +241,7 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
   }
 
   function validate(): string | null {
-    if (!entityId) return "เลือกกิจการก่อน";
+    if (!effEntity) return "เลือกกิจการก่อน";
     if (!category) return "เลือกหมวดหมู่";
     if (!isApAr && !isInst && !accountName && type !== "รายรับ") return "เลือกบัญชี (หรือติ๊กตั้งค้าง)";
     if (items.every((it) => !it.itemName && !it.exVat)) return "เพิ่มรายการอย่างน้อย 1 รายการ";
@@ -252,7 +256,7 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
     if (isInst) {
       if (Math.abs(instSumPct - 100) > 0.01) { setMsg({ ok: false, text: `ผลรวมงวด = ${instSumPct}% (ต้อง 100%)` }); return; }
       const rows = instRows.map((r) => ({ ...r, description: `${description}${description ? " " : ""}(งวด ${r.installmentNo}/${r.installmentTotal})` }));
-      run(() => saveInstallmentsAction({ transaction_date: txDate, type, category, contact_name: contactName, contact_id: resolvedContactId, entity_id: entityId }, rows, itemInputs), `บันทึก ${rows.length} งวดเรียบร้อย (เป็นหนี้ค้างทั้งหมด)`, () => { resetItems(); refreshItemHist(); });
+      run(() => saveInstallmentsAction({ transaction_date: txDate, type, category, contact_name: contactName, contact_id: resolvedContactId, entity_id: effEntity }, rows, itemInputs), `บันทึก ${rows.length} งวดเรียบร้อย (เป็นหนี้ค้างทั้งหมด)`, () => { resetItems(); refreshItemHist(); });
       return;
     }
     run(
@@ -260,7 +264,7 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
         transaction_date: txDate, type, account_name: isApAr ? "" : accountName, category, contact_name: contactName, contact_id: resolvedContactId, description,
         base_amount: calc.baseAmount, discount, amount_after_discount: effAfterDisc, vat_amount: effVat,
         wht_rate: calc.whtRate, wht_amount: effWht, net_amount: effNet,
-        tax_invoice_no: taxInvoiceNo, tax_invoice_date: taxInvoiceDate, entity_id: entityId,
+        tax_invoice_no: taxInvoiceNo, tax_invoice_date: taxInvoiceDate, entity_id: effEntity,
         ap_ar_status: isApAr ? (type === "รายรับ" ? "AR" : "AP") : "", due_date: isApAr ? dueDate : "", forward_material: isCost,
       }, itemInputs),
       "บันทึกข้อมูลเรียบร้อยแล้ว",
@@ -304,8 +308,18 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
   const itemJobOptions = useMemo(() => [...new Set([...itemHist.itemJobs, ...items.map((it) => it.itemJob).filter(Boolean)])], [itemHist.itemJobs, items]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); doSave(); } }}>
       <Card title="ข้อมูลบิล">
+        {ambiguous ? (
+          <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-2">
+            <span className="mb-1 block text-xs font-medium text-amber-700">⚠️ ด้านบนเลือก “ทุกกิจการ” — เลือกกิจการที่จะบันทึกเข้าให้ชัดเจนก่อน</span>
+            <Select value={effEntity} onChange={(e) => setPickedEntity(e.target.value)}>
+              {boot.entities.map((en) => (<option key={en.entity_id} value={en.entity_id}>{en.entity_id} — {en.name}</option>))}
+            </Select>
+          </div>
+        ) : (
+          <div className="mb-3 text-xs text-slate-500">📍 บันทึกเข้ากิจการ: <b className="text-slate-700">{effEntity}{effEntityName ? ` — ${effEntityName}` : ""}</b></div>
+        )}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
           <Field label="ประเภท">
             <Select value={type} onChange={(e) => { setType(e.target.value as "รายรับ" | "รายจ่าย"); setCategory(""); }}>
@@ -492,7 +506,7 @@ export function EntryTab({ boot, entityId }: { boot: Bootstrap; entityId: string
               <div className={`text-xs ${Math.abs(instSumPct - 100) < 0.01 ? "text-slate-400" : "text-red-500"}`}>รวม {instSumPct}% (ต้อง 100%)</div>
             </div>
           )}
-          <div className="mt-4"><Msg msg={msg} /><SaveButton pending={pending} onClick={doSave}>บันทึก</SaveButton></div>
+          <div className="mt-4"><Msg msg={msg} /><SaveButton pending={pending} onClick={doSave}>บันทึก</SaveButton><span className="ml-2 text-xs text-slate-400">หรือกด Ctrl+Enter</span></div>
         </Card>
 
         <Card title="เครื่องคิดถอด WHT (จากยอดสุทธิ)">

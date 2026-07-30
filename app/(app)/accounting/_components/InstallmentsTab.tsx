@@ -1,37 +1,53 @@
 "use client";
 
-import { useState } from "react";
-import { getInstallmentGroupAction, voidTransactionAction } from "../actions";
-import { Card, Field, Msg, TextInput, fmt, useSaver } from "./ui";
+import { useEffect, useState } from "react";
+import { getInstallmentGroupAction, listInstallmentGroupsAction, voidTransactionAction } from "../actions";
+import { Card, Field, Msg, Select, fmt, useSaver } from "./ui";
 
 type Group = Awaited<ReturnType<typeof getInstallmentGroupAction>>;
+type GroupList = Awaited<ReturnType<typeof listInstallmentGroupsAction>>;
 
 export function InstallmentsTab() {
   const [poId, setPoId] = useState("");
+  const [list, setList] = useState<GroupList>([]);
   const [group, setGroup] = useState<Group>(null);
   const [loading, setLoading] = useState(false);
   const { pending, msg, run } = useSaver();
 
-  async function load() {
-    if (!poId) return;
+  function refreshList() { listInstallmentGroupsAction().then(setList); }
+  useEffect(() => { refreshList(); }, []);
+
+  async function load(id: string) {
+    if (!id) { setGroup(null); return; }
     setLoading(true);
-    setGroup(await getInstallmentGroupAction(poId.trim()));
+    setGroup(await getInstallmentGroupAction(id.trim()));
     setLoading(false);
   }
   function doVoid() {
     if (!group) return;
     if (!confirm("ยกเลิกทั้งกลุ่มงวดนี้?")) return;
-    run(() => voidTransactionAction(group.poGroupId), "ยกเลิกกลุ่มงวดเรียบร้อย", () => setGroup(null));
+    run(() => voidTransactionAction(group.poGroupId), "ยกเลิกกลุ่มงวดเรียบร้อย", () => { setGroup(null); setPoId(""); refreshList(); });
   }
 
   return (
     <div className="space-y-4">
       <Card title="ดูกลุ่มแบ่งจ่ายงวด">
         <div className="flex flex-wrap items-end gap-3">
-          <Field label="รหัสกลุ่มงวด (PO Group = tx_id งวดแรก)"><TextInput value={poId} onChange={(e) => setPoId(e.target.value)} placeholder="TR-..." onKeyDown={(e) => e.key === "Enter" && load()} /></Field>
-          <button onClick={load} className="mb-0.5 rounded-lg bg-slate-800 px-4 py-2 text-sm text-white">ดู</button>
+          <div className="min-w-[280px] flex-1">
+            <Field label="เลือกกลุ่มงวด">
+              <Select value={poId} onChange={(e) => { setPoId(e.target.value); load(e.target.value); }}>
+                <option value="">— เลือกกลุ่มงวด ({list.length}) —</option>
+                {list.map((g) => (
+                  <option key={g.poGroupId} value={g.poGroupId}>
+                    {g.date} · {g.contactName || "ไม่ระบุ"} · {g.count} งวด · {fmt(g.total)} {g.description ? `· ${g.description}` : ""}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+          <button onClick={refreshList} className="mb-0.5 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50">🔄</button>
         </div>
-        <p className="mt-1 text-xs text-slate-400">สร้างกลุ่มงวดใหม่ได้ที่แท็บ “บันทึก” → ติ๊ก “แบ่งจ่ายหลายงวด” · ชำระแต่ละงวดที่แท็บ “ลูกหนี้-เจ้าหนี้”</p>
+        <p className="mt-1 text-xs text-slate-400">สร้างกลุ่มงวดใหม่ได้ที่แท็บ “บันทึก” → ติ๊ก “แบ่งจ่ายหลายงวด” · ชำระแต่ละงวดที่แท็บ “ลูกหนี้-เจ้าหนี้” · กด 🔄 ถ้าเพิ่งสร้างใหม่</p>
         <Msg msg={msg} />
       </Card>
 

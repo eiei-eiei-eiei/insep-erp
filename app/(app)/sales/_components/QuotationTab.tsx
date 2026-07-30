@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { SalesBoot, CustomerRow, MenuRow, OrderRow, OrderItem } from "./types";
-import { Card, Combobox, Msg, NumInput, Select, TextInput, useSaver, fmt } from "./ui";
+import { Card, Combobox, Msg, NumBox, NumInput, Select, TextInput, useSaver, fmt } from "./ui";
 import { quotationTotals, inclFromExVat } from "@/lib/sales/calc";
 import {
   saveQuotationAction,
@@ -275,7 +275,7 @@ export function QuotationTab({
           </div>
           <div className="flex items-center justify-between">
             <span className="text-slate-600">ส่วนลดพิเศษ (บาท, รวม VAT)</span>
-            <NumInput value={discount || ""} onChange={(e) => setDiscount(Number(e.target.value) || 0)} className="w-28 text-right" />
+            <NumBox value={discount} blankZero onChange={(v) => setDiscount(v === "" ? 0 : v)} className="w-28 text-right" />
           </div>
 
           <div className="space-y-1 border-t pt-2 text-slate-600">
@@ -341,13 +341,14 @@ function CustomItemModal({ onClose, onAdd }: { onClose: () => void; onAdd: (name
   const [name, setName] = useState("");
   const [price, setPrice] = useState<number | "">("");
   const [vatType, setVatType] = useState<"incl" | "excl">("incl");
+  const [err, setErr] = useState("");
 
   // แปลงเป็นราคารวม VAT ก่อนใส่ตะกร้า (ระบบทำงานแบบ inclusive)
   const priceIncl = price === "" ? 0 : vatType === "excl" ? inclFromExVat(Number(price)) : Number(price);
 
   function add() {
     const p = Number(price);
-    if (!name.trim() || isNaN(p) || p < 0) return alert("กรอกรายละเอียดสินค้า + ราคาให้ถูกต้อง");
+    if (!name.trim() || isNaN(p) || p <= 0) { setErr("กรอกรายละเอียดสินค้า + ราคาให้ถูกต้อง (มากกว่า 0)"); return; }
     onAdd(name.trim(), priceIncl);
   }
 
@@ -368,7 +369,7 @@ function CustomItemModal({ onClose, onAdd }: { onClose: () => void; onAdd: (name
           <div>
             <span className="mb-1 block font-bold text-slate-700">ราคาต่อหน่วย (บาท)</span>
             <div className="flex gap-2">
-              <input type="number" step="0.01" min={0} value={price} onChange={(e) => setPrice(e.target.value === "" ? "" : Number(e.target.value))} className="flex-1 rounded-lg border border-slate-300 p-2 outline-none focus:border-amber-500" />
+              <NumBox value={price} blankZero onChange={(v) => setPrice(v)} className="flex-1" />
               <select value={vatType} onChange={(e) => setVatType(e.target.value as "incl" | "excl")} className="rounded-lg border border-slate-300 px-2 outline-none focus:border-amber-500">
                 <option value="incl">รวม VAT แล้ว</option>
                 <option value="excl">ก่อน VAT</option>
@@ -377,6 +378,7 @@ function CustomItemModal({ onClose, onAdd }: { onClose: () => void; onAdd: (name
             {price !== "" && vatType === "excl" && <div className="mt-1 text-xs text-slate-500">= รวม VAT ฿{fmt(priceIncl)} (จะใส่ราคานี้ลงตะกร้า)</div>}
           </div>
           <div className="text-xs text-slate-400">สินค้านอกระบบไม่ตัดสต็อก (ไม่มีใน sale_menu) — ใช้กับงานสั่งทำ/บริการ</div>
+          {err && <div className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{err}</div>}
           <button onClick={add} className="w-full rounded-lg bg-blue-600 py-2 font-bold text-white hover:bg-blue-700">
             เพิ่มลงตะกร้า
           </button>
@@ -404,12 +406,13 @@ function AddCustomerModal({ onClose, onAdded }: { onClose: () => void; onAdded: 
   const [phone, setPhone] = useState("");
   const [creditTerm, setCreditTerm] = useState(0);
   const [isExport, setIsExport] = useState(false);
-  const { pending, msg, run } = useSaver();
+  const { pending, msg, run, setMsg } = useSaver();
 
   function save() {
     const branch = branchMode === "hq" ? "สำนักงานใหญ่" : branchNumber.padStart(5, "0");
-    if (!/^\d{13}$/.test(taxId)) return alert("เลขผู้เสียภาษีต้องเป็นตัวเลข 13 หลัก");
-    if (branchMode === "branch" && !/^\d{5}$/.test(branch)) return alert("เลขสาขาต้องเป็นตัวเลข 5 หลัก");
+    if (!name.trim()) { setMsg({ ok: false, text: "กรอกชื่อลูกค้า" }); return; }
+    if (!/^\d{13}$/.test(taxId)) { setMsg({ ok: false, text: "เลขผู้เสียภาษีต้องเป็นตัวเลข 13 หลัก" }); return; }
+    if (branchMode === "branch" && !/^\d{5}$/.test(branch)) { setMsg({ ok: false, text: "เลขสาขาต้องเป็นตัวเลข 5 หลัก" }); return; }
     run(
       () => saveCustomerAction({ name, address, taxId, branch, phone, creditTerm, isExport }),
       "เพิ่มลูกค้าแล้ว",

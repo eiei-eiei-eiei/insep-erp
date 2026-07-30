@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { taxReportHtml, whtReportHtml } from "@/lib/accounting/reportHtml";
 import { isCorporate } from "@/lib/accounting/calc";
 import { buildWht50PrintData } from "@/lib/accounting/wht";
-import { buildWht50Pdf, WHT_TEMPLATE_KEY, type Wht50Doc } from "@/lib/pdf/wht50";
-import { FONT_KEY } from "@/lib/pdf/excise";
+import type { Wht50Doc } from "@/lib/pdf/wht50";
+import { WHT_TEMPLATE_KEY, FONT_KEY } from "@/lib/pdf/keys"; // ค่าคงที่เท่านั้น — ไม่ดึง pdf-lib เข้า bundle
 import {
   getTaxReportBundleAction,
   getWhtBundleAction,
@@ -109,7 +109,11 @@ export function TaxDocsTab({ period, entityId, active }: { period: string; entit
 
   async function buildAndOpenWht(doc: Wht50Doc, target?: Window | null) {
     const win = target ?? window.open("", "_blank");
-    const [tpl, font] = await Promise.all([fetchAsset(WHT_TEMPLATE_KEY), fetchAsset(FONT_KEY)]);
+    const [{ buildWht50Pdf }, tpl, font] = await Promise.all([
+      import("@/lib/pdf/wht50"), // โหลด pdf-lib เฉพาะตอนกดพิมพ์ (code-split ออกจาก bundle หน้าบัญชี)
+      fetchAsset(WHT_TEMPLATE_KEY),
+      fetchAsset(FONT_KEY),
+    ]);
     const bytes = await buildWht50Pdf([doc], tpl, font);
     const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" }));
     if (win) win.location.href = url; else window.open(url, "_blank");

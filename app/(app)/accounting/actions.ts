@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { nextWhtDocNo } from "@/lib/accounting/wht";
 import { previousVat, type InstallmentRow, type TaxReport, type TaxSummaryRow } from "@/lib/accounting/calc";
+import { mapDbError } from "@/lib/shared/dbError";
 import {
   getDashboard,
   getApAr,
@@ -13,6 +14,7 @@ import {
   getBillDetail,
   searchPriceHistory,
   getInstallmentGroup,
+  listInstallmentGroups,
   getWhtBundle,
   getTaxReportBundle,
   getRecentBillsByContact,
@@ -57,6 +59,9 @@ export async function searchPriceHistoryAction(params: Parameters<typeof searchP
 }
 export async function getInstallmentGroupAction(poGroupId: string) {
   return getInstallmentGroup(poGroupId);
+}
+export async function listInstallmentGroupsAction() {
+  return listInstallmentGroups();
 }
 export async function getWhtBundleAction(period: string, entityId: string) {
   return getWhtBundle(period, entityId);
@@ -124,7 +129,7 @@ export type SaveTxInput = {
 export async function saveTransactionAction(input: SaveTxInput, items: TxItemInput[]): Promise<SaveResult> {
   const supabase = await db();
   const { data, error } = await supabase.rpc("fn_save_transaction", { p: input, p_items: items });
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   revalidatePath("/accounting");
   const res = data as { ok: boolean; tx_id: string; warning?: string | null };
   return { ok: true, data: res };
@@ -134,7 +139,7 @@ export async function saveTransactionAction(input: SaveTxInput, items: TxItemInp
 export async function updateTransactionAction(txId: string, input: SaveTxInput, items: TxItemInput[]): Promise<SaveResult> {
   const supabase = await db();
   const { data, error } = await supabase.rpc("fn_edit_transaction", { p_tx_id: txId, p: input, p_items: items });
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   const res = data as { ok: boolean; error?: string };
   if (!res.ok) return fail(res.error ?? "แก้ไขไม่สำเร็จ");
   revalidatePath("/accounting");
@@ -167,7 +172,7 @@ export async function saveInstallmentsAction(
     description: r.description,
   }));
   const { data, error } = await supabase.rpc("fn_save_installments", { p: header, p_rows: pRows, p_items: items });
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   revalidatePath("/accounting");
   return { ok: true, data };
 }
@@ -190,7 +195,7 @@ export async function saveTransferAction(input: {
     p_note: input.note ?? "",
     p_entity: input.entityId ?? null,
   });
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   const res = data as { ok: boolean; error?: string };
   if (!res.ok) return fail(res.error ?? "โอนไม่สำเร็จ");
   revalidatePath("/accounting");
@@ -213,7 +218,7 @@ export async function settleApArAction(input: {
     p_tax_invoice_no: input.taxInvoiceNo ?? null,
     p_tax_invoice_date: input.taxInvoiceDate ?? null,
   });
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   const res = data as { ok: boolean; error?: string };
   if (!res.ok) return fail(res.error ?? "settle ไม่สำเร็จ");
   revalidatePath("/accounting");
@@ -224,7 +229,7 @@ export async function settleApArAction(input: {
 export async function voidTransactionAction(txId: string): Promise<SaveResult> {
   const supabase = await db();
   const { data, error } = await supabase.rpc("fn_void_transaction", { p_tx_id: txId });
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   const res = data as { ok: boolean; error?: string };
   if (!res.ok) return fail(res.error ?? "ยกเลิกไม่สำเร็จ");
   revalidatePath("/accounting");
@@ -268,7 +273,7 @@ export async function issueWhtAction(input: {
     p_payment_date: input.paymentDate ?? null,
     p_entity_id: input.entityId,
   });
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   const res = data as { ok: boolean; error?: string; doc_no?: string };
   if (!res.ok) return fail(res.error ?? "ออกเอกสารไม่สำเร็จ");
   revalidatePath("/accounting");
@@ -295,7 +300,7 @@ export async function updateWhtAction(input: {
     p_income_seq: input.incomeSeq,
     p_income_type: input.incomeType ?? null,
   });
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   const res = data as { ok: boolean; error?: string; doc_no?: string };
   if (!res.ok) return fail(res.error ?? "แก้ไขไม่สำเร็จ");
   revalidatePath("/accounting");
@@ -319,7 +324,7 @@ export async function addContactAction(input: {
 }): Promise<SaveResult> {
   const supabase = await db();
   const { data: seq, error: seqErr } = await supabase.rpc("next_serial", { p_key: "CONTACT" });
-  if (seqErr) return fail(seqErr.message);
+  if (seqErr) return fail(mapDbError(seqErr));
   const contactId = "C-" + String(seq).padStart(4, "0");
   const { error } = await supabase.from("contacts").insert({
     contact_id: contactId,
@@ -329,7 +334,7 @@ export async function addContactAction(input: {
     address: input.address ?? null,
     contact_type: input.contactType ?? null,
   });
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   revalidatePath("/accounting");
   return { ok: true, data: { contactId } };
 }
@@ -350,7 +355,7 @@ export async function recordTaxSummaryAction(period: string, entityId: string, r
     forwarded_vat_out: r.forwardedVatOut,
     entity_id: entityId,
   });
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   return { ok: true };
 }
 
@@ -377,7 +382,7 @@ export async function getForwardedVatAction(period: string, entityId: string): P
 export async function deleteTaxSummaryAction(id: number): Promise<SaveResult> {
   const supabase = await db();
   const { error } = await supabase.from("tax_summaries").delete().eq("id", id);
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   revalidatePath("/accounting");
   return { ok: true };
 }
@@ -386,14 +391,14 @@ export async function deleteTaxSummaryAction(id: number): Promise<SaveResult> {
 export async function addSettingAction(kind: string, value: string): Promise<SaveResult> {
   const supabase = await db();
   const { error } = await supabase.from("app_settings").insert({ kind, value });
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   revalidatePath("/accounting");
   return { ok: true };
 }
 export async function deleteSettingAction(kind: string, value: string): Promise<SaveResult> {
   const supabase = await db();
   const { error } = await supabase.from("app_settings").delete().eq("kind", kind).eq("value", value);
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   revalidatePath("/accounting");
   return { ok: true };
 }
@@ -415,12 +420,12 @@ export async function saveBankAccountAction(input: {
       kind: input.kind ?? null,
       opening_balance: input.openingBalance,
     }).eq("account_name", name);
-    if (error) return fail(error.message);
+    if (error) return fail(mapDbError(error));
     revalidatePath("/accounting");
     return { ok: true, data: { updated: true } };
   }
   const { data: seq, error: e } = await supabase.rpc("next_serial", { p_key: "BANK_ACC" });
-  if (e) return fail(e.message);
+  if (e) return fail(mapDbError(e));
   const accountId = "ACC-" + String(seq).padStart(3, "0");
   const { error } = await supabase.from("bank_accounts").insert({
     account_id: accountId,
@@ -429,14 +434,14 @@ export async function saveBankAccountAction(input: {
     kind: input.kind ?? null,
     opening_balance: input.openingBalance,
   });
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   revalidatePath("/accounting");
   return { ok: true, data: { updated: false } };
 }
 export async function deleteBankAccountAction(accountId: string): Promise<SaveResult> {
   const supabase = await db();
   const { error } = await supabase.from("bank_accounts").delete().eq("account_id", accountId);
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   revalidatePath("/accounting");
   return { ok: true };
 }
@@ -456,14 +461,14 @@ export async function updateContactAction(input: {
     address: input.address ?? null,
     contact_type: input.contactType ?? null,
   }).eq("contact_id", input.contactId);
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   revalidatePath("/accounting");
   return { ok: true };
 }
 export async function deleteContactAction(contactId: string): Promise<SaveResult> {
   const supabase = await db();
   const { error } = await supabase.from("contacts").delete().eq("contact_id", contactId);
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   revalidatePath("/accounting");
   return { ok: true };
 }
@@ -471,7 +476,7 @@ export async function deleteContactAction(contactId: string): Promise<SaveResult
 export async function markReportRunAction(reportKey: string, month: string, entityId: string): Promise<SaveResult> {
   const supabase = await db();
   const { error } = await supabase.from("report_runs").insert({ report_key: reportKey, month, entity_id: entityId });
-  if (error) return fail(error.message);
+  if (error) return fail(mapDbError(error));
   return { ok: true };
 }
 

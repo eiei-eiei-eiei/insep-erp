@@ -58,10 +58,59 @@ export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={`${inputCls} ${props.className ?? ""}`} />;
 }
 export function NumInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input type="number" step="any" {...props} className={`${inputCls} ${props.className ?? ""}`} />;
+  return <input type="number" step="any" inputMode="decimal" {...props} className={`${inputCls} ${props.className ?? ""}`} />;
 }
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return <select {...props} className={`${inputCls} ${props.className ?? ""}`} />;
+}
+
+/**
+ * ช่องกรอกตัวเลขที่พิมพ์ทศนิยมได้ลื่น (เก็บ buffer ข้อความระหว่างพิมพ์)
+ * แก้บั๊ก `value={x || ""}` ที่พิมพ์ "0.03" ไม่ได้ (พอเป็น 0 React ลบจุดทศนิยมทิ้ง)
+ */
+export function NumBox({
+  value,
+  onChange,
+  blankZero = false,
+  readOnly = false,
+  placeholder,
+  className,
+}: {
+  value: number | "";
+  onChange?: (v: number | "") => void;
+  blankZero?: boolean;
+  readOnly?: boolean;
+  placeholder?: string;
+  className?: string;
+}) {
+  const display = (v: number | "") => (v === "" || (v === 0 && blankZero) ? "" : String(v));
+  const [raw, setRaw] = useState<string>(() => display(value));
+  const focused = useRef(false);
+  useEffect(() => {
+    if (!focused.current) setRaw(display(value));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, blankZero]);
+  function handle(s: string) {
+    if (s !== "" && !/^-?\d*\.?\d*$/.test(s)) return;
+    setRaw(s);
+    if (!onChange) return;
+    if (s === "" || s === "-" || s === "." || s === "-.") { onChange(""); return; }
+    const n = Number(s);
+    if (!Number.isNaN(n)) onChange(n);
+  }
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      readOnly={readOnly}
+      placeholder={placeholder}
+      value={raw}
+      onFocus={() => { focused.current = true; }}
+      onBlur={() => { focused.current = false; setRaw(display(value)); }}
+      onChange={(e) => handle(e.target.value)}
+      className={`${inputCls} ${readOnly ? "cursor-default bg-slate-50 text-slate-500" : ""} ${className ?? ""}`}
+    />
+  );
 }
 
 export function Card({ title, children, className }: { title?: string; children: React.ReactNode; className?: string }) {

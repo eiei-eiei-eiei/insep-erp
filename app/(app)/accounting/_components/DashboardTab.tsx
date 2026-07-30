@@ -53,7 +53,7 @@ export function DashboardTab({ period, entityId, active }: { period: string; ent
                 ))}
               </tbody>
             </table>
-            <p className="mt-2 text-xs text-slate-400">ออกใบ 50ทวิ ได้ที่ workspace รายงาน → 50ทวิ</p>
+            <p className="mt-2 text-xs text-slate-400">ออกใบ 50ทวิ ได้ที่แท็บ “เอกสารสรรพากร” ในหน้าบัญชีนี้</p>
           </div>
         )}
       </Card>

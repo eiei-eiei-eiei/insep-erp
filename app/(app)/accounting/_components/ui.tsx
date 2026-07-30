@@ -73,7 +73,7 @@ export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={`${inputCls} ${props.className ?? ""}`} />;
 }
 export function NumInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input type="number" step="any" {...props} className={`${inputCls} ${props.className ?? ""}`} />;
+  return <input type="number" step="any" inputMode="decimal" {...props} className={`${inputCls} ${props.className ?? ""}`} />;
 }
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return <select {...props} className={`${inputCls} ${props.className ?? ""}`} />;

@@ -29,6 +29,13 @@ const TABS = [
 
 type Tab = (typeof TABS)[number];
 
+/** เลื่อนเดือน YYYY-MM ไป ±delta เดือน (ข้ามปีถูกต้อง) */
+function shiftMonth(m: string, delta: number): string {
+  const [y, mo] = m.split("-").map(Number);
+  const d = new Date(y, mo - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 export function AccountingApp({ boot }: { boot: Bootstrap }) {
   const [tab, setTab] = useState<Tab>("บันทึก");
   const [entityId, setEntityId] = useState(boot.entities[0]?.entity_id ?? "");
@@ -52,7 +59,11 @@ export function AccountingApp({ boot }: { boot: Bootstrap }) {
             <option value="ALL">ทุกกิจการ</option>
             {boot.entities.map((en) => (<option key={en.entity_id} value={en.entity_id}>{en.entity_id} — {en.name}</option>))}
           </select>
-          <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2" />
+          <div className="flex items-center gap-1">
+            <button onClick={() => setMonth(shiftMonth(month, -1))} title="เดือนก่อน" className="rounded-lg border border-slate-300 px-2.5 py-2 text-slate-600 hover:bg-slate-50">‹</button>
+            <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2" />
+            <button onClick={() => setMonth(shiftMonth(month, 1))} title="เดือนถัดไป" className="rounded-lg border border-slate-300 px-2.5 py-2 text-slate-600 hover:bg-slate-50">›</button>
+          </div>
         </div>
       </div>
 
@@ -65,7 +76,7 @@ export function AccountingApp({ boot }: { boot: Bootstrap }) {
         ))}
       </div>
 
-      {visited.has("บันทึก") && <div className={show("บันทึก")}><EntryTab boot={boot} entityId={entryEntity} /></div>}
+      {visited.has("บันทึก") && <div className={show("บันทึก")}><EntryTab boot={boot} entityId={entryEntity} ambiguous={entityId === "ALL"} /></div>}
       {visited.has("แดชบอร์ด") && <div className={show("แดชบอร์ด")}><DashboardTab period={month} entityId={entityId} active={tab === "แดชบอร์ด"} /></div>}
       {visited.has("บัญชี & เงินสด") && <div className={show("บัญชี & เงินสด")}><AccountsTab boot={boot} period={month} entityId={entityId} active={tab === "บัญชี & เงินสด"} /></div>}
       {visited.has("ลูกหนี้-เจ้าหนี้") && <div className={show("ลูกหนี้-เจ้าหนี้")}><ApArTab boot={boot} entityId={entityId} active={tab === "ลูกหนี้-เจ้าหนี้"} /></div>}

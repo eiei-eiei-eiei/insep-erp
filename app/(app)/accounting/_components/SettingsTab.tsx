@@ -10,7 +10,7 @@ import {
   deleteContactAction,
 } from "../actions";
 import type { AccountRow, Bootstrap, Contact } from "./types";
-import { Card, Field, Msg, NumInput, SaveButton, Select, TextInput, cleanTaxId13, fmt, useSaver } from "./ui";
+import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, cleanTaxId13, fmt, useSaver } from "./ui";
 
 export function SettingsTab({ boot }: { boot: Bootstrap }) {
   return (
@@ -93,7 +93,7 @@ function BankAccounts({ boot }: { boot: Bootstrap }) {
       <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Field label="ชื่อบัญชี"><TextInput value={name} onChange={(e) => setName(e.target.value)} /></Field>
         <Field label="ประเภท"><TextInput value={kind} onChange={(e) => setKind(e.target.value)} placeholder="ออมทรัพย์/เงินสด" /></Field>
-        <Field label="ยอดยกมา"><NumInput value={opening || ""} onChange={(e) => setOpening(Number(e.target.value))} /></Field>
+        <Field label="ยอดยกมา"><NumBox value={opening} blankZero onChange={(v) => setOpening(v === "" ? 0 : v)} /></Field>
         <div className="col-span-2 md:col-span-4">
           <span className="mb-1 block text-sm text-slate-600">กิจการที่ใช้ (ติ๊กได้หลายอัน · ไม่ติ๊ก = ใช้ร่วมทุกกิจการ)</span>
           <div className="flex flex-wrap gap-3">

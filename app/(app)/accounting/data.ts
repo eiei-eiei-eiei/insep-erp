@@ -404,6 +404,25 @@ export async function searchPriceHistory(params: { itemName?: string; contact?: 
     }));
 }
 
+/** A6 — รายการกลุ่มงวดทั้งหมด (ให้เลือกจากลิสต์ ไม่ต้องจำรหัส TR-) */
+export async function listInstallmentGroups() {
+  const supabase = await db();
+  const rows = await fetchAllTransactions(supabase, (q) => q.not("po_group_id", "is", null).eq("status", "ปกติ"));
+  type R = Tx & { po_group_id?: string; installment_total?: number };
+  const byGroup: Record<string, { poGroupId: string; contactName: string; type: string; category: string; description: string; total: number; count: number; date: string }> = {};
+  for (const r of rows as unknown as R[]) {
+    const g = r.po_group_id;
+    if (!g) continue;
+    const e = (byGroup[g] ??= {
+      poGroupId: g, contactName: r.contact_name ?? "", type: r.type, category: r.category ?? "",
+      description: (r.description ?? "").replace(/\s*\(งวด \d+\/\d+\)\s*$/, ""), total: 0, count: 0, date: r.transaction_date ?? "",
+    });
+    e.total += Number(r.amount_after_discount) || 0;
+    e.count += 1;
+  }
+  return Object.values(byGroup).sort((a, b) => b.date.localeCompare(a.date));
+}
+
 /** A6 — รายละเอียดกลุ่มงวด */
 export async function getInstallmentGroup(poGroupId: string) {
   const supabase = await db();

@@ -414,6 +414,17 @@
   - **#9 cache รายการออเดอร์ค้าง**: `OrdersTab.refresh()` เรียก `itemsCache.clear()` → พิมพ์หลังแก้ใบเสนอราคาได้รายการล่าสุด
 - **ยังไม่ทำ** (ชุดถัดไป): bundle 634 kB (dynamic import pdf-lib) · mobile card layout 3 หน้าหลัก · แก้/ลบ log ผลิต · resume หม้อกลั่น
 
+### D37 — Quick wins จากรีวิว (UI/perf, ไม่แตะสูตร)
+- **บั๊กพิมพ์ทศนิยม 0.03**: NumBox ครอบช่องเงินที่เหลือ — โอนเงิน (AccountsTab), ยอดยกมา (SettingsTab),
+  ส่วนลด/สินค้านอกระบบ (QuotationTab), ราคาเมนู (MenuTab) · เพิ่ม NumBox เข้า `sales/ui.tsx` · + `inputMode=decimal` ใน NumInput ทั้ง 3 โดเมน
+- **#3 code-split pdf-lib**: แยกค่าคงที่ path เป็น `lib/pdf/keys.ts` (WHT_TEMPLATE_KEY/FONT_KEY ไม่ดึง pdf-lib)
+  + TaxDocsTab `await import("@/lib/pdf/wht50")` ตอนกดพิมพ์ → **/accounting First Load JS 635→131 kB** (wht50/excise re-export keys คงเดิม)
+- **#7 กัน "ทุกกิจการ" บันทึกเข้ากิจการผิดเงียบ**: EntryTab รับ `ambiguous` → header=ALL แสดง Select บังคับเลือกกิจการ (สีเตือน) · header ปกติแสดง badge "📍 บันทึกเข้ากิจการ: EIDxx" · ใช้ `effEntity` แทน entityId ทุกจุด
+- **mapDbError** (`lib/shared/dbError.ts`): แปล SQLSTATE (23505/23503/23502/42501…) เป็นไทย · แทน `fail(error.message)` ทั้ง accounting+sales actions
+- **แบ่งงวด**: `listInstallmentGroups` → dropdown เลือกกลุ่มงวด (เลิกพิมพ์รหัส TR- เอง) + ปุ่ม refresh
+- **เล็ก ๆ**: Ctrl+Enter บันทึก (หน้าบันทึก) · ปุ่ม ‹เดือนก่อน/ถัดไป› ข้าง month picker · searchBills เตือน "500 รายการแรก" · ซ่อนปุ่มแก้/ยกเลิกในค้นบิลเมื่อ role≠main · แทน alert() ด้วย Msg (QuotationTab) · แก้ hint 50ทวิ ล้าสมัย
+- **ยังเหลือ** (ไม่ใช่ quick win): validate ไฮไลต์ช่องผิด · Enter-เพิ่มแถว (ชน datalist) · report_runs checklist UI · prefill มัดจำตอนแก้ใบเสนอราคา · mobile card layout · แก้/ลบ log ผลิต
+
 ## ค้างต้องถามผู้ใช้ (ยังไม่ตัดสิน — MIGRATION_PLAN sec 11)
 - ~~อีเมล login (ข้อ 9)~~ → **ตัดสินแล้ว (D9)**: username-based `<username>@insep.local`
 - ~~ไฟล์ wh3 (50ทวิ)~~ → **ผู้ใช้ยืนยันว่าเป็นเทมเพลตเปล่า** — อัปโหลดด้วย `--include-wh3` เป็น `wht/wh3_template.pdf`

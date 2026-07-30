@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Card, Msg, NumInput, Select, TextInput, useSaver, fmt } from "./ui";
+import { Card, Msg, NumBox, NumInput, Select, TextInput, useSaver, fmt } from "./ui";
 import { getSaleMenuAction, getMenuLinkOptionsAction, saveSaleMenuAction, deleteSaleMenuAction } from "../actions";
 import type { SaleMenuRow } from "../data";
 
@@ -113,7 +113,7 @@ export function MenuTab({ active }: { active: boolean }) {
           </label>
           <label className="block">
             <span className="mb-1 block text-slate-600">ราคาขายต่อหน่วย (รวม VAT แล้ว)</span>
-            <NumInput value={form.price || ""} onChange={(e) => setForm({ ...form, price: Number(e.target.value) || 0 })} />
+            <NumBox value={form.price} blankZero onChange={(v) => setForm({ ...form, price: v === "" ? 0 : v })} />
             <span className="mt-1 block text-xs text-slate-400">ใส่ราคาที่ลูกค้าจ่ายจริง เช่น 210 → ระบบถอด VAT ให้เอง (196.26 + 13.74)</span>
           </label>
           <label className="block">
