@@ -105,6 +105,33 @@ export async function getRecentDilutes() {
     .limit(30);
   return data ?? [];
 }
+export async function getRecentFerments() {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("log_ferment")
+    .select("batch, ferment_date, product_name, container_qty, material_amounts")
+    .order("ferment_date", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(80);
+  // รวมตาม batch (1 batch มีได้หลายถ้ง/หลายแถว)
+  const byBatch = new Map<string, { batch: string; fermentDate: string; productName: string; tanks: number; volPerTank: number | null }>();
+  for (const r of data ?? []) {
+    const b = r.batch as string;
+    const qty = Number(r.container_qty) || 0;
+    const mainAmt = parseFloat(String(r.material_amounts ?? "").split(",")[0]) || 0; // ★ ค่าแรก = วัตถุดิบหลัก
+    const e = byBatch.get(b);
+    if (!e) {
+      byBatch.set(b, {
+        batch: b, fermentDate: (r.ferment_date as string) ?? "", productName: (r.product_name as string) ?? "",
+        tanks: qty, volPerTank: qty > 0 ? Math.round((mainAmt / qty) * 100) / 100 : null,
+      });
+    } else {
+      e.tanks += qty;
+    }
+  }
+  return [...byBatch.values()].slice(0, 30);
+}
+
 export async function getRecentProducts() {
   const supabase = await createClient();
   const { data } = await supabase

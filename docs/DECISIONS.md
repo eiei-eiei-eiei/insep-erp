@@ -448,6 +448,16 @@
 - **EditBillModal**: เต็มจอบนมือถือ (`min-h-dvh rounded-none`) → dialog กลางจอบน `sm:` ขึ้นไป
 - ครบงานจากรีวิว (ยกเว้นที่จดว่าเลื่อน: ลบ batch หมัก · edit inline log ผลิต · prefill มัดจำแก้ใบเสนอราคา · เลข INV/TAX ใน RPC)
 
+### D41 — ลบ batch หมัก + ช่องปริมาณต่อถัง (ปิดช่องสุดท้ายกติกาเหล็ก)
+- **ลบ batch หมัก** (migration **0020** `fn_delete_ferment_batch`): ในทรานแซกชันเดียว — คืนวัตถุดิบ (ลบ log_material เบิก
+  `doc_ref=batch, note='เบิกไปหมัก (อัตโนมัติ)'`) → ลบ log_ferment_monitor → ลบ log_ferment ทุกถัง
+  - **GUARD**: batch ที่มี `log_distill_run`/`log_distill` (กลั่นแล้ว = ข้อมูล ภส.) → บล็อก ห้ามลบ
+  - SECURITY INVOKER (RLS main) · edit_log audit · UI: FermentTab การ์ด "batch ล่าสุด" + ปุ่มลบ
+  - **ต้อง `npm run db:push` apply 0020 ก่อนใช้**
+- **ปริมาณต่อถัง (volPerTank)**: เพิ่มช่องในลงหมัก (ดูแอปเดิม `_js_entry.html` calculateMainMaterial) — เลือกภาชนะ→เติมความจุอัตโนมัติ (แก้ได้)
+  · **วัตถุดิบหลัก (แถวแรก) = ปริมาณต่อถัง × จำนวนถัง** อัตโนมัติ แก้ทับเองได้ · **ไม่เก็บเป็นคอลัมน์** (report ย้อนคำนวณจาก material หลัก/qty เหมือนเดิม — byte-compatible)
+- **จบกติกาเหล็ก** "ทุกจุดบันทึกได้ต้องแก้/ลบได้" ครบทุก log แล้ว
+
 ## ค้างต้องถามผู้ใช้ (ยังไม่ตัดสิน — MIGRATION_PLAN sec 11)
 - ~~อีเมล login (ข้อ 9)~~ → **ตัดสินแล้ว (D9)**: username-based `<username>@insep.local`
 - ~~ไฟล์ wh3 (50ทวิ)~~ → **ผู้ใช้ยืนยันว่าเป็นเทมเพลตเปล่า** — อัปโหลดด้วย `--include-wh3` เป็น `wht/wh3_template.pdf`

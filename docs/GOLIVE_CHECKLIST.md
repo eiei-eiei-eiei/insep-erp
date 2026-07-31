@@ -131,6 +131,9 @@ _(ข้ามตามที่ผู้ใช้ตัดสินใจ — �
 - [ ] **GitHub auto-deploy ยังไม่เชื่อม** (Vercel เชื่อม repo ตอน link ไม่สำเร็จ) → ติดตั้ง Vercel GitHub App ใน dashboard ถ้าอยาก auto-deploy ทุก push (ไม่งั้น deploy ด้วย `vercel --prod`)
 - [ ] **ล็อกอินจริง** ที่ https://insep-erp.vercel.app ด้วย user `ceo` แล้วตรวจแต่ละแอป
 
+### แอปผลิต — ลบ batch หมัก (D41)
+- [ ] **`npm run db:push` apply migration `0020_delete_ferment.sql`** (fn_delete_ferment_batch) — ต้องรันก่อนปุ่มลบ batch หมักในแท็บลงหมักจะทำงาน (ไม่งั้น error `function ... does not exist`)
+
 ### ปรับ UX แอปบัญชี (D35 — หน้าบันทึก/แดชบอร์ด/ค้นบิล)
 - [x] **apply migration `0019_edit_transaction.sql`** ด้วย `npm run db:push` (2026-07-29 — CLI ใช้ได้แล้ว ไม่ต้องผ่าน dashboard)
       — สร้างฟังก์ชัน `fn_edit_transaction` · จำเป็นสำหรับปุ่ม "แก้ไข" ในหน้าค้นบิล

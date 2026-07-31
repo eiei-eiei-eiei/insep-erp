@@ -14,6 +14,7 @@ import {
   getRecentMaterials,
   getRecentDilutes,
   getRecentProducts,
+  getRecentFerments,
 } from "./data";
 
 export type SaveResult = { ok: boolean; error?: string; data?: unknown };
@@ -108,6 +109,18 @@ export async function deleteProductLogAction(id: number): Promise<SaveResult> {
   if (error) return fail(mapDbError(error));
   revalidatePath("/production");
   return { ok: true };
+}
+
+// ── ลบ batch หมัก + คืนวัตถุดิบ (RPC guard ห้ามลบถ้ากลั่นแล้ว) ──
+export async function getRecentFermentsAction() { return getRecentFerments(); }
+export async function deleteFermentBatchAction(batch: string): Promise<SaveResult> {
+  const supabase = await db();
+  const { data, error } = await supabase.rpc("fn_delete_ferment_batch", { p_batch: batch });
+  if (error) return fail(mapDbError(error));
+  const res = data as { ok: boolean; error?: string };
+  if (!res.ok) return fail(res.error ?? "ลบ batch ไม่สำเร็จ");
+  revalidatePath("/production");
+  return { ok: true, data: res };
 }
 
 // ── บันทึกวัตถุดิบ (รับ/จ่าย/ฯลฯ) — Log_Material ────────────────────────────────
