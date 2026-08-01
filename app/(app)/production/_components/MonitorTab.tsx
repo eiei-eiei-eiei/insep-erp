@@ -136,29 +136,29 @@ export function MonitorTab({
                 ]}
               />
               <div className="mt-4 overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="border-b border-line text-left text-faint">
-                    <tr><th className="px-2 py-1">วันที่/เวลา</th><th className="px-2 py-1">pH</th><th className="px-2 py-1">Brix</th><th className="px-2 py-1">°C</th><th className="px-2 py-1">หมายเหตุ</th><th className="px-2 py-1"></th></tr>
+                <table className="tbl">
+                  <thead>
+                    <tr><th>วันที่/เวลา</th><th>pH</th><th>Brix</th><th>°C</th><th>หมายเหตุ</th><th></th></tr>
                   </thead>
                   <tbody>
                     {history.map((r) => (
                       editId === r.id ? (
-                        <tr key={r.id} className="border-b border-line-soft bg-warn-bg">
-                          <td className="px-1 py-1"><div className="flex gap-1"><TextInput type="date" value={edit.measureDate} onChange={(e) => setEdit({ ...edit, measureDate: e.target.value })} className="w-32" /><TextInput type="time" value={edit.measureTime} onChange={(e) => setEdit({ ...edit, measureTime: e.target.value })} className="w-24" /></div></td>
-                          <td className="px-1 py-1"><NumInput value={edit.ph} onChange={(e) => setEdit({ ...edit, ph: e.target.value })} className="w-16" /></td>
-                          <td className="px-1 py-1"><NumInput value={edit.brix} onChange={(e) => setEdit({ ...edit, brix: e.target.value })} className="w-16" /></td>
-                          <td className="px-1 py-1"><NumInput value={edit.temp} onChange={(e) => setEdit({ ...edit, temp: e.target.value })} className="w-16" /></td>
-                          <td className="px-1 py-1"><TextInput value={edit.note} onChange={(e) => setEdit({ ...edit, note: e.target.value })} /></td>
-                          <td className="whitespace-nowrap px-1 py-1"><button onClick={saveEdit} disabled={pending} className="rounded border border-ok-line px-2 py-1 text-xs text-ok hover:bg-ok-bg">บันทึก</button><button onClick={() => setEditId(null)} className="ml-1 rounded border border-line px-2 py-1 text-xs text-muted hover:bg-raised">ยกเลิก</button></td>
+                        <tr key={r.id} className="editing">
+                          <td><div className="flex gap-1"><TextInput type="date" value={edit.measureDate} onChange={(e) => setEdit({ ...edit, measureDate: e.target.value })} className="w-32" /><TextInput type="time" value={edit.measureTime} onChange={(e) => setEdit({ ...edit, measureTime: e.target.value })} className="w-24" /></div></td>
+                          <td><NumInput value={edit.ph} onChange={(e) => setEdit({ ...edit, ph: e.target.value })} className="w-16" /></td>
+                          <td><NumInput value={edit.brix} onChange={(e) => setEdit({ ...edit, brix: e.target.value })} className="w-16" /></td>
+                          <td><NumInput value={edit.temp} onChange={(e) => setEdit({ ...edit, temp: e.target.value })} className="w-16" /></td>
+                          <td><TextInput value={edit.note} onChange={(e) => setEdit({ ...edit, note: e.target.value })} /></td>
+                          <td className="whitespace-nowrap"><button onClick={saveEdit} disabled={pending} className="rounded border border-ok-line px-2 py-1 text-xs text-ok hover:bg-ok-bg">บันทึก</button><button onClick={() => setEditId(null)} className="ml-1 rounded border border-line px-2 py-1 text-xs text-muted hover:bg-raised">ยกเลิก</button></td>
                         </tr>
                       ) : (
-                        <tr key={r.id} className="border-b border-line-soft">
-                          <td className="px-2 py-1">{String(r.measure_date).slice(5)} {r.measure_time?.slice(0, 5) ?? ""}</td>
-                          <td className="px-2 py-1">{r.ph ?? "—"}</td>
-                          <td className="px-2 py-1">{r.brix ?? "—"}</td>
-                          <td className="px-2 py-1">{r.temp ?? "—"}</td>
-                          <td className="px-2 py-1 text-faint">{r.note ?? ""}</td>
-                          <td className="whitespace-nowrap px-2 py-1"><button onClick={() => startEdit(r)} className="text-muted hover:text-ink" title="แก้ไข"><IconEdit size={16} /></button><button onClick={() => del(r)} className="ml-2 text-crit hover:text-crit" title="ลบ"><IconTrash size={16} /></button></td>
+                        <tr key={r.id}>
+                          <td>{String(r.measure_date).slice(5)} {r.measure_time?.slice(0, 5) ?? ""}</td>
+                          <td>{r.ph ?? "—"}</td>
+                          <td>{r.brix ?? "—"}</td>
+                          <td>{r.temp ?? "—"}</td>
+                          <td className="text-faint">{r.note ?? ""}</td>
+                          <td className="whitespace-nowrap"><button onClick={() => startEdit(r)} className="text-muted hover:text-ink" title="แก้ไข"><IconEdit size={16} /></button><button onClick={() => del(r)} className="ml-2 text-crit hover:text-crit" title="ลบ"><IconTrash size={16} /></button></td>
                         </tr>
                       )
                     ))}

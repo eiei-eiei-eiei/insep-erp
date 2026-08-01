@@ -199,17 +199,17 @@ export function FermentTab({
     <Card title="batch หมักล่าสุด">
       {recent.length === 0 ? <p className="text-sm text-faint">— ยังไม่มี batch —</p> : (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="border-b border-line text-left text-faint"><tr><th className="px-2 py-1">วันที่</th><th className="px-2 py-1">Batch</th><th className="px-2 py-1">ชื่อสุรา</th><th className="px-2 py-1 text-right">ถัง</th><th className="px-2 py-1 text-right">ต่อถัง (ล.)</th><th className="px-2 py-1"></th></tr></thead>
+          <table className="tbl">
+            <thead><tr><th>วันที่</th><th>Batch</th><th>ชื่อสุรา</th><th className="num">ถัง</th><th className="num">ต่อถัง (ล.)</th><th></th></tr></thead>
             <tbody>
               {recent.map((r) => (
-                <tr key={r.batch} className="border-b border-line-soft">
-                  <td className="whitespace-nowrap px-2 py-1">{String(r.fermentDate).slice(0, 10)}</td>
-                  <td className="px-2 py-1 font-medium text-ink">{r.batch}</td>
-                  <td className="px-2 py-1">{r.productName}</td>
-                  <td className="px-2 py-1 text-right">{r.tanks || "—"}</td>
-                  <td className="px-2 py-1 text-right">{r.volPerTank ?? "—"}</td>
-                  <td className="px-2 py-1"><button onClick={() => del(r)} disabled={pending} className="text-crit hover:text-crit" title="ลบ batch"><IconTrash size={16} /></button></td>
+                <tr key={r.batch}>
+                  <td className="whitespace-nowrap">{String(r.fermentDate).slice(0, 10)}</td>
+                  <td className="font-medium text-ink">{r.batch}</td>
+                  <td>{r.productName}</td>
+                  <td className="num">{r.tanks || "—"}</td>
+                  <td className="num">{r.volPerTank ?? "—"}</td>
+                  <td><button onClick={() => del(r)} disabled={pending} className="text-crit hover:text-crit" title="ลบ batch"><IconTrash size={16} /></button></td>
                 </tr>
               ))}
             </tbody>

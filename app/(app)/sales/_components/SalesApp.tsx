@@ -13,10 +13,10 @@ type Tab = "create" | "orders" | "warehouse" | "sync" | "manage";
 
 const ALL_TABS: { key: Tab; label: string }[] = [
   { key: "create", label: "＋ สร้างใบเสนอราคา" },
-  { key: "orders", label: "📋 จัดการออเดอร์" },
-  { key: "warehouse", label: "🏢 คลังจัดส่ง" },
-  { key: "sync", label: "🔁 ประวัติเชื่อมระบบ" },
-  { key: "manage", label: "⚙️ จัดการข้อมูล" },
+  { key: "orders", label: "จัดการออเดอร์" },
+  { key: "warehouse", label: "คลังจัดส่ง" },
+  { key: "sync", label: "ประวัติเชื่อมระบบ" },
+  { key: "manage", label: "จัดการข้อมูล" },
 ];
 
 /** แท็บที่ role เห็น (main=ทั้งหมด, sale=ขาย, warehouse=คลัง, viewer=อ่านออเดอร์) */

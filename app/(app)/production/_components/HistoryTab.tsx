@@ -97,22 +97,22 @@ function FermentCompare({ list }: { list: BatchInfo[] }) {
           <div><p className="mb-1 text-sm font-medium text-muted">อุณหภูมิ (°C)</p><XYChart series={chart("temp")} xLabel="วันจากเริ่มหมัก" /></div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b border-line text-left text-faint">
-                <tr><th className="px-2 py-1">Batch</th><th className="px-2 py-1 text-right">วันหมัก</th><th className="px-2 py-1 text-right">Brix เริ่ม→จบ</th><th className="px-2 py-1 text-right">Atten%</th><th className="px-2 py-1 text-right">~ดีกรี</th><th className="px-2 py-1 text-right">pH เริ่ม→จบ</th><th className="px-2 py-1 text-right">Temp พีค</th></tr>
+            <table className="tbl">
+              <thead>
+                <tr><th>Batch</th><th className="num">วันหมัก</th><th className="num">Brix เริ่ม→จบ</th><th className="num">Atten%</th><th className="num">~ดีกรี</th><th className="num">pH เริ่ม→จบ</th><th className="num">Temp พีค</th></tr>
               </thead>
               <tbody>
                 {sel.filter((b) => (data[b] ?? []).length).map((b) => {
                   const s = fermentSummary(data[b] ?? [], startMap[b] ?? null);
                   return (
-                    <tr key={b} className="border-b border-line-soft">
-                      <td className="px-2 py-1 font-medium">{b}</td>
-                      <td className="px-2 py-1 text-right">{fmt(s.days)}</td>
-                      <td className="px-2 py-1 text-right">{fmt(s.firstBrix)}→{fmt(s.lastBrix)}</td>
-                      <td className="px-2 py-1 text-right">{fmt(s.atten)}%</td>
-                      <td className="px-2 py-1 text-right">~{fmt(s.estAbv)}</td>
-                      <td className="px-2 py-1 text-right">{fmt(s.firstPh, 2)}→{fmt(s.lastPh, 2)}</td>
-                      <td className="px-2 py-1 text-right">{fmt(s.tempPeak)}</td>
+                    <tr key={b}>
+                      <td className="font-medium">{b}</td>
+                      <td className="num">{fmt(s.days)}</td>
+                      <td className="num">{fmt(s.firstBrix)}→{fmt(s.lastBrix)}</td>
+                      <td className="num">{fmt(s.atten)}%</td>
+                      <td className="num">~{fmt(s.estAbv)}</td>
+                      <td className="num">{fmt(s.firstPh, 2)}→{fmt(s.lastPh, 2)}</td>
+                      <td className="num">{fmt(s.tempPeak)}</td>
                     </tr>
                   );
                 })}
@@ -201,9 +201,9 @@ function DistillCompare({ list, degreeMap }: { list: BatchInfo[]; degreeMap: Rec
         <div className="mt-4 space-y-4">
           <XYChart series={series} xLabel={xaxis === "cum" ? "ปริมาณสะสม (ล.)" : "นาทีที่"} height={300} />
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b border-line text-left text-faint">
-                <tr><th className="px-2 py-1">Batch</th><th className="px-2 py-1 text-right">หม้อ</th><th className="px-2 py-1 text-right">หัวใจ(ล.)</th><th className="px-2 py-1 text-right">ดีกรี@20</th><th className="px-2 py-1 text-right">เป้าหมาย°</th><th className="px-2 py-1 text-right">ปริมาณ@เป้า(ล.)</th><th className="px-2 py-1 text-right">Yield</th></tr>
+            <table className="tbl">
+              <thead>
+                <tr><th>Batch</th><th className="num">หม้อ</th><th className="num">หัวใจ(ล.)</th><th className="num">ดีกรี@20</th><th className="num">เป้าหมาย°</th><th className="num">ปริมาณ@เป้า(ล.)</th><th className="num">Yield</th></tr>
               </thead>
               <tbody>
                 {sel.filter((b) => (data[b] ?? []).length).map((b) => {
@@ -215,14 +215,14 @@ function DistillCompare({ list, degreeMap }: { list: BatchInfo[]; degreeMap: Rec
                   const eq = equivVol(vol, abv, target);
                   const yld = !isNaN(eq) && s.charge > 0 ? (eq / s.charge) * 100 : NaN;
                   return (
-                    <tr key={b} className="border-b border-line-soft">
-                      <td className="px-2 py-1 font-medium">{b}</td>
-                      <td className="px-2 py-1 text-right">{s.potCount}</td>
-                      <td className="px-2 py-1 text-right">{fmt(vol, 2)}</td>
-                      <td className="px-2 py-1 text-right">{fmt(abv)}%</td>
-                      <td className="px-2 py-1 text-right">{isNaN(target) ? "—" : fmt(target, 0) + "°"}</td>
-                      <td className="px-2 py-1 text-right">{isNaN(eq) ? "—" : fmt(eq, 2)}</td>
-                      <td className="px-2 py-1 text-right">{isNaN(yld) ? "—" : fmt(yld) + "%"}</td>
+                    <tr key={b}>
+                      <td className="font-medium">{b}</td>
+                      <td className="num">{s.potCount}</td>
+                      <td className="num">{fmt(vol, 2)}</td>
+                      <td className="num">{fmt(abv)}%</td>
+                      <td className="num">{isNaN(target) ? "—" : fmt(target, 0) + "°"}</td>
+                      <td className="num">{isNaN(eq) ? "—" : fmt(eq, 2)}</td>
+                      <td className="num">{isNaN(yld) ? "—" : fmt(yld) + "%"}</td>
                     </tr>
                   );
                 })}

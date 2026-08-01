@@ -12,7 +12,7 @@ import {
   type QuotationPayload,
 } from "../actions";
 import { printQuotation, openPrintWindow } from "./print";
-import { IconPlus } from "@/lib/shared/icons";
+import { IconCart, IconPlus } from "@/lib/shared/icons";
 
 const REVENUE_CATS = ["รายได้ค่าสินค้า", "รายได้ค่าบริการ", "รายได้ค่าที่ปรึกษา", "รายได้อื่น ๆ"];
 
@@ -152,7 +152,7 @@ export function QuotationTab({
       <div className="space-y-4">
         <Card>
           <div className="mb-2 flex items-center justify-between">
-            <h2 className="font-semibold text-ink">🏢 เลือกลูกค้า</h2>
+            <h2 className="font-semibold text-ink">เลือกลูกค้า</h2>
             <button onClick={() => setShowAddCust(true)} className="rounded border border-brand-line bg-brand-soft px-2 py-1 text-xs text-brand hover:bg-brand-soft"><IconPlus size={15} className="mr-1 inline align-[-2px]" />เพิ่มลูกค้าใหม่
             </button>
           </div>
@@ -164,7 +164,7 @@ export function QuotationTab({
           />
           {customer && (
             <div className="mt-2 text-xs text-muted">
-              Tax ID: {customer.taxId || "-"} · เครดิต {customer.creditTerm} วัน {customer.isExport && <span className="text-warn">· 🌍 ส่งออก</span>}
+              Tax ID: {customer.taxId || "-"} · เครดิต {customer.creditTerm} วัน {customer.isExport && <span className="text-warn">· ส่งออก</span>}
             </div>
           )}
         </Card>
@@ -175,7 +175,7 @@ export function QuotationTab({
             <button
               onClick={() => setShowCustom(true)}
               disabled={!selCustId}
-              className="rounded-lg bg-brand px-3 py-1 text-xs font-medium text-on-brand transition hover:opacity-90 disabled:cursor-not-allowed disabled:bg-brand"
+              className="rounded-lg bg-brand px-3 py-1 text-xs font-medium text-on-brand transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             ><IconPlus size={15} className="mr-1 inline align-[-2px]" />สินค้านอกระบบ/สั่งทำ
             </button>
           </div>
@@ -188,7 +188,7 @@ export function QuotationTab({
                   key={m.name}
                   onClick={() => addToCart(m)}
                   disabled={m.stockQty === 0}
-                  className={`flex h-24 flex-col justify-between rounded-xl border p-3 text-left transition ${m.stockQty === 0 ? "cursor-not-allowed border-line bg-raised opacity-60" : "border-line bg-card hover:border-brand hover:shadow"}`}
+                  className={`flex h-24 flex-col justify-between rounded-lg border p-3 text-left transition ${m.stockQty === 0 ? "cursor-not-allowed border-line bg-raised opacity-60" : "border-line bg-card hover:border-brand hover:shadow"}`}
                 >
                   <div className="line-clamp-2 text-xs font-medium text-ink">{m.name}</div>
                   <div className="flex items-end justify-between">
@@ -196,7 +196,7 @@ export function QuotationTab({
                     {m.stockQty !== null && (
                       <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${m.stockQty === 0 ? "bg-crit-bg text-crit" : m.stockQty <= 5 ? "bg-warn-bg text-warn" : "bg-ok-bg text-ok"}`}>
                         {m.stockQty === 0 ? "หมด" : m.stockQty}
-                        {m.isLive && m.stockQty !== 0 && " 🏭"}
+                        
                       </span>
                     )}
                   </div>
@@ -212,7 +212,7 @@ export function QuotationTab({
       <Card className="h-fit">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="font-semibold text-warn">ออเดอร์ (B2B)</h2>
-          {editOrder && <span className="rounded bg-warn-bg px-2 py-0.5 text-xs text-warn">✏️ แก้ไข {editOrder.quNo}</span>}
+          {editOrder && <span className="rounded bg-warn-bg px-2 py-0.5 text-xs text-warn">แก้ไข {editOrder.quNo}</span>}
         </div>
         <Msg msg={msg} />
         <div className="mb-3 max-h-56 overflow-y-auto">
@@ -310,9 +310,9 @@ export function QuotationTab({
           <button
             onClick={submit}
             disabled={pending || items.length === 0 || !selCustId || !saleName.trim()}
-            className={`w-full rounded-xl py-3 font-bold text-on-brand transition disabled:cursor-not-allowed disabled:bg-brand ${editOrder ? "bg-brand hover:opacity-90" : "bg-brand hover:opacity-90"}`}
+            className={`w-full rounded-lg py-3 font-bold text-on-brand transition disabled:cursor-not-allowed disabled:opacity-50 ${editOrder ? "bg-brand hover:opacity-90" : "bg-brand hover:opacity-90"}`}
           >
-            {pending ? "กำลังทำงาน…" : editOrder ? "💾 อัปเดตใบเสนอราคา" : "📄 ออกใบเสนอราคา (A4)"}
+            {pending ? "กำลังทำงาน…" : editOrder ? "อัปเดตใบเสนอราคา" : "ออกใบเสนอราคา (A4)"}
           </button>
           {editOrder && (
             <button onClick={reset} className="w-full rounded-lg border border-line py-2 text-sm text-muted hover:bg-raised">
@@ -347,7 +347,7 @@ export function QuotationTab({
       {/* Mobile: แถบตะกร้าลอยล่างจอ (เพิ่มของแล้วเห็นยอด + กระโดดไปตะกร้า) */}
       {items.length > 0 && (
         <div className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-between gap-2 border-t border-line bg-card/95 px-4 py-2 shadow-lg backdrop-blur lg:hidden">
-          <span className="text-sm text-muted">🛒 {items.length} รายการ · <b className="text-warn">฿{fmt(totals.grandTotal)}</b></span>
+          <span className="text-sm text-muted"><IconCart size={14} className="mr-1 inline align-[-2px]" />{items.length} รายการ · <b className="text-warn">฿{fmt(totals.grandTotal)}</b></span>
           <button onClick={() => cartRef.current?.scrollIntoView({ behavior: "smooth" })} className="rounded-lg bg-brand px-4 py-2 text-sm font-bold text-on-brand">ดูตะกร้า / บันทึก</button>
         </div>
       )}
@@ -372,7 +372,7 @@ function CustomItemModal({ onClose, onAdd }: { onClose: () => void; onAdd: (name
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/50 p-4">
-      <div className="w-full max-w-md rounded-xl bg-card p-5">
+      <div className="w-full max-w-md rounded-lg bg-card p-5">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-bold text-ink"><IconPlus size={15} className="mr-1 inline align-[-2px]" />เพิ่มสินค้านอกระบบ / สั่งทำ</h2>
           <button onClick={onClose} className="text-2xl leading-none text-faint hover:text-crit">
@@ -443,7 +443,7 @@ function AddCustomerModal({ onClose, onAdded }: { onClose: () => void; onAdded: 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/50 p-4">
-      <div className="w-full max-w-lg rounded-xl bg-card p-5">
+      <div className="w-full max-w-lg rounded-lg bg-card p-5">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-bold text-ink"><IconPlus size={15} className="mr-1 inline align-[-2px]" />เพิ่มลูกค้าใหม่</h2>
           <button onClick={onClose} className="text-2xl leading-none text-faint hover:text-crit">

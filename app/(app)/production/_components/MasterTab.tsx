@@ -63,18 +63,18 @@ function CrudSection({
     <Card title={title}>
       <Msg msg={msg} />
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="border-b border-line text-left text-faint">
+        <table className="tbl">
+          <thead>
             <tr>
-              {fields.map((f) => <th key={f.key} className="px-2 py-1">{f.label}</th>)}
-              <th className="px-2 py-1 text-right">จัดการ</th>
+              {fields.map((f) => <th key={f.key}>{f.label}</th>)}
+              <th className="num">จัดการ</th>
             </tr>
           </thead>
           <tbody>
             {/* แถวเพิ่มใหม่ */}
-            <tr className="border-b border-line-soft bg-raised">
+            <tr className="bg-raised">
               {fields.map((f) => (
-                <td key={f.key} className="px-2 py-1">
+                <td key={f.key}>
                   <input
                     className={inputCls}
                     type={f.num ? "number" : "text"}
@@ -85,7 +85,7 @@ function CrudSection({
                   />
                 </td>
               ))}
-              <td className="px-2 py-1 text-right">
+              <td className="num">
                 <button disabled={pending} onClick={add} className="rounded bg-brand px-3 py-1 text-on-brand hover:opacity-90 disabled:opacity-50">
                   + เพิ่ม
                 </button>
@@ -97,9 +97,9 @@ function CrudSection({
               const id = String(row[pk]);
               const editing = editPk === id;
               return (
-                <tr key={id} className="border-b border-line-soft">
+                <tr key={id}>
                   {fields.map((f) => (
-                    <td key={f.key} className="px-2 py-1">
+                    <td key={f.key}>
                       {editing ? (
                         <input
                           className={inputCls}
@@ -116,7 +116,7 @@ function CrudSection({
                       )}
                     </td>
                   ))}
-                  <td className="px-2 py-1 text-right whitespace-nowrap">
+                  <td className="whitespace-nowrap num">
                     {editing ? (
                       <>
                         <button disabled={pending} onClick={save} className="mr-1 rounded border border-ok-line px-2 py-1 text-ok hover:bg-ok-bg">บันทึก</button>
@@ -139,7 +139,7 @@ function CrudSection({
               );
             })}
             {rows.length === 0 && (
-              <tr><td colSpan={fields.length + 1} className="px-2 py-3 text-center text-faint">ยังไม่มีข้อมูล — เพิ่มในแถวบนสุด</td></tr>
+              <tr><td colSpan={fields.length + 1} className="py-3 text-center text-faint">ยังไม่มีข้อมูล — เพิ่มในแถวบนสุด</td></tr>
             )}
           </tbody>
         </table>

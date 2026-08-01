@@ -29,7 +29,7 @@ export function SyncHistoryTab({ active }: { active: boolean }) {
   }, [active]);
 
   return (
-    <Card title="🔁 ประวัติเชื่อมระบบ (แทนหน้าคิว sync เดิม)">
+    <Card title="ประวัติเชื่อมระบบ (แทนหน้าคิว sync เดิม)">
       <div className="mb-3 flex items-center gap-2">
         <button onClick={refresh} className="rounded border border-line px-2.5 py-1.5 text-sm text-muted hover:bg-raised"><IconRefresh size={15} className="mr-1 inline align-[-2px]" />รีเฟรช
         </button>
@@ -41,28 +41,28 @@ export function SyncHistoryTab({ active }: { active: boolean }) {
         <div className="py-8 text-center text-faint">กำลังโหลด…</div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-left text-sm">
-            <thead className="bg-raised text-xs text-muted">
+          <table className="tbl min-w-[640px]">
+            <thead>
               <tr>
-                <th className="p-2">เวลา</th>
-                <th className="p-2">ประเภท</th>
-                <th className="p-2">อ้างอิง (key)</th>
-                <th className="p-2 text-center">สถานะ</th>
-                <th className="p-2">รายละเอียด</th>
+                <th>เวลา</th>
+                <th>ประเภท</th>
+                <th>อ้างอิง (key)</th>
+                <th className="text-center">สถานะ</th>
+                <th>รายละเอียด</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className="border-b">
-                  <td className="whitespace-nowrap p-2 text-faint">{r.createdAt}</td>
-                  <td className="p-2">{ACTION_LABEL[r.action] ?? r.action}</td>
-                  <td className="whitespace-nowrap p-2 font-mono text-xs text-muted">{r.key}</td>
-                  <td className="p-2 text-center">
+                  <td className="whitespace-nowrap text-faint">{r.createdAt}</td>
+                  <td>{ACTION_LABEL[r.action] ?? r.action}</td>
+                  <td className="whitespace-nowrap font-mono text-xs text-muted">{r.key}</td>
+                  <td className="text-center">
                     <span className={`rounded px-2 py-0.5 text-[10px] font-bold ${r.status === "ok" ? "bg-ok-bg text-ok" : r.status === "duplicate" ? "bg-line text-faint" : "bg-crit-bg text-crit"}`}>
                       {r.status === "ok" ? "สำเร็จ" : r.status === "duplicate" ? "ข้าม (ซ้ำ)" : "ล้มเหลว"}
                     </span>
                   </td>
-                  <td className="p-2 text-muted">{r.message}</td>
+                  <td className="text-muted">{r.message}</td>
                 </tr>
               ))}
               {rows.length === 0 && (

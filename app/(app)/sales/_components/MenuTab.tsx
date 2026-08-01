@@ -60,28 +60,28 @@ export function MenuTab({ active }: { active: boolean }) {
           <div className="py-8 text-center text-faint">กำลังโหลด…</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] text-left text-sm">
-              <thead className="bg-raised text-xs text-muted">
+            <table className="tbl min-w-[560px]">
+              <thead>
                 <tr>
-                  <th className="p-2">ชื่อเมนู</th>
-                  <th className="p-2 text-right">ราคา</th>
-                  <th className="p-2">ประเภท</th>
-                  <th className="p-2">เชื่อมสินค้า</th>
-                  <th className="p-2 text-center">×หน่วย</th>
-                  <th className="p-2"></th>
+                  <th>ชื่อเมนู</th>
+                  <th className="num">ราคา</th>
+                  <th>ประเภท</th>
+                  <th>เชื่อมสินค้า</th>
+                  <th className="text-center">×หน่วย</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.id} className="border-b hover:bg-raised">
-                    <td className="p-2 font-medium text-ink">{r.menuName}</td>
-                    <td className="p-2 text-right">฿{fmt(r.price)}</td>
-                    <td className="p-2">
+                    <td className="font-medium text-ink">{r.menuName}</td>
+                    <td className="num">฿{fmt(r.price)}</td>
+                    <td>
                       <span className={`rounded px-1.5 py-0.5 text-[10px] ${r.category === "สุรา" ? "bg-warn-bg text-warn" : "bg-raised text-muted"}`}>{r.category || "-"}</span>
                     </td>
-                    <td className="p-2 font-mono text-xs text-faint">{r.productId || "-"}</td>
-                    <td className="p-2 text-center">{r.multiplier}</td>
-                    <td className="p-2 text-right">
+                    <td className="font-mono text-xs text-faint">{r.productId || "-"}</td>
+                    <td className="text-center">{r.multiplier}</td>
+                    <td className="num">
                       <button onClick={() => edit(r)} className="mr-1 rounded border border-line px-2 py-1 text-xs hover:bg-raised">
                         แก้ไข
                       </button>

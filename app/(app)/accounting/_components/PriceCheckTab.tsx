@@ -51,16 +51,16 @@ export function PriceCheckTab({ boot, entityId }: { boot: Bootstrap; entityId: s
         </Field>
         <Field label="หมายเหตุ"><TextInput value={note} onChange={(e) => setNote(e.target.value)} /></Field>
       </div>
-      <table className="mt-3 w-full text-sm">
-        <thead><tr className="text-left text-faint"><th className="p-1">รายการ</th><th className="p-1 w-20">จำนวน</th><th className="p-1 w-28">ราคา(ex VAT)</th><th className="p-1 w-24 text-right">รวม VAT</th><th className="p-1 w-8"></th></tr></thead>
+      <table className="tbl mt-3">
+        <thead><tr className="text-left text-faint"><th>รายการ</th><th className="w-20">จำนวน</th><th className="w-28">ราคา(ex VAT)</th><th className="w-24 num">รวม VAT</th><th className="w-8"></th></tr></thead>
         <tbody>
           {items.map((it, i) => (
-            <tr key={i} className="border-t border-line-soft">
-              <td className="p-1"><TextInput value={it.itemName} onChange={(e) => setItems((p) => p.map((x, idx) => idx === i ? { ...x, itemName: e.target.value } : x))} /></td>
-              <td className="p-1"><NumInput value={it.quantity} onChange={(e) => setItems((p) => p.map((x, idx) => idx === i ? { ...x, quantity: Number(e.target.value) } : x))} /></td>
-              <td className="p-1"><NumInput value={it.exVat || ""} onChange={(e) => setItems((p) => p.map((x, idx) => idx === i ? { ...x, exVat: Number(e.target.value) } : x))} /></td>
-              <td className="p-1 text-right">{fmt(inVatFromExVat(it.exVat))}</td>
-              <td className="p-1"><button onClick={() => setItems((p) => p.filter((_, idx) => idx !== i))} className="text-crit">✕</button></td>
+            <tr key={i}>
+              <td><TextInput value={it.itemName} onChange={(e) => setItems((p) => p.map((x, idx) => idx === i ? { ...x, itemName: e.target.value } : x))} /></td>
+              <td><NumInput value={it.quantity} onChange={(e) => setItems((p) => p.map((x, idx) => idx === i ? { ...x, quantity: Number(e.target.value) } : x))} /></td>
+              <td><NumInput value={it.exVat || ""} onChange={(e) => setItems((p) => p.map((x, idx) => idx === i ? { ...x, exVat: Number(e.target.value) } : x))} /></td>
+              <td className="num">{fmt(inVatFromExVat(it.exVat))}</td>
+              <td><button onClick={() => setItems((p) => p.filter((_, idx) => idx !== i))} className="text-crit">✕</button></td>
             </tr>
           ))}
         </tbody>

@@ -48,7 +48,7 @@ export function InstallmentsTab() {
           </div>
           <button onClick={refreshList} className="mb-0.5 rounded-lg border border-line px-3 py-2 text-sm text-muted hover:bg-raised"><IconRefresh size={16} /></button>
         </div>
-        <p className="mt-1 text-xs text-faint">สร้างกลุ่มงวดใหม่ได้ที่แท็บ “บันทึก” → ติ๊ก “แบ่งจ่ายหลายงวด” · ชำระแต่ละงวดที่แท็บ “ลูกหนี้-เจ้าหนี้” · กด 🔄 ถ้าเพิ่งสร้างใหม่</p>
+        <p className="mt-1 text-xs text-faint">สร้างกลุ่มงวดใหม่ได้ที่แท็บ “บันทึก” → ติ๊ก “แบ่งจ่ายหลายงวด” · ชำระแต่ละงวดที่แท็บ “ลูกหนี้-เจ้าหนี้” · กดปุ่มรีโหลด ถ้าเพิ่งสร้างใหม่</p>
         <Msg msg={msg} />
       </Card>
 
@@ -62,15 +62,15 @@ export function InstallmentsTab() {
             <span>ยอดรวม: <b>{fmt(group.totalBase)}</b></span>
             <span className="md:col-span-3">รายละเอียด: {group.header.description}</span>
           </div>
-          <table className="w-full text-sm">
-            <thead><tr className="text-left text-faint"><th className="p-1">งวด</th><th className="p-1">ครบกำหนด</th><th className="p-1 text-right">ยอด(ฐาน)</th><th className="p-1 text-right">สุทธิ</th><th className="p-1">สถานะ</th><th className="p-1">บัญชีที่จ่าย</th></tr></thead>
+          <table className="tbl">
+            <thead><tr className="text-left text-faint"><th>งวด</th><th>ครบกำหนด</th><th className="num">ยอด(ฐาน)</th><th className="num">สุทธิ</th><th>สถานะ</th><th>บัญชีที่จ่าย</th></tr></thead>
             <tbody>
               {group.installments.map((it) => (
-                <tr key={it.txId} className="border-t border-line-soft">
-                  <td className="p-1">{it.installmentNo}</td><td className="p-1">{it.dueDate}</td>
-                  <td className="p-1 text-right">{fmt(it.base)}</td><td className="p-1 text-right">{fmt(it.net)}</td>
-                  <td className="p-1">{it.paid ? <span className="text-ok">จ่ายแล้ว</span> : <span className="text-warn">ค้าง</span>}</td>
-                  <td className="p-1">{it.accountType || "-"}</td>
+                <tr key={it.txId}>
+                  <td>{it.installmentNo}</td><td>{it.dueDate}</td>
+                  <td className="num">{fmt(it.base)}</td><td className="num">{fmt(it.net)}</td>
+                  <td>{it.paid ? <span className="text-ok">จ่ายแล้ว</span> : <span className="text-warn">ค้าง</span>}</td>
+                  <td>{it.accountType || "-"}</td>
                 </tr>
               ))}
             </tbody>

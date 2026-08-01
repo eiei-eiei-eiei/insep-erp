@@ -181,6 +181,35 @@ export function IconCheck(p: IconProps) {
   );
 }
 
+/** ช่องว่างยังไม่ติ๊ก (คู่กับ IconCheck ใน checklist) */
+export function IconSquare(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <rect x="4" y="4" width="16" height="16" rx="2.5" />
+    </Svg>
+  );
+}
+
+export function IconEye(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" />
+      <circle cx="12" cy="12" r="3" />
+    </Svg>
+  );
+}
+
+export function IconEyeOff(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M4 4.5 20 20.5" />
+      <path d="M9.7 6c.75-.2 1.52-.3 2.3-.3 6 0 9.5 6.3 9.5 6.3a16 16 0 0 1-3 3.7" />
+      <path d="M6.3 8.1A16 16 0 0 0 2.5 12S6 18.3 12 18.3c1.2 0 2.3-.25 3.3-.65" />
+      <path d="M10.2 10.4a2.9 2.9 0 0 0 3.9 4.1" />
+    </Svg>
+  );
+}
+
 export function IconChevronLeft(p: IconProps) {
   return (
     <Svg {...p}>

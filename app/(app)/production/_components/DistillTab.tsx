@@ -258,28 +258,28 @@ export function DistillTab({
             <p className="text-sm text-faint">ยังไม่มีค่า</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="border-b border-line text-left text-faint">
+              <table className="tbl">
+                <thead>
                   <tr>
-                    <th className="px-2 py-1">หม้อ</th>
-                    <th className="px-2 py-1">ช่วง</th>
-                    <th className="px-2 py-1">ดีกรีอ่าน</th>
-                    <th className="px-2 py-1">อุณหภูมิ</th>
-                    <th className="px-2 py-1">ดีกรี@20</th>
-                    <th className="px-2 py-1">สะสม</th>
-                    <th className="px-2 py-1"></th>
+                    <th>หม้อ</th>
+                    <th>ช่วง</th>
+                    <th>ดีกรีอ่าน</th>
+                    <th>อุณหภูมิ</th>
+                    <th>ดีกรี@20</th>
+                    <th>สะสม</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {readings.map((r) => (
-                    <tr key={r.id} className="border-b border-line-soft">
-                      <td className="px-2 py-1">{r.pot_no}</td>
-                      <td className="px-2 py-1">{r.phase}</td>
-                      <td className="px-2 py-1">{r.abv_obs ?? "—"}</td>
-                      <td className="px-2 py-1">{r.temp_spirit ?? "—"}</td>
-                      <td className="px-2 py-1">{r.abv20 ?? "—"}</td>
-                      <td className="px-2 py-1">{r.cum_vol ?? "—"}</td>
-                      <td className="px-2 py-1"><button onClick={() => delReading(r)} className="text-crit hover:text-crit" title="ลบค่านี้"><IconTrash size={16} /></button></td>
+                    <tr key={r.id}>
+                      <td>{r.pot_no}</td>
+                      <td>{r.phase}</td>
+                      <td>{r.abv_obs ?? "—"}</td>
+                      <td>{r.temp_spirit ?? "—"}</td>
+                      <td>{r.abv20 ?? "—"}</td>
+                      <td>{r.cum_vol ?? "—"}</td>
+                      <td><button onClick={() => delReading(r)} className="text-crit hover:text-crit" title="ลบค่านี้"><IconTrash size={16} /></button></td>
                     </tr>
                   ))}
                 </tbody>

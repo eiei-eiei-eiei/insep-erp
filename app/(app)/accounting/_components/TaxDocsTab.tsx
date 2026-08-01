@@ -147,7 +147,7 @@ export function TaxDocsTab({ period, entityId, active }: { period: string; entit
     setBusy(false);
   }
 
-  const box = "rounded-2xl border border-line bg-card p-4";
+  const box = "rounded-lg border border-line bg-card p-4";
   if (!realEntity) return <div className="rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">เลือกกิจการ (ไม่ใช่ &quot;ทุกกิจการ&quot;) ด้านบนก่อนออกเอกสารสรรพากร</div>;
 
   return (
@@ -174,18 +174,18 @@ export function TaxDocsTab({ period, entityId, active }: { period: string; entit
         <h3 className="mb-2 font-semibold text-ink">ประวัติยอด ภพ.30 ที่บันทึกไว้ (tax_summaries)</h3>
         {summaries.length === 0 ? <p className="text-sm text-faint">— ยังไม่มี —</p> : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead><tr className="text-left text-faint"><th className="p-1">เดือน</th><th className="p-1 text-right">ภาษีขาย</th><th className="p-1 text-right">ภาษีซื้อ</th><th className="p-1 text-right">ยกมา</th><th className="p-1 text-right">ต้องชำระ</th><th className="p-1 text-right">ยกไป</th><th className="p-1"></th></tr></thead>
+            <table className="tbl">
+              <thead><tr className="text-left text-faint"><th>เดือน</th><th className="num">ภาษีขาย</th><th className="num">ภาษีซื้อ</th><th className="num">ยกมา</th><th className="num">ต้องชำระ</th><th className="num">ยกไป</th><th></th></tr></thead>
               <tbody>
                 {summaries.map((s) => (
-                  <tr key={s.id as number} className="border-t border-line-soft">
-                    <td className="p-1">{s.report_month as string}</td>
-                    <td className="p-1 text-right">{fmt(s.total_sales_vat as number)}</td>
-                    <td className="p-1 text-right">{fmt(s.total_purchase_vat as number)}</td>
-                    <td className="p-1 text-right">{fmt(s.forwarded_vat_in as number)}</td>
-                    <td className="p-1 text-right">{fmt(s.net_payable as number)}</td>
-                    <td className="p-1 text-right">{fmt(s.forwarded_vat_out as number)}</td>
-                    <td className="p-1"><button onClick={() => { if (confirm("ลบแถวนี้?")) deleteTaxSummaryAction(s.id as number).then(reload); }} className="text-crit hover:underline">ลบ</button></td>
+                  <tr key={s.id as number}>
+                    <td>{s.report_month as string}</td>
+                    <td className="num">{fmt(s.total_sales_vat as number)}</td>
+                    <td className="num">{fmt(s.total_purchase_vat as number)}</td>
+                    <td className="num">{fmt(s.forwarded_vat_in as number)}</td>
+                    <td className="num">{fmt(s.net_payable as number)}</td>
+                    <td className="num">{fmt(s.forwarded_vat_out as number)}</td>
+                    <td><button onClick={() => { if (confirm("ลบแถวนี้?")) deleteTaxSummaryAction(s.id as number).then(reload); }} className="text-crit hover:underline">ลบ</button></td>
                   </tr>
                 ))}
               </tbody>
@@ -207,8 +207,8 @@ export function TaxDocsTab({ period, entityId, active }: { period: string; entit
             <p className="mb-2 mt-4 text-sm text-muted">ออกแล้วเดือนนี้ ({wht.history.length})</p>
             {wht.history.length === 0 ? <p className="text-sm text-faint">— ไม่มี —</p> : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead><tr className="text-left text-faint"><th className="p-1">เลขที่</th><th className="p-1">วันออก</th><th className="p-1">คู่ค้า</th><th className="p-1">ประเภท</th><th className="p-1 text-right">ภาษีหัก</th><th className="p-1"></th></tr></thead>
+                <table className="tbl">
+                  <thead><tr className="text-left text-faint"><th>เลขที่</th><th>วันออก</th><th>คู่ค้า</th><th>ประเภท</th><th className="num">ภาษีหัก</th><th></th></tr></thead>
                   <tbody>
                     {wht.history.map((h) => <EditRow key={h.docNo} h={h} entityId={realEntity} onSaved={reload} onReprint={() => reprint(h)} busy={busy} />)}
                   </tbody>
@@ -296,12 +296,12 @@ function EditRow({ h, entityId, onSaved, onReprint, busy }: {
 
   return (
     <>
-      <tr className="border-t border-line-soft">
-        <td className="p-1">{h.docNo}</td><td className="p-1">{h.issueDate}</td><td className="p-1">{h.contactName}</td><td className="p-1">{h.pndType}</td><td className="p-1 text-right">{fmt(h.whtAmount)}</td>
-        <td className="p-1 whitespace-nowrap"><button onClick={onReprint} disabled={busy} className="text-muted hover:underline">พิมพ์ซ้ำ</button><button onClick={() => setEdit((v) => !v)} className="ml-2 text-muted hover:underline">แก้</button></td>
+      <tr>
+        <td>{h.docNo}</td><td>{h.issueDate}</td><td>{h.contactName}</td><td>{h.pndType}</td><td className="num">{fmt(h.whtAmount)}</td>
+        <td className="whitespace-nowrap"><button onClick={onReprint} disabled={busy} className="text-muted hover:underline">พิมพ์ซ้ำ</button><button onClick={() => setEdit((v) => !v)} className="ml-2 text-muted hover:underline">แก้</button></td>
       </tr>
       {edit && (
-        <tr className="bg-raised"><td colSpan={6} className="p-2">
+        <tr className="bg-raised"><td colSpan={6}>
           <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
             <Field label="เลขที่"><TextInput value={docNo} onChange={(e) => setDocNo(e.target.value)} /></Field>
             <Field label="วันออก"><TextInput type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} /></Field>

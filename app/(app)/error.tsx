@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
-import { IconRefresh } from "@/lib/shared/icons";
+import { IconAlert, IconRefresh } from "@/lib/shared/icons";
 
 /**
  * หน้า error ภาษาไทยของทุก workspace — แทนจอขาว Next default ภาษาอังกฤษ
@@ -15,7 +15,7 @@ export default function AppError({ error, reset }: { error: Error & { digest?: s
 
   return (
     <div className="mx-auto max-w-lg py-16 text-center">
-      <div className="mb-3 text-4xl">⚠️</div>
+      <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full bg-warn-bg text-warn"><IconAlert size={26} /></div>
       <h1 className="mb-2 text-xl font-bold text-ink">เปิดหน้านี้ไม่สำเร็จ</h1>
       <p className="mb-1 text-sm text-muted">
         ระบบโหลดข้อมูลไม่ได้ชั่วคราว — มักเกิดจากอินเทอร์เน็ตหลุด หรือฐานข้อมูลตอบช้า

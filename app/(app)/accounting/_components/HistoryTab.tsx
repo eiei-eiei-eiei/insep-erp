@@ -42,11 +42,11 @@ export function HistoryTab({ boot, entityId }: { boot: Bootstrap; entityId: stri
       <Card title={`ผลลัพธ์ (${shown.length})`}>
         {loading ? <p className="text-faint">กำลังโหลด…</p> : shown.length === 0 ? <p className="text-sm text-faint">— ไม่มีรายการ —</p> : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead><tr className="text-left text-faint"><th className="p-1">วันที่</th><th className="p-1">รายการ</th><th className="p-1">คู่ค้า</th><th className="p-1">ประเภท</th><th className="p-1 text-right">จำนวน</th><th className="p-1 text-right">ราคา(ex)</th><th className="p-1 text-right">รวม</th></tr></thead>
+            <table className="tbl">
+              <thead><tr className="text-left text-faint"><th>วันที่</th><th>รายการ</th><th>คู่ค้า</th><th>ประเภท</th><th className="num">จำนวน</th><th className="num">ราคา(ex)</th><th className="num">รวม</th></tr></thead>
               <tbody>
                 {shown.map((r, i) => (
-                  <tr key={r.txId + i} className="border-t border-line-soft"><td className="p-1 whitespace-nowrap">{r.date}</td><td className="p-1">{r.itemName}</td><td className="p-1">{r.contactName}</td><td className="p-1">{r.type}</td><td className="p-1 text-right">{fmt(r.quantity)}</td><td className="p-1 text-right">{fmt(r.exVat)}</td><td className="p-1 text-right">{fmt(r.totalPrice)}</td></tr>
+                  <tr key={r.txId + i}><td className="whitespace-nowrap">{r.date}</td><td>{r.itemName}</td><td>{r.contactName}</td><td>{r.type}</td><td className="num">{fmt(r.quantity)}</td><td className="num">{fmt(r.exVat)}</td><td className="num">{fmt(r.totalPrice)}</td></tr>
                 ))}
               </tbody>
             </table>

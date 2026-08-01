@@ -111,8 +111,8 @@ export function DataManager() {
       )}
 
       {/* จับ snapshot ใหม่ */}
-      <div className="mb-6 rounded-xl border border-line bg-card p-4">
-        <div className="mb-2 font-semibold text-muted">📸 จับ snapshot ตอนนี้</div>
+      <div className="mb-6 rounded-lg border border-line bg-card p-4">
+        <div className="mb-2 font-semibold text-muted">จับ snapshot ตอนนี้</div>
         <div className="flex gap-2">
           <input
             value={snapName}
@@ -131,7 +131,7 @@ export function DataManager() {
       </div>
 
       {/* รายการ snapshot */}
-      <div className="rounded-xl border border-line bg-card p-4">
+      <div className="rounded-lg border border-line bg-card p-4">
         <div className="mb-3 font-semibold text-muted">รายการ snapshot ({snaps.length})</div>
         {loading ? (
           <div className="py-6 text-center text-sm text-faint">กำลังโหลด…</div>
@@ -156,7 +156,7 @@ export function DataManager() {
                     disabled={pending}
                     className="rounded-lg border border-line px-3 py-1 text-xs font-medium text-muted hover:bg-card disabled:opacity-50"
                   >
-                    ↩ ย้อนกลับ
+                    ย้อนกลับ
                   </button>
                   <button
                     onClick={() => openDelete(s)}
@@ -175,9 +175,9 @@ export function DataManager() {
       {/* modal ยืนยันด้วยรหัสผ่าน */}
       {confirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40 p-4" onClick={() => !pending && setConfirm(null)}>
-          <div className="w-full max-w-md rounded-xl bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-md rounded-lg bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-1 text-lg font-bold text-ink">
-              {confirm.kind === "restore" ? "⚠️ ยืนยันย้อนข้อมูลกลับ" : confirm.kind === "delete" ? "ยืนยันลบ snapshot" : "ยืนยันจับ snapshot"}
+              {confirm.kind === "restore" ? "ยืนยันย้อนข้อมูลกลับ" : confirm.kind === "delete" ? "ยืนยันลบ snapshot" : "ยืนยันจับ snapshot"}
             </div>
             <p className="mb-3 text-sm text-muted">{confirm.label}</p>
 

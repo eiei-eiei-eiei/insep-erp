@@ -182,36 +182,36 @@ export function DiluteTab({ products }: { products: Product[] }) {
     <Card title="รายการล่าสุด (แก้ไข / ลบ ได้จากแอป)">
       {recent.length === 0 ? <p className="text-sm text-faint">— ยังไม่มีรายการ —</p> : (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="border-b border-line text-left text-faint"><tr><th className="px-2 py-1">วันที่</th><th className="px-2 py-1">ชื่อสุรา</th><th className="px-2 py-1 text-right">V1→V2 (ล.)</th><th className="px-2 py-1 text-right">ดีกรี</th><th className="px-2 py-1">หมายเหตุ</th><th className="px-2 py-1"></th></tr></thead>
+          <table className="tbl">
+            <thead><tr><th>วันที่</th><th>ชื่อสุรา</th><th className="num">V1→V2 (ล.)</th><th className="num">ดีกรี</th><th>หมายเหตุ</th><th></th></tr></thead>
             <tbody>
               {recent.map((r) => (
                 editId === (r.id as number) ? (
-                  <tr key={r.id as number} className="border-b border-line-soft bg-warn-bg">
-                    <td className="px-1 py-1"><TextInput type="date" value={edit.date} onChange={(e) => setEdit({ ...edit, date: e.target.value })} className="w-36" /></td>
-                    <td className="px-1 py-1">
+                  <tr key={r.id as number} className="editing">
+                    <td><TextInput type="date" value={edit.date} onChange={(e) => setEdit({ ...edit, date: e.target.value })} className="w-36" /></td>
+                    <td>
                       <Select value={edit.productName} onChange={(e) => setEdit({ ...edit, productName: e.target.value })} className="w-40">
                         {!productNames.includes(edit.productName) && edit.productName && <option value={edit.productName}>{edit.productName}</option>}
                         {productNames.map((n) => <option key={n} value={n}>{n}</option>)}
                       </Select>
                       <TextInput value={edit.bottleSize} onChange={(e) => setEdit({ ...edit, bottleSize: e.target.value })} className="mt-1 w-40" placeholder="ขนาดขวด" />
                     </td>
-                    <td className="px-1 py-1"><div className="flex items-center gap-1"><NumInput value={edit.startVol} onChange={(e) => setEdit({ ...edit, startVol: e.target.value })} className="w-20 text-right" />→<NumInput value={edit.finalVol} onChange={(e) => setEdit({ ...edit, finalVol: e.target.value })} className="w-20 text-right" /></div><NumInput value={edit.water} onChange={(e) => setEdit({ ...edit, water: e.target.value })} className="mt-1 w-full text-right" placeholder="น้ำที่เติม" /></td>
-                    <td className="px-1 py-1"><div className="flex items-center gap-1"><NumInput value={edit.startAbv} onChange={(e) => setEdit({ ...edit, startAbv: e.target.value })} className="w-16 text-right" />→<NumInput value={edit.finalAbv} onChange={(e) => setEdit({ ...edit, finalAbv: e.target.value })} className="w-16 text-right" /></div></td>
-                    <td className="px-1 py-1"><TextInput value={edit.note} onChange={(e) => setEdit({ ...edit, note: e.target.value })} /></td>
-                    <td className="whitespace-nowrap px-1 py-1">
+                    <td><div className="flex items-center gap-1"><NumInput value={edit.startVol} onChange={(e) => setEdit({ ...edit, startVol: e.target.value })} className="w-20 text-right" />→<NumInput value={edit.finalVol} onChange={(e) => setEdit({ ...edit, finalVol: e.target.value })} className="w-20 text-right" /></div><NumInput value={edit.water} onChange={(e) => setEdit({ ...edit, water: e.target.value })} className="mt-1 w-full text-right" placeholder="น้ำที่เติม" /></td>
+                    <td><div className="flex items-center gap-1"><NumInput value={edit.startAbv} onChange={(e) => setEdit({ ...edit, startAbv: e.target.value })} className="w-16 text-right" />→<NumInput value={edit.finalAbv} onChange={(e) => setEdit({ ...edit, finalAbv: e.target.value })} className="w-16 text-right" /></div></td>
+                    <td><TextInput value={edit.note} onChange={(e) => setEdit({ ...edit, note: e.target.value })} /></td>
+                    <td className="whitespace-nowrap">
                       <RowBtn tone="green" onClick={saveEdit} disabled={pending || !edit.productName}>บันทึก</RowBtn>
                       <RowBtn onClick={() => setEditId(null)} className="ml-1">ยกเลิก</RowBtn>
                     </td>
                   </tr>
                 ) : (
-                  <tr key={r.id as number} className="border-b border-line-soft">
-                    <td className="whitespace-nowrap px-2 py-1">{String(r.dilute_date).slice(0, 10)}</td>
-                    <td className="px-2 py-1">{r.product_name as string}</td>
-                    <td className="whitespace-nowrap px-2 py-1 text-right">{(r.start_vol as number) ?? "—"} → {(r.final_vol as number) ?? "—"}</td>
-                    <td className="whitespace-nowrap px-2 py-1 text-right">{(r.start_abv as number) ?? "—"}° → {(r.final_abv as number) ?? "—"}°</td>
-                    <td className="px-2 py-1 text-faint">{(r.note as string) ?? ""}</td>
-                    <td className="whitespace-nowrap px-2 py-1">
+                  <tr key={r.id as number}>
+                    <td className="whitespace-nowrap">{String(r.dilute_date).slice(0, 10)}</td>
+                    <td>{r.product_name as string}</td>
+                    <td className="whitespace-nowrap num">{(r.start_vol as number) ?? "—"} → {(r.final_vol as number) ?? "—"}</td>
+                    <td className="whitespace-nowrap num">{(r.start_abv as number) ?? "—"}° → {(r.final_abv as number) ?? "—"}°</td>
+                    <td className="text-faint">{(r.note as string) ?? ""}</td>
+                    <td className="whitespace-nowrap">
                       <button onClick={() => startEdit(r)} disabled={pending} className="text-muted hover:text-ink" title="แก้ไข"><IconEdit size={16} /></button>
                       <button onClick={() => del(r)} disabled={pending} className="ml-2 text-crit hover:text-crit" title="ลบ"><IconTrash size={16} /></button>
                     </td>

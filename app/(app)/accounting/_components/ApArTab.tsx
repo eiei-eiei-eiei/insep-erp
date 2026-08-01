@@ -42,25 +42,25 @@ export function ApArTab({ boot, entityId, active }: { boot: Bootstrap; entityId:
     <Card title={`${title} — รวม ${fmt(total)} บาท`}>
       {rows.length === 0 ? <p className="text-sm text-faint">ไม่มีรายการค้าง</p> : (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead><tr className="text-left text-faint"><th className="p-1">วันที่</th><th className="p-1">คู่ค้า</th><th className="p-1">รายละเอียด</th><th className="p-1">ครบกำหนด</th><th className="p-1 text-right">ยอด</th><th className="p-1"></th></tr></thead>
+          <table className="tbl">
+            <thead><tr className="text-left text-faint"><th>วันที่</th><th>คู่ค้า</th><th>รายละเอียด</th><th>ครบกำหนด</th><th className="num">ยอด</th><th></th></tr></thead>
             <tbody>
               {rows.map((r) => (
                 <Fragment key={r.transactionId}>
-                  <tr className="border-t border-line-soft">
-                    <td className="p-1">{r.date}</td>
-                    <td className="p-1">{r.contactName}</td>
-                    <td className="p-1">{r.description}{r.installment ? ` [งวด ${r.installment}]` : ""}</td>
-                    <td className="p-1">{r.dueDate}</td>
+                  <tr>
+                    <td>{r.date}</td>
+                    <td>{r.contactName}</td>
+                    <td>{r.description}{r.installment ? ` [งวด ${r.installment}]` : ""}</td>
+                    <td>{r.dueDate}</td>
                     <td className={`p-1 text-right font-medium ${tone}`}>{fmt(r.amount)}</td>
-                    <td className="p-1 whitespace-nowrap">
+                    <td className="whitespace-nowrap">
                       <button onClick={() => { setSettleId(settleId === r.transactionId ? null : r.transactionId); setMsg(null); }} className="text-sm text-muted hover:underline">ชำระ</button>
                       <button onClick={() => doVoid(r.transactionId)} className="ml-2 text-sm text-crit hover:underline">ยกเลิก</button>
                     </td>
                   </tr>
                   {settleId === r.transactionId && (
                     <tr className="bg-raised">
-                      <td colSpan={6} className="p-2">
+                      <td colSpan={6}>
                         <div className="flex flex-wrap items-end gap-2">
                           <Field label="บัญชีที่ใช้ชำระ"><Select value={acc} onChange={(e) => setAcc(e.target.value)}><option value="">— เลือก —</option>{accountOptions.map((a) => <option key={a.account_name} value={a.account_name}>{a.account_name}</option>)}</Select></Field>
                           <Field label="วันที่ชำระ"><TextInput type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} /></Field>
@@ -86,11 +86,11 @@ export function ApArTab({ boot, entityId, active }: { boot: Bootstrap; entityId:
       <Card title={`ยอดค้างจากออเดอร์ขาย (${data.salesOutstanding.length}) — อ่านอย่างเดียว`}>
         {data.salesOutstanding.length === 0 ? <p className="text-sm text-faint">ไม่มียอดค้างจากออเดอร์ขาย</p> : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead><tr className="text-left text-faint"><th className="p-1">ออเดอร์</th><th className="p-1">ลูกค้า</th><th className="p-1">สถานะ</th><th className="p-1 text-right">ยอดค้าง</th></tr></thead>
+            <table className="tbl">
+              <thead><tr className="text-left text-faint"><th>ออเดอร์</th><th>ลูกค้า</th><th>สถานะ</th><th className="num">ยอดค้าง</th></tr></thead>
               <tbody>
                 {data.salesOutstanding.map((r) => (
-                  <tr key={r.quNo} className="border-t border-line-soft"><td className="p-1">{r.orderNo || r.quNo}</td><td className="p-1">{r.customerName}</td><td className="p-1">{r.status}</td><td className="p-1 text-right">{fmt(r.outstanding)}</td></tr>
+                  <tr key={r.quNo}><td>{r.orderNo || r.quNo}</td><td>{r.customerName}</td><td>{r.status}</td><td className="num">{fmt(r.outstanding)}</td></tr>
                 ))}
               </tbody>
             </table>

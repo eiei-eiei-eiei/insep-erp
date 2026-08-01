@@ -13,7 +13,7 @@ export function WorkspaceSkeleton() {
       </div>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="rounded-2xl border border-line bg-card p-5">
+          <div key={i} className="rounded-lg border border-line bg-card p-5">
             <div className="mb-4 h-5 w-32 rounded bg-line" />
             <div className="space-y-2">
               <div className="h-4 w-full rounded bg-raised" />

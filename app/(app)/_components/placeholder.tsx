@@ -18,7 +18,7 @@ export function WorkspacePlaceholder({
           {phase}
         </span>
       </div>
-      <div className="rounded-2xl border border-dashed border-line bg-card p-6 text-sm leading-relaxed text-muted">
+      <div className="rounded-lg border border-dashed border-line bg-card p-6 text-sm leading-relaxed text-muted">
         {children}
       </div>
     </div>

@@ -118,30 +118,30 @@ export function MaterialTab({ materials }: { materials: Material[] }) {
     <Card title="รายการล่าสุด (แก้ไข / ลบ ได้จากแอป)">
       {recent.length === 0 ? <p className="text-sm text-faint">— ยังไม่มีรายการ —</p> : (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="border-b border-line text-left text-faint"><tr><th className="px-2 py-1">วันที่</th><th className="px-2 py-1">ประเภท</th><th className="px-2 py-1">วัตถุดิบ</th><th className="px-2 py-1 text-right">จำนวน</th><th className="px-2 py-1">หลักฐาน/หมายเหตุ</th><th className="px-2 py-1"></th></tr></thead>
+          <table className="tbl">
+            <thead><tr><th>วันที่</th><th>ประเภท</th><th>วัตถุดิบ</th><th className="num">จำนวน</th><th>หลักฐาน/หมายเหตุ</th><th></th></tr></thead>
             <tbody>
               {recent.map((r) => (
                 editId === (r.id as number) ? (
-                  <tr key={r.id as number} className="border-b border-line-soft bg-warn-bg">
-                    <td className="px-1 py-1"><TextInput type="date" value={edit.date} onChange={(e) => setEdit({ ...edit, date: e.target.value })} className="w-36" /></td>
-                    <td className="px-1 py-1"><Select value={edit.transType} onChange={(e) => setEdit({ ...edit, transType: e.target.value })} className="w-28">{MATERIAL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</Select></td>
-                    <td className="px-1 py-1"><Select value={edit.materialId} onChange={(e) => setEdit({ ...edit, materialId: e.target.value })} className="w-44">{materials.map((m) => <option key={m.material_id} value={m.material_id}>{m.name}</option>)}</Select></td>
-                    <td className="px-1 py-1"><NumInput value={edit.amount} onChange={(e) => setEdit({ ...edit, amount: e.target.value })} className="w-24 text-right" /></td>
-                    <td className="px-1 py-1"><div className="flex gap-1"><TextInput value={edit.docRef} onChange={(e) => setEdit({ ...edit, docRef: e.target.value })} className="w-28" placeholder="หลักฐาน" /><TextInput value={edit.note} onChange={(e) => setEdit({ ...edit, note: e.target.value })} placeholder="หมายเหตุ" /></div></td>
-                    <td className="whitespace-nowrap px-1 py-1">
+                  <tr key={r.id as number} className="editing">
+                    <td><TextInput type="date" value={edit.date} onChange={(e) => setEdit({ ...edit, date: e.target.value })} className="w-36" /></td>
+                    <td><Select value={edit.transType} onChange={(e) => setEdit({ ...edit, transType: e.target.value })} className="w-28">{MATERIAL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</Select></td>
+                    <td><Select value={edit.materialId} onChange={(e) => setEdit({ ...edit, materialId: e.target.value })} className="w-44">{materials.map((m) => <option key={m.material_id} value={m.material_id}>{m.name}</option>)}</Select></td>
+                    <td><NumInput value={edit.amount} onChange={(e) => setEdit({ ...edit, amount: e.target.value })} className="w-24 text-right" /></td>
+                    <td><div className="flex gap-1"><TextInput value={edit.docRef} onChange={(e) => setEdit({ ...edit, docRef: e.target.value })} className="w-28" placeholder="หลักฐาน" /><TextInput value={edit.note} onChange={(e) => setEdit({ ...edit, note: e.target.value })} placeholder="หมายเหตุ" /></div></td>
+                    <td className="whitespace-nowrap">
                       <RowBtn tone="green" onClick={saveEdit} disabled={pending || !edit.materialId}>บันทึก</RowBtn>
                       <RowBtn onClick={() => setEditId(null)} className="ml-1">ยกเลิก</RowBtn>
                     </td>
                   </tr>
                 ) : (
-                  <tr key={r.id as number} className="border-b border-line-soft">
-                    <td className="whitespace-nowrap px-2 py-1">{String(r.doc_date).slice(0, 10)}</td>
-                    <td className="px-2 py-1">{r.trans_type as string}</td>
-                    <td className="px-2 py-1">{matName(r.material_id as string)}</td>
-                    <td className="px-2 py-1 text-right">{r.amount as number}</td>
-                    <td className="px-2 py-1 text-faint">{[r.doc_ref, r.note].filter(Boolean).join(" · ")}</td>
-                    <td className="whitespace-nowrap px-2 py-1">
+                  <tr key={r.id as number}>
+                    <td className="whitespace-nowrap">{String(r.doc_date).slice(0, 10)}</td>
+                    <td>{r.trans_type as string}</td>
+                    <td>{matName(r.material_id as string)}</td>
+                    <td className="num">{r.amount as number}</td>
+                    <td className="text-faint">{[r.doc_ref, r.note].filter(Boolean).join(" · ")}</td>
+                    <td className="whitespace-nowrap">
                       <button onClick={() => startEdit(r)} disabled={pending} className="text-muted hover:text-ink" title="แก้ไข"><IconEdit size={16} /></button>
                       <button onClick={() => del(r)} disabled={pending} className="ml-2 text-crit hover:text-crit" title="ลบ"><IconTrash size={16} /></button>
                     </td>

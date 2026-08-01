@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getBatchBoardAction } from "../actions";
 import type { BatchCard } from "../data";
 import { Card, TextInput } from "./ui";
-import { IconRefresh } from "@/lib/shared/icons";
+import { IconCheck, IconFlame, IconFlask, IconRefresh } from "@/lib/shared/icons";
 
 const STAGE_STYLE: Record<BatchCard["stage"], string> = {
   "ลงหมัก": "bg-raised text-muted",
@@ -15,10 +15,10 @@ const STAGE_STYLE: Record<BatchCard["stage"], string> = {
 
 /** ขั้นถัดไปที่ควรทำ → ปุ่มกระโดดไปแท็บที่ถูกต้อง (พร้อมเลือก batch ให้เลย) */
 const NEXT_STEP: Record<BatchCard["stage"], { label: string; tab: string }> = {
-  "ลงหมัก": { label: "▶ บันทึกค่าติดตามหมัก", tab: "ติดตามหมัก" },
-  "ติดตามหมัก": { label: "▶ บันทึกค่าติดตามหมัก", tab: "ติดตามหมัก" },
-  "กำลังกลั่น": { label: "▶ ไปหน้ากลั่น (ต่อจากเดิม)", tab: "กลั่น" },
-  "ปิด batch แล้ว": { label: "▶ ดูประวัติ/เทียบ", tab: "ประวัติ/เทียบ" },
+  "ลงหมัก": { label: "บันทึกค่าติดตามหมัก", tab: "ติดตามหมัก" },
+  "ติดตามหมัก": { label: "บันทึกค่าติดตามหมัก", tab: "ติดตามหมัก" },
+  "กำลังกลั่น": { label: "ไปหน้ากลั่น (ต่อจากเดิม)", tab: "กลั่น" },
+  "ปิด batch แล้ว": { label: "ดูประวัติ/เทียบ", tab: "ประวัติ/เทียบ" },
 };
 
 export function BoardTab({
@@ -45,7 +45,7 @@ export function BoardTab({
   return (
     <Card title="กระดาน batch — ทุก batch อยู่ขั้นไหน ทำอะไรต่อ">
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <TextInput placeholder="🔍 batch / ชื่อสุรา" value={q} onChange={(e) => setQ(e.target.value)} className="w-56" />
+        <TextInput placeholder="batch / ชื่อสุรา" value={q} onChange={(e) => setQ(e.target.value)} className="w-56" />
         <label className="flex items-center gap-2 text-sm text-muted">
           <input type="checkbox" checked={showClosed} onChange={(e) => setShowClosed(e.target.checked)} />
           แสดง batch ที่ปิดแล้วด้วย
@@ -63,7 +63,7 @@ export function BoardTab({
           {filtered.map((b) => {
             const next = NEXT_STEP[b.stage];
             return (
-              <div key={b.batch} className="rounded-xl border border-line p-3">
+              <div key={b.batch} className="rounded-lg border border-line p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="font-bold text-ink">Batch {b.batch}</div>
@@ -75,7 +75,7 @@ export function BoardTab({
 
                 <div className="mt-2 space-y-0.5 text-xs text-muted">
                   <div>
-                    🧪 ค่าวัดหมัก {b.monitorCount} ครั้ง
+                    <IconFlask size={13} className="mr-1 inline align-[-2px]" />ค่าวัดหมัก {b.monitorCount} ครั้ง
                     {b.lastMeasure && (
                       <span className="text-faint">
                         {" "}· ล่าสุด {b.lastMeasure.date}
@@ -85,10 +85,10 @@ export function BoardTab({
                     )}
                   </div>
                   <div>
-                    🔥 กลั่น {b.pots > 0 ? `${b.pots} หม้อ` : "ยังไม่เริ่ม"}
+                    <IconFlame size={13} className="mr-1 inline align-[-2px]" />กลั่น {b.pots > 0 ? `${b.pots} หม้อ` : "ยังไม่เริ่ม"}
                     {b.activePot !== null && <span className="font-medium text-warn"> · หม้อที่ {b.activePot} ยังไม่จบ</span>}
                   </div>
-                  {b.closed && <div className="text-ok">✅ ปิด batch {b.closed.date} · {b.closed.vol} ล. @ {b.closed.abv}°</div>}
+                  {b.closed && <div className="text-ok"><IconCheck size={13} className="mr-1 inline align-[-2px]" />ปิด batch {b.closed.date} · {b.closed.vol} ล. @ {b.closed.abv}°</div>}
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-1.5">

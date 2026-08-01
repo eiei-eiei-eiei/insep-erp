@@ -1,4 +1,5 @@
 "use client";
+import { IconCheck, IconSquare } from "@/lib/shared/icons";
 
 /**
  * FLOW sec 6 — "เดือนนี้สร้างรายงานครบยัง"
@@ -24,7 +25,7 @@ export function ReportChecklist({
   const allDone = doneCount === items.length && items.length > 0;
 
   return (
-    <div className="rounded-2xl border border-line bg-card p-4">
+    <div className="rounded-lg border border-line bg-card p-4">
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <h3 className="font-semibold text-ink">{title}</h3>
         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${allDone ? "bg-ok-bg text-ok" : "bg-warn-bg text-warn"}`}>
@@ -37,7 +38,7 @@ export function ReportChecklist({
           const at = runs[i.key];
           return (
             <li key={i.key} className="flex flex-wrap items-center gap-2">
-              <span>{at ? "✅" : "⬜"}</span>
+              <span className={at ? "text-ok" : "text-faint"}>{at ? <IconCheck size={15} /> : <IconSquare size={15} />}</span>
               <span className={at ? "text-muted" : "text-faint"}>{i.label}</span>
               {at ? (
                 <span className="text-xs text-faint">— สร้างล่าสุด {at}</span>

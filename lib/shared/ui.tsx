@@ -316,6 +316,36 @@ export function IconBtn({
   );
 }
 
+/**
+ * กล่องครอบตาราง — คุมการเลื่อนแนวนอนให้ตัวหน้าไม่เลื่อนตาม
+ * ใช้คู่กับ <table className="tbl"> (สไตล์อยู่ใน globals.css layer components)
+ *
+ *   <TableWrap minWidth={620}>
+ *     <table className="tbl">…</table>
+ *   </TableWrap>
+ */
+export function TableWrap({
+  children,
+  minWidth,
+  className = "",
+}: {
+  children: React.ReactNode;
+  /** ความกว้างขั้นต่ำของตาราง (px) — ต่ำกว่านี้จะเลื่อนแนวนอนแทนบีบคอลัมน์ */
+  minWidth?: number;
+  className?: string;
+}) {
+  return (
+    <div className={`-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0 ${className}`}>
+      <div style={minWidth ? { minWidth } : undefined}>{children}</div>
+    </div>
+  );
+}
+
+/** ข้อความเมื่อยังไม่มีข้อมูล — ใช้แทนการเขียน <p> เองทุกที่ */
+export function Empty({ children = "— ยังไม่มีรายการ —" }: { children?: React.ReactNode }) {
+  return <p className="py-6 text-center text-sm text-faint">{children}</p>;
+}
+
 /** ป้ายสถานะทั่วไป — ok/warn/crit/neutral/brand (สีสถานะล็อกตายทุกกิจการ) */
 export function Badge({
   tone = "neutral",

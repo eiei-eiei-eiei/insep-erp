@@ -64,7 +64,7 @@ export function UsersManager({
       )}
 
       {/* สร้างผู้ใช้ใหม่ */}
-      <div className="mb-8 rounded-2xl border border-line bg-card p-5">
+      <div className="mb-8 rounded-lg border border-line bg-card p-5">
         <h2 className="mb-3 font-semibold text-ink">+ สร้างผู้ใช้ใหม่</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <label className="text-sm">
@@ -138,21 +138,21 @@ export function UsersManager({
       </div>
 
       {/* รายชื่อผู้ใช้ */}
-      <div className="overflow-x-auto rounded-2xl border border-line bg-card">
-        <table className="w-full text-sm">
-          <thead className="border-b border-line bg-raised text-left text-muted">
+      <div className="overflow-x-auto rounded-lg border border-line bg-card">
+        <table className="tbl">
+          <thead>
             <tr>
               <th className="px-4 py-3">username</th>
               <th className="px-4 py-3">ชื่อแสดงผล</th>
               <th className="px-4 py-3">สิทธิ์</th>
-              <th className="px-4 py-3 text-right">จัดการ</th>
+              <th className="px-4 py-3 num">จัดการ</th>
             </tr>
           </thead>
           <tbody>
             {users.map((u) => {
               const isSelf = u.id === currentUserId;
               return (
-                <tr key={u.id} className="border-b border-line-soft">
+                <tr key={u.id}>
                   <td className="px-4 py-3 font-medium text-ink">
                     {u.username}
                     {isSelf && (
@@ -182,7 +182,7 @@ export function UsersManager({
                       ))}
                     </select>
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 num">
                     <button
                       disabled={pending}
                       onClick={() => {

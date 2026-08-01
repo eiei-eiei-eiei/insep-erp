@@ -29,7 +29,7 @@ export default async function HomePage() {
           <Link
             key={w.key}
             href={w.href as Route}
-            className="rounded-2xl border border-line bg-card p-6 shadow-sm transition hover:border-line hover:shadow-md"
+            className="rounded-lg border border-line bg-card p-6 shadow-sm transition hover:border-line hover:shadow-md"
           >
             <div className="text-3xl">{w.icon}</div>
             <div className="mt-3 text-lg font-semibold text-ink">

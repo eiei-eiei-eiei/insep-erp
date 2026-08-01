@@ -180,34 +180,34 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
         <>
           {/* Desktop: ตาราง */}
           <div className="hidden overflow-x-auto md:block">
-            <table className="w-full min-w-[820px] text-left text-sm">
-              <thead className="bg-raised text-xs text-muted">
+            <table className="tbl min-w-[820px]">
+              <thead>
                 <tr>
-                  <th className="p-2">วันที่</th>
-                  <th className="p-2">QU / Order</th>
-                  <th className="p-2">ลูกค้า</th>
-                  <th className="p-2 text-right">ยอดสุทธิ</th>
-                  <th className="p-2 text-right">ค้างชำระ</th>
-                  <th className="p-2 text-center">สถานะ</th>
-                  <th className="p-2 text-center" style={{ width: 340 }}>จัดการ</th>
+                  <th>วันที่</th>
+                  <th>QU / Order</th>
+                  <th>ลูกค้า</th>
+                  <th className="num">ยอดสุทธิ</th>
+                  <th className="num">ค้างชำระ</th>
+                  <th className="text-center">สถานะ</th>
+                  <th className="text-center" style={{ width: 340 }}>จัดการ</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((o) => (
                   <tr key={o.quNo} className="border-b hover:bg-raised">
-                    <td className="whitespace-nowrap p-2 text-muted">{o.timestamp}</td>
-                    <td className="whitespace-nowrap p-2 font-medium text-ink">
+                    <td className="whitespace-nowrap text-muted">{o.timestamp}</td>
+                    <td className="whitespace-nowrap font-medium text-ink">
                       <div className="flex items-center gap-1">
                         {o.quNo}
                         <button onClick={() => doReprintQuotation(o)} title="พิมพ์ใบเสนอราคาซ้ำ" className="rounded border border-line p-1 text-faint hover:text-warn"><IconPrint size={16} /></button>
                       </div>
                       <div className="text-[10px] text-faint">{o.orderNo}</div>
                     </td>
-                    <td className="p-2 text-ink">{o.customerName}</td>
-                    <td className="whitespace-nowrap p-2 text-right font-semibold text-brand">฿{fmt(o.netPayable)}</td>
-                    <td className="whitespace-nowrap p-2 text-right font-semibold text-crit">฿{fmt(o.outstandingBalance)}</td>
-                    <td className="whitespace-nowrap p-2 text-center"><StatusBadge status={o.status} /></td>
-                    <td className="p-2"><div className="flex flex-wrap items-center justify-center gap-1">{orderActions(o)}</div></td>
+                    <td className="text-ink">{o.customerName}</td>
+                    <td className="whitespace-nowrap font-semibold text-brand num">฿{fmt(o.netPayable)}</td>
+                    <td className="whitespace-nowrap font-semibold text-crit num">฿{fmt(o.outstandingBalance)}</td>
+                    <td className="whitespace-nowrap text-center"><StatusBadge status={o.status} /></td>
+                    <td><div className="flex flex-wrap items-center justify-center gap-1">{orderActions(o)}</div></td>
                   </tr>
                 ))}
               </tbody>
@@ -217,7 +217,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
           {/* Mobile: การ์ด */}
           <div className="space-y-3 md:hidden">
             {filtered.map((o) => (
-              <div key={o.quNo} className="rounded-xl border border-line p-3">
+              <div key={o.quNo} className="rounded-lg border border-line p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex items-center gap-1 font-medium text-ink">
@@ -291,12 +291,12 @@ function ActBtn({
 }
 
 const ACTION_TITLES: Record<OrderAction, string> = {
-  DEPOSIT_AND_SEND: "💰 รับมัดจำ & ส่งให้คลัง",
-  FULL_PAYMENT_AND_SEND: "💳 รับชำระเต็ม & ส่งให้คลัง",
-  SEND_TO_WH: "📦 ส่งออเดอร์ให้คลัง (เครดิต)",
-  ISSUE_INVOICE_FULL: "📄 ออกใบแจ้งหนี้จ่ายเต็ม",
-  PAY_BALANCE: "💳 ชำระยอดค้าง",
-  FULL_PAYMENT_LATER: "💳 ชำระเต็มจำนวน",
+  DEPOSIT_AND_SEND: "รับมัดจำ & ส่งให้คลัง",
+  FULL_PAYMENT_AND_SEND: "รับชำระเต็ม & ส่งให้คลัง",
+  SEND_TO_WH: "ส่งออเดอร์ให้คลัง (เครดิต)",
+  ISSUE_INVOICE_FULL: "ออกใบแจ้งหนี้จ่ายเต็ม",
+  PAY_BALANCE: "ชำระยอดค้าง",
+  FULL_PAYMENT_LATER: "ชำระเต็มจำนวน",
 };
 
 function PaymentDialog({
@@ -345,7 +345,7 @@ function PaymentDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/50 p-4">
-      <div className="w-full max-w-md rounded-xl bg-card p-5">
+      <div className="w-full max-w-md rounded-lg bg-card p-5">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-bold text-ink">{ACTION_TITLES[action]}</h2>
           <button onClick={onClose} className="text-2xl leading-none text-faint hover:text-crit">

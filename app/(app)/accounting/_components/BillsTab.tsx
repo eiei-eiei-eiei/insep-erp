@@ -82,20 +82,20 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
       </Card>
 
       <Card title={`ผลลัพธ์ (${shown.length})`}>
-        {rows.length >= 500 && <p className="mb-2 text-xs text-warn">⚠️ แสดง 500 รายการแรก — ถ้าไม่เจอที่ต้องการ ให้แคบด้วยเดือน/คู่ค้า/ประเภท</p>}
+        {rows.length >= 500 && <p className="mb-2 text-xs text-warn">แสดง 500 รายการแรก — ถ้าไม่เจอที่ต้องการ ให้แคบด้วยเดือน/คู่ค้า/ประเภท</p>}
         {loading ? <p className="text-faint">กำลังโหลด…</p> : shown.length === 0 ? <p className="text-sm text-faint">— ไม่มีรายการ —</p> : (
           <>
             {/* Desktop: ตาราง */}
             <div className="hidden overflow-x-auto md:block">
-              <table className="w-full text-sm">
-                <thead><tr className="text-left text-faint"><th className="p-1">วันที่</th><th className="p-1">เลขที่</th><th className="p-1">ประเภท</th><th className="p-1">คู่ค้า</th><th className="p-1">รายละเอียด</th><th className="p-1 text-right">สุทธิ</th><th className="p-1">สถานะ</th><th className="p-1"></th></tr></thead>
+              <table className="tbl">
+                <thead><tr className="text-left text-faint"><th>วันที่</th><th>เลขที่</th><th>ประเภท</th><th>คู่ค้า</th><th>รายละเอียด</th><th className="num">สุทธิ</th><th>สถานะ</th><th></th></tr></thead>
                 <tbody>
                   {shown.map((r) => (
-                    <tr key={r.tx_id} className="border-t border-line-soft">
-                      <td className="p-1 whitespace-nowrap">{r.transaction_date}</td><td className="p-1">{r.tx_id}</td><td className="p-1">{r.type}</td>
-                      <td className="p-1">{r.contact_name}</td><td className="p-1">{r.description}</td><td className="p-1 text-right">{fmt(r.net_amount as number)}</td>
-                      <td className="p-1">{r.status}{r.ap_ar_status ? ` (${r.ap_ar_status})` : ""}</td>
-                      <td className="p-1 whitespace-nowrap"><div className="flex gap-1">{billActions(r)}</div></td>
+                    <tr key={r.tx_id}>
+                      <td className="whitespace-nowrap">{r.transaction_date}</td><td>{r.tx_id}</td><td>{r.type}</td>
+                      <td>{r.contact_name}</td><td>{r.description}</td><td className="num">{fmt(r.net_amount as number)}</td>
+                      <td>{r.status}{r.ap_ar_status ? ` (${r.ap_ar_status})` : ""}</td>
+                      <td className="whitespace-nowrap"><div className="flex gap-1">{billActions(r)}</div></td>
                     </tr>
                   ))}
                 </tbody>
@@ -105,7 +105,7 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
             {/* Mobile: การ์ด */}
             <div className="space-y-2 md:hidden">
               {shown.map((r) => (
-                <div key={r.tx_id} className="rounded-xl border border-line p-3">
+                <div key={r.tx_id} className="rounded-lg border border-line p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="text-xs text-faint">{r.transaction_date} · {r.tx_id}</div>
@@ -133,11 +133,11 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
             <Info k="ยอดก่อนหัก" v={fmt(detail.tx.amount_after_discount as number)} /><Info k="VAT" v={fmt(detail.tx.vat_amount as number)} /><Info k="สุทธิ" v={fmt(detail.tx.net_amount as number)} />
           </div>
           {detail.items.length > 0 && (
-            <table className="mt-3 w-full text-sm">
-              <thead><tr className="text-left text-faint"><th className="p-1">รายการ</th><th className="p-1">หมวด</th><th className="p-1 text-right">จำนวน</th><th className="p-1 text-right">ราคา(ex)</th><th className="p-1 text-right">รวม</th></tr></thead>
+            <table className="tbl mt-3">
+              <thead><tr className="text-left text-faint"><th>รายการ</th><th>หมวด</th><th className="num">จำนวน</th><th className="num">ราคา(ex)</th><th className="num">รวม</th></tr></thead>
               <tbody>
                 {detail.items.map((it) => (
-                  <tr key={it.item_id as string} className="border-t border-line-soft"><td className="p-1">{it.item_name as string}</td><td className="p-1">{(it.item_category as string) ?? ""}</td><td className="p-1 text-right">{fmt(it.quantity as number)}</td><td className="p-1 text-right">{fmt(it.ex_vat as number)}</td><td className="p-1 text-right">{fmt(it.total_price as number)}</td></tr>
+                  <tr key={it.item_id as string}><td>{it.item_name as string}</td><td>{(it.item_category as string) ?? ""}</td><td className="num">{fmt(it.quantity as number)}</td><td className="num">{fmt(it.ex_vat as number)}</td><td className="num">{fmt(it.total_price as number)}</td></tr>
                 ))}
               </tbody>
             </table>
@@ -250,7 +250,7 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-overlay/30 p-0 sm:p-4" onClick={onClose}>
-      <div className="min-h-dvh w-full rounded-none bg-card p-5 sm:my-8 sm:min-h-0 sm:max-w-3xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="min-h-dvh w-full rounded-none bg-card p-5 sm:my-8 sm:min-h-0 sm:max-w-3xl sm:rounded-lg" onClick={(e) => e.stopPropagation()}>
         <h3 className="mb-3 font-semibold text-ink">แก้ไขบิล {txId}</h3>
         {loading ? <p className="text-faint">กำลังโหลด…</p> : (
           <>
@@ -277,19 +277,19 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
             </div>
 
             <div className="mt-3 overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead><tr className="text-left text-faint"><th className="p-1">ชื่อรายการ</th><th className="p-1 w-16">จำนวน</th><th className="p-1 w-28">รวม VAT</th><th className="p-1 w-28">ไม่รวม VAT</th><th className="p-1 w-16">ลด %</th><th className="p-1 w-24">ลด บาท</th><th className="p-1 w-28 text-right">รวม</th><th className="p-1 w-8"></th></tr></thead>
+              <table className="tbl">
+                <thead><tr className="text-left text-faint"><th>ชื่อรายการ</th><th className="w-16">จำนวน</th><th className="w-28">รวม VAT</th><th className="w-28">ไม่รวม VAT</th><th className="w-16">ลด %</th><th className="w-24">ลด บาท</th><th className="w-28 num">รวม</th><th className="w-8"></th></tr></thead>
                 <tbody>
                   {items.map((it, i) => (
-                    <tr key={i} className="border-t border-line-soft">
-                      <td className="p-1"><TextInput value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })} placeholder="ชื่อสินค้า/บริการ" /></td>
-                      <td className="p-1"><NumBox value={it.quantity} onChange={(v) => onQty(i, v)} /></td>
-                      <td className="p-1"><NumBox value={it.inVat} blankZero onChange={(v) => onInVat(i, v === "" ? 0 : v)} /></td>
-                      <td className="p-1"><NumBox value={it.exVat} blankZero onChange={(v) => onExVat(i, v === "" ? 0 : v)} /></td>
-                      <td className="p-1"><NumBox value={it.discPct} blankZero onChange={(v) => onDiscPct(i, v === "" ? 0 : v)} /></td>
-                      <td className="p-1"><NumBox value={it.discBaht} blankZero onChange={(v) => onDiscBaht(i, v === "" ? 0 : v)} /></td>
-                      <td className="p-1 text-right font-medium">{fmt(itemTotal(qn(it.quantity), it.exVat, it.discBaht))}</td>
-                      <td className="p-1"><button type="button" onClick={() => removeItem(i)} title="ลบรายการนี้" className="text-crit hover:text-crit">✕</button></td>
+                    <tr key={i}>
+                      <td><TextInput value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })} placeholder="ชื่อสินค้า/บริการ" /></td>
+                      <td><NumBox value={it.quantity} onChange={(v) => onQty(i, v)} /></td>
+                      <td><NumBox value={it.inVat} blankZero onChange={(v) => onInVat(i, v === "" ? 0 : v)} /></td>
+                      <td><NumBox value={it.exVat} blankZero onChange={(v) => onExVat(i, v === "" ? 0 : v)} /></td>
+                      <td><NumBox value={it.discPct} blankZero onChange={(v) => onDiscPct(i, v === "" ? 0 : v)} /></td>
+                      <td><NumBox value={it.discBaht} blankZero onChange={(v) => onDiscBaht(i, v === "" ? 0 : v)} /></td>
+                      <td className="font-medium num">{fmt(itemTotal(qn(it.quantity), it.exVat, it.discBaht))}</td>
+                      <td><button type="button" onClick={() => removeItem(i)} title="ลบรายการนี้" className="text-crit hover:text-crit">✕</button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -307,8 +307,8 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
             <div className="mt-3 flex items-center justify-between">
               <span className="text-xs text-faint">ยอดคำนวณ</span>
               {manualAmt
-                ? <button type="button" onClick={lockAmounts} className="text-xs text-faint hover:underline">↩️ กลับไปคำนวณอัตโนมัติ</button>
-                : <button type="button" onClick={unlockAmounts} className="text-xs text-brand hover:underline">✏️ แก้ยอดเอง</button>}
+                ? <button type="button" onClick={lockAmounts} className="text-xs text-faint hover:underline">กลับไปคำนวณอัตโนมัติ</button>
+                : <button type="button" onClick={unlockAmounts} className="text-xs text-brand hover:underline">แก้ยอดเอง</button>}
             </div>
             <dl className="mt-1 space-y-1 text-sm">
               {manualAmt ? (

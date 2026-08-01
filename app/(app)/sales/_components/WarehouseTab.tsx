@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { WarehouseOrder, StockItem } from "./types";
-import { Card, Msg, NumInput, Select, TextInput, useSaver, fmt } from "./ui";
+import { Badge, Card, Msg, NumInput, Select, TextInput, fmt, useSaver } from "./ui";
 import { getPendingWarehouseAction, getWarehouseStockAction, confirmFulfillmentAction, manualStockMoveAction } from "../actions";
 import { printSalesDocs, type OrderLike } from "./print";
 
@@ -13,10 +13,10 @@ export function WarehouseTab({ role, active }: { role: string; active: boolean }
     <div>
       <div className="mb-4 flex gap-1">
         <button onClick={() => setSub("orders")} className={`rounded px-3 py-1.5 text-sm font-bold ${sub === "orders" ? "bg-warn-bg text-warn" : "text-faint"}`}>
-          📦 ออเดอร์รอจัดส่ง
+          ออเดอร์รอจัดส่ง
         </button>
         <button onClick={() => setSub("stock")} className={`rounded px-3 py-1.5 text-sm font-bold ${sub === "stock" ? "bg-warn-bg text-warn" : "text-faint"}`}>
-          📊 สต็อกรวม
+          สต็อกรวม
         </button>
       </div>
       {sub === "orders" ? <PendingOrders canWrite={canWrite} active={active} /> : <StockPanel canWrite={canWrite} active={active} />}
@@ -82,29 +82,29 @@ function PendingOrders({ canWrite, active }: { canWrite: boolean; active: boolea
               {o.outstandingBalance > 0 && <div className="text-crit">ค้าง ฿{fmt(o.outstandingBalance)}</div>}
             </div>
           </div>
-          <table className="mt-3 w-full text-sm">
-            <thead className="text-xs text-faint">
+          <table className="tbl mt-3">
+            <thead>
               <tr>
-                <th className="p-1 text-left">รายการ</th>
-                <th className="p-1 text-center">จำนวน</th>
+                <th>รายการ</th>
+                <th className="text-center">จำนวน</th>
               </tr>
             </thead>
             <tbody>
               {o.items.map((it, i) => (
                 <tr key={i} className="border-t">
-                  <td className="p-1">{it.name}</td>
-                  <td className="p-1 text-center">{it.qty}</td>
+                  <td>{it.name}</td>
+                  <td className="text-center">{it.qty}</td>
                 </tr>
               ))}
             </tbody>
           </table>
           <div className="mt-3 flex gap-2">
             <button onClick={() => printDoc(o)} className="rounded border border-line px-3 py-1.5 text-sm text-muted hover:bg-raised">
-              🖨️ พิมพ์เอกสาร
+              พิมพ์เอกสาร
             </button>
             {canWrite && (
               <button onClick={() => confirm(o)} disabled={busy === o.quNo} className="rounded bg-brand px-4 py-1.5 text-sm font-bold text-on-brand hover:opacity-90 disabled:opacity-50">
-                {busy === o.quNo ? "กำลังตัดสต็อก…" : "✅ ยืนยันจัดส่ง & ตัดสต็อก"}
+                {busy === o.quNo ? "กำลังตัดสต็อก…" : "ยืนยันจัดส่ง & ตัดสต็อก"}
               </button>
             )}
           </div>
@@ -182,32 +182,32 @@ function StockPanel({ canWrite, active }: { canWrite: boolean; active: boolean }
         </Card>
       )}
 
-      <Card title="สต็อกรวม (สุรา 🏭 + ทั่วไป)">
-        <TextInput placeholder="🔍 ค้นหา" value={search} onChange={(e) => setSearch(e.target.value)} className="mb-3 max-w-xs" />
+      <Card title="สต็อกรวม (สุราจากโรงกลั่น + สินค้าทั่วไป)">
+        <TextInput placeholder="ค้นหา" value={search} onChange={(e) => setSearch(e.target.value)} className="mb-3 max-w-xs" />
         {loading ? (
           <div className="py-8 text-center text-faint">กำลังโหลด…</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] text-left text-sm">
-              <thead className="bg-raised text-xs text-muted">
+            <table className="tbl min-w-[560px]">
+              <thead>
                 <tr>
-                  <th className="p-2">รหัส</th>
-                  <th className="p-2">ชื่อสินค้า</th>
-                  <th className="p-2">ประเภท</th>
-                  <th className="p-2 text-right">คงเหลือ</th>
-                  <th className="p-2">หน่วย</th>
+                  <th>รหัส</th>
+                  <th>ชื่อสินค้า</th>
+                  <th>ประเภท</th>
+                  <th className="num">คงเหลือ</th>
+                  <th>หน่วย</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((s) => (
                   <tr key={`${s.category}-${s.itemCode}`} className="border-b">
-                    <td className="p-2 font-medium text-muted">{s.itemCode}</td>
-                    <td className="p-2">
-                      {s.itemName} {s.isLive && <span className="text-[10px] text-warn">🏭 Live</span>}
+                    <td className="font-medium text-muted">{s.itemCode}</td>
+                    <td>
+                      {s.itemName} {s.isLive && <Badge tone="brand">สด</Badge>}
                     </td>
-                    <td className="p-2 text-faint">{s.category}</td>
+                    <td className="text-faint">{s.category}</td>
                     <td className={`p-2 text-right font-semibold ${s.currentStock <= 0 ? "text-crit" : "text-ink"}`}>{fmt(s.currentStock)}</td>
-                    <td className="p-2 text-faint">{s.unit}</td>
+                    <td className="text-faint">{s.unit}</td>
                   </tr>
                 ))}
                 {filtered.length === 0 && (

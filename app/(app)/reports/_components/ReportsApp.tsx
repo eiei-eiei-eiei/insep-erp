@@ -131,7 +131,7 @@ export function ReportsApp({ options }: { options: Opt }) {
     }
   }
 
-  const box = "rounded-2xl border border-line bg-card p-4";
+  const box = "rounded-lg border border-line bg-card p-4";
   const chk = "flex items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-raised cursor-pointer";
 
   const anyMaster = useMemo(
@@ -160,7 +160,7 @@ export function ReportsApp({ options }: { options: Opt }) {
           <span className={`mt-1 block text-xs ${selectedExcise ? "text-faint" : "text-crit"}`}>
             {selectedExcise
               ? `เลขสรรพสามิต: ${selectedExcise}`
-              : "⚠️ กิจการนี้ยังไม่มีเลขสรรพสามิต — หัวฟอร์มจะว่าง (ตั้งที่ entities.excise_id)"}
+              : "กิจการนี้ยังไม่มีเลขสรรพสามิต — หัวฟอร์มจะว่าง (ตั้งที่ entities.excise_id)"}
           </span>
         </label>
         <label className="text-sm">

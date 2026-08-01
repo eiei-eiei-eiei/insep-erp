@@ -162,6 +162,59 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* ── ตารางข้อมูล ────────────────────────────────────────────────────────────
+   อยู่ใน layer `components` → utility class บน th/td ยังทับได้เสมอ
+   (ใส่ text-right / whitespace-nowrap / สี รายช่องได้ตามปกติ)
+   ใช้คู่กับ <TableWrap> ใน lib/shared/ui.tsx ที่คุมการเลื่อนแนวนอน
+   -------------------------------------------------------------------------- */
+@layer components {
+  .tbl {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem; /* 13px — ตารางข้อมูลเล็กกว่าเนื้อความ 1 ขั้น */
+    line-height: 1.45;
+  }
+  .tbl thead th {
+    padding: 0.375rem 0.5rem;
+    text-align: left;
+    font-size: 0.625rem; /* 10px */
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+    white-space: nowrap;
+    border-bottom: 1px solid var(--color-line);
+  }
+  .tbl tbody td {
+    padding: 0.4375rem 0.5rem;
+    color: var(--color-ink);
+    vertical-align: middle;
+  }
+  .tbl tbody tr + tr td {
+    border-top: 1px solid var(--color-line-soft);
+  }
+  .tbl tbody tr:hover td {
+    background: var(--color-raised);
+  }
+  /* แถวที่กำลังแก้ inline — เน้นว่าอยู่ในโหมดแก้ */
+  .tbl tbody tr.editing td,
+  .tbl tbody tr.editing:hover td {
+    background: var(--color-warn-bg);
+  }
+  /* ช่องตัวเลข: ชิดขวา + หลักตรงกัน */
+  .tbl th.num,
+  .tbl td.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  /* ช่องปุ่มจัดการท้ายแถว */
+  .tbl td.act {
+    white-space: nowrap;
+    text-align: right;
+  }
+}
+
 /* โฟกัสด้วยคีย์บอร์ดต้องเห็นเสมอ */
 :focus-visible {
   outline: 2px solid var(--color-brand);

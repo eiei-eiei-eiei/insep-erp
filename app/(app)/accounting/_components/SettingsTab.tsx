@@ -83,11 +83,11 @@ function BankAccounts({ boot }: { boot: Bootstrap }) {
   return (
     <Card title="บัญชีเงิน (bank_accounts)">
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead><tr className="text-left text-faint"><th className="p-1">ชื่อบัญชี</th><th className="p-1">ประเภท</th><th className="p-1">กิจการที่ใช้</th><th className="p-1 text-right">ยอดยกมา</th></tr></thead>
+        <table className="tbl">
+          <thead><tr className="text-left text-faint"><th>ชื่อบัญชี</th><th>ประเภท</th><th>กิจการที่ใช้</th><th className="num">ยอดยกมา</th></tr></thead>
           <tbody>
             {rows.map((a) => (
-              <tr key={a.account_name} className="border-t border-line-soft"><td className="p-1">{a.account_name}</td><td className="p-1">{a.kind}</td><td className="p-1">{(a.entity_ids ?? []).join(", ") || "ทุกกิจการ"}</td><td className="p-1 text-right">{fmt(a.opening_balance)}</td></tr>
+              <tr key={a.account_name}><td>{a.account_name}</td><td>{a.kind}</td><td>{(a.entity_ids ?? []).join(", ") || "ทุกกิจการ"}</td><td className="num">{fmt(a.opening_balance)}</td></tr>
             ))}
           </tbody>
         </table>
@@ -147,13 +147,13 @@ function Contacts({ initial }: { initial: Contact[] }) {
         <button onClick={() => setEdit(blank())} className="whitespace-nowrap rounded-lg bg-brand px-4 py-2 text-sm text-on-brand">+ เพิ่มคู่ค้า</button>
       </div>
       <div className="max-h-80 overflow-y-auto">
-        <table className="w-full text-sm">
-          <thead><tr className="text-left text-faint"><th className="p-1">ชื่อ</th><th className="p-1">เลขภาษี</th><th className="p-1">สาขา</th><th className="p-1">ประเภท</th><th className="p-1"></th></tr></thead>
+        <table className="tbl">
+          <thead><tr className="text-left text-faint"><th>ชื่อ</th><th>เลขภาษี</th><th>สาขา</th><th>ประเภท</th><th></th></tr></thead>
           <tbody>
             {filtered.map((c) => (
-              <tr key={c.contact_id} className="border-t border-line-soft">
-                <td className="p-1">{c.name}</td><td className="p-1">{c.tax_id}</td><td className="p-1">{c.branch}</td><td className="p-1">{c.contact_type}</td>
-                <td className="p-1 whitespace-nowrap"><button onClick={() => setEdit(c)} className="text-muted hover:underline">แก้</button><button onClick={() => del(c.contact_id)} className="ml-2 text-crit hover:underline">ลบ</button></td>
+              <tr key={c.contact_id}>
+                <td>{c.name}</td><td>{c.tax_id}</td><td>{c.branch}</td><td>{c.contact_type}</td>
+                <td className="whitespace-nowrap"><button onClick={() => setEdit(c)} className="text-muted hover:underline">แก้</button><button onClick={() => del(c.contact_id)} className="ml-2 text-crit hover:underline">ลบ</button></td>
               </tr>
             ))}
           </tbody>
@@ -162,7 +162,7 @@ function Contacts({ initial }: { initial: Contact[] }) {
       <Msg msg={msg} />
       {edit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onClick={() => setEdit(null)}>
-          <div className="w-full max-w-md rounded-2xl bg-card p-5" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-md rounded-lg bg-card p-5" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-3 font-semibold text-ink">{edit.contact_id ? "แก้ไขคู่ค้า" : "เพิ่มคู่ค้า"}</h3>
             <div className="space-y-3">
               <Field label="ชื่อ"><TextInput value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>

@@ -39,16 +39,16 @@ export function DashboardTab({ period, entityId, active }: { period: string; ent
           <p className="text-sm text-faint">ไม่มีรายการค้างออกหนังสือรับรอง</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead><tr className="text-left text-faint"><th className="p-1">วันที่</th><th className="p-1">คู่ค้า</th><th className="p-1">หมวดหมู่</th><th className="p-1 text-right">ยอด</th><th className="p-1 text-right">หัก ณ ที่จ่าย</th></tr></thead>
+            <table className="tbl">
+              <thead><tr className="text-left text-faint"><th>วันที่</th><th>คู่ค้า</th><th>หมวดหมู่</th><th className="num">ยอด</th><th className="num">หัก ณ ที่จ่าย</th></tr></thead>
               <tbody>
                 {data.whtPending.map((p) => (
-                  <tr key={p.transactionId} className="border-t border-line-soft">
-                    <td className="p-1">{p.displayDate}</td>
-                    <td className="p-1">{p.contactName}</td>
-                    <td className="p-1">{p.category}</td>
-                    <td className="p-1 text-right">{fmt(p.amount)}</td>
-                    <td className="p-1 text-right">{fmt(p.whtAmount)}</td>
+                  <tr key={p.transactionId}>
+                    <td>{p.displayDate}</td>
+                    <td>{p.contactName}</td>
+                    <td>{p.category}</td>
+                    <td className="num">{fmt(p.amount)}</td>
+                    <td className="num">{fmt(p.whtAmount)}</td>
                   </tr>
                 ))}
               </tbody>

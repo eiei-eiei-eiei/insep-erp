@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { getBalancesAction, getStatementAction, saveTransferAction } from "../actions";
 import type { Bootstrap } from "./types";
-import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, fmt, todayISO, useSaver } from "./ui";
+import { Badge, Card, Field, Msg, NumBox, SaveButton, Select, TextInput, fmt, todayISO, useSaver } from "./ui";
 
 type Balances = Awaited<ReturnType<typeof getBalancesAction>>;
 type Statement = Awaited<ReturnType<typeof getStatementAction>>;
@@ -52,23 +52,23 @@ export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstra
       <Card title={`ยอดคงเหลือทุกบัญชี ณ สิ้นเดือน ${period}`}>
         {!bal ? <p className="text-faint">กำลังโหลด…</p> : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead><tr className="text-left text-faint"><th className="p-1">บัญชี</th><th className="p-1 text-right">ยอดยกมา</th><th className="p-1 text-right">เข้า</th><th className="p-1 text-right">ออก</th><th className="p-1 text-right">คงเหลือ</th><th className="p-1"></th></tr></thead>
+            <table className="tbl">
+              <thead><tr className="text-left text-faint"><th>บัญชี</th><th className="num">ยอดยกมา</th><th className="num">เข้า</th><th className="num">ออก</th><th className="num">คงเหลือ</th><th></th></tr></thead>
               <tbody>
                 {bal.balances.map((b) => (
-                  <tr key={b.accountType} className="border-t border-line-soft">
-                    <td className="p-1">{b.accountType}{b.isTaxAccount ? " 🧾" : ""}{b.shared ? " 🔗" : ""}</td>
-                    <td className="p-1 text-right">{fmt(b.openingBalance)}</td>
-                    <td className="p-1 text-right text-ok">{fmt(b.totalIn)}</td>
-                    <td className="p-1 text-right text-crit">{fmt(b.totalOut)}</td>
-                    <td className="p-1 text-right font-semibold">{fmt(b.balance)}</td>
-                    <td className="p-1"><button onClick={() => openStatement(b.accountType)} className="text-muted hover:underline">statement</button></td>
+                  <tr key={b.accountType}>
+                    <td>{b.accountType}{b.isTaxAccount ? <Badge tone="neutral" className="ml-1">ภาษี</Badge> : null}{b.shared ? <Badge tone="neutral" className="ml-1">ใช้ร่วม</Badge> : null}</td>
+                    <td className="num">{fmt(b.openingBalance)}</td>
+                    <td className="text-ok num">{fmt(b.totalIn)}</td>
+                    <td className="text-crit num">{fmt(b.totalOut)}</td>
+                    <td className="font-semibold num">{fmt(b.balance)}</td>
+                    <td><button onClick={() => openStatement(b.accountType)} className="text-muted hover:underline">statement</button></td>
                   </tr>
                 ))}
-                <tr className="border-t-2 border-line font-semibold"><td className="p-1">รวมทุกบัญชี</td><td colSpan={3}></td><td className="p-1 text-right">{fmt(bal.grandTotal)}</td><td></td></tr>
+                <tr className="border-t-2 border-line font-semibold"><td>รวมทุกบัญชี</td><td colSpan={3}></td><td className="num">{fmt(bal.grandTotal)}</td><td></td></tr>
               </tbody>
             </table>
-            <p className="mt-1 text-xs text-faint">🧾 บัญชีในระบบภาษี · 🔗 บัญชีใช้ร่วมหลายกิจการ</p>
+            <p className="mt-1 text-xs text-faint">ป้าย “ภาษี” = บัญชีในระบบภาษี · “ใช้ร่วม” = ใช้ได้หลายกิจการ</p>
           </div>
         )}
       </Card>
@@ -78,16 +78,16 @@ export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstra
           {!stmt ? <p className="text-faint">กำลังโหลด…</p> : (
             <div className="overflow-x-auto">
               <p className="mb-2 text-sm text-muted">ยอดยกมา: <b>{fmt(stmt.openingBalance)}</b> · ยอดยกไป: <b>{fmt(stmt.closingBalance)}</b></p>
-              <table className="w-full text-sm">
-                <thead><tr className="text-left text-faint"><th className="p-1">วันที่</th><th className="p-1">ประเภท</th><th className="p-1">รายละเอียด</th><th className="p-1 text-right">เดบิต</th><th className="p-1 text-right">เครดิต</th><th className="p-1 text-right">คงเหลือ</th></tr></thead>
+              <table className="tbl">
+                <thead><tr className="text-left text-faint"><th>วันที่</th><th>ประเภท</th><th>รายละเอียด</th><th className="num">เดบิต</th><th className="num">เครดิต</th><th className="num">คงเหลือ</th></tr></thead>
                 <tbody>
                   {stmt.rows.length === 0 ? <tr><td colSpan={6} className="p-3 text-center text-faint">ไม่มีรายการในเดือนนี้</td></tr> :
                     stmt.rows.map((r) => (
-                      <tr key={r.txId} className="border-t border-line-soft">
-                        <td className="p-1">{r.date}</td><td className="p-1">{r.type}</td><td className="p-1">{r.description || r.contactName}</td>
-                        <td className="p-1 text-right text-crit">{r.debit ? fmt(r.debit) : ""}</td>
-                        <td className="p-1 text-right text-ok">{r.credit ? fmt(r.credit) : ""}</td>
-                        <td className="p-1 text-right">{fmt(r.runningBalance)}</td>
+                      <tr key={r.txId}>
+                        <td>{r.date}</td><td>{r.type}</td><td>{r.description || r.contactName}</td>
+                        <td className="text-crit num">{r.debit ? fmt(r.debit) : ""}</td>
+                        <td className="text-ok num">{r.credit ? fmt(r.credit) : ""}</td>
+                        <td className="num">{fmt(r.runningBalance)}</td>
                       </tr>
                     ))}
                 </tbody>
