@@ -6,13 +6,14 @@
  * เหตุผล: เดิมมี ui.tsx ก๊อปกัน 3 ชุด แล้ว drift จริง — บั๊กพิมพ์ทศนิยม (NumBox)
  * ถูกแก้ที่บัญชีที่เดียว ส่วนขาย/ผลิตยังเหลือ · ตรรกะที่ "ต้องเหมือนกันเสมอ"
  * (NumBox buffer, Combobox คีย์บอร์ด, useSaver, fmt) ย้ายมาอยู่ที่นี่ที่เดียว
- * ต่างกันได้แค่สี accent — ไฟล์ ui.tsx ของแต่ละโดเมน re-export ต่อ (import เดิมไม่ต้องแก้)
+ *
+ * ★ สีทั้งหมดมาจาก token ใน app/globals.css เท่านั้น (D43)
+ *   ห้ามเขียน bg-slate-800 / text-red-500 ตรง ๆ — ดู docs/DESIGN_SYSTEM.md
  */
 
 import { useEffect, useRef, useState, useTransition } from "react";
 
 export type SaveResultLike = { ok: boolean; error?: string; data?: unknown };
-export type Accent = "slate" | "amber";
 
 // ── formatters ───────────────────────────────────────────────────────────────
 /** วันที่วันนี้ yyyy-MM-dd ตามเวลาเครื่องผู้ใช้ (ชดเชย timezone offset ก่อน toISOString) */
@@ -71,7 +72,12 @@ export function useSaver<R extends SaveResultLike = SaveResultLike>() {
 export function Msg({ msg }: { msg: { ok: boolean; text: string } | null }) {
   if (!msg) return null;
   return (
-    <div className={`mb-3 rounded-lg px-3 py-2 text-sm ${msg.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
+    <div
+      role="status"
+      className={`mb-3 rounded-lg border px-3 py-2 text-sm ${
+        msg.ok ? "border-ok-line bg-ok-bg text-ok" : "border-crit-line bg-crit-bg text-crit"
+      }`}
+    >
       {msg.text}
     </div>
   );
@@ -80,7 +86,7 @@ export function Msg({ msg }: { msg: { ok: boolean; text: string } | null }) {
 export function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block text-sm">
-      <span className="mb-1 block text-slate-600">{label}</span>
+      <span className="mb-1 block text-xs font-medium tracking-wide text-muted">{label}</span>
       {children}
     </label>
   );
@@ -88,43 +94,35 @@ export function Field({ label, children }: { label: string; children: React.Reac
 
 export function Card({ title, children, className }: { title?: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className={`rounded-2xl border border-slate-200 bg-white p-5 ${className ?? ""}`}>
-      {title && <h2 className="mb-4 font-semibold text-slate-800">{title}</h2>}
+    <div className={`rounded-lg border border-line bg-card p-4 sm:p-5 ${className ?? ""}`}>
+      {title && <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-ink">{title}</h2>}
       {children}
     </div>
   );
 }
 
 export function Stat({ label, value, tone }: { label: string; value: string; tone?: "green" | "red" | "slate" }) {
-  const c = tone === "green" ? "text-green-600" : tone === "red" ? "text-red-600" : "text-slate-800";
+  const c = tone === "green" ? "text-ok" : tone === "red" ? "text-crit" : "text-ink";
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className={`mt-1 text-xl font-bold ${c}`}>{value}</div>
+    <div className="rounded-lg border border-line bg-card p-4">
+      <div className="text-[10px] font-medium uppercase tracking-widest text-muted">{label}</div>
+      <div className={`tnum mt-1 text-xl font-bold ${c}`}>{value}</div>
     </div>
   );
 }
 
 // ── inputs ───────────────────────────────────────────────────────────────────
-const INPUT_BASE = "w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 outline-none";
-const FOCUS: Record<Accent, string> = {
-  slate: "focus:border-slate-500 focus:ring-2 focus:ring-slate-200",
-  amber: "focus:border-amber-500 focus:ring-2 focus:ring-amber-200",
-};
-export function inputCls(accent: Accent = "slate"): string {
-  return `${INPUT_BASE} ${FOCUS[accent]}`;
-}
+const inputCls =
+  "w-full rounded border border-line bg-input px-3 py-2 text-ink outline-none transition focus:border-brand focus:ring-2 focus:ring-brand-soft";
 
-type WithAccent = { accent?: Accent };
-
-export function TextInput({ accent = "slate", className = "", ...props }: React.InputHTMLAttributes<HTMLInputElement> & WithAccent) {
-  return <input {...props} className={`${inputCls(accent)} ${className}`} />;
+export function TextInput({ className = "", ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
+  return <input {...props} className={`${inputCls} ${className}`} />;
 }
-export function NumInput({ accent = "slate", className = "", ...props }: React.InputHTMLAttributes<HTMLInputElement> & WithAccent) {
-  return <input type="number" step="any" inputMode="decimal" {...props} className={`${inputCls(accent)} ${className}`} />;
+export function NumInput({ className = "", ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
+  return <input type="number" step="any" inputMode="decimal" {...props} className={`tnum ${inputCls} text-right ${className}`} />;
 }
-export function Select({ accent = "slate", className = "", ...props }: React.SelectHTMLAttributes<HTMLSelectElement> & WithAccent) {
-  return <select {...props} className={`${inputCls(accent)} ${className}`} />;
+export function Select({ className = "", ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return <select {...props} className={`${inputCls} ${className}`} />;
 }
 
 /**
@@ -139,7 +137,6 @@ export function NumBox({
   readOnly = false,
   placeholder,
   className,
-  accent = "slate",
   onKeyDown,
 }: {
   value: number | "";
@@ -148,7 +145,6 @@ export function NumBox({
   readOnly?: boolean;
   placeholder?: string;
   className?: string;
-  accent?: Accent;
   onKeyDown?: React.KeyboardEventHandler<HTMLInputElement>;
 }) {
   const display = (v: number | "") => (v === "" || (v === 0 && blankZero) ? "" : String(v));
@@ -177,7 +173,7 @@ export function NumBox({
       onFocus={() => { focused.current = true; }}
       onBlur={() => { focused.current = false; setRaw(display(value)); }}
       onChange={(e) => handle(e.target.value)}
-      className={`${inputCls(accent)} ${readOnly ? "cursor-default bg-slate-50 text-slate-500" : ""} ${className ?? ""}`}
+      className={`tnum ${inputCls} text-right ${readOnly ? "cursor-default bg-raised text-muted" : ""} ${className ?? ""}`}
     />
   );
 }
@@ -188,22 +184,17 @@ export function Combobox({
   value,
   onChange,
   placeholder,
-  accent = "slate",
 }: {
   options: { value: string; label: string }[];
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
-  accent?: Accent;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [hi, setHi] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
   const selected = options.find((o) => o.value === value);
-  const hover = accent === "amber" ? "hover:bg-amber-50" : "hover:bg-slate-50";
-  const active = accent === "amber" ? "bg-amber-50" : "bg-slate-100";
-  const picked = accent === "amber" ? "font-semibold text-amber-700" : "font-semibold text-slate-900";
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
@@ -225,7 +216,7 @@ export function Combobox({
   return (
     <div className="relative" ref={ref}>
       <input
-        className={inputCls(accent)}
+        className={inputCls}
         value={open ? query : selected?.label ?? ""}
         placeholder={placeholder ?? "พิมพ์ค้นหา…"}
         onFocus={() => { setOpen(true); setQuery(""); setHi(0); }}
@@ -246,15 +237,17 @@ export function Combobox({
         }}
       />
       {open && (
-        <div className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
-          {filtered.length === 0 && <div className="px-3 py-2 text-sm text-slate-400">ไม่พบ</div>}
+        <div className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-line bg-card shadow-lg">
+          {filtered.length === 0 && <div className="px-3 py-2 text-sm text-faint">ไม่พบ</div>}
           {filtered.map((o, i) => (
             <button
               key={o.value}
               type="button"
               onMouseEnter={() => setHi(i)}
               onClick={() => pick(o.value)}
-              className={`block w-full px-3 py-2 text-left text-sm ${i === hi ? active : ""} ${o.value === value ? picked : "text-slate-700"} ${hover}`}
+              className={`block w-full px-3 py-2 text-left text-sm hover:bg-raised ${i === hi ? "bg-raised" : ""} ${
+                o.value === value ? "font-semibold text-brand" : "text-muted"
+              }`}
             >
               {o.label}
             </button>
@@ -270,13 +263,14 @@ export function SaveButton({
   pending,
   pendingText = "กำลังทำงาน…",
   children = "บันทึก",
+  className = "",
   ...rest
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & { pending?: boolean; pendingText?: string }) {
   return (
     <button
       {...rest}
       disabled={pending || rest.disabled}
-      className="min-h-[44px] rounded-lg bg-slate-800 px-5 font-medium text-white transition hover:bg-slate-700 disabled:opacity-50 sm:min-h-0 sm:py-2"
+      className={`min-h-[44px] rounded bg-brand px-5 text-sm font-semibold tracking-wide text-on-brand transition hover:opacity-90 disabled:opacity-50 sm:min-h-0 sm:py-2 ${className}`}
     >
       {pending ? pendingText : children}
     </button>
@@ -288,16 +282,62 @@ export function RowBtn({
   tone = "slate",
   className = "",
   ...rest
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { tone?: "slate" | "green" | "red" }) {
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { tone?: "slate" | "green" | "red" | "brand" }) {
   const tones = {
-    slate: "border-slate-300 text-slate-600 hover:bg-slate-50",
-    green: "border-emerald-300 text-emerald-700 hover:bg-emerald-50",
-    red: "border-red-200 text-red-600 hover:bg-red-50",
+    slate: "border-line text-muted hover:bg-raised hover:text-ink",
+    green: "border-ok-line text-ok hover:bg-ok-bg",
+    red: "border-crit-line text-crit hover:bg-crit-bg",
+    brand: "border-brand-line text-brand hover:bg-brand-soft",
   };
   return (
     <button
       {...rest}
-      className={`min-h-[44px] rounded border px-3 text-xs ${tones[tone]} disabled:opacity-50 sm:min-h-0 sm:py-1 ${className}`}
+      className={`min-h-[44px] rounded border px-3 text-xs font-medium transition ${tones[tone]} disabled:opacity-50 sm:min-h-0 sm:py-1 ${className}`}
     />
+  );
+}
+
+/** ปุ่มไอคอนล้วนในแถวตาราง (แก้/ลบ) — ต้องมี title เสมอ */
+export function IconBtn({
+  tone = "slate",
+  className = "",
+  ...rest
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { tone?: "slate" | "red" | "brand" }) {
+  const tones = {
+    slate: "text-muted hover:bg-raised hover:text-ink",
+    red: "text-crit hover:bg-crit-bg",
+    brand: "text-brand hover:bg-brand-soft",
+  };
+  return (
+    <button
+      {...rest}
+      className={`grid h-8 w-8 place-items-center rounded transition ${tones[tone]} disabled:opacity-40 ${className}`}
+    />
+  );
+}
+
+/** ป้ายสถานะทั่วไป — ok/warn/crit/neutral/brand (สีสถานะล็อกตายทุกกิจการ) */
+export function Badge({
+  tone = "neutral",
+  children,
+  className = "",
+}: {
+  tone?: "ok" | "warn" | "crit" | "neutral" | "brand";
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const tones = {
+    ok: "border-ok-line bg-ok-bg text-ok",
+    warn: "border-warn-line bg-warn-bg text-warn",
+    crit: "border-crit-line bg-crit-bg text-crit",
+    neutral: "border-line bg-raised text-muted",
+    brand: "border-brand-line bg-brand-soft text-brand",
+  };
+  return (
+    <span
+      className={`inline-block whitespace-nowrap rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${tones[tone]} ${className}`}
+    >
+      {children}
+    </span>
   );
 }

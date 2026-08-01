@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { SyncRow } from "./types";
 import { Card } from "./ui";
 import { getSyncHistoryAction } from "../actions";
+import { IconRefresh } from "@/lib/shared/icons";
 
 const ACTION_LABEL: Record<string, string> = {
   SELL_PRODUCT: "ขาย → ผลิต (ตัดสต็อกสุรา)",
@@ -30,19 +31,18 @@ export function SyncHistoryTab({ active }: { active: boolean }) {
   return (
     <Card title="🔁 ประวัติเชื่อมระบบ (แทนหน้าคิว sync เดิม)">
       <div className="mb-3 flex items-center gap-2">
-        <button onClick={refresh} className="rounded border border-slate-300 px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-100">
-          🔄 รีเฟรช
+        <button onClick={refresh} className="rounded border border-line px-2.5 py-1.5 text-sm text-muted hover:bg-raised"><IconRefresh size={15} className="mr-1 inline align-[-2px]" />รีเฟรช
         </button>
-        <span className="text-xs text-slate-500">
+        <span className="text-xs text-faint">
           การรับเงิน/จัดส่ง = ลงบัญชี/ตัดสต็อกทันทีใน DB เดียวกัน (ไม่มีคิวให้ยิงเองอีก) — หน้านี้ไว้ตรวจย้อนหลัง
         </span>
       </div>
       {loading ? (
-        <div className="py-8 text-center text-slate-400">กำลังโหลด…</div>
+        <div className="py-8 text-center text-faint">กำลังโหลด…</div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-left text-sm">
-            <thead className="bg-slate-100 text-xs text-slate-600">
+            <thead className="bg-raised text-xs text-muted">
               <tr>
                 <th className="p-2">เวลา</th>
                 <th className="p-2">ประเภท</th>
@@ -54,20 +54,20 @@ export function SyncHistoryTab({ active }: { active: boolean }) {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className="border-b">
-                  <td className="whitespace-nowrap p-2 text-slate-500">{r.createdAt}</td>
+                  <td className="whitespace-nowrap p-2 text-faint">{r.createdAt}</td>
                   <td className="p-2">{ACTION_LABEL[r.action] ?? r.action}</td>
-                  <td className="whitespace-nowrap p-2 font-mono text-xs text-slate-600">{r.key}</td>
+                  <td className="whitespace-nowrap p-2 font-mono text-xs text-muted">{r.key}</td>
                   <td className="p-2 text-center">
-                    <span className={`rounded px-2 py-0.5 text-[10px] font-bold ${r.status === "ok" ? "bg-green-100 text-green-700" : r.status === "duplicate" ? "bg-slate-200 text-slate-500" : "bg-red-100 text-red-700"}`}>
+                    <span className={`rounded px-2 py-0.5 text-[10px] font-bold ${r.status === "ok" ? "bg-ok-bg text-ok" : r.status === "duplicate" ? "bg-line text-faint" : "bg-crit-bg text-crit"}`}>
                       {r.status === "ok" ? "สำเร็จ" : r.status === "duplicate" ? "ข้าม (ซ้ำ)" : "ล้มเหลว"}
                     </span>
                   </td>
-                  <td className="p-2 text-slate-600">{r.message}</td>
+                  <td className="p-2 text-muted">{r.message}</td>
                 </tr>
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-slate-400">
+                  <td colSpan={5} className="p-8 text-center text-faint">
                     ยังไม่มีประวัติเชื่อมระบบ
                   </td>
                 </tr>

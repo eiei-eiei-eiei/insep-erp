@@ -18,22 +18,23 @@ import {
 } from "../actions";
 import { XYChart, type XYSeries } from "./XYChart";
 import { Card } from "./ui";
+import { CHART_COLORS } from "@/lib/shared/chart";
 import type { Product } from "./types";
 
-const PAL = ["#0891b2", "#dc2626", "#16a34a", "#d97706", "#7c3aed", "#db2777", "#2563eb", "#65a30d", "#9333ea", "#0d9488"];
+const PAL = CHART_COLORS; // ชุดสีกราฟตาม token (เปลี่ยนตามโหมดสว่าง/มืด)
 const fmt = (v: number, d = 1) => (v == null || isNaN(v) ? "—" : v.toFixed(d));
 
 type BatchInfo = { batch: string; startDate: string | null; productName: string };
 
 function BatchPicker({ list, sel, onToggle }: { list: BatchInfo[]; sel: string[]; onToggle: (b: string) => void }) {
-  if (list.length === 0) return <p className="text-sm text-slate-400">ยังไม่มี batch</p>;
+  if (list.length === 0) return <p className="text-sm text-faint">ยังไม่มี batch</p>;
   return (
     <div className="flex flex-wrap gap-1">
       {list.map((b) => (
         <button
           key={b.batch}
           onClick={() => onToggle(b.batch)}
-          className={`rounded-lg border px-2.5 py-1 text-sm ${sel.includes(b.batch) ? "border-slate-800 bg-slate-800 text-white" : "border-slate-300 text-slate-600 hover:bg-slate-100"}`}
+          className={`rounded-lg border px-2.5 py-1 text-sm ${sel.includes(b.batch) ? "border-brand bg-brand text-on-brand" : "border-line text-muted hover:bg-raised"}`}
         >
           {b.batch} <span className="text-xs opacity-70">({b.productName})</span>
         </button>
@@ -86,25 +87,25 @@ function FermentCompare({ list }: { list: BatchInfo[] }) {
     <Card title="เทียบการหมัก (Brix / pH / อุณหภูมิ) — วันจากเริ่มหมัก">
       <BatchPicker list={list} sel={sel} onToggle={toggle} />
       {sel.length === 0 ? (
-        <p className="mt-3 text-sm text-slate-400">เลือก batch (คลิกได้หลายอัน) เพื่อเทียบกราฟ</p>
+        <p className="mt-3 text-sm text-faint">เลือก batch (คลิกได้หลายอัน) เพื่อเทียบกราฟ</p>
       ) : !hasData ? (
-        <p className="mt-3 text-sm text-slate-400">batch ที่เลือกยังไม่มีค่าวัด</p>
+        <p className="mt-3 text-sm text-faint">batch ที่เลือกยังไม่มีค่าวัด</p>
       ) : (
         <div className="mt-4 space-y-5">
-          <div><p className="mb-1 text-sm font-medium text-slate-600">Brix (°Bx)</p><XYChart series={chart("brix")} xLabel="วันจากเริ่มหมัก" /></div>
-          <div><p className="mb-1 text-sm font-medium text-slate-600">pH</p><XYChart series={chart("ph")} xLabel="วันจากเริ่มหมัก" /></div>
-          <div><p className="mb-1 text-sm font-medium text-slate-600">อุณหภูมิ (°C)</p><XYChart series={chart("temp")} xLabel="วันจากเริ่มหมัก" /></div>
+          <div><p className="mb-1 text-sm font-medium text-muted">Brix (°Bx)</p><XYChart series={chart("brix")} xLabel="วันจากเริ่มหมัก" /></div>
+          <div><p className="mb-1 text-sm font-medium text-muted">pH</p><XYChart series={chart("ph")} xLabel="วันจากเริ่มหมัก" /></div>
+          <div><p className="mb-1 text-sm font-medium text-muted">อุณหภูมิ (°C)</p><XYChart series={chart("temp")} xLabel="วันจากเริ่มหมัก" /></div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="border-b border-slate-200 text-left text-slate-500">
+              <thead className="border-b border-line text-left text-faint">
                 <tr><th className="px-2 py-1">Batch</th><th className="px-2 py-1 text-right">วันหมัก</th><th className="px-2 py-1 text-right">Brix เริ่ม→จบ</th><th className="px-2 py-1 text-right">Atten%</th><th className="px-2 py-1 text-right">~ดีกรี</th><th className="px-2 py-1 text-right">pH เริ่ม→จบ</th><th className="px-2 py-1 text-right">Temp พีค</th></tr>
               </thead>
               <tbody>
                 {sel.filter((b) => (data[b] ?? []).length).map((b) => {
                   const s = fermentSummary(data[b] ?? [], startMap[b] ?? null);
                   return (
-                    <tr key={b} className="border-b border-slate-100">
+                    <tr key={b} className="border-b border-line-soft">
                       <td className="px-2 py-1 font-medium">{b}</td>
                       <td className="px-2 py-1 text-right">{fmt(s.days)}</td>
                       <td className="px-2 py-1 text-right">{fmt(s.firstBrix)}→{fmt(s.lastBrix)}</td>
@@ -117,7 +118,7 @@ function FermentCompare({ list }: { list: BatchInfo[] }) {
                 })}
               </tbody>
             </table>
-            <p className="mt-2 text-xs text-slate-400">~ดีกรีน้ำส่าประมาณจาก Brix (apparent) ไม่ใช่ค่าทางการ</p>
+            <p className="mt-2 text-xs text-faint">~ดีกรีน้ำส่าประมาณจาก Brix (apparent) ไม่ใช่ค่าทางการ</p>
           </div>
         </div>
       )}
@@ -180,12 +181,12 @@ function DistillCompare({ list, degreeMap }: { list: BatchInfo[]; degreeMap: Rec
       {sel.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-3 text-sm">
           <label>ค่าที่ดู:{" "}
-            <select value={metric} onChange={(e) => setMetric(e.target.value as typeof metric)} className="rounded border border-slate-300 px-2 py-1">
+            <select value={metric} onChange={(e) => setMetric(e.target.value as typeof metric)} className="rounded border border-line px-2 py-1">
               {D_METRICS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
             </select>
           </label>
           <label>แกนนอน:{" "}
-            <select value={xaxis} onChange={(e) => setXaxis(e.target.value as typeof xaxis)} className="rounded border border-slate-300 px-2 py-1">
+            <select value={xaxis} onChange={(e) => setXaxis(e.target.value as typeof xaxis)} className="rounded border border-line px-2 py-1">
               <option value="minute">นาทีที่</option>
               <option value="cum">ปริมาณสะสม</option>
             </select>
@@ -193,15 +194,15 @@ function DistillCompare({ list, degreeMap }: { list: BatchInfo[]; degreeMap: Rec
         </div>
       )}
       {sel.length === 0 ? (
-        <p className="mt-3 text-sm text-slate-400">เลือก batch (หลายอันได้) เพื่อเทียบเส้นโค้งการกลั่น</p>
+        <p className="mt-3 text-sm text-faint">เลือก batch (หลายอันได้) เพื่อเทียบเส้นโค้งการกลั่น</p>
       ) : !hasData ? (
-        <p className="mt-3 text-sm text-slate-400">batch ที่เลือกยังไม่มีข้อมูลการกลั่น</p>
+        <p className="mt-3 text-sm text-faint">batch ที่เลือกยังไม่มีข้อมูลการกลั่น</p>
       ) : (
         <div className="mt-4 space-y-4">
           <XYChart series={series} xLabel={xaxis === "cum" ? "ปริมาณสะสม (ล.)" : "นาทีที่"} height={300} />
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="border-b border-slate-200 text-left text-slate-500">
+              <thead className="border-b border-line text-left text-faint">
                 <tr><th className="px-2 py-1">Batch</th><th className="px-2 py-1 text-right">หม้อ</th><th className="px-2 py-1 text-right">หัวใจ(ล.)</th><th className="px-2 py-1 text-right">ดีกรี@20</th><th className="px-2 py-1 text-right">เป้าหมาย°</th><th className="px-2 py-1 text-right">ปริมาณ@เป้า(ล.)</th><th className="px-2 py-1 text-right">Yield</th></tr>
               </thead>
               <tbody>
@@ -214,7 +215,7 @@ function DistillCompare({ list, degreeMap }: { list: BatchInfo[]; degreeMap: Rec
                   const eq = equivVol(vol, abv, target);
                   const yld = !isNaN(eq) && s.charge > 0 ? (eq / s.charge) * 100 : NaN;
                   return (
-                    <tr key={b} className="border-b border-slate-100">
+                    <tr key={b} className="border-b border-line-soft">
                       <td className="px-2 py-1 font-medium">{b}</td>
                       <td className="px-2 py-1 text-right">{s.potCount}</td>
                       <td className="px-2 py-1 text-right">{fmt(vol, 2)}</td>
@@ -227,7 +228,7 @@ function DistillCompare({ list, degreeMap }: { list: BatchInfo[]; degreeMap: Rec
                 })}
               </tbody>
             </table>
-            <p className="mt-2 text-xs text-slate-400">หัวใจ = ค่าจริงจาก log_distill ถ้าปิด batch แล้ว · Yield = ปริมาณ@ดีกรีเป้าหมาย ÷ น้ำหมักที่กลั่น</p>
+            <p className="mt-2 text-xs text-faint">หัวใจ = ค่าจริงจาก log_distill ถ้าปิด batch แล้ว · Yield = ปริมาณ@ดีกรีเป้าหมาย ÷ น้ำหมักที่กลั่น</p>
           </div>
         </div>
       )}

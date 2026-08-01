@@ -19,8 +19,8 @@ export default async function HomePage() {
 
   return (
     <div>
-      <h1 className="mb-1 text-2xl font-bold text-slate-800">เลือกพื้นที่ทำงาน</h1>
-      <p className="mb-6 text-sm text-slate-500">
+      <h1 className="mb-1 text-2xl font-bold text-ink">เลือกพื้นที่ทำงาน</h1>
+      <p className="mb-6 text-sm text-faint">
         ข้อมูลชุดเดียว · 4 มุมมองงาน (FLOW_REDESIGN)
       </p>
 
@@ -29,10 +29,10 @@ export default async function HomePage() {
           <Link
             key={w.key}
             href={w.href as Route}
-            className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition hover:border-slate-300 hover:shadow-md"
+            className="rounded-2xl border border-line bg-card p-6 shadow-sm transition hover:border-line hover:shadow-md"
           >
             <div className="text-3xl">{w.icon}</div>
-            <div className="mt-3 text-lg font-semibold text-slate-800">
+            <div className="mt-3 text-lg font-semibold text-ink">
               {w.label}
             </div>
           </Link>

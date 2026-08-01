@@ -2,7 +2,6 @@
 
 /**
  * UI ของโดเมนผลิต — ตรรกะจริงอยู่ที่ `lib/shared/ui` (ชุดเดียวใช้ 3 โดเมน)
- * เดิมโดเมนนี้ไม่มี NumBox/Combobox → พอ re-export ก็ได้ของที่แก้บั๊กทศนิยมแล้วไปด้วย
  */
 import { SaveButton as SharedSaveButton } from "@/lib/shared/ui";
 
@@ -15,12 +14,15 @@ export {
   Msg,
   Field,
   Card,
+  Stat,
   TextInput,
   NumInput,
   Select,
   NumBox,
   Combobox,
   RowBtn,
+  IconBtn,
+  Badge,
 } from "@/lib/shared/ui";
 
 /** ผลิตใช้ข้อความ "กำลังบันทึก…" ตามเดิม (บัญชี/ขายใช้ "กำลังทำงาน…") */

@@ -1,9 +1,143 @@
 @import "tailwindcss";
 
-:root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+/* ============================================================================
+   Design system — "เหล็กกล้า" (D43)
+   กติกาเต็มอยู่ใน docs/DESIGN_SYSTEM.md — อ่านก่อนแก้สีใด ๆ
+
+   หลักการ 3 ข้อ:
+   1) ห้ามเขียนสีตรง ๆ ใน component (bg-slate-800, text-red-500 ฯลฯ) — ใช้ token เท่านั้น
+   2) "สีแบรนด์" เปลี่ยนตามลูกค้าได้ · "สีสถานะ" (ok/warn/crit) ล็อกตายทุกราย
+   3) ทุก token มีคู่ สว่าง/มืด — โหมดมืดไม่ใช่การกลับสี แต่เป็นค่าคนละชุด
+   ============================================================================ */
+
+@theme {
+  /* พื้นผิว */
+  --color-page: #f3f5f7;      /* พื้นหลังหน้า */
+  --color-card: #ffffff;      /* การ์ด/กล่องเนื้อหา */
+  --color-nav: #ffffff;       /* แถบนำทาง/แถบสรุป */
+  --color-input: #fbfcfd;     /* ช่องกรอก (จมกว่าการ์ด) */
+  --color-raised: #f7f9fb;    /* แถวหัวตาราง/hover */
+
+  /* เส้น */
+  --color-line: #dfe3e9;      /* เส้นขอบหลัก */
+  --color-line-soft: #ebeef2; /* เส้นคั่นแถวในตาราง */
+
+  /* ตัวอักษร */
+  --color-ink: #151a21;       /* ข้อความหลัก/ตัวเลข */
+  --color-muted: #5f6772;     /* ข้อความรอง */
+  --color-faint: #8c949e;     /* ป้ายกำกับ/ข้อความประกอบ */
+
+  /* สถานะ — ล็อกตาย ห้ามให้ลูกค้าเปลี่ยน (เขียว=ปกติ เหลือง=ค้าง แดง=ผิดพลาด) */
+  --color-ok: #1a7f52;
+  --color-ok-bg: #e7f4ed;
+  --color-ok-line: #c6e3d4;
+  --color-warn: #8a6100;
+  --color-warn-bg: #fdf4e0;
+  --color-warn-line: #eddcb6;
+  --color-crit: #b3352b;
+  --color-crit-bg: #fdeceb;
+  --color-crit-line: #f2cdc9;
+
+  /* กราฟ */
+  --color-grid: #e6eaee;      /* เส้นตารางกราฟ */
+  --color-series: #7a8593;    /* เส้น/แท่งข้อมูลรอง (คู่กับสีแบรนด์ที่เป็นชุดหลัก) */
+
+  /* ฉากหลัง modal — ต้องมืดทั้งสองโหมด (ห้ามใช้ ink เพราะโหมดมืด ink เป็นสีอ่อน) */
+  --color-overlay: #0b0e12;
+
+  /* ชุดสีเส้นกราฟหลายชุด (pH/Brix/อุณหภูมิ, เทียบหลาย batch)
+     คนละเรื่องกับสีแบรนด์และสีสถานะ — คุมความสว่างให้อ่านออกทั้งสองโหมด */
+  --color-chart-1: #2563eb;
+  --color-chart-2: #15803d;
+  --color-chart-3: #c2410c;
+  --color-chart-4: #7e22ce;
+  --color-chart-5: #0e7490;
+  --color-chart-6: #a16207;
+  --color-chart-7: #be123c;
+  --color-chart-8: #4d7c0f;
+
+  /* แบรนด์ — ค่าเริ่มต้น (steel) · ถูกทับด้วย [data-brand] ด้านล่าง */
+  --color-brand: #2c333c;
+  --color-on-brand: #ffffff;
+  --color-brand-soft: color-mix(in srgb, var(--color-brand) 12%, transparent);
+  --color-brand-line: color-mix(in srgb, var(--color-brand) 32%, transparent);
 }
+
+/* ── โหมดมืด — ค่าคนละชุด ไม่ใช่การกลับสี ─────────────────────────────────── */
+[data-mode="dark"] {
+  --color-page: #0f1215;
+  --color-card: #191d22;
+  --color-nav: #15181d;
+  --color-input: #12161b;
+  --color-raised: #1e232a;
+
+  --color-line: #282d34;
+  --color-line-soft: #20242a;
+
+  /* ตัวอักษรไม่ใช่ขาวล้วน — ลดความล้าตาตอนคีย์บิลนาน ๆ */
+  --color-ink: #e9ecf0;
+  --color-muted: #959ca6;
+  --color-faint: #6e757f;
+
+  --color-ok: #4fb07c;
+  --color-ok-bg: #14291e;
+  --color-ok-line: #204030;
+  --color-warn: #d9a648;
+  --color-warn-bg: #2b2414;
+  --color-warn-line: #453b1e;
+  --color-crit: #e0645c;
+  --color-crit-bg: #2c1817;
+  --color-crit-line: #472825;
+
+  --color-grid: #242a31;
+  --color-series: #6b7581;
+  --color-overlay: #05070a;
+
+  /* กราฟบนพื้นเข้ม — สว่างขึ้นทุกเส้น ไม่งั้นจมพื้น */
+  --color-chart-1: #6aa5f5;
+  --color-chart-2: #52bd80;
+  --color-chart-3: #ef8a5a;
+  --color-chart-4: #b48af0;
+  --color-chart-5: #46b6cd;
+  --color-chart-6: #d9b04e;
+  --color-chart-7: #ef7a90;
+  --color-chart-8: #9dc45c;
+
+  --color-brand: #cad2db;
+  --color-on-brand: #14171b;
+}
+
+/* ── สีแบรนด์ต่อลูกค้า — เก็บใน app_settings (brand_color) ────────────────────
+   แต่ละสีมีคู่ สว่าง/มืด ที่ทดสอบ contrast แล้ว · เพิ่มสีใหม่ = เพิ่ม 2 บล็อกที่นี่
+   เฉดอ่อน/เส้นขอบคำนวณเองจาก color-mix — ไม่ต้องกรอกเพิ่ม
+
+   ⚠️ ต้องเขียน selector ทั้งแบบ "ลูกหลาน" และ "ธาตุเดียวกัน" เพราะจริง ๆ แล้ว
+   data-mode อยู่บน <html> (อ่านจาก cookie) ส่วน data-brand อยู่บน div ใน layout
+   (กว่าจะรู้แบรนด์ต้อง login ก่อน) — ใช้ [data-mode][data-brand] เฉย ๆ จะไม่ match
+   ------------------------------------------------------------------------- */
+[data-brand="copper"] { --color-brand: #a85b22; --color-on-brand: #ffffff; }
+[data-mode="dark"] [data-brand="copper"],
+[data-mode="dark"][data-brand="copper"] { --color-brand: #d98d4e; --color-on-brand: #1a1206; }
+
+[data-brand="green"] { --color-brand: #176b4c; --color-on-brand: #ffffff; }
+[data-mode="dark"] [data-brand="green"],
+[data-mode="dark"][data-brand="green"] { --color-brand: #4fbf92; --color-on-brand: #06170f; }
+
+[data-brand="indigo"] { --color-brand: #34509b; --color-on-brand: #ffffff; }
+[data-mode="dark"] [data-brand="indigo"],
+[data-mode="dark"][data-brand="indigo"] { --color-brand: #7d9be8; --color-on-brand: #0d1326; }
+
+[data-brand="wine"] { --color-brand: #993455; --color-on-brand: #ffffff; }
+[data-mode="dark"] [data-brand="wine"],
+[data-mode="dark"][data-brand="wine"] { --color-brand: #d3799a; --color-on-brand: #1a0d13; }
+
+[data-brand="teal"] { --color-brand: #0f6b73; --color-on-brand: #ffffff; }
+[data-mode="dark"] [data-brand="teal"],
+[data-mode="dark"][data-brand="teal"] { --color-brand: #4bb8bf; --color-on-brand: #04191b; }
+
+[data-brand="rust"] { --color-brand: #a8452a; --color-on-brand: #ffffff; }
+[data-mode="dark"] [data-brand="rust"],
+[data-mode="dark"][data-brand="rust"] { --color-brand: #e08163; --color-on-brand: #1c0d08; }
 
 html,
 body {
@@ -12,8 +146,8 @@ body {
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--color-page);
+  color: var(--color-ink);
   /* --font-thai = Noto Sans Thai ที่ next/font self-host ตอน build (ดู app/layout.tsx) */
   font-family: var(--font-thai), system-ui, -apple-system, "Segoe UI", Roboto,
     sans-serif;
@@ -21,4 +155,25 @@ body {
 
 * {
   box-sizing: border-box;
+}
+
+/* ตัวเลขเรียงหลักตรงกันทุกแถว (ยอดเงิน/ดีกรี/ปริมาณ) */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* โฟกัสด้วยคีย์บอร์ดต้องเห็นเสมอ */
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

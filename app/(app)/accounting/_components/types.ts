@@ -1,3 +1,4 @@
+import type { Branding } from "@/lib/shared/branding";
 export type Entity = { entity_id: string; name: string; excise_id: string | null; is_vat: boolean };
 export type AccountRow = { account_name: string; entity_ids: string[]; opening_balance: number; kind: string | null };
 export type Contact = {
@@ -21,4 +22,5 @@ export type Bootstrap = {
   incomeCats: string[];
   whtRates: string[];
   taxAccounts: string[];
+  branding: Branding;
 };

@@ -11,10 +11,12 @@ import {
 } from "../actions";
 import type { AccountRow, Bootstrap, Contact } from "./types";
 import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, cleanTaxId13, fmt, useSaver } from "./ui";
+import { BrandingCard } from "./BrandingCard";
 
 export function SettingsTab({ boot }: { boot: Bootstrap }) {
   return (
     <div className="space-y-4">
+      <BrandingCard current={boot.branding} />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ChipList kind="expense_cat" title="หมวดหมู่รายจ่าย" initial={boot.expenseCats} />
         <ChipList kind="income_cat" title="หมวดหมู่รายรับ" initial={boot.incomeCats} />
@@ -23,7 +25,7 @@ export function SettingsTab({ boot }: { boot: Bootstrap }) {
       </div>
       <BankAccounts boot={boot} />
       <Contacts initial={boot.contacts} />
-      <p className="text-xs text-slate-400">* ต้องเป็น role main ถึงจะแก้ได้ · แก้แล้วรีเฟรชหน้าเพื่อให้แท็บอื่นเห็นค่าล่าสุด</p>
+      <p className="text-xs text-faint">* ต้องเป็น role main ถึงจะแก้ได้ · แก้แล้วรีเฟรชหน้าเพื่อให้แท็บอื่นเห็นค่าล่าสุด</p>
     </div>
   );
 }
@@ -43,10 +45,10 @@ function ChipList({ kind, title, initial, placeholder }: { kind: string; title: 
   return (
     <Card title={title}>
       <div className="mb-2 flex flex-wrap gap-2">
-        {list.length === 0 && <span className="text-sm text-slate-400">— ยังไม่มี —</span>}
+        {list.length === 0 && <span className="text-sm text-faint">— ยังไม่มี —</span>}
         {list.map((v) => (
-          <span key={v} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-700">
-            {v}<button onClick={() => del(v)} disabled={pending} className="text-slate-400 hover:text-red-500">✕</button>
+          <span key={v} className="inline-flex items-center gap-1 rounded-full bg-raised px-3 py-1 text-sm text-muted">
+            {v}<button onClick={() => del(v)} disabled={pending} className="text-faint hover:text-crit">✕</button>
           </span>
         ))}
       </div>
@@ -82,10 +84,10 @@ function BankAccounts({ boot }: { boot: Bootstrap }) {
     <Card title="บัญชีเงิน (bank_accounts)">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead><tr className="text-left text-slate-500"><th className="p-1">ชื่อบัญชี</th><th className="p-1">ประเภท</th><th className="p-1">กิจการที่ใช้</th><th className="p-1 text-right">ยอดยกมา</th></tr></thead>
+          <thead><tr className="text-left text-faint"><th className="p-1">ชื่อบัญชี</th><th className="p-1">ประเภท</th><th className="p-1">กิจการที่ใช้</th><th className="p-1 text-right">ยอดยกมา</th></tr></thead>
           <tbody>
             {rows.map((a) => (
-              <tr key={a.account_name} className="border-t border-slate-100"><td className="p-1">{a.account_name}</td><td className="p-1">{a.kind}</td><td className="p-1">{(a.entity_ids ?? []).join(", ") || "ทุกกิจการ"}</td><td className="p-1 text-right">{fmt(a.opening_balance)}</td></tr>
+              <tr key={a.account_name} className="border-t border-line-soft"><td className="p-1">{a.account_name}</td><td className="p-1">{a.kind}</td><td className="p-1">{(a.entity_ids ?? []).join(", ") || "ทุกกิจการ"}</td><td className="p-1 text-right">{fmt(a.opening_balance)}</td></tr>
             ))}
           </tbody>
         </table>
@@ -95,7 +97,7 @@ function BankAccounts({ boot }: { boot: Bootstrap }) {
         <Field label="ประเภท"><TextInput value={kind} onChange={(e) => setKind(e.target.value)} placeholder="ออมทรัพย์/เงินสด" /></Field>
         <Field label="ยอดยกมา"><NumBox value={opening} blankZero onChange={(v) => setOpening(v === "" ? 0 : v)} /></Field>
         <div className="col-span-2 md:col-span-4">
-          <span className="mb-1 block text-sm text-slate-600">กิจการที่ใช้ (ติ๊กได้หลายอัน · ไม่ติ๊ก = ใช้ร่วมทุกกิจการ)</span>
+          <span className="mb-1 block text-sm text-muted">กิจการที่ใช้ (ติ๊กได้หลายอัน · ไม่ติ๊ก = ใช้ร่วมทุกกิจการ)</span>
           <div className="flex flex-wrap gap-3">
             {boot.entities.map((en) => (
               <label key={en.entity_id} className="flex items-center gap-1.5 text-sm">
@@ -107,7 +109,7 @@ function BankAccounts({ boot }: { boot: Bootstrap }) {
         </div>
       </div>
       <div className="mt-2"><Msg msg={msg} /><SaveButton pending={pending} onClick={add}>เพิ่ม/แก้บัญชี</SaveButton></div>
-      <p className="mt-1 text-xs text-slate-400">แก้ยอดยกมา = พิมพ์ชื่อบัญชีเดิม + ยอดใหม่ แล้วกดเพิ่ม (upsert ตามชื่อ) · ลบบัญชีทำผ่านหน้า Supabase (กันลบผิด)</p>
+      <p className="mt-1 text-xs text-faint">แก้ยอดยกมา = พิมพ์ชื่อบัญชีเดิม + ยอดใหม่ แล้วกดเพิ่ม (upsert ตามชื่อ) · ลบบัญชีทำผ่านหน้า Supabase (กันลบผิด)</p>
     </Card>
   );
 }
@@ -142,16 +144,16 @@ function Contacts({ initial }: { initial: Contact[] }) {
     <Card title={`คู่ค้า (${rows.length})`}>
       <div className="mb-2 flex items-center gap-2">
         <TextInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นชื่อคู่ค้า…" />
-        <button onClick={() => setEdit(blank())} className="whitespace-nowrap rounded-lg bg-slate-800 px-4 py-2 text-sm text-white">+ เพิ่มคู่ค้า</button>
+        <button onClick={() => setEdit(blank())} className="whitespace-nowrap rounded-lg bg-brand px-4 py-2 text-sm text-on-brand">+ เพิ่มคู่ค้า</button>
       </div>
       <div className="max-h-80 overflow-y-auto">
         <table className="w-full text-sm">
-          <thead><tr className="text-left text-slate-500"><th className="p-1">ชื่อ</th><th className="p-1">เลขภาษี</th><th className="p-1">สาขา</th><th className="p-1">ประเภท</th><th className="p-1"></th></tr></thead>
+          <thead><tr className="text-left text-faint"><th className="p-1">ชื่อ</th><th className="p-1">เลขภาษี</th><th className="p-1">สาขา</th><th className="p-1">ประเภท</th><th className="p-1"></th></tr></thead>
           <tbody>
             {filtered.map((c) => (
-              <tr key={c.contact_id} className="border-t border-slate-100">
+              <tr key={c.contact_id} className="border-t border-line-soft">
                 <td className="p-1">{c.name}</td><td className="p-1">{c.tax_id}</td><td className="p-1">{c.branch}</td><td className="p-1">{c.contact_type}</td>
-                <td className="p-1 whitespace-nowrap"><button onClick={() => setEdit(c)} className="text-slate-700 hover:underline">แก้</button><button onClick={() => del(c.contact_id)} className="ml-2 text-red-500 hover:underline">ลบ</button></td>
+                <td className="p-1 whitespace-nowrap"><button onClick={() => setEdit(c)} className="text-muted hover:underline">แก้</button><button onClick={() => del(c.contact_id)} className="ml-2 text-crit hover:underline">ลบ</button></td>
               </tr>
             ))}
           </tbody>
@@ -159,9 +161,9 @@ function Contacts({ initial }: { initial: Contact[] }) {
       </div>
       <Msg msg={msg} />
       {edit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setEdit(null)}>
-          <div className="w-full max-w-md rounded-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-3 font-semibold text-slate-800">{edit.contact_id ? "แก้ไขคู่ค้า" : "เพิ่มคู่ค้า"}</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onClick={() => setEdit(null)}>
+          <div className="w-full max-w-md rounded-2xl bg-card p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="mb-3 font-semibold text-ink">{edit.contact_id ? "แก้ไขคู่ค้า" : "เพิ่มคู่ค้า"}</h3>
             <div className="space-y-3">
               <Field label="ชื่อ"><TextInput value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>
               <div className="grid grid-cols-2 gap-3">
@@ -172,7 +174,7 @@ function Contacts({ initial }: { initial: Contact[] }) {
               <Field label="ประเภท"><Select value={edit.contact_type ?? "ทั้งสอง"} onChange={(e) => setEdit({ ...edit, contact_type: e.target.value })}><option>ทั้งสอง</option><option>ผู้ขาย</option><option>ลูกค้า</option></Select></Field>
             </div>
             <div className="mt-3 flex justify-end gap-2">
-              <button onClick={() => setEdit(null)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm">ยกเลิก</button>
+              <button onClick={() => setEdit(null)} className="rounded-lg border border-line px-4 py-2 text-sm">ยกเลิก</button>
               <SaveButton pending={pending} onClick={() => save(edit)}>บันทึก</SaveButton>
             </div>
           </div>

@@ -7,7 +7,7 @@ import type { Container, Material, Product } from "./types";
 
 type Field = { key: string; label: string; pk?: boolean; num?: boolean; required?: boolean };
 
-const inputCls = "w-full rounded border border-slate-300 px-2 py-1 text-sm";
+const inputCls = "w-full rounded border border-line px-2 py-1 text-sm";
 
 function buildPayload(fields: Field[], row: Record<string, string>) {
   const out: Record<string, unknown> = {};
@@ -64,7 +64,7 @@ function CrudSection({
       <Msg msg={msg} />
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="border-b border-slate-200 text-left text-slate-500">
+          <thead className="border-b border-line text-left text-faint">
             <tr>
               {fields.map((f) => <th key={f.key} className="px-2 py-1">{f.label}</th>)}
               <th className="px-2 py-1 text-right">จัดการ</th>
@@ -72,7 +72,7 @@ function CrudSection({
           </thead>
           <tbody>
             {/* แถวเพิ่มใหม่ */}
-            <tr className="border-b border-slate-100 bg-slate-50">
+            <tr className="border-b border-line-soft bg-raised">
               {fields.map((f) => (
                 <td key={f.key} className="px-2 py-1">
                   <input
@@ -86,7 +86,7 @@ function CrudSection({
                 </td>
               ))}
               <td className="px-2 py-1 text-right">
-                <button disabled={pending} onClick={add} className="rounded bg-slate-800 px-3 py-1 text-white hover:bg-slate-700 disabled:opacity-50">
+                <button disabled={pending} onClick={add} className="rounded bg-brand px-3 py-1 text-on-brand hover:opacity-90 disabled:opacity-50">
                   + เพิ่ม
                 </button>
               </td>
@@ -97,7 +97,7 @@ function CrudSection({
               const id = String(row[pk]);
               const editing = editPk === id;
               return (
-                <tr key={id} className="border-b border-slate-100">
+                <tr key={id} className="border-b border-line-soft">
                   {fields.map((f) => (
                     <td key={f.key} className="px-2 py-1">
                       {editing ? (
@@ -110,7 +110,7 @@ function CrudSection({
                           onChange={(e) => setEditRow({ ...editRow, [f.key]: e.target.value })}
                         />
                       ) : (
-                        <span className={f.pk ? "font-medium text-slate-700" : "text-slate-600"}>
+                        <span className={f.pk ? "font-medium text-muted" : "text-muted"}>
                           {row[f.key] == null || row[f.key] === "" ? "—" : String(row[f.key])}
                         </span>
                       )}
@@ -119,16 +119,16 @@ function CrudSection({
                   <td className="px-2 py-1 text-right whitespace-nowrap">
                     {editing ? (
                       <>
-                        <button disabled={pending} onClick={save} className="mr-1 rounded border border-green-300 px-2 py-1 text-green-700 hover:bg-green-50">บันทึก</button>
-                        <button onClick={() => setEditPk(null)} className="rounded border border-slate-300 px-2 py-1 text-slate-500 hover:bg-slate-100">ยกเลิก</button>
+                        <button disabled={pending} onClick={save} className="mr-1 rounded border border-ok-line px-2 py-1 text-ok hover:bg-ok-bg">บันทึก</button>
+                        <button onClick={() => setEditPk(null)} className="rounded border border-line px-2 py-1 text-faint hover:bg-raised">ยกเลิก</button>
                       </>
                     ) : (
                       <>
-                        <button onClick={() => startEdit(row)} className="mr-1 rounded border border-slate-300 px-2 py-1 text-slate-600 hover:bg-slate-100">แก้</button>
+                        <button onClick={() => startEdit(row)} className="mr-1 rounded border border-line px-2 py-1 text-muted hover:bg-raised">แก้</button>
                         <button
                           disabled={pending}
                           onClick={() => { if (window.confirm(`ลบ "${id}" ?`)) run(() => deleteMaster(table, id), "ลบแล้ว"); }}
-                          className="rounded border border-red-200 px-2 py-1 text-red-600 hover:bg-red-50"
+                          className="rounded border border-crit-line px-2 py-1 text-crit hover:bg-crit-bg"
                         >
                           ลบ
                         </button>
@@ -139,7 +139,7 @@ function CrudSection({
               );
             })}
             {rows.length === 0 && (
-              <tr><td colSpan={fields.length + 1} className="px-2 py-3 text-center text-slate-400">ยังไม่มีข้อมูล — เพิ่มในแถวบนสุด</td></tr>
+              <tr><td colSpan={fields.length + 1} className="px-2 py-3 text-center text-faint">ยังไม่มีข้อมูล — เพิ่มในแถวบนสุด</td></tr>
             )}
           </tbody>
         </table>
@@ -171,7 +171,7 @@ export function MasterTab({
           <button
             key={t.key}
             onClick={() => setSub(t.key)}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium ${sub === t.key ? "bg-slate-200 text-slate-800" : "text-slate-500 hover:bg-slate-100"}`}
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium ${sub === t.key ? "bg-line text-ink" : "text-faint hover:bg-raised"}`}
           >
             {t.label}
           </button>

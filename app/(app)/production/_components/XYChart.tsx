@@ -1,5 +1,7 @@
 "use client";
 
+import { CHART_AXIS_LABEL, CHART_GRID, CHART_LABEL } from "@/lib/shared/chart";
+
 export type XYSeries = {
   name: string;
   color: string;
@@ -25,7 +27,7 @@ export function XYChart({
 
   const allX = series.flatMap((s) => s.points.map((p) => p.x)).filter((v) => !isNaN(v));
   if (allX.length === 0) {
-    return <p className="py-6 text-center text-sm text-slate-400">ยังไม่มีข้อมูลพอวาดกราฟ</p>;
+    return <p className="py-6 text-center text-sm text-faint">ยังไม่มีข้อมูลพอวาดกราฟ</p>;
   }
   let xMin = Math.min(...allX), xMax = Math.max(...allX);
   if (xMin === xMax) { xMin -= 1; xMax += 1; }
@@ -62,7 +64,7 @@ export function XYChart({
     <div>
       <div className="mb-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
         {series.map((s) => (
-          <span key={s.name} className="flex items-center gap-1 text-slate-600">
+          <span key={s.name} className="flex items-center gap-1 text-muted">
             <span className="inline-block h-2 w-4 rounded" style={{ background: s.color }} />
             {s.name}
           </span>
@@ -73,16 +75,16 @@ export function XYChart({
           const y = padT + plotH * g;
           return (
             <g key={g}>
-              <line x1={padL} y1={y} x2={W - padR} y2={y} stroke="#e2e8f0" strokeWidth={1} />
-              {L && <text x={padL - 6} y={y + 3} textAnchor="end" fontSize={9} fill="#94a3b8">{fmt(L.max - (L.max - L.min) * g)}</text>}
-              {R && <text x={W - padR + 6} y={y + 3} textAnchor="start" fontSize={9} fill="#94a3b8">{fmt(R.max - (R.max - R.min) * g)}</text>}
+              <line x1={padL} y1={y} x2={W - padR} y2={y} stroke={CHART_GRID} strokeWidth={1} />
+              {L && <text x={padL - 6} y={y + 3} textAnchor="end" fontSize={9} fill={CHART_LABEL}>{fmt(L.max - (L.max - L.min) * g)}</text>}
+              {R && <text x={W - padR + 6} y={y + 3} textAnchor="start" fontSize={9} fill={CHART_LABEL}>{fmt(R.max - (R.max - R.min) * g)}</text>}
             </g>
           );
         })}
         {xticks.map((xv, i) => (
-          <text key={i} x={px(xv)} y={H - padB + 14} textAnchor="middle" fontSize={9} fill="#94a3b8">{fmt(xv)}</text>
+          <text key={i} x={px(xv)} y={H - padB + 14} textAnchor="middle" fontSize={9} fill={CHART_LABEL}>{fmt(xv)}</text>
         ))}
-        {xLabel && <text x={padL + plotW / 2} y={H - 2} textAnchor="middle" fontSize={9} fill="#64748b">{xLabel}</text>}
+        {xLabel && <text x={padL + plotW / 2} y={H - 2} textAnchor="middle" fontSize={9} fill={CHART_AXIS_LABEL}>{xLabel}</text>}
         {series.map((s) => {
           const r = (s.axis ?? "L") === "R" ? R : L;
           const d = path(s);

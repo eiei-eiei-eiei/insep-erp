@@ -50,43 +50,43 @@ export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstra
   return (
     <div className="space-y-4">
       <Card title={`ยอดคงเหลือทุกบัญชี ณ สิ้นเดือน ${period}`}>
-        {!bal ? <p className="text-slate-400">กำลังโหลด…</p> : (
+        {!bal ? <p className="text-faint">กำลังโหลด…</p> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="text-left text-slate-500"><th className="p-1">บัญชี</th><th className="p-1 text-right">ยอดยกมา</th><th className="p-1 text-right">เข้า</th><th className="p-1 text-right">ออก</th><th className="p-1 text-right">คงเหลือ</th><th className="p-1"></th></tr></thead>
+              <thead><tr className="text-left text-faint"><th className="p-1">บัญชี</th><th className="p-1 text-right">ยอดยกมา</th><th className="p-1 text-right">เข้า</th><th className="p-1 text-right">ออก</th><th className="p-1 text-right">คงเหลือ</th><th className="p-1"></th></tr></thead>
               <tbody>
                 {bal.balances.map((b) => (
-                  <tr key={b.accountType} className="border-t border-slate-100">
+                  <tr key={b.accountType} className="border-t border-line-soft">
                     <td className="p-1">{b.accountType}{b.isTaxAccount ? " 🧾" : ""}{b.shared ? " 🔗" : ""}</td>
                     <td className="p-1 text-right">{fmt(b.openingBalance)}</td>
-                    <td className="p-1 text-right text-green-600">{fmt(b.totalIn)}</td>
-                    <td className="p-1 text-right text-red-600">{fmt(b.totalOut)}</td>
+                    <td className="p-1 text-right text-ok">{fmt(b.totalIn)}</td>
+                    <td className="p-1 text-right text-crit">{fmt(b.totalOut)}</td>
                     <td className="p-1 text-right font-semibold">{fmt(b.balance)}</td>
-                    <td className="p-1"><button onClick={() => openStatement(b.accountType)} className="text-slate-700 hover:underline">statement</button></td>
+                    <td className="p-1"><button onClick={() => openStatement(b.accountType)} className="text-muted hover:underline">statement</button></td>
                   </tr>
                 ))}
-                <tr className="border-t-2 border-slate-300 font-semibold"><td className="p-1">รวมทุกบัญชี</td><td colSpan={3}></td><td className="p-1 text-right">{fmt(bal.grandTotal)}</td><td></td></tr>
+                <tr className="border-t-2 border-line font-semibold"><td className="p-1">รวมทุกบัญชี</td><td colSpan={3}></td><td className="p-1 text-right">{fmt(bal.grandTotal)}</td><td></td></tr>
               </tbody>
             </table>
-            <p className="mt-1 text-xs text-slate-400">🧾 บัญชีในระบบภาษี · 🔗 บัญชีใช้ร่วมหลายกิจการ</p>
+            <p className="mt-1 text-xs text-faint">🧾 บัญชีในระบบภาษี · 🔗 บัญชีใช้ร่วมหลายกิจการ</p>
           </div>
         )}
       </Card>
 
       {openAcc && (
         <Card title={`Statement: ${openAcc} — เดือน ${period}`}>
-          {!stmt ? <p className="text-slate-400">กำลังโหลด…</p> : (
+          {!stmt ? <p className="text-faint">กำลังโหลด…</p> : (
             <div className="overflow-x-auto">
-              <p className="mb-2 text-sm text-slate-600">ยอดยกมา: <b>{fmt(stmt.openingBalance)}</b> · ยอดยกไป: <b>{fmt(stmt.closingBalance)}</b></p>
+              <p className="mb-2 text-sm text-muted">ยอดยกมา: <b>{fmt(stmt.openingBalance)}</b> · ยอดยกไป: <b>{fmt(stmt.closingBalance)}</b></p>
               <table className="w-full text-sm">
-                <thead><tr className="text-left text-slate-500"><th className="p-1">วันที่</th><th className="p-1">ประเภท</th><th className="p-1">รายละเอียด</th><th className="p-1 text-right">เดบิต</th><th className="p-1 text-right">เครดิต</th><th className="p-1 text-right">คงเหลือ</th></tr></thead>
+                <thead><tr className="text-left text-faint"><th className="p-1">วันที่</th><th className="p-1">ประเภท</th><th className="p-1">รายละเอียด</th><th className="p-1 text-right">เดบิต</th><th className="p-1 text-right">เครดิต</th><th className="p-1 text-right">คงเหลือ</th></tr></thead>
                 <tbody>
-                  {stmt.rows.length === 0 ? <tr><td colSpan={6} className="p-3 text-center text-slate-400">ไม่มีรายการในเดือนนี้</td></tr> :
+                  {stmt.rows.length === 0 ? <tr><td colSpan={6} className="p-3 text-center text-faint">ไม่มีรายการในเดือนนี้</td></tr> :
                     stmt.rows.map((r) => (
-                      <tr key={r.txId} className="border-t border-slate-100">
+                      <tr key={r.txId} className="border-t border-line-soft">
                         <td className="p-1">{r.date}</td><td className="p-1">{r.type}</td><td className="p-1">{r.description || r.contactName}</td>
-                        <td className="p-1 text-right text-red-600">{r.debit ? fmt(r.debit) : ""}</td>
-                        <td className="p-1 text-right text-green-600">{r.credit ? fmt(r.credit) : ""}</td>
+                        <td className="p-1 text-right text-crit">{r.debit ? fmt(r.debit) : ""}</td>
+                        <td className="p-1 text-right text-ok">{r.credit ? fmt(r.credit) : ""}</td>
                         <td className="p-1 text-right">{fmt(r.runningBalance)}</td>
                       </tr>
                     ))}

@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { getFermentMonitorAction, saveFermentMonitorAction, updateFermentMonitorAction, deleteFermentMonitorAction } from "../actions";
 import { Card, Field, Msg, NumInput, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import { LineChart } from "./LineChart";
+import { chartColor } from "@/lib/shared/chart";
 import type { PendingBatch } from "./types";
+import { IconEdit, IconTrash } from "@/lib/shared/icons";
 
 type MonitorRow = {
   id: number;
@@ -95,7 +97,7 @@ export function MonitorTab({
       <Card title="ติดตามการหมัก (pH / Brix / อุณหภูมิ)">
         <Msg msg={msg} />
         {batches.length === 0 && (
-          <p className="mb-3 text-sm text-amber-600">ยังไม่มี batch ที่กำลังหมัก (ลงหมักก่อน)</p>
+          <p className="mb-3 text-sm text-warn">ยังไม่มี batch ที่กำลังหมัก (ลงหมักก่อน)</p>
         )}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Batch">
@@ -121,42 +123,42 @@ export function MonitorTab({
       {batch && (
         <Card title={`กราฟแนวโน้มการหมัก — ${batch}`}>
           {history.length === 0 ? (
-            <p className="text-sm text-slate-400">ยังไม่มีค่าวัดของ batch นี้</p>
+            <p className="text-sm text-faint">ยังไม่มีค่าวัดของ batch นี้</p>
           ) : (
             <>
               <LineChart
                 labels={labels}
                 xLabel="ครั้งที่วัด (เก่า→ใหม่)"
                 series={[
-                  { name: "pH", color: "#2563eb", axis: "L", values: history.map((r) => r.ph) },
-                  { name: "Brix", color: "#16a34a", axis: "R", values: history.map((r) => r.brix) },
-                  { name: "อุณหภูมิ °C", color: "#dc2626", axis: "R", values: history.map((r) => r.temp) },
+                  { name: "pH", color: chartColor(0), axis: "L", values: history.map((r) => r.ph) },
+                  { name: "Brix", color: chartColor(1), axis: "R", values: history.map((r) => r.brix) },
+                  { name: "อุณหภูมิ °C", color: chartColor(2), axis: "R", values: history.map((r) => r.temp) },
                 ]}
               />
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="border-b border-slate-200 text-left text-slate-500">
+                  <thead className="border-b border-line text-left text-faint">
                     <tr><th className="px-2 py-1">วันที่/เวลา</th><th className="px-2 py-1">pH</th><th className="px-2 py-1">Brix</th><th className="px-2 py-1">°C</th><th className="px-2 py-1">หมายเหตุ</th><th className="px-2 py-1"></th></tr>
                   </thead>
                   <tbody>
                     {history.map((r) => (
                       editId === r.id ? (
-                        <tr key={r.id} className="border-b border-slate-100 bg-amber-50/50">
+                        <tr key={r.id} className="border-b border-line-soft bg-warn-bg">
                           <td className="px-1 py-1"><div className="flex gap-1"><TextInput type="date" value={edit.measureDate} onChange={(e) => setEdit({ ...edit, measureDate: e.target.value })} className="w-32" /><TextInput type="time" value={edit.measureTime} onChange={(e) => setEdit({ ...edit, measureTime: e.target.value })} className="w-24" /></div></td>
                           <td className="px-1 py-1"><NumInput value={edit.ph} onChange={(e) => setEdit({ ...edit, ph: e.target.value })} className="w-16" /></td>
                           <td className="px-1 py-1"><NumInput value={edit.brix} onChange={(e) => setEdit({ ...edit, brix: e.target.value })} className="w-16" /></td>
                           <td className="px-1 py-1"><NumInput value={edit.temp} onChange={(e) => setEdit({ ...edit, temp: e.target.value })} className="w-16" /></td>
                           <td className="px-1 py-1"><TextInput value={edit.note} onChange={(e) => setEdit({ ...edit, note: e.target.value })} /></td>
-                          <td className="whitespace-nowrap px-1 py-1"><button onClick={saveEdit} disabled={pending} className="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50">บันทึก</button><button onClick={() => setEditId(null)} className="ml-1 rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50">ยกเลิก</button></td>
+                          <td className="whitespace-nowrap px-1 py-1"><button onClick={saveEdit} disabled={pending} className="rounded border border-ok-line px-2 py-1 text-xs text-ok hover:bg-ok-bg">บันทึก</button><button onClick={() => setEditId(null)} className="ml-1 rounded border border-line px-2 py-1 text-xs text-muted hover:bg-raised">ยกเลิก</button></td>
                         </tr>
                       ) : (
-                        <tr key={r.id} className="border-b border-slate-100">
+                        <tr key={r.id} className="border-b border-line-soft">
                           <td className="px-2 py-1">{String(r.measure_date).slice(5)} {r.measure_time?.slice(0, 5) ?? ""}</td>
                           <td className="px-2 py-1">{r.ph ?? "—"}</td>
                           <td className="px-2 py-1">{r.brix ?? "—"}</td>
                           <td className="px-2 py-1">{r.temp ?? "—"}</td>
-                          <td className="px-2 py-1 text-slate-500">{r.note ?? ""}</td>
-                          <td className="whitespace-nowrap px-2 py-1"><button onClick={() => startEdit(r)} className="text-slate-600 hover:text-slate-800" title="แก้ไข">✏️</button><button onClick={() => del(r)} className="ml-2 text-red-500 hover:text-red-700" title="ลบ">🗑️</button></td>
+                          <td className="px-2 py-1 text-faint">{r.note ?? ""}</td>
+                          <td className="whitespace-nowrap px-2 py-1"><button onClick={() => startEdit(r)} className="text-muted hover:text-ink" title="แก้ไข"><IconEdit size={16} /></button><button onClick={() => del(r)} className="ml-2 text-crit hover:text-crit" title="ลบ"><IconTrash size={16} /></button></td>
                         </tr>
                       )
                     ))}

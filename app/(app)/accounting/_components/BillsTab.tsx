@@ -58,9 +58,9 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
   const actBtn = "min-h-[44px] rounded border px-3 sm:min-h-0 sm:py-1";
   const billActions = (r: Bills[number]) => (
     <>
-      <button onClick={() => openDetail(r.tx_id)} className={`${actBtn} border-slate-300 text-slate-700 hover:bg-slate-50`}>ดู</button>
-      {!readOnly && canEdit(r as BillRow) && <button onClick={() => setEditId(r.tx_id)} disabled={pending} className={`${actBtn} border-blue-300 text-blue-600 hover:bg-blue-50 disabled:opacity-50`}>แก้ไข</button>}
-      {!readOnly && r.status !== "ยกเลิก" && <button onClick={() => doVoid(r.tx_id)} disabled={pending} className={`${actBtn} ml-auto border-red-300 text-red-500 hover:bg-red-50 disabled:opacity-50 sm:ml-2`}>ยกเลิก</button>}
+      <button onClick={() => openDetail(r.tx_id)} className={`${actBtn} border-line text-muted hover:bg-raised`}>ดู</button>
+      {!readOnly && canEdit(r as BillRow) && <button onClick={() => setEditId(r.tx_id)} disabled={pending} className={`${actBtn} border-brand-line text-brand hover:bg-brand-soft disabled:opacity-50`}>แก้ไข</button>}
+      {!readOnly && r.status !== "ยกเลิก" && <button onClick={() => doVoid(r.tx_id)} disabled={pending} className={`${actBtn} ml-auto border-crit-line text-crit hover:bg-crit-bg disabled:opacity-50 sm:ml-2`}>ยกเลิก</button>}
     </>
   );
 
@@ -82,16 +82,16 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
       </Card>
 
       <Card title={`ผลลัพธ์ (${shown.length})`}>
-        {rows.length >= 500 && <p className="mb-2 text-xs text-amber-600">⚠️ แสดง 500 รายการแรก — ถ้าไม่เจอที่ต้องการ ให้แคบด้วยเดือน/คู่ค้า/ประเภท</p>}
-        {loading ? <p className="text-slate-400">กำลังโหลด…</p> : shown.length === 0 ? <p className="text-sm text-slate-400">— ไม่มีรายการ —</p> : (
+        {rows.length >= 500 && <p className="mb-2 text-xs text-warn">⚠️ แสดง 500 รายการแรก — ถ้าไม่เจอที่ต้องการ ให้แคบด้วยเดือน/คู่ค้า/ประเภท</p>}
+        {loading ? <p className="text-faint">กำลังโหลด…</p> : shown.length === 0 ? <p className="text-sm text-faint">— ไม่มีรายการ —</p> : (
           <>
             {/* Desktop: ตาราง */}
             <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-sm">
-                <thead><tr className="text-left text-slate-500"><th className="p-1">วันที่</th><th className="p-1">เลขที่</th><th className="p-1">ประเภท</th><th className="p-1">คู่ค้า</th><th className="p-1">รายละเอียด</th><th className="p-1 text-right">สุทธิ</th><th className="p-1">สถานะ</th><th className="p-1"></th></tr></thead>
+                <thead><tr className="text-left text-faint"><th className="p-1">วันที่</th><th className="p-1">เลขที่</th><th className="p-1">ประเภท</th><th className="p-1">คู่ค้า</th><th className="p-1">รายละเอียด</th><th className="p-1 text-right">สุทธิ</th><th className="p-1">สถานะ</th><th className="p-1"></th></tr></thead>
                 <tbody>
                   {shown.map((r) => (
-                    <tr key={r.tx_id} className="border-t border-slate-100">
+                    <tr key={r.tx_id} className="border-t border-line-soft">
                       <td className="p-1 whitespace-nowrap">{r.transaction_date}</td><td className="p-1">{r.tx_id}</td><td className="p-1">{r.type}</td>
                       <td className="p-1">{r.contact_name}</td><td className="p-1">{r.description}</td><td className="p-1 text-right">{fmt(r.net_amount as number)}</td>
                       <td className="p-1">{r.status}{r.ap_ar_status ? ` (${r.ap_ar_status})` : ""}</td>
@@ -105,16 +105,16 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
             {/* Mobile: การ์ด */}
             <div className="space-y-2 md:hidden">
               {shown.map((r) => (
-                <div key={r.tx_id} className="rounded-xl border border-slate-200 p-3">
+                <div key={r.tx_id} className="rounded-xl border border-line p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="text-xs text-slate-400">{r.transaction_date} · {r.tx_id}</div>
-                      <div className="truncate text-sm font-medium text-slate-800">{r.contact_name || "—"}</div>
-                      <div className="truncate text-xs text-slate-500">{r.type} · {r.description}</div>
+                      <div className="text-xs text-faint">{r.transaction_date} · {r.tx_id}</div>
+                      <div className="truncate text-sm font-medium text-ink">{r.contact_name || "—"}</div>
+                      <div className="truncate text-xs text-faint">{r.type} · {r.description}</div>
                     </div>
                     <div className="whitespace-nowrap text-right">
-                      <div className="font-semibold text-slate-800">฿{fmt(r.net_amount as number)}</div>
-                      <div className="text-[10px] text-slate-400">{r.status}{r.ap_ar_status ? ` (${r.ap_ar_status})` : ""}</div>
+                      <div className="font-semibold text-ink">฿{fmt(r.net_amount as number)}</div>
+                      <div className="text-[10px] text-faint">{r.status}{r.ap_ar_status ? ` (${r.ap_ar_status})` : ""}</div>
                     </div>
                   </div>
                   <div className="mt-2 flex gap-1.5">{billActions(r)}</div>
@@ -134,10 +134,10 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
           </div>
           {detail.items.length > 0 && (
             <table className="mt-3 w-full text-sm">
-              <thead><tr className="text-left text-slate-500"><th className="p-1">รายการ</th><th className="p-1">หมวด</th><th className="p-1 text-right">จำนวน</th><th className="p-1 text-right">ราคา(ex)</th><th className="p-1 text-right">รวม</th></tr></thead>
+              <thead><tr className="text-left text-faint"><th className="p-1">รายการ</th><th className="p-1">หมวด</th><th className="p-1 text-right">จำนวน</th><th className="p-1 text-right">ราคา(ex)</th><th className="p-1 text-right">รวม</th></tr></thead>
               <tbody>
                 {detail.items.map((it) => (
-                  <tr key={it.item_id as string} className="border-t border-slate-100"><td className="p-1">{it.item_name as string}</td><td className="p-1">{(it.item_category as string) ?? ""}</td><td className="p-1 text-right">{fmt(it.quantity as number)}</td><td className="p-1 text-right">{fmt(it.ex_vat as number)}</td><td className="p-1 text-right">{fmt(it.total_price as number)}</td></tr>
+                  <tr key={it.item_id as string} className="border-t border-line-soft"><td className="p-1">{it.item_name as string}</td><td className="p-1">{(it.item_category as string) ?? ""}</td><td className="p-1 text-right">{fmt(it.quantity as number)}</td><td className="p-1 text-right">{fmt(it.ex_vat as number)}</td><td className="p-1 text-right">{fmt(it.total_price as number)}</td></tr>
                 ))}
               </tbody>
             </table>
@@ -156,7 +156,7 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
     </div>
   );
 
-  function Info({ k, v }: { k: string; v: string }) { return <div><span className="text-slate-500">{k}: </span><span className="text-slate-800">{v}</span></div>; }
+  function Info({ k, v }: { k: string; v: string }) { return <div><span className="text-faint">{k}: </span><span className="text-ink">{v}</span></div>; }
 }
 
 // ── แก้ไขบิลเดี่ยว (โหลด detail → ฟอร์มแก้ไข → fn_edit_transaction) ────────────────
@@ -249,20 +249,20 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/30 p-0 sm:p-4" onClick={onClose}>
-      <div className="min-h-dvh w-full rounded-none bg-white p-5 sm:my-8 sm:min-h-0 sm:max-w-3xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-3 font-semibold text-slate-800">แก้ไขบิล {txId}</h3>
-        {loading ? <p className="text-slate-400">กำลังโหลด…</p> : (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-overlay/30 p-0 sm:p-4" onClick={onClose}>
+      <div className="min-h-dvh w-full rounded-none bg-card p-5 sm:my-8 sm:min-h-0 sm:max-w-3xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="mb-3 font-semibold text-ink">แก้ไขบิล {txId}</h3>
+        {loading ? <p className="text-faint">กำลังโหลด…</p> : (
           <>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
               <Field label="ประเภท"><Select value={type} onChange={(e) => setType(e.target.value as "รายรับ" | "รายจ่าย")}><option value="รายจ่าย">รายจ่าย</option><option value="รายรับ">รายรับ</option></Select></Field>
               <Field label="หมวดหมู่">
-                <input list="edit-cat-list" value={category} onChange={(e) => setCategory(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200" />
+                <input list="edit-cat-list" value={category} onChange={(e) => setCategory(e.target.value)} className="w-full rounded-lg border border-line px-3 py-2 text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft" />
                 <datalist id="edit-cat-list">{cats.map((c) => (<option key={c} value={c} />))}{type === "รายจ่าย" && !cats.includes("ต้นทุนสุรา") && <option value="ต้นทุนสุรา" />}</datalist>
               </Field>
               <Field label="บัญชี"><Select value={accountName} onChange={(e) => setAccountName(e.target.value)}><option value="">— เลือก —</option>{accountOptions.map((a) => (<option key={a.account_name} value={a.account_name}>{a.account_name}</option>))}</Select></Field>
               <Field label="คู่ค้า">
-                <input list="edit-contact-list" value={contactName} onChange={(e) => setContactName(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 outline-none" />
+                <input list="edit-contact-list" value={contactName} onChange={(e) => setContactName(e.target.value)} className="w-full rounded-lg border border-line px-3 py-2 text-ink outline-none" />
                 <datalist id="edit-contact-list">{boot.contacts.map((c) => (<option key={c.contact_id} value={c.name} />))}</datalist>
                 {multiBranch && (
                   <Select value={effBranchId} onChange={(e) => setContactId(e.target.value)} className="mt-1">
@@ -278,10 +278,10 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
 
             <div className="mt-3 overflow-x-auto">
               <table className="w-full text-sm">
-                <thead><tr className="text-left text-slate-500"><th className="p-1">ชื่อรายการ</th><th className="p-1 w-16">จำนวน</th><th className="p-1 w-28">รวม VAT</th><th className="p-1 w-28">ไม่รวม VAT</th><th className="p-1 w-16">ลด %</th><th className="p-1 w-24">ลด บาท</th><th className="p-1 w-28 text-right">รวม</th><th className="p-1 w-8"></th></tr></thead>
+                <thead><tr className="text-left text-faint"><th className="p-1">ชื่อรายการ</th><th className="p-1 w-16">จำนวน</th><th className="p-1 w-28">รวม VAT</th><th className="p-1 w-28">ไม่รวม VAT</th><th className="p-1 w-16">ลด %</th><th className="p-1 w-24">ลด บาท</th><th className="p-1 w-28 text-right">รวม</th><th className="p-1 w-8"></th></tr></thead>
                 <tbody>
                   {items.map((it, i) => (
-                    <tr key={i} className="border-t border-slate-100">
+                    <tr key={i} className="border-t border-line-soft">
                       <td className="p-1"><TextInput value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })} placeholder="ชื่อสินค้า/บริการ" /></td>
                       <td className="p-1"><NumBox value={it.quantity} onChange={(v) => onQty(i, v)} /></td>
                       <td className="p-1"><NumBox value={it.inVat} blankZero onChange={(v) => onInVat(i, v === "" ? 0 : v)} /></td>
@@ -289,13 +289,13 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
                       <td className="p-1"><NumBox value={it.discPct} blankZero onChange={(v) => onDiscPct(i, v === "" ? 0 : v)} /></td>
                       <td className="p-1"><NumBox value={it.discBaht} blankZero onChange={(v) => onDiscBaht(i, v === "" ? 0 : v)} /></td>
                       <td className="p-1 text-right font-medium">{fmt(itemTotal(qn(it.quantity), it.exVat, it.discBaht))}</td>
-                      <td className="p-1"><button type="button" onClick={() => removeItem(i)} title="ลบรายการนี้" className="text-red-500 hover:text-red-700">✕</button></td>
+                      <td className="p-1"><button type="button" onClick={() => removeItem(i)} title="ลบรายการนี้" className="text-crit hover:text-crit">✕</button></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <button type="button" onClick={addItem} className="mt-2 text-sm text-slate-600 hover:text-slate-800">+ เพิ่มรายการ</button>
+            <button type="button" onClick={addItem} className="mt-2 text-sm text-muted hover:text-ink">+ เพิ่มรายการ</button>
 
             <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
               <Field label="ส่วนลดบิล"><NumBox value={discount} blankZero onChange={(v) => setDiscount(v === "" ? 0 : v)} /></Field>
@@ -305,10 +305,10 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
             </div>
 
             <div className="mt-3 flex items-center justify-between">
-              <span className="text-xs text-slate-500">ยอดคำนวณ</span>
+              <span className="text-xs text-faint">ยอดคำนวณ</span>
               {manualAmt
-                ? <button type="button" onClick={lockAmounts} className="text-xs text-slate-500 hover:underline">↩️ กลับไปคำนวณอัตโนมัติ</button>
-                : <button type="button" onClick={unlockAmounts} className="text-xs text-blue-600 hover:underline">✏️ แก้ยอดเอง</button>}
+                ? <button type="button" onClick={lockAmounts} className="text-xs text-faint hover:underline">↩️ กลับไปคำนวณอัตโนมัติ</button>
+                : <button type="button" onClick={unlockAmounts} className="text-xs text-brand hover:underline">✏️ แก้ยอดเอง</button>}
             </div>
             <dl className="mt-1 space-y-1 text-sm">
               {manualAmt ? (
@@ -326,12 +326,12 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
               )}
               <ERow k="ยอดสุทธิ" v={fmt(effNet)} bold />
             </dl>
-            {manualAmt && <p className="mt-1 text-xs text-amber-600">โหมดแก้ยอดเอง — 3 ค่านี้จะไม่คำนวณอัตโนมัติจนกดกลับ (ยอดสุทธิ = หลังหักส่วนลด + VAT − หัก ณ ที่จ่าย)</p>}
+            {manualAmt && <p className="mt-1 text-xs text-warn">โหมดแก้ยอดเอง — 3 ค่านี้จะไม่คำนวณอัตโนมัติจนกดกลับ (ยอดสุทธิ = หลังหักส่วนลด + VAT − หัก ณ ที่จ่าย)</p>}
 
-            <p className="mt-2 text-xs text-slate-400">* คงสถานะชำระ (AP/AR) และกลุ่มงวด/โอนไว้เดิม · การแก้จะถูกบันทึกใน edit_log</p>
+            <p className="mt-2 text-xs text-faint">* คงสถานะชำระ (AP/AR) และกลุ่มงวด/โอนไว้เดิม · การแก้จะถูกบันทึกใน edit_log</p>
             <Msg msg={msg} />
             <div className="mt-3 flex justify-end gap-2">
-              <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm">ยกเลิก</button>
+              <button onClick={onClose} className="rounded-lg border border-line px-4 py-2 text-sm">ยกเลิก</button>
               <SaveButton pending={pending} onClick={save}>บันทึกการแก้ไข</SaveButton>
             </div>
           </>
@@ -342,12 +342,12 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
 }
 
 function ERow({ k, v, bold }: { k: string; v: string; bold?: boolean }) {
-  return <div className={`flex justify-between ${bold ? "border-t border-slate-200 pt-1 font-semibold text-slate-800" : "text-slate-600"}`}><dt>{k}</dt><dd>{v}</dd></div>;
+  return <div className={`flex justify-between ${bold ? "border-t border-line pt-1 font-semibold text-ink" : "text-muted"}`}><dt>{k}</dt><dd>{v}</dd></div>;
 }
 function ERowEdit({ k, value, onChange }: { k: string; value: number; onChange: (n: number) => void }) {
   return (
     <div className="flex items-center justify-between gap-2">
-      <dt className="text-slate-600">{k}</dt>
+      <dt className="text-muted">{k}</dt>
       <dd className="w-32"><NumBox value={value} onChange={(v) => onChange(v === "" ? 0 : v)} className="py-1 text-right" /></dd>
     </div>
   );

@@ -3,7 +3,6 @@
 /**
  * UI ของโดเมนบัญชี — ตรรกะจริงอยู่ที่ `lib/shared/ui` (ชุดเดียวใช้ 3 โดเมน)
  * ไฟล์นี้เหลือแค่ re-export ให้ import เดิมของทุก Tab ใช้ได้เหมือนเดิม
- * accent = slate (สีเดิมของบัญชี)
  */
 export {
   todayISO,
@@ -23,4 +22,6 @@ export {
   Combobox,
   SaveButton,
   RowBtn,
+  IconBtn,
+  Badge,
 } from "@/lib/shared/ui";

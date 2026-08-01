@@ -16,6 +16,7 @@ import {
   type AccountMeta,
 } from "@/lib/accounting/ledger";
 import { fetchAllRows } from "@/lib/shared/paginate";
+import { brandingFromSettings } from "@/lib/shared/branding";
 
 // คอลัมน์ transactions ที่ใช้ทุกรายงาน
 const TX_COLS =
@@ -103,6 +104,7 @@ export async function getBootstrap() {
     incomeCats: byKind("income_cat"),
     whtRates: byKind("wht_rate"),
     taxAccounts: taxAccounts.length ? taxAccounts : ["บัญชีบริษัท"],
+    branding: brandingFromSettings(s as { kind: string; value: string }[]),
   };
 }
 

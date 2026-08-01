@@ -46,26 +46,26 @@ export function PriceCheckTab({ boot, entityId }: { boot: Bootstrap; entityId: s
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <Field label="วันที่"><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
         <Field label="คู่ค้า/ร้าน">
-          <input list="pc-contact" value={contact} onChange={(e) => setContact(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none" />
+          <input list="pc-contact" value={contact} onChange={(e) => setContact(e.target.value)} className="w-full rounded-lg border border-line px-3 py-2 outline-none" />
           <datalist id="pc-contact">{boot.contacts.map((c) => <option key={c.contact_id} value={c.name} />)}</datalist>
         </Field>
         <Field label="หมายเหตุ"><TextInput value={note} onChange={(e) => setNote(e.target.value)} /></Field>
       </div>
       <table className="mt-3 w-full text-sm">
-        <thead><tr className="text-left text-slate-500"><th className="p-1">รายการ</th><th className="p-1 w-20">จำนวน</th><th className="p-1 w-28">ราคา(ex VAT)</th><th className="p-1 w-24 text-right">รวม VAT</th><th className="p-1 w-8"></th></tr></thead>
+        <thead><tr className="text-left text-faint"><th className="p-1">รายการ</th><th className="p-1 w-20">จำนวน</th><th className="p-1 w-28">ราคา(ex VAT)</th><th className="p-1 w-24 text-right">รวม VAT</th><th className="p-1 w-8"></th></tr></thead>
         <tbody>
           {items.map((it, i) => (
-            <tr key={i} className="border-t border-slate-100">
+            <tr key={i} className="border-t border-line-soft">
               <td className="p-1"><TextInput value={it.itemName} onChange={(e) => setItems((p) => p.map((x, idx) => idx === i ? { ...x, itemName: e.target.value } : x))} /></td>
               <td className="p-1"><NumInput value={it.quantity} onChange={(e) => setItems((p) => p.map((x, idx) => idx === i ? { ...x, quantity: Number(e.target.value) } : x))} /></td>
               <td className="p-1"><NumInput value={it.exVat || ""} onChange={(e) => setItems((p) => p.map((x, idx) => idx === i ? { ...x, exVat: Number(e.target.value) } : x))} /></td>
               <td className="p-1 text-right">{fmt(inVatFromExVat(it.exVat))}</td>
-              <td className="p-1"><button onClick={() => setItems((p) => p.filter((_, idx) => idx !== i))} className="text-red-500">✕</button></td>
+              <td className="p-1"><button onClick={() => setItems((p) => p.filter((_, idx) => idx !== i))} className="text-crit">✕</button></td>
             </tr>
           ))}
         </tbody>
       </table>
-      <button onClick={() => setItems((p) => [...p, { itemName: "", quantity: 1, exVat: 0 }])} className="mt-2 text-sm text-slate-600">+ เพิ่มรายการ</button>
+      <button onClick={() => setItems((p) => [...p, { itemName: "", quantity: 1, exVat: 0 }])} className="mt-2 text-sm text-muted">+ เพิ่มรายการ</button>
       <div className="mt-3"><Msg msg={msg} /><SaveButton pending={pending} onClick={doSave}>บันทึกเช็คราคา</SaveButton></div>
     </Card>
   );

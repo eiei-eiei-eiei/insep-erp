@@ -283,14 +283,14 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
       <div ref={billCardRef}>
       <Card title="ข้อมูลบิล">
         {ambiguous ? (
-          <div className={`mb-3 rounded-lg border p-2 ${errField === "entity" ? "border-red-400 bg-red-50" : "border-amber-300 bg-amber-50"}`}>
-            <span className="mb-1 block text-xs font-medium text-amber-700">⚠️ ด้านบนเลือก “ทุกกิจการ” — เลือกกิจการที่จะบันทึกเข้าให้ชัดเจนก่อน</span>
+          <div className={`mb-3 rounded-lg border p-2 ${errField === "entity" ? "border-crit-line bg-crit-bg" : "border-warn-line bg-warn-bg"}`}>
+            <span className="mb-1 block text-xs font-medium text-warn">⚠️ ด้านบนเลือก “ทุกกิจการ” — เลือกกิจการที่จะบันทึกเข้าให้ชัดเจนก่อน</span>
             <Select value={effEntity} onChange={(e) => { setPickedEntity(e.target.value); setErrField(null); }}>
               {boot.entities.map((en) => (<option key={en.entity_id} value={en.entity_id}>{en.entity_id} — {en.name}</option>))}
             </Select>
           </div>
         ) : (
-          <div className="mb-3 text-xs text-slate-500">📍 บันทึกเข้ากิจการ: <b className="text-slate-700">{effEntity}{effEntityName ? ` — ${effEntityName}` : ""}</b></div>
+          <div className="mb-3 text-xs text-faint">📍 บันทึกเข้ากิจการ: <b className="text-muted">{effEntity}{effEntityName ? ` — ${effEntityName}` : ""}</b></div>
         )}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
           <Field label="ประเภท">
@@ -300,22 +300,22 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
             </Select>
           </Field>
           <Field label="หมวดหมู่">
-            <input ref={catRef} list="bill-cat-list" value={category} onChange={(e) => { setCategory(e.target.value); setErrField(null); }} placeholder="พิมพ์เพื่อค้นหา / เลือก" className={`w-full rounded-lg border px-3 py-2 text-slate-800 outline-none focus:ring-2 ${errField === "category" ? "border-red-400 ring-2 ring-red-200" : "border-slate-300 focus:border-slate-500 focus:ring-slate-200"}`} />
+            <input ref={catRef} list="bill-cat-list" value={category} onChange={(e) => { setCategory(e.target.value); setErrField(null); }} placeholder="พิมพ์เพื่อค้นหา / เลือก" className={`w-full rounded-lg border px-3 py-2 text-ink outline-none focus:ring-2 ${errField === "category" ? "border-crit-line ring-2 ring-crit-line" : "border-line focus:border-brand focus:ring-brand-soft"}`} />
             <datalist id="bill-cat-list">
               {cats.map((c) => (<option key={c} value={c} />))}
               {type === "รายจ่าย" && !cats.includes("ต้นทุนสุรา") && <option value="ต้นทุนสุรา" />}
             </datalist>
           </Field>
           <Field label="บัญชี">
-            <Select value={accountName} onChange={(e) => { setAccountName(e.target.value); setErrField(null); }} disabled={isApAr || isInst} className={errField === "account" ? "border-red-400 ring-2 ring-red-200" : ""}>
+            <Select value={accountName} onChange={(e) => { setAccountName(e.target.value); setErrField(null); }} disabled={isApAr || isInst} className={errField === "account" ? "border-crit-line ring-2 ring-crit-line" : ""}>
               <option value="">{isApAr || isInst ? "(ตั้งค้าง — เติมตอนชำระ)" : "— เลือก —"}</option>
               {accountOptions.map((a) => (<option key={a.account_name} value={a.account_name}>{a.account_name}</option>))}
             </Select>
           </Field>
           <Field label="คู่ค้า">
             <div className="flex gap-1">
-              <input list="contact-list" value={contactName} onChange={(e) => setContactName(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 outline-none" />
-              <button type="button" onClick={() => setShowContactModal(true)} title="เพิ่มคู่ค้าใหม่" className="rounded-lg border border-slate-300 px-2 text-slate-600 hover:bg-slate-50">＋</button>
+              <input list="contact-list" value={contactName} onChange={(e) => setContactName(e.target.value)} className="w-full rounded-lg border border-line px-3 py-2 text-ink outline-none" />
+              <button type="button" onClick={() => setShowContactModal(true)} title="เพิ่มคู่ค้าใหม่" className="rounded-lg border border-line px-2 text-muted hover:bg-raised">＋</button>
             </div>
             <datalist id="contact-list">{contactOptions.map((c) => (<option key={c.contact_id} value={c.name} />))}</datalist>
             {multiBranch && (
@@ -327,7 +327,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
                     </option>
                   ))}
                 </Select>
-                <p className="mt-0.5 text-xs text-amber-600">คู่ค้านี้มี {nameMatches.length} สาขา — เลือกสาขาให้ถูกก่อนบันทึก (ออกเอกสาร/ภพ.30 ตามสาขานี้)</p>
+                <p className="mt-0.5 text-xs text-warn">คู่ค้านี้มี {nameMatches.length} สาขา — เลือกสาขาให้ถูกก่อนบันทึก (ออกเอกสาร/ภพ.30 ตามสาขานี้)</p>
               </div>
             )}
           </Field>
@@ -338,18 +338,18 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
         </div>
 
         {showRecent && recentBills.length > 0 && (
-          <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50/50 p-2">
-            <div className="mb-1 flex items-center justify-between text-xs text-blue-700">
+          <div className="mt-3 rounded-lg border border-brand-line bg-brand-soft/50 p-2">
+            <div className="mb-1 flex items-center justify-between text-xs text-brand">
               <span>📋 บิลล่าสุดของคู่ค้านี้ — กดเพื่อเติมรายละเอียด/หมวดหมู่/รายการ</span>
-              <button type="button" onClick={() => setShowRecent(false)} className="text-blue-400 hover:text-blue-600">ซ่อน</button>
+              <button type="button" onClick={() => setShowRecent(false)} className="text-brand hover:text-brand">ซ่อน</button>
             </div>
-            <div className="divide-y divide-blue-100">
+            <div className="divide-y divide-line-soft">
               {recentBills.map((b) => (
-                <button key={b.txId} type="button" onClick={() => applyRecentBill(b)} className="flex w-full items-center gap-2 px-1 py-1.5 text-left text-xs hover:bg-blue-100/60">
-                  <span className="flex-shrink-0 text-slate-400">{b.date}</span>
-                  <span className="flex-1 truncate font-medium text-slate-700">{b.description || "-"}</span>
-                  <span className="flex-shrink-0 text-slate-500">{b.category}</span>
-                  <span className="flex-shrink-0 font-semibold text-blue-700">฿{fmt(b.netAmount)}</span>
+                <button key={b.txId} type="button" onClick={() => applyRecentBill(b)} className="flex w-full items-center gap-2 px-1 py-1.5 text-left text-xs hover:bg-brand-soft/60">
+                  <span className="flex-shrink-0 text-faint">{b.date}</span>
+                  <span className="flex-1 truncate font-medium text-muted">{b.description || "-"}</span>
+                  <span className="flex-shrink-0 text-faint">{b.category}</span>
+                  <span className="flex-shrink-0 font-semibold text-brand">฿{fmt(b.netAmount)}</span>
                 </button>
               ))}
             </div>
@@ -357,11 +357,11 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
         )}
 
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <button type="button" onClick={() => fileRef.current?.click()} disabled={scanning} className="rounded-lg border border-purple-300 bg-purple-50 px-3 py-2 text-sm font-medium text-purple-700 hover:bg-purple-100 disabled:opacity-50">{scanning ? "กำลังสแกน…" : "🔍 สแกนใบเสร็จด้วย AI"}</button>
+          <button type="button" onClick={() => fileRef.current?.click()} disabled={scanning} className="rounded-lg border border-brand-line bg-brand px-3 py-2 text-sm font-medium text-brand hover:opacity-90 disabled:opacity-50">{scanning ? "กำลังสแกน…" : "🔍 สแกนใบเสร็จด้วย AI"}</button>
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onScan(f); e.target.value = ""; }} />
-          <button type="button" onClick={() => setShowOpt((v) => !v)} className="text-xs text-slate-500 hover:text-slate-700">{showOpt ? "🙈 ซ่อนคอลัมน์เสริม" : "👁️ แสดงคอลัมน์เสริม (หมวด/งาน/ส่วนลด)"}</button>
-          <button type="button" onClick={() => { if (confirm("ล้างฟอร์มทั้งหมด? (ข้อมูลที่กรอกค้างจะหาย)")) clearForm(); }} className="text-xs text-slate-400 hover:text-red-500">🗑️ ล้างฟอร์ม</button>
-          {isCost && <span className="text-xs text-amber-600">ต้นทุนสุรา — จะรับวัตถุดิบเข้าสต็อกผลิตอัตโนมัติ (ชื่อรายการต้องตรง master)</span>}
+          <button type="button" onClick={() => setShowOpt((v) => !v)} className="text-xs text-faint hover:text-ink">{showOpt ? "🙈 ซ่อนคอลัมน์เสริม" : "👁️ แสดงคอลัมน์เสริม (หมวด/งาน/ส่วนลด)"}</button>
+          <button type="button" onClick={() => { if (confirm("ล้างฟอร์มทั้งหมด? (ข้อมูลที่กรอกค้างจะหาย)")) clearForm(); }} className="text-xs text-faint hover:text-crit">🗑️ ล้างฟอร์ม</button>
+          {isCost && <span className="text-xs text-warn">ต้นทุนสุรา — จะรับวัตถุดิบเข้าสต็อกผลิตอัตโนมัติ (ชื่อรายการต้องตรง master)</span>}
         </div>
       </Card>
       </div>
@@ -372,7 +372,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
         <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-slate-500">
+              <tr className="text-left text-faint">
                 <th className="p-1">ชื่อรายการ</th>
                 {showOpt && <th className="p-1 w-28">หมวดหมู่</th>}
                 {showOpt && <th className="p-1 w-24">งาน</th>}
@@ -387,7 +387,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
             </thead>
             <tbody>
               {items.map((it, i) => (
-                <tr key={i} className="border-t border-slate-100">
+                <tr key={i} className="border-t border-line-soft">
                   <td className="p-1">
                     {isCost ? (
                       <Select value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })}>
@@ -406,7 +406,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
                   {showOpt && <td className="p-1"><NumBox value={it.discPct} blankZero onChange={(v) => onDiscPct(i, v === "" ? 0 : v)} /></td>}
                   {showOpt && <td className="p-1"><NumBox value={it.discBaht} blankZero onChange={(v) => onDiscBaht(i, v === "" ? 0 : v)} /></td>}
                   <td className="p-1 text-right font-medium">{fmt(itemTotal(qn(it.quantity), it.exVat, it.discBaht))}</td>
-                  <td className="p-1"><button type="button" onClick={() => removeItem(i)} title="ลบรายการนี้" className="text-red-500 hover:text-red-700">✕</button></td>
+                  <td className="p-1"><button type="button" onClick={() => removeItem(i)} title="ลบรายการนี้" className="text-crit hover:text-crit">✕</button></td>
                 </tr>
               ))}
             </tbody>
@@ -416,7 +416,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
         {/* Mobile: การ์ดต่อรายการ */}
         <div className="space-y-3 md:hidden">
           {items.map((it, i) => (
-            <div key={i} className="rounded-lg border border-slate-200 p-3">
+            <div key={i} className="rounded-lg border border-line p-3">
               <div className="mb-2 flex items-start gap-2">
                 <div className="flex-1">
                   {isCost ? (
@@ -428,18 +428,18 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
                     <TextInput list="hist-item-names" value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })} placeholder="ชื่อสินค้า/บริการ" />
                   )}
                 </div>
-                <button type="button" onClick={() => removeItem(i)} title="ลบรายการนี้" className="px-2 py-1 text-red-500 hover:text-red-700">✕</button>
+                <button type="button" onClick={() => removeItem(i)} title="ลบรายการนี้" className="px-2 py-1 text-crit hover:text-crit">✕</button>
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
-                <label className="block"><span className="mb-0.5 block text-slate-500">จำนวน</span><NumBox value={it.quantity} onChange={(v) => onQty(i, v)} /></label>
-                <label className="block"><span className="mb-0.5 block text-slate-500">ราคา/หน่วย (รวม VAT)</span><NumBox value={it.inVat} blankZero onChange={(v) => onInVat(i, v === "" ? 0 : v)} /></label>
-                <label className="col-span-2 block"><span className="mb-0.5 block text-slate-500">ราคา/หน่วย (ไม่รวม VAT)</span><NumBox value={it.exVat} blankZero onChange={(v) => onExVat(i, v === "" ? 0 : v)} /></label>
-                {showOpt && <label className="block"><span className="mb-0.5 block text-slate-500">หมวดหมู่</span><TextInput list="hist-item-cats" value={it.itemCategory} onChange={(e) => setItem(i, { itemCategory: e.target.value })} /></label>}
-                {showOpt && <label className="block"><span className="mb-0.5 block text-slate-500">งาน</span><TextInput list="hist-item-jobs" value={it.itemJob} onChange={(e) => setItem(i, { itemJob: e.target.value })} /></label>}
-                {showOpt && <label className="block"><span className="mb-0.5 block text-slate-500">ลด %</span><NumBox value={it.discPct} blankZero onChange={(v) => onDiscPct(i, v === "" ? 0 : v)} /></label>}
-                {showOpt && <label className="block"><span className="mb-0.5 block text-slate-500">ลด บาท</span><NumBox value={it.discBaht} blankZero onChange={(v) => onDiscBaht(i, v === "" ? 0 : v)} /></label>}
+                <label className="block"><span className="mb-0.5 block text-faint">จำนวน</span><NumBox value={it.quantity} onChange={(v) => onQty(i, v)} /></label>
+                <label className="block"><span className="mb-0.5 block text-faint">ราคา/หน่วย (รวม VAT)</span><NumBox value={it.inVat} blankZero onChange={(v) => onInVat(i, v === "" ? 0 : v)} /></label>
+                <label className="col-span-2 block"><span className="mb-0.5 block text-faint">ราคา/หน่วย (ไม่รวม VAT)</span><NumBox value={it.exVat} blankZero onChange={(v) => onExVat(i, v === "" ? 0 : v)} /></label>
+                {showOpt && <label className="block"><span className="mb-0.5 block text-faint">หมวดหมู่</span><TextInput list="hist-item-cats" value={it.itemCategory} onChange={(e) => setItem(i, { itemCategory: e.target.value })} /></label>}
+                {showOpt && <label className="block"><span className="mb-0.5 block text-faint">งาน</span><TextInput list="hist-item-jobs" value={it.itemJob} onChange={(e) => setItem(i, { itemJob: e.target.value })} /></label>}
+                {showOpt && <label className="block"><span className="mb-0.5 block text-faint">ลด %</span><NumBox value={it.discPct} blankZero onChange={(v) => onDiscPct(i, v === "" ? 0 : v)} /></label>}
+                {showOpt && <label className="block"><span className="mb-0.5 block text-faint">ลด บาท</span><NumBox value={it.discBaht} blankZero onChange={(v) => onDiscBaht(i, v === "" ? 0 : v)} /></label>}
               </div>
-              <div className="mt-2 text-right text-sm font-medium text-slate-700">รวม ฿{fmt(itemTotal(qn(it.quantity), it.exVat, it.discBaht))}</div>
+              <div className="mt-2 text-right text-sm font-medium text-muted">รวม ฿{fmt(itemTotal(qn(it.quantity), it.exVat, it.discBaht))}</div>
             </div>
           ))}
         </div>
@@ -447,8 +447,8 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
         <datalist id="hist-item-names">{itemHist.itemNames.map((v) => (<option key={v} value={v} />))}</datalist>
         <datalist id="hist-item-cats">{itemCatOptions.map((v) => (<option key={v} value={v} />))}</datalist>
         <datalist id="hist-item-jobs">{itemJobOptions.map((v) => (<option key={v} value={v} />))}</datalist>
-        <button type="button" onClick={addItem} className="mt-2 text-sm text-slate-600 hover:text-slate-800">+ เพิ่มรายการ</button>
-        <p className="mt-1 text-xs text-slate-400">กรอกราคาช่องรวม VAT หรือ ไม่รวม VAT ช่องใดช่องหนึ่ง อีกช่องคำนวณให้ · ส่วนลด % ↔ บาท คิดจากราคาไม่รวม VAT × จำนวน · Enter ในช่องตัวเลข = เพิ่มแถว</p>
+        <button type="button" onClick={addItem} className="mt-2 text-sm text-muted hover:text-ink">+ เพิ่มรายการ</button>
+        <p className="mt-1 text-xs text-faint">กรอกราคาช่องรวม VAT หรือ ไม่รวม VAT ช่องใดช่องหนึ่ง อีกช่องคำนวณให้ · ส่วนลด % ↔ บาท คิดจากราคาไม่รวม VAT × จำนวน · Enter ในช่องตัวเลข = เพิ่มแถว</p>
       </Card>
       </div>
 
@@ -472,10 +472,10 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
             </Field></div>
           )}
           <div className="mt-3 flex items-center justify-between">
-            <span className="text-xs text-slate-500">ยอดคำนวณ</span>
+            <span className="text-xs text-faint">ยอดคำนวณ</span>
             {manualAmt
-              ? <button type="button" onClick={lockAmounts} className="text-xs text-slate-500 hover:underline">↩️ กลับไปคำนวณอัตโนมัติ</button>
-              : <button type="button" onClick={unlockAmounts} className="text-xs text-blue-600 hover:underline">✏️ แก้ยอดเอง</button>}
+              ? <button type="button" onClick={lockAmounts} className="text-xs text-faint hover:underline">↩️ กลับไปคำนวณอัตโนมัติ</button>
+              : <button type="button" onClick={unlockAmounts} className="text-xs text-brand hover:underline">✏️ แก้ยอดเอง</button>}
           </div>
           <dl className="mt-1 space-y-1 text-sm">
             {manualAmt ? (
@@ -493,7 +493,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
             )}
             <Row k="ยอดสุทธิ" v={fmt(effNet)} bold />
           </dl>
-          {manualAmt && <p className="mt-1 text-xs text-amber-600">โหมดแก้ยอดเอง — 3 ค่านี้จะไม่คำนวณอัตโนมัติจนกดกลับ (ยอดสุทธิ = หลังหักส่วนลด + VAT − หัก ณ ที่จ่าย)</p>}
+          {manualAmt && <p className="mt-1 text-xs text-warn">โหมดแก้ยอดเอง — 3 ค่านี้จะไม่คำนวณอัตโนมัติจนกดกลับ (ยอดสุทธิ = หลังหักส่วนลด + VAT − หัก ณ ที่จ่าย)</p>}
         </Card>
 
         <Card title="ออปชัน">
@@ -507,14 +507,14 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
                   <NumInput value={it.percent || ""} onChange={(e) => setInsts((p) => p.map((x, idx) => idx === i ? { ...x, percent: Number(e.target.value) } : x))} placeholder="%" className="w-20" />
                   <TextInput type="date" value={it.dueDate} onChange={(e) => setInsts((p) => p.map((x, idx) => idx === i ? { ...x, dueDate: e.target.value } : x))} />
                   <span className="w-24 text-right text-sm">{fmt(instRows[i]?.netAmount ?? 0)}</span>
-                  <button type="button" onClick={() => setInsts((p) => p.filter((_, idx) => idx !== i))} className="text-red-500">✕</button>
+                  <button type="button" onClick={() => setInsts((p) => p.filter((_, idx) => idx !== i))} className="text-crit">✕</button>
                 </div>
               ))}
-              <button type="button" onClick={() => setInsts((p) => [...p, { percent: 0, dueDate: "" }])} className="text-sm text-slate-600">+ เพิ่มงวด</button>
-              <div className={`text-xs ${Math.abs(instSumPct - 100) < 0.01 ? "text-slate-400" : "text-red-500"}`}>รวม {instSumPct}% (ต้อง 100%)</div>
+              <button type="button" onClick={() => setInsts((p) => [...p, { percent: 0, dueDate: "" }])} className="text-sm text-muted">+ เพิ่มงวด</button>
+              <div className={`text-xs ${Math.abs(instSumPct - 100) < 0.01 ? "text-faint" : "text-crit"}`}>รวม {instSumPct}% (ต้อง 100%)</div>
             </div>
           )}
-          <div className="mt-4"><Msg msg={msg} /><SaveButton pending={pending} onClick={doSave}>บันทึก</SaveButton><span className="ml-2 text-xs text-slate-400">หรือกด Ctrl+Enter</span></div>
+          <div className="mt-4"><Msg msg={msg} /><SaveButton pending={pending} onClick={doSave}>บันทึก</SaveButton><span className="ml-2 text-xs text-faint">หรือกด Ctrl+Enter</span></div>
         </Card>
 
         <Card title="เครื่องคิดถอด WHT (จากยอดสุทธิ)">
@@ -537,12 +537,12 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   );
 
   function Row({ k, v, bold }: { k: string; v: string; bold?: boolean }) {
-    return <div className={`flex justify-between ${bold ? "border-t border-slate-200 pt-1 font-semibold text-slate-800" : "text-slate-600"}`}><dt>{k}</dt><dd>{v}</dd></div>;
+    return <div className={`flex justify-between ${bold ? "border-t border-line pt-1 font-semibold text-ink" : "text-muted"}`}><dt>{k}</dt><dd>{v}</dd></div>;
   }
   function RowEdit({ k, value, onChange }: { k: string; value: number; onChange: (n: number) => void }) {
     return (
       <div className="flex items-center justify-between gap-2">
-        <dt className="text-slate-600">{k}</dt>
+        <dt className="text-muted">{k}</dt>
         <dd className="w-32"><NumBox value={value} onChange={(v) => onChange(v === "" ? 0 : v)} className="py-1 text-right" /></dd>
       </div>
     );
@@ -568,9 +568,9 @@ function ContactModal({ defaultName, onClose, onSaved }: { defaultName: string; 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-3 font-semibold text-slate-800">เพิ่มคู่ค้าใหม่</h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl bg-card p-5" onClick={(e) => e.stopPropagation()}>
+        <h3 className="mb-3 font-semibold text-ink">เพิ่มคู่ค้าใหม่</h3>
         <div className="space-y-3">
           <Field label="ชื่อคู่ค้า"><TextInput value={name} onChange={(e) => setName(e.target.value)} /></Field>
           <div className="grid grid-cols-2 gap-3">
@@ -580,10 +580,10 @@ function ContactModal({ defaultName, onClose, onSaved }: { defaultName: string; 
           <Field label="ที่อยู่"><TextInput value={address} onChange={(e) => setAddress(e.target.value)} /></Field>
           <Field label="ประเภท"><Select value={contactType} onChange={(e) => setContactType(e.target.value)}><option>ทั้งสอง</option><option>ผู้ขาย</option><option>ลูกค้า</option></Select></Field>
         </div>
-        <p className="mt-1 text-xs text-slate-400">“ทั้งสอง” = เป็นได้ทั้งผู้ขายและลูกค้า → โผล่ทั้งรายรับและรายจ่าย</p>
+        <p className="mt-1 text-xs text-faint">“ทั้งสอง” = เป็นได้ทั้งผู้ขายและลูกค้า → โผล่ทั้งรายรับและรายจ่าย</p>
         <Msg msg={msg} />
         <div className="mt-3 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm">ยกเลิก</button>
+          <button onClick={onClose} className="rounded-lg border border-line px-4 py-2 text-sm">ยกเลิก</button>
           <SaveButton pending={pending} onClick={save}>เพิ่ม</SaveButton>
         </div>
       </div>

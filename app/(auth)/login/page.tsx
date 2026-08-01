@@ -9,18 +9,18 @@ export default function LoginPage() {
   const [state, formAction, pending] = useActionState(login, initialState);
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-lg">
+    <main className="flex min-h-screen items-center justify-center bg-raised p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-card p-8 shadow-lg">
         <div className="mb-6 text-center">
-          <h1 className="text-2xl font-bold text-slate-800">Insep ERP</h1>
-          <p className="mt-1 text-sm text-slate-500">ระบบภายในโรงกลั่นสุราคราฟต์</p>
+          <h1 className="text-2xl font-bold text-ink">Insep ERP</h1>
+          <p className="mt-1 text-sm text-faint">ระบบภายในโรงกลั่นสุราคราฟต์</p>
         </div>
 
         <form action={formAction} className="space-y-4">
           <div>
             <label
               htmlFor="username"
-              className="mb-1 block text-sm font-medium text-slate-700"
+              className="mb-1 block text-sm font-medium text-muted"
             >
               ชื่อผู้ใช้
             </label>
@@ -30,14 +30,14 @@ export default function LoginPage() {
               type="text"
               autoComplete="username"
               required
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+              className="w-full rounded-lg border border-line px-3 py-2 text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft"
             />
           </div>
 
           <div>
             <label
               htmlFor="password"
-              className="mb-1 block text-sm font-medium text-slate-700"
+              className="mb-1 block text-sm font-medium text-muted"
             >
               รหัสผ่าน
             </label>
@@ -47,12 +47,12 @@ export default function LoginPage() {
               type="password"
               autoComplete="current-password"
               required
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+              className="w-full rounded-lg border border-line px-3 py-2 text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft"
             />
           </div>
 
           {state.error && (
-            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+            <p className="rounded-lg bg-crit-bg px-3 py-2 text-sm text-crit">
               {state.error}
             </p>
           )}
@@ -60,7 +60,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={pending}
-            className="w-full rounded-lg bg-slate-800 py-2.5 font-medium text-white transition hover:bg-slate-700 disabled:opacity-50"
+            className="w-full rounded-lg bg-brand py-2.5 font-medium text-on-brand transition hover:opacity-90 disabled:opacity-50"
           >
             {pending ? "กำลังเข้าสู่ระบบ…" : "เข้าสู่ระบบ"}
           </button>

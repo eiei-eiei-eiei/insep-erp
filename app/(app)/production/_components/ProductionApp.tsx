@@ -12,6 +12,7 @@ import { StockTab } from "./StockTab";
 import { MasterTab } from "./MasterTab";
 import { HistoryTab } from "./HistoryTab";
 import { BoardTab } from "./BoardTab";
+import { IconStill } from "@/lib/shared/icons";
 
 const TABS = [
   "กระดาน batch",
@@ -57,19 +58,19 @@ export function ProductionApp({
   return (
     <div>
       <div className="mb-4 flex items-center gap-3">
-        <span className="text-2xl">🏭</span>
-        <h1 className="text-2xl font-bold text-slate-800">ผลิต</h1>
+        <IconStill size={24} className="text-brand" />
+        <h1 className="text-2xl font-bold text-ink">ผลิต</h1>
       </div>
 
-      <div className="mb-5 -mx-4 flex gap-1 overflow-x-auto border-b border-slate-200 px-4">
+      <div className="mb-5 -mx-4 flex gap-1 overflow-x-auto border-b border-line px-4">
         {TABS.map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={`shrink-0 whitespace-nowrap rounded-t-lg px-4 py-2 text-sm font-medium transition ${
               tab === t
-                ? "border-b-2 border-slate-800 text-slate-800"
-                : "text-slate-500 hover:text-slate-700"
+                ? "border-b-2 border-brand text-ink"
+                : "text-faint hover:text-ink"
             }`}
           >
             {t}

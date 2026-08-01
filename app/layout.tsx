@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Noto_Sans_Thai } from "next/font/google";
+import { cookies } from "next/headers";
+import { MODE_COOKIE } from "@/lib/shared/mode";
 import "./globals.css";
 
 // self-host ฟอนต์ไทยตอน build (ไม่พึ่ง CDN ตอน runtime) — Windows ไม่มี Noto Sans Thai ในเครื่อง
@@ -20,19 +22,25 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#1e293b",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f3f5f7" },
+    { media: "(prefers-color-scheme: dark)", color: "#0f1215" },
+  ],
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // อ่านโหมดจาก cookie ฝั่ง server → หน้าแรกที่ render ก็เป็นโหมดที่ถูกแล้ว (ไม่กะพริบขาว)
+  const mode = (await cookies()).get(MODE_COOKIE)?.value === "dark" ? "dark" : "light";
+
   return (
-    <html lang="th" className={notoThai.variable}>
+    <html lang="th" data-mode={mode} className={notoThai.variable}>
       <body>{children}</body>
     </html>
   );

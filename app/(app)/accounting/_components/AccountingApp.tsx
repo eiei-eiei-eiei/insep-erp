@@ -13,6 +13,7 @@ import { PriceCheckTab } from "./PriceCheckTab";
 import { InstallmentsTab } from "./InstallmentsTab";
 import { TaxDocsTab } from "./TaxDocsTab";
 import { SettingsTab } from "./SettingsTab";
+import { IconLedger } from "@/lib/shared/icons";
 
 const TABS = [
   "บันทึก",
@@ -52,27 +53,27 @@ export function AccountingApp({ boot }: { boot: Bootstrap }) {
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <span className="text-2xl">📒</span>
-        <h1 className="text-2xl font-bold text-slate-800">บัญชี</h1>
+        <IconLedger size={24} className="text-brand" />
+        <h1 className="text-2xl font-bold text-ink">บัญชี</h1>
         <div className="ml-auto flex flex-wrap items-center gap-2 text-sm">
-          <select value={entityId} onChange={(e) => setEntityId(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2">
+          <select value={entityId} onChange={(e) => setEntityId(e.target.value)} className="rounded-lg border border-line px-3 py-2">
             <option value="ALL">ทุกกิจการ</option>
             {boot.entities.map((en) => (<option key={en.entity_id} value={en.entity_id}>{en.entity_id} — {en.name}</option>))}
           </select>
           <div className="flex items-center gap-1">
-            <button onClick={() => setMonth(shiftMonth(month, -1))} title="เดือนก่อน" className="rounded-lg border border-slate-300 px-2.5 py-2 text-slate-600 hover:bg-slate-50">‹</button>
-            <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2" />
-            <button onClick={() => setMonth(shiftMonth(month, 1))} title="เดือนถัดไป" className="rounded-lg border border-slate-300 px-2.5 py-2 text-slate-600 hover:bg-slate-50">›</button>
+            <button onClick={() => setMonth(shiftMonth(month, -1))} title="เดือนก่อน" className="rounded-lg border border-line px-2.5 py-2 text-muted hover:bg-raised">‹</button>
+            <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="rounded-lg border border-line px-3 py-2" />
+            <button onClick={() => setMonth(shiftMonth(month, 1))} title="เดือนถัดไป" className="rounded-lg border border-line px-2.5 py-2 text-muted hover:bg-raised">›</button>
           </div>
         </div>
       </div>
 
-      {readOnly && <div className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">บทบาท <b>{boot.role}</b> — ดูได้อย่างเดียว (การบันทึก/แก้ไขต้องเป็น main)</div>}
-      {boot.entities.length === 0 && <div className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">ยังไม่มีข้อมูลกิจการ (entities) — เพิ่มก่อนใช้งาน</div>}
+      {readOnly && <div className="mb-4 rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">บทบาท <b>{boot.role}</b> — ดูได้อย่างเดียว (การบันทึก/แก้ไขต้องเป็น main)</div>}
+      {boot.entities.length === 0 && <div className="mb-4 rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">ยังไม่มีข้อมูลกิจการ (entities) — เพิ่มก่อนใช้งาน</div>}
 
-      <div className="mb-5 -mx-4 flex gap-1 overflow-x-auto border-b border-slate-200 px-4">
+      <div className="mb-5 -mx-4 flex gap-1 overflow-x-auto border-b border-line px-4">
         {TABS.map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={`shrink-0 whitespace-nowrap rounded-t-lg px-4 py-2 text-sm font-medium transition ${tab === t ? "border-b-2 border-slate-800 text-slate-800" : "text-slate-500 hover:text-slate-700"}`}>{t}</button>
+          <button key={t} onClick={() => setTab(t)} className={`shrink-0 whitespace-nowrap rounded-t-lg px-4 py-2 text-sm font-medium transition ${tab === t ? "border-b-2 border-brand text-ink" : "text-faint hover:text-ink"}`}>{t}</button>
         ))}
       </div>
 

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { saveProductAction, getRecentProductsAction, deleteProductLogAction, updateProductLogAction } from "../actions";
 import { Card, Field, Msg, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import { PRODUCT_TYPES, type Product } from "./types";
+import { IconEdit, IconTrash } from "@/lib/shared/icons";
 
 type RecentProduct = Awaited<ReturnType<typeof getRecentProductsAction>>[number];
 type EditFields = { date: string; transType: string; productId: string; amount: string; note: string };
@@ -72,7 +73,7 @@ export function ProductTab({ products }: { products: Product[] }) {
     <div className="space-y-5">
     <Card title="บรรจุ / จ่ายขวด (Log_Product → สต็อก)">
       <Msg msg={msg} />
-      <p className="mb-3 text-xs text-slate-500">
+      <p className="mb-3 text-xs text-faint">
         &quot;รับ&quot; = บรรจุเข้าสต็อก (+) · ประเภทอื่นทั้งหมด = จ่ายออก (−)
       </p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -111,14 +112,14 @@ export function ProductTab({ products }: { products: Product[] }) {
     </Card>
 
     <Card title="รายการล่าสุด (แก้ไข / ลบ ได้จากแอป)">
-      {recent.length === 0 ? <p className="text-sm text-slate-400">— ยังไม่มีรายการ —</p> : (
+      {recent.length === 0 ? <p className="text-sm text-faint">— ยังไม่มีรายการ —</p> : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="border-b border-slate-200 text-left text-slate-500"><tr><th className="px-2 py-1">วันที่</th><th className="px-2 py-1">ประเภท</th><th className="px-2 py-1">สินค้า</th><th className="px-2 py-1 text-right">ขวด</th><th className="px-2 py-1">หมายเหตุ</th><th className="px-2 py-1"></th></tr></thead>
+            <thead className="border-b border-line text-left text-faint"><tr><th className="px-2 py-1">วันที่</th><th className="px-2 py-1">ประเภท</th><th className="px-2 py-1">สินค้า</th><th className="px-2 py-1 text-right">ขวด</th><th className="px-2 py-1">หมายเหตุ</th><th className="px-2 py-1"></th></tr></thead>
             <tbody>
               {recent.map((r) => (
                 editId === (r.id as number) ? (
-                  <tr key={r.id as number} className="border-b border-slate-100 bg-amber-50/50">
+                  <tr key={r.id as number} className="border-b border-line-soft bg-warn-bg">
                     <td className="px-1 py-1"><TextInput type="date" value={edit.date} onChange={(e) => setEdit({ ...edit, date: e.target.value })} className="w-36" /></td>
                     <td className="px-1 py-1"><Select value={edit.transType} onChange={(e) => setEdit({ ...edit, transType: e.target.value })} className="w-32">{PRODUCT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</Select></td>
                     <td className="px-1 py-1"><Select value={edit.productId} onChange={(e) => setEdit({ ...edit, productId: e.target.value })} className="w-48">{products.map((p) => <option key={p.product_id} value={p.product_id}>{p.name} {p.degree ? `${p.degree}°` : ""}</option>)}</Select></td>
@@ -130,22 +131,22 @@ export function ProductTab({ products }: { products: Product[] }) {
                     </td>
                   </tr>
                 ) : (
-                  <tr key={r.id as number} className="border-b border-slate-100">
+                  <tr key={r.id as number} className="border-b border-line-soft">
                     <td className="whitespace-nowrap px-2 py-1">{String(r.doc_date).slice(0, 10)}</td>
                     <td className="px-2 py-1">{r.trans_type as string}</td>
                     <td className="px-2 py-1">{prodName(r.product_id as string)}</td>
                     <td className="px-2 py-1 text-right">{r.amount as number}</td>
-                    <td className="px-2 py-1 text-slate-500">{(r.note as string) ?? ""}</td>
+                    <td className="px-2 py-1 text-faint">{(r.note as string) ?? ""}</td>
                     <td className="whitespace-nowrap px-2 py-1">
-                      <button onClick={() => startEdit(r)} disabled={pending} className="text-slate-600 hover:text-slate-800" title="แก้ไข">✏️</button>
-                      <button onClick={() => del(r)} disabled={pending} className="ml-2 text-red-500 hover:text-red-700" title="ลบ">🗑️</button>
+                      <button onClick={() => startEdit(r)} disabled={pending} className="text-muted hover:text-ink" title="แก้ไข"><IconEdit size={16} /></button>
+                      <button onClick={() => del(r)} disabled={pending} className="ml-2 text-crit hover:text-crit" title="ลบ"><IconTrash size={16} /></button>
                     </td>
                   </tr>
                 )
               ))}
             </tbody>
           </table>
-          <p className="mt-1 text-xs text-slate-400">แสดง 30 รายการล่าสุด · แก้/ลบแล้วสต็อกสินค้าปรับให้อัตโนมัติ (trigger ครอบ UPDATE/DELETE)</p>
+          <p className="mt-1 text-xs text-faint">แสดง 30 รายการล่าสุด · แก้/ลบแล้วสต็อกสินค้าปรับให้อัตโนมัติ (trigger ครอบ UPDATE/DELETE)</p>
         </div>
       )}
     </Card>

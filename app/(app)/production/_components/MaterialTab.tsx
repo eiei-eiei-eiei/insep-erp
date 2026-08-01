@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { saveMaterialAction, getRecentMaterialsAction, deleteMaterialLogAction, updateMaterialLogAction } from "../actions";
 import { Card, Field, Msg, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import { MATERIAL_TYPES, type Material } from "./types";
+import { IconEdit, IconTrash } from "@/lib/shared/icons";
 
 type RecentMaterial = Awaited<ReturnType<typeof getRecentMaterialsAction>>[number];
 type EditFields = { date: string; transType: string; materialId: string; amount: string; docRef: string; note: string };
@@ -115,14 +116,14 @@ export function MaterialTab({ materials }: { materials: Material[] }) {
     </Card>
 
     <Card title="รายการล่าสุด (แก้ไข / ลบ ได้จากแอป)">
-      {recent.length === 0 ? <p className="text-sm text-slate-400">— ยังไม่มีรายการ —</p> : (
+      {recent.length === 0 ? <p className="text-sm text-faint">— ยังไม่มีรายการ —</p> : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="border-b border-slate-200 text-left text-slate-500"><tr><th className="px-2 py-1">วันที่</th><th className="px-2 py-1">ประเภท</th><th className="px-2 py-1">วัตถุดิบ</th><th className="px-2 py-1 text-right">จำนวน</th><th className="px-2 py-1">หลักฐาน/หมายเหตุ</th><th className="px-2 py-1"></th></tr></thead>
+            <thead className="border-b border-line text-left text-faint"><tr><th className="px-2 py-1">วันที่</th><th className="px-2 py-1">ประเภท</th><th className="px-2 py-1">วัตถุดิบ</th><th className="px-2 py-1 text-right">จำนวน</th><th className="px-2 py-1">หลักฐาน/หมายเหตุ</th><th className="px-2 py-1"></th></tr></thead>
             <tbody>
               {recent.map((r) => (
                 editId === (r.id as number) ? (
-                  <tr key={r.id as number} className="border-b border-slate-100 bg-amber-50/50">
+                  <tr key={r.id as number} className="border-b border-line-soft bg-warn-bg">
                     <td className="px-1 py-1"><TextInput type="date" value={edit.date} onChange={(e) => setEdit({ ...edit, date: e.target.value })} className="w-36" /></td>
                     <td className="px-1 py-1"><Select value={edit.transType} onChange={(e) => setEdit({ ...edit, transType: e.target.value })} className="w-28">{MATERIAL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</Select></td>
                     <td className="px-1 py-1"><Select value={edit.materialId} onChange={(e) => setEdit({ ...edit, materialId: e.target.value })} className="w-44">{materials.map((m) => <option key={m.material_id} value={m.material_id}>{m.name}</option>)}</Select></td>
@@ -134,22 +135,22 @@ export function MaterialTab({ materials }: { materials: Material[] }) {
                     </td>
                   </tr>
                 ) : (
-                  <tr key={r.id as number} className="border-b border-slate-100">
+                  <tr key={r.id as number} className="border-b border-line-soft">
                     <td className="whitespace-nowrap px-2 py-1">{String(r.doc_date).slice(0, 10)}</td>
                     <td className="px-2 py-1">{r.trans_type as string}</td>
                     <td className="px-2 py-1">{matName(r.material_id as string)}</td>
                     <td className="px-2 py-1 text-right">{r.amount as number}</td>
-                    <td className="px-2 py-1 text-slate-500">{[r.doc_ref, r.note].filter(Boolean).join(" · ")}</td>
+                    <td className="px-2 py-1 text-faint">{[r.doc_ref, r.note].filter(Boolean).join(" · ")}</td>
                     <td className="whitespace-nowrap px-2 py-1">
-                      <button onClick={() => startEdit(r)} disabled={pending} className="text-slate-600 hover:text-slate-800" title="แก้ไข">✏️</button>
-                      <button onClick={() => del(r)} disabled={pending} className="ml-2 text-red-500 hover:text-red-700" title="ลบ">🗑️</button>
+                      <button onClick={() => startEdit(r)} disabled={pending} className="text-muted hover:text-ink" title="แก้ไข"><IconEdit size={16} /></button>
+                      <button onClick={() => del(r)} disabled={pending} className="ml-2 text-crit hover:text-crit" title="ลบ"><IconTrash size={16} /></button>
                     </td>
                   </tr>
                 )
               ))}
             </tbody>
           </table>
-          <p className="mt-1 text-xs text-slate-400">แสดง 30 รายการล่าสุด · แก้/ลบแล้วสต็อกวัตถุดิบปรับให้อัตโนมัติ</p>
+          <p className="mt-1 text-xs text-faint">แสดง 30 รายการล่าสุด · แก้/ลบแล้วสต็อกวัตถุดิบปรับให้อัตโนมัติ</p>
         </div>
       )}
     </Card>

@@ -47,8 +47,8 @@ export function UsersManager({
 
   return (
     <div>
-      <h1 className="mb-1 text-2xl font-bold text-slate-800">จัดการผู้ใช้</h1>
-      <p className="mb-6 text-sm text-slate-500">
+      <h1 className="mb-1 text-2xl font-bold text-ink">จัดการผู้ใช้</h1>
+      <p className="mb-6 text-sm text-faint">
         สร้างบัญชีด้วย username (ไม่ต้องมีอีเมลจริง) · ให้สิทธิ์ · รีเซ็ตรหัสผ่าน · ลบ —
         เฉพาะเจ้าของกิจการ (main)
       </p>
@@ -56,7 +56,7 @@ export function UsersManager({
       {msg && (
         <div
           className={`mb-4 rounded-lg px-3 py-2 text-sm ${
-            msg.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"
+            msg.ok ? "bg-ok-bg text-ok" : "bg-crit-bg text-crit"
           }`}
         >
           {msg.text}
@@ -64,43 +64,43 @@ export function UsersManager({
       )}
 
       {/* สร้างผู้ใช้ใหม่ */}
-      <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-5">
-        <h2 className="mb-3 font-semibold text-slate-800">+ สร้างผู้ใช้ใหม่</h2>
+      <div className="mb-8 rounded-2xl border border-line bg-card p-5">
+        <h2 className="mb-3 font-semibold text-ink">+ สร้างผู้ใช้ใหม่</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <label className="text-sm">
-            <span className="mb-1 block text-slate-600">ชื่อผู้ใช้ (username)</span>
+            <span className="mb-1 block text-muted">ชื่อผู้ใช้ (username)</span>
             <input
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="เช่น sale1"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2"
+              className="w-full rounded-lg border border-line px-3 py-2"
             />
           </label>
           <label className="text-sm">
-            <span className="mb-1 block text-slate-600">ชื่อแสดงผล</span>
+            <span className="mb-1 block text-muted">ชื่อแสดงผล</span>
             <input
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="เช่น สมชาย"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2"
+              className="w-full rounded-lg border border-line px-3 py-2"
             />
           </label>
           <label className="text-sm">
-            <span className="mb-1 block text-slate-600">รหัสผ่าน</span>
+            <span className="mb-1 block text-muted">รหัสผ่าน</span>
             <input
               type="text"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="อย่างน้อย 6 ตัว"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2"
+              className="w-full rounded-lg border border-line px-3 py-2"
             />
           </label>
           <label className="text-sm">
-            <span className="mb-1 block text-slate-600">สิทธิ์ (role)</span>
+            <span className="mb-1 block text-muted">สิทธิ์ (role)</span>
             <select
               value={role}
               onChange={(e) => setRole(e.target.value as Role)}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2"
+              className="w-full rounded-lg border border-line px-3 py-2"
             >
               {ROLE_OPTIONS.map((r) => (
                 <option key={r} value={r}>
@@ -129,7 +129,7 @@ export function UsersManager({
                   return res;
                 }, `สร้างผู้ใช้ "${username}" แล้ว`)
               }
-              className="w-full rounded-lg bg-slate-800 py-2 font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+              className="w-full rounded-lg bg-brand py-2 font-medium text-on-brand hover:opacity-90 disabled:opacity-50"
             >
               สร้าง
             </button>
@@ -138,9 +138,9 @@ export function UsersManager({
       </div>
 
       {/* รายชื่อผู้ใช้ */}
-      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+      <div className="overflow-x-auto rounded-2xl border border-line bg-card">
         <table className="w-full text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-left text-slate-600">
+          <thead className="border-b border-line bg-raised text-left text-muted">
             <tr>
               <th className="px-4 py-3">username</th>
               <th className="px-4 py-3">ชื่อแสดงผล</th>
@@ -152,16 +152,16 @@ export function UsersManager({
             {users.map((u) => {
               const isSelf = u.id === currentUserId;
               return (
-                <tr key={u.id} className="border-b border-slate-100">
-                  <td className="px-4 py-3 font-medium text-slate-800">
+                <tr key={u.id} className="border-b border-line-soft">
+                  <td className="px-4 py-3 font-medium text-ink">
                     {u.username}
                     {isSelf && (
-                      <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">
+                      <span className="ml-2 rounded bg-raised px-1.5 py-0.5 text-xs text-faint">
                         คุณ
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">{u.display_name}</td>
+                  <td className="px-4 py-3 text-muted">{u.display_name}</td>
                   <td className="px-4 py-3">
                     <select
                       defaultValue={u.role}
@@ -173,7 +173,7 @@ export function UsersManager({
                           `เปลี่ยนสิทธิ์ ${u.username} แล้ว`,
                         )
                       }
-                      className="rounded-lg border border-slate-300 px-2 py-1"
+                      className="rounded-lg border border-line px-2 py-1"
                     >
                       {ROLE_OPTIONS.map((r) => (
                         <option key={r} value={r}>
@@ -195,7 +195,7 @@ export function UsersManager({
                             `รีเซ็ตรหัสผ่าน ${u.username} แล้ว`,
                           );
                       }}
-                      className="mr-2 rounded-lg border border-slate-300 px-2.5 py-1 text-slate-600 hover:bg-slate-100"
+                      className="mr-2 rounded-lg border border-line px-2.5 py-1 text-muted hover:bg-raised"
                     >
                       รีเซ็ตรหัส
                     </button>
@@ -210,7 +210,7 @@ export function UsersManager({
                             `ลบผู้ใช้ ${u.username} แล้ว`,
                           );
                       }}
-                      className="rounded-lg border border-red-200 px-2.5 py-1 text-red-600 hover:bg-red-50 disabled:opacity-40"
+                      className="rounded-lg border border-crit-line px-2.5 py-1 text-crit hover:bg-crit-bg disabled:opacity-40"
                     >
                       ลบ
                     </button>

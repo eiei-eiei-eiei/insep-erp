@@ -8,6 +8,9 @@ import { getOrdersAction, getOrderItemsAction, processOrderActionAction, cancelO
 import type { OrderAction, ActionPayload } from "@/lib/sales/orders";
 import { printSalesDocs, printQuotation, openPrintWindow, type OrderLike } from "./print";
 import { roundTo2 } from "@/lib/sales/calc";
+import {
+  IconBox, IconClock, IconDoc, IconEdit, IconMoney, IconPrint, IconRefresh, IconSearch, IconTrash,
+} from "@/lib/shared/icons";
 
 const itemsCache = new Map<string, OrderItem[]>();
 async function loadItems(quNo: string): Promise<OrderItem[]> {
@@ -109,34 +112,40 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
   }
 
   // ปุ่มจัดการออเดอร์ (ใช้ร่วมทั้งตาราง desktop และการ์ด mobile)
+  // D43: เดิมมีปุ่ม 7 สี (amber/indigo/purple/blue/teal/slate/red) = ตาลาย แยกไม่ออกว่าอันไหนสำคัญ
+  // → เหลือ 3 ระดับตามความหมาย: primary (สิ่งที่ควรทำต่อ) · secondary (ทำได้) · danger (ทำลาย)
   const orderActions = (o: OrderRow) => (
     <>
       {canWrite && o.status === "รอคอนเฟิร์ม" && (
         <>
-          <ActBtn color="amber" onClick={() => setDialog({ order: o, action: "DEPOSIT_AND_SEND" })}>💰 มัดจำ&ส่งคลัง</ActBtn>
-          <ActBtn color="indigo" onClick={() => setDialog({ order: o, action: "ISSUE_INVOICE_FULL" })}>📄 ใบแจ้งหนี้(เต็ม)</ActBtn>
-          <ActBtn color="purple" onClick={() => setDialog({ order: o, action: "SEND_TO_WH" })}>📦 ส่งคลัง(เครดิต)</ActBtn>
-          <ActBtn color="slate" onClick={() => onEdit(o)}>✏️ แก้ไข</ActBtn>
+          <ActBtn tone="primary" icon={<IconMoney size={14} />} onClick={() => setDialog({ order: o, action: "DEPOSIT_AND_SEND" })}>มัดจำ &amp; ส่งคลัง</ActBtn>
+          <ActBtn tone="secondary" icon={<IconDoc size={14} />} onClick={() => setDialog({ order: o, action: "ISSUE_INVOICE_FULL" })}>ใบแจ้งหนี้ (เต็ม)</ActBtn>
+          <ActBtn tone="secondary" icon={<IconBox size={14} />} onClick={() => setDialog({ order: o, action: "SEND_TO_WH" })}>ส่งคลัง (เครดิต)</ActBtn>
+          <ActBtn tone="secondary" icon={<IconEdit size={14} />} onClick={() => onEdit(o)}>แก้ไข</ActBtn>
         </>
       )}
       {o.status !== "รอคอนเฟิร์ม" && o.status !== "ยกเลิก" && (
-        <ActBtn color="slate" onClick={() => doPrintFirst(o)}>🖨️ ชุดแรก</ActBtn>
+        <ActBtn tone="secondary" icon={<IconPrint size={14} />} onClick={() => doPrintFirst(o)}>พิมพ์ชุดแรก</ActBtn>
       )}
       {canWrite && o.status === "รอชำระเงิน (จ่ายเต็ม)" && (
-        <ActBtn color="blue" onClick={() => setDialog({ order: o, action: "FULL_PAYMENT_AND_SEND" })}>💳 รับเต็ม&ส่งคลัง</ActBtn>
+        <ActBtn tone="primary" icon={<IconMoney size={14} />} onClick={() => setDialog({ order: o, action: "FULL_PAYMENT_AND_SEND" })}>รับเต็ม &amp; ส่งคลัง</ActBtn>
       )}
-      {o.status === "รอคลังจัดส่ง" && <span className="rounded bg-orange-50 px-2 py-1 text-[10px] text-orange-600">⏳ รอคลังแพ็ค</span>}
+      {o.status === "รอคลังจัดส่ง" && (
+        <span className="inline-flex items-center gap-1.5 rounded border border-warn-line bg-warn-bg px-2 py-1 text-[11px] font-medium text-warn">
+          <IconClock size={13} />รอคลังแพ็ค
+        </span>
+      )}
       {canWrite && o.status === "ส่งของแล้วรอชำระยอดค้าง" && (
-        <ActBtn color="blue" onClick={() => setDialog({ order: o, action: "PAY_BALANCE" })}>💳 รับยอดค้าง</ActBtn>
+        <ActBtn tone="primary" icon={<IconMoney size={14} />} onClick={() => setDialog({ order: o, action: "PAY_BALANCE" })}>รับยอดค้าง</ActBtn>
       )}
       {canWrite && o.status.includes("ส่งของแล้วรอชำระเงิน") && (
-        <ActBtn color="blue" onClick={() => setDialog({ order: o, action: "FULL_PAYMENT_LATER" })}>💳 รับเต็มจำนวน</ActBtn>
+        <ActBtn tone="primary" icon={<IconMoney size={14} />} onClick={() => setDialog({ order: o, action: "FULL_PAYMENT_LATER" })}>รับเต็มจำนวน</ActBtn>
       )}
       {o.status === "ปิดการขาย" && (
-        <ActBtn color="teal" onClick={() => doPrintClosed(o)}>🖨️ ใบกำกับฯ</ActBtn>
+        <ActBtn tone="secondary" icon={<IconPrint size={14} />} onClick={() => doPrintClosed(o)}>พิมพ์ใบกำกับฯ</ActBtn>
       )}
       {canWrite && boot.role === "main" && o.status !== "ยกเลิก" && (
-        <ActBtn color="red" onClick={() => cancel(o)}>🗑️ ยกเลิก</ActBtn>
+        <ActBtn tone="danger" icon={<IconTrash size={14} />} onClick={() => cancel(o)}>ยกเลิก</ActBtn>
       )}
     </>
   );
@@ -144,32 +153,35 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
   return (
     <Card>
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="flex gap-1">
-          <button onClick={() => setTab("open")} className={`rounded px-3 py-1.5 text-sm font-bold ${tab === "open" ? "bg-amber-100 text-amber-700" : "text-slate-500"}`}>
-            🟠 ยังไม่ปิด
+        <div className="flex gap-1 rounded-lg border border-line p-0.5">
+          <button onClick={() => setTab("open")} className={`rounded px-3 py-1.5 text-sm font-semibold transition ${tab === "open" ? "bg-brand-soft text-brand" : "text-muted hover:text-ink"}`}>
+            ยังไม่ปิด
           </button>
-          <button onClick={() => setTab("closed")} className={`rounded px-3 py-1.5 text-sm font-bold ${tab === "closed" ? "bg-green-100 text-green-700" : "text-slate-500"}`}>
-            ✅ ปิด/ยกเลิก
+          <button onClick={() => setTab("closed")} className={`rounded px-3 py-1.5 text-sm font-semibold transition ${tab === "closed" ? "bg-brand-soft text-brand" : "text-muted hover:text-ink"}`}>
+            ปิด / ยกเลิก
           </button>
         </div>
-        <TextInput placeholder="🔍 QU / Order / ลูกค้า" value={search} onChange={(e) => setSearch(e.target.value)} className="w-56" />
-        <button onClick={refresh} className="rounded border border-slate-300 px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-100">
-          🔄 รีโหลด
+        <div className="relative">
+          <IconSearch size={15} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-faint" />
+          <TextInput placeholder="QU / Order / ลูกค้า" value={search} onChange={(e) => setSearch(e.target.value)} className="w-56 pl-8" />
+        </div>
+        <button onClick={refresh} title="โหลดข้อมูลใหม่" className="flex items-center gap-1.5 rounded border border-line px-2.5 py-2 text-sm text-muted transition hover:bg-raised hover:text-ink">
+          <IconRefresh size={15} />รีโหลด
         </button>
-        <span className="ml-auto text-xs text-slate-500">พบ {filtered.length} รายการ</span>
+        <span className="ml-auto text-xs text-faint">พบ {filtered.length} รายการ</span>
       </div>
       <Msg msg={msg} />
 
       {loading ? (
-        <div className="py-10 text-center text-slate-400">กำลังโหลด…</div>
+        <div className="py-10 text-center text-faint">กำลังโหลด…</div>
       ) : filtered.length === 0 ? (
-        <div className="p-8 text-center text-slate-400">ไม่พบออเดอร์</div>
+        <div className="p-8 text-center text-faint">ไม่พบออเดอร์</div>
       ) : (
         <>
           {/* Desktop: ตาราง */}
           <div className="hidden overflow-x-auto md:block">
             <table className="w-full min-w-[820px] text-left text-sm">
-              <thead className="bg-slate-100 text-xs text-slate-600">
+              <thead className="bg-raised text-xs text-muted">
                 <tr>
                   <th className="p-2">วันที่</th>
                   <th className="p-2">QU / Order</th>
@@ -182,18 +194,18 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
               </thead>
               <tbody>
                 {filtered.map((o) => (
-                  <tr key={o.quNo} className="border-b hover:bg-slate-50">
-                    <td className="whitespace-nowrap p-2 text-slate-600">{o.timestamp}</td>
-                    <td className="whitespace-nowrap p-2 font-medium text-slate-800">
+                  <tr key={o.quNo} className="border-b hover:bg-raised">
+                    <td className="whitespace-nowrap p-2 text-muted">{o.timestamp}</td>
+                    <td className="whitespace-nowrap p-2 font-medium text-ink">
                       <div className="flex items-center gap-1">
                         {o.quNo}
-                        <button onClick={() => doReprintQuotation(o)} title="พิมพ์ใบเสนอราคาซ้ำ" className="rounded border border-slate-200 p-1 text-slate-500 hover:text-amber-600">🖨️</button>
+                        <button onClick={() => doReprintQuotation(o)} title="พิมพ์ใบเสนอราคาซ้ำ" className="rounded border border-line p-1 text-faint hover:text-warn"><IconPrint size={16} /></button>
                       </div>
-                      <div className="text-[10px] text-slate-400">{o.orderNo}</div>
+                      <div className="text-[10px] text-faint">{o.orderNo}</div>
                     </td>
-                    <td className="p-2 text-slate-800">{o.customerName}</td>
-                    <td className="whitespace-nowrap p-2 text-right font-semibold text-blue-600">฿{fmt(o.netPayable)}</td>
-                    <td className="whitespace-nowrap p-2 text-right font-semibold text-red-500">฿{fmt(o.outstandingBalance)}</td>
+                    <td className="p-2 text-ink">{o.customerName}</td>
+                    <td className="whitespace-nowrap p-2 text-right font-semibold text-brand">฿{fmt(o.netPayable)}</td>
+                    <td className="whitespace-nowrap p-2 text-right font-semibold text-crit">฿{fmt(o.outstandingBalance)}</td>
                     <td className="whitespace-nowrap p-2 text-center"><StatusBadge status={o.status} /></td>
                     <td className="p-2"><div className="flex flex-wrap items-center justify-center gap-1">{orderActions(o)}</div></td>
                   </tr>
@@ -205,21 +217,21 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
           {/* Mobile: การ์ด */}
           <div className="space-y-3 md:hidden">
             {filtered.map((o) => (
-              <div key={o.quNo} className="rounded-xl border border-slate-200 p-3">
+              <div key={o.quNo} className="rounded-xl border border-line p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1 font-medium text-slate-800">
+                    <div className="flex items-center gap-1 font-medium text-ink">
                       {o.quNo}
-                      <button onClick={() => doReprintQuotation(o)} title="พิมพ์ใบเสนอราคาซ้ำ" className="rounded border border-slate-200 p-1 text-slate-500 hover:text-amber-600">🖨️</button>
+                      <button onClick={() => doReprintQuotation(o)} title="พิมพ์ใบเสนอราคาซ้ำ" className="rounded border border-line p-1 text-faint hover:text-warn"><IconPrint size={16} /></button>
                     </div>
-                    <div className="text-[10px] text-slate-400">{o.orderNo} · {o.timestamp}</div>
-                    <div className="mt-0.5 truncate text-sm text-slate-700">{o.customerName}</div>
+                    <div className="text-[10px] text-faint">{o.orderNo} · {o.timestamp}</div>
+                    <div className="mt-0.5 truncate text-sm text-muted">{o.customerName}</div>
                   </div>
                   <StatusBadge status={o.status} />
                 </div>
                 <div className="mt-2 flex flex-wrap gap-x-4 text-sm">
-                  <span className="text-slate-500">สุทธิ <b className="text-blue-600">฿{fmt(o.netPayable)}</b></span>
-                  {o.outstandingBalance > 0 && <span className="text-slate-500">ค้าง <b className="text-red-500">฿{fmt(o.outstandingBalance)}</b></span>}
+                  <span className="text-faint">สุทธิ <b className="text-brand">฿{fmt(o.netPayable)}</b></span>
+                  {o.outstandingBalance > 0 && <span className="text-faint">ค้าง <b className="text-crit">฿{fmt(o.outstandingBalance)}</b></span>}
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1.5">{orderActions(o)}</div>
               </div>
@@ -249,19 +261,30 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
   );
 }
 
-const COLORS: Record<string, string> = {
-  amber: "bg-amber-500 hover:bg-amber-600",
-  indigo: "bg-indigo-500 hover:bg-indigo-600",
-  purple: "bg-purple-500 hover:bg-purple-600",
-  slate: "bg-slate-500 hover:bg-slate-600",
-  blue: "bg-blue-600 hover:bg-blue-700",
-  teal: "bg-teal-700 hover:bg-teal-800",
-  red: "bg-red-500 hover:bg-red-600",
-};
-function ActBtn({ color, onClick, children }: { color: string; onClick: () => void; children: React.ReactNode }) {
+// 3 ระดับตามความหมาย — ไม่ใช่ 7 สีสุ่ม (D43)
+const ACT_TONES = {
+  primary: "border-brand bg-brand text-on-brand hover:opacity-90",   // สิ่งที่ควรทำต่อ
+  secondary: "border-line bg-card text-muted hover:bg-raised hover:text-ink", // ทำได้ ไม่เร่ง
+  danger: "border-crit-line bg-card text-crit hover:bg-crit-bg",     // ทำลาย/ย้อนกลับไม่ได้
+} as const;
+function ActBtn({
+  tone,
+  icon,
+  onClick,
+  children,
+}: {
+  tone: keyof typeof ACT_TONES;
+  icon?: React.ReactNode;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
   // มือถือ: touch target ≥ 44px (หน้านี้ใช้นอกสถานที่จริง — ไปส่งของ/เก็บเงิน) · desktop คงขนาดเดิม
   return (
-    <button onClick={onClick} className={`min-h-[44px] whitespace-nowrap rounded px-3 text-xs font-medium text-white shadow-sm transition sm:min-h-0 sm:px-2.5 sm:py-1.5 ${COLORS[color]}`}>
+    <button
+      onClick={onClick}
+      className={`inline-flex min-h-[44px] items-center gap-1.5 whitespace-nowrap rounded border px-3 text-xs font-semibold transition sm:min-h-0 sm:px-2.5 sm:py-1.5 ${ACT_TONES[tone]}`}
+    >
+      {icon}
       {children}
     </button>
   );
@@ -321,37 +344,37 @@ function PaymentDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-md rounded-xl bg-white p-5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/50 p-4">
+      <div className="w-full max-w-md rounded-xl bg-card p-5">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-800">{ACTION_TITLES[action]}</h2>
-          <button onClick={onClose} className="text-2xl leading-none text-slate-400 hover:text-red-500">
+          <h2 className="text-lg font-bold text-ink">{ACTION_TITLES[action]}</h2>
+          <button onClick={onClose} className="text-2xl leading-none text-faint hover:text-crit">
             &times;
           </button>
         </div>
         <Msg msg={msg} />
         <div className="space-y-3 text-sm">
-          <div className="rounded bg-slate-50 p-2 text-slate-700">
+          <div className="rounded bg-raised p-2 text-muted">
             {order.quNo} · {order.customerName}
             <br />
             {action === "PAY_BALANCE" || action === "FULL_PAYMENT_LATER" ? (
-              <>ยอดที่ต้องชำระ (Net): <b className="text-blue-600">฿{fmt(order.outstandingBalance)}</b></>
+              <>ยอดที่ต้องชำระ (Net): <b className="text-brand">฿{fmt(order.outstandingBalance)}</b></>
             ) : (
-              <>ยอดสุทธิทั้งบิล (Net): <b className="text-blue-600">฿{fmt(target)}</b></>
+              <>ยอดสุทธิทั้งบิล (Net): <b className="text-brand">฿{fmt(target)}</b></>
             )}
           </div>
 
           {needsAmount && (
             <label className="block">
-              <span className="mb-1 block font-bold text-slate-600">ยอดเงินมัดจำที่รับ</span>
-              <input type="number" step="0.01" min={0.01} max={target} value={amount} onChange={(e) => setAmount(Number(e.target.value) || 0)} className="w-full rounded-lg border border-slate-300 p-2 outline-none focus:border-amber-500" />
+              <span className="mb-1 block font-bold text-muted">ยอดเงินมัดจำที่รับ</span>
+              <input type="number" step="0.01" min={0.01} max={target} value={amount} onChange={(e) => setAmount(Number(e.target.value) || 0)} className="w-full rounded-lg border border-line p-2 outline-none focus:border-brand" />
             </label>
           )}
 
           {needsMethod && (
             <label className="block">
-              <span className="mb-1 block font-bold text-slate-600">ช่องทางการชำระ</span>
-              <select value={method} onChange={(e) => setMethod(e.target.value)} className="w-full rounded-lg border border-slate-300 p-2 outline-none focus:border-amber-500">
+              <span className="mb-1 block font-bold text-muted">ช่องทางการชำระ</span>
+              <select value={method} onChange={(e) => setMethod(e.target.value)} className="w-full rounded-lg border border-line p-2 outline-none focus:border-brand">
                 <option>โอนเงิน</option>
                 <option>เงินสด</option>
                 <option>บัตรเครดิต</option>
@@ -360,21 +383,21 @@ function PaymentDialog({
             </label>
           )}
           {needsMethod && method === "เช็ค" && (
-            <div className="space-y-2 rounded border border-slate-200 bg-slate-50 p-2">
+            <div className="space-y-2 rounded border border-line bg-raised p-2">
               <TextInput placeholder="ธนาคาร (เช่น กสิกรไทย)" value={chequeBank} onChange={(e) => setChequeBank(e.target.value)} />
               <TextInput placeholder="เลขที่เช็ค" value={chequeNo} onChange={(e) => setChequeNo(e.target.value)} />
-              <input type="date" value={chequeDate} onChange={(e) => setChequeDate(e.target.value)} className="w-full rounded-lg border border-slate-300 p-2 text-sm" />
+              <input type="date" value={chequeDate} onChange={(e) => setChequeDate(e.target.value)} className="w-full rounded-lg border border-line p-2 text-sm" />
             </div>
           )}
 
-          {(action === "SEND_TO_WH" || action === "DEPOSIT_AND_SEND") && <div className="text-xs text-slate-500">เครดิตเทอมลูกค้า: {creditDays} วัน</div>}
+          {(action === "SEND_TO_WH" || action === "DEPOSIT_AND_SEND") && <div className="text-xs text-faint">เครดิตเทอมลูกค้า: {creditDays} วัน</div>}
 
           <label className="block">
-            <span className="mb-1 block font-bold text-slate-600">วันที่ออกเอกสาร / วันที่รับเงิน</span>
-            <input type="date" value={docDate} onChange={(e) => setDocDate(e.target.value)} className="w-full rounded-lg border border-slate-300 p-2 outline-none focus:border-amber-500" />
+            <span className="mb-1 block font-bold text-muted">วันที่ออกเอกสาร / วันที่รับเงิน</span>
+            <input type="date" value={docDate} onChange={(e) => setDocDate(e.target.value)} className="w-full rounded-lg border border-line p-2 outline-none focus:border-brand" />
           </label>
 
-          <button onClick={submit} disabled={pending} className="w-full rounded-lg bg-slate-800 py-2 font-bold text-white hover:bg-slate-700 disabled:opacity-50">
+          <button onClick={submit} disabled={pending} className="w-full rounded-lg bg-brand py-2 font-bold text-on-brand hover:opacity-90 disabled:opacity-50">
             {pending ? "กำลังบันทึก…" : "บันทึก"}
           </button>
         </div>

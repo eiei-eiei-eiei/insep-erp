@@ -20,7 +20,7 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
             onClick={reset}
             style={{ minHeight: 44, padding: "0 20px", borderRadius: 8, background: "#1e293b", color: "#fff", fontWeight: 600 }}
           >
-            🔄 ลองใหม่
+            ลองใหม่
           </button>
           {error.digest && <p style={{ marginTop: 24, fontSize: 12, color: "#94a3b8" }}>รหัสอ้างอิง: {error.digest}</p>}
         </div>

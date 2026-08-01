@@ -24,13 +24,13 @@ export function ReportChecklist({
   const allDone = doneCount === items.length && items.length > 0;
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+    <div className="rounded-2xl border border-line bg-card p-4">
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <h3 className="font-semibold text-slate-800">{title}</h3>
-        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${allDone ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-800"}`}>
+        <h3 className="font-semibold text-ink">{title}</h3>
+        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${allDone ? "bg-ok-bg text-ok" : "bg-warn-bg text-warn"}`}>
           {doneCount}/{items.length} {allDone ? "ครบแล้ว" : "ยังไม่ครบ"}
         </span>
-        <span className="text-xs text-slate-400">เดือน {month}</span>
+        <span className="text-xs text-faint">เดือน {month}</span>
       </div>
       <ul className="space-y-1 text-sm">
         {items.map((i) => {
@@ -38,17 +38,17 @@ export function ReportChecklist({
           return (
             <li key={i.key} className="flex flex-wrap items-center gap-2">
               <span>{at ? "✅" : "⬜"}</span>
-              <span className={at ? "text-slate-700" : "text-slate-500"}>{i.label}</span>
+              <span className={at ? "text-muted" : "text-faint"}>{i.label}</span>
               {at ? (
-                <span className="text-xs text-slate-400">— สร้างล่าสุด {at}</span>
+                <span className="text-xs text-faint">— สร้างล่าสุด {at}</span>
               ) : (
-                <span className="text-xs text-amber-600">— ยังไม่ได้สร้าง</span>
+                <span className="text-xs text-warn">— ยังไม่ได้สร้าง</span>
               )}
             </li>
           );
         })}
       </ul>
-      <p className="mt-2 text-xs text-slate-400">
+      <p className="mt-2 text-xs text-faint">
         {note ?? "ติ๊กอัตโนมัติเมื่อกดปุ่มสร้างรายงานในหน้านี้ (ไม่ได้เช็กว่ายื่นแล้วหรือยัง)"}
       </p>
     </div>

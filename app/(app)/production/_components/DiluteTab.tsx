@@ -5,6 +5,7 @@ import { diluteCalc } from "@/lib/production/calc";
 import { getRemainingDistillVolAction, saveDiluteAction, getRecentDilutesAction, deleteDiluteLogAction, updateDiluteLogAction } from "../actions";
 import { Card, Field, Msg, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import type { Product } from "./types";
+import { IconEdit, IconTrash } from "@/lib/shared/icons";
 
 type RecentDilute = Awaited<ReturnType<typeof getRecentDilutesAction>>[number];
 type EditFields = { date: string; productName: string; bottleSize: string; startVol: string; startAbv: string; water: string; finalVol: string; finalAbv: string; note: string };
@@ -124,12 +125,12 @@ export function DiluteTab({ products }: { products: Product[] }) {
     <Card title="ปรุง / ปรับดีกรี (C1·V1 = C2·V2)">
       <Msg msg={msg} />
       <div className="mb-4 flex flex-wrap items-center gap-4">
-        <label className="flex items-center gap-2 text-sm text-slate-600">
+        <label className="flex items-center gap-2 text-sm text-muted">
           <input type="checkbox" checked={calcMode} onChange={(e) => setCalcMode(e.target.checked)} />
           ระบบช่วยคำนวณ 2 ทาง (กรอกปริมาตรตั้งต้นหรือปลายทาง อีกช่อง+น้ำจะคำนวณให้)
         </label>
         {remaining !== null && (
-          <span className="rounded-lg bg-slate-100 px-3 py-1 text-sm text-slate-600">
+          <span className="rounded-lg bg-raised px-3 py-1 text-sm text-muted">
             คงเหลือรอปรุง: <b>{remaining.toFixed(2)}</b> ล.
           </span>
         )}
@@ -179,14 +180,14 @@ export function DiluteTab({ products }: { products: Product[] }) {
     </Card>
 
     <Card title="รายการล่าสุด (แก้ไข / ลบ ได้จากแอป)">
-      {recent.length === 0 ? <p className="text-sm text-slate-400">— ยังไม่มีรายการ —</p> : (
+      {recent.length === 0 ? <p className="text-sm text-faint">— ยังไม่มีรายการ —</p> : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="border-b border-slate-200 text-left text-slate-500"><tr><th className="px-2 py-1">วันที่</th><th className="px-2 py-1">ชื่อสุรา</th><th className="px-2 py-1 text-right">V1→V2 (ล.)</th><th className="px-2 py-1 text-right">ดีกรี</th><th className="px-2 py-1">หมายเหตุ</th><th className="px-2 py-1"></th></tr></thead>
+            <thead className="border-b border-line text-left text-faint"><tr><th className="px-2 py-1">วันที่</th><th className="px-2 py-1">ชื่อสุรา</th><th className="px-2 py-1 text-right">V1→V2 (ล.)</th><th className="px-2 py-1 text-right">ดีกรี</th><th className="px-2 py-1">หมายเหตุ</th><th className="px-2 py-1"></th></tr></thead>
             <tbody>
               {recent.map((r) => (
                 editId === (r.id as number) ? (
-                  <tr key={r.id as number} className="border-b border-slate-100 bg-amber-50/50">
+                  <tr key={r.id as number} className="border-b border-line-soft bg-warn-bg">
                     <td className="px-1 py-1"><TextInput type="date" value={edit.date} onChange={(e) => setEdit({ ...edit, date: e.target.value })} className="w-36" /></td>
                     <td className="px-1 py-1">
                       <Select value={edit.productName} onChange={(e) => setEdit({ ...edit, productName: e.target.value })} className="w-40">
@@ -204,22 +205,22 @@ export function DiluteTab({ products }: { products: Product[] }) {
                     </td>
                   </tr>
                 ) : (
-                  <tr key={r.id as number} className="border-b border-slate-100">
+                  <tr key={r.id as number} className="border-b border-line-soft">
                     <td className="whitespace-nowrap px-2 py-1">{String(r.dilute_date).slice(0, 10)}</td>
                     <td className="px-2 py-1">{r.product_name as string}</td>
                     <td className="whitespace-nowrap px-2 py-1 text-right">{(r.start_vol as number) ?? "—"} → {(r.final_vol as number) ?? "—"}</td>
                     <td className="whitespace-nowrap px-2 py-1 text-right">{(r.start_abv as number) ?? "—"}° → {(r.final_abv as number) ?? "—"}°</td>
-                    <td className="px-2 py-1 text-slate-500">{(r.note as string) ?? ""}</td>
+                    <td className="px-2 py-1 text-faint">{(r.note as string) ?? ""}</td>
                     <td className="whitespace-nowrap px-2 py-1">
-                      <button onClick={() => startEdit(r)} disabled={pending} className="text-slate-600 hover:text-slate-800" title="แก้ไข">✏️</button>
-                      <button onClick={() => del(r)} disabled={pending} className="ml-2 text-red-500 hover:text-red-700" title="ลบ">🗑️</button>
+                      <button onClick={() => startEdit(r)} disabled={pending} className="text-muted hover:text-ink" title="แก้ไข"><IconEdit size={16} /></button>
+                      <button onClick={() => del(r)} disabled={pending} className="ml-2 text-crit hover:text-crit" title="ลบ"><IconTrash size={16} /></button>
                     </td>
                   </tr>
                 )
               ))}
             </tbody>
           </table>
-          <p className="mt-1 text-xs text-slate-400">แสดง 30 รายการล่าสุด · แก้/ลบแล้วปริมาณคงเหลือรอปรุงปรับให้อัตโนมัติ</p>
+          <p className="mt-1 text-xs text-faint">แสดง 30 รายการล่าสุด · แก้/ลบแล้วปริมาณคงเหลือรอปรุงปรับให้อัตโนมัติ</p>
         </div>
       )}
     </Card>

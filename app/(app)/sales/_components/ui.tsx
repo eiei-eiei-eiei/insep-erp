@@ -2,47 +2,42 @@
 
 /**
  * UI ของโดเมนขาย — ตรรกะจริงอยู่ที่ `lib/shared/ui`
- * ต่างจากโดเมนอื่นแค่สี accent = amber → ห่อทับเฉพาะ input ที่มีสี
+ * (เดิมโดเมนนี้ใช้สี amber เป็น accent ของตัวเอง — D43 ยุบเป็นสีแบรนด์เดียวทั้งแอป
+ *  เพราะสีแบรนด์ต้องเปลี่ยนตามลูกค้าได้ จะมี accent ประจำโดเมนไม่ได้)
  */
-import {
-  TextInput as SharedTextInput,
-  NumInput as SharedNumInput,
-  Select as SharedSelect,
-  NumBox as SharedNumBox,
-  Combobox as SharedCombobox,
+export {
+  todayISO,
+  nowMonth,
+  fmt,
+  fmt0,
+  cleanTaxId13,
+  useSaver,
+  Msg,
+  Field,
+  Card,
+  Stat,
+  TextInput,
+  NumInput,
+  Select,
+  NumBox,
+  Combobox,
+  SaveButton,
+  RowBtn,
+  IconBtn,
+  Badge,
 } from "@/lib/shared/ui";
 
-export { todayISO, nowMonth, fmt, fmt0, cleanTaxId13, useSaver, Msg, Field, Card, Stat, SaveButton, RowBtn } from "@/lib/shared/ui";
+import { Badge } from "@/lib/shared/ui";
 
-type P<T> = Omit<T, "accent">;
-
-export function TextInput(props: P<React.ComponentProps<typeof SharedTextInput>>) {
-  return <SharedTextInput accent="amber" {...props} />;
-}
-export function NumInput(props: P<React.ComponentProps<typeof SharedNumInput>>) {
-  return <SharedNumInput accent="amber" {...props} />;
-}
-export function Select(props: P<React.ComponentProps<typeof SharedSelect>>) {
-  return <SharedSelect accent="amber" {...props} />;
-}
-export function NumBox(props: P<React.ComponentProps<typeof SharedNumBox>>) {
-  return <SharedNumBox accent="amber" {...props} />;
-}
-export function Combobox(props: P<React.ComponentProps<typeof SharedCombobox>>) {
-  return <SharedCombobox accent="amber" {...props} />;
-}
-
-/** ป้ายสถานะออเดอร์ (สีตามสถานะเดิม) — เฉพาะโดเมนขาย */
+/** ป้ายสถานะออเดอร์ — แมปสถานะเป็น "ความหมาย" ไม่ใช่สีสุ่ม (D43) */
 export function StatusBadge({ status }: { status: string }) {
-  const cls =
-    status === "รอคอนเฟิร์ม"
-      ? "bg-yellow-100 text-yellow-700"
-      : status === "รอคลังจัดส่ง"
-        ? "bg-orange-100 text-orange-700"
-        : status === "ปิดการขาย"
-          ? "bg-green-100 text-green-700"
-          : status === "ยกเลิก"
-            ? "bg-slate-200 text-slate-500"
-            : "bg-blue-100 text-blue-700";
-  return <span className={`inline-block rounded px-2 py-1 text-[11px] font-bold leading-tight ${cls}`}>{status}</span>;
+  const tone =
+    status === "ปิดการขาย"
+      ? "ok"
+      : status === "ยกเลิก"
+        ? "neutral"
+        : status === "รอคอนเฟิร์ม" || status === "รอคลังจัดส่ง"
+          ? "warn"
+          : "brand"; // รอชำระเงิน/ส่งของแล้วรอชำระ = กำลังดำเนินการ
+  return <Badge tone={tone}>{status}</Badge>;
 }

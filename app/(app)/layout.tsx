@@ -1,11 +1,14 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { workspacesFor, type Role } from "@/lib/shared/workspaces";
+import { brandingFromSettings } from "@/lib/shared/branding";
 import { Nav } from "./_components/nav";
 
 /**
- * Layout ของทุกหน้าหลัง login — guard auth + โหลด profile (role/ชื่อ)
- * แล้วส่ง workspace ที่ role นี้เห็นได้ให้ Nav
+ * Layout ของทุกหน้าหลัง login — guard auth + โหลด profile (role/ชื่อ) + แบรนด์ของกิจการ
+ *
+ * data-brand อยู่ที่ div นี้ (ไม่ใช่ <html>) เพราะกว่าจะรู้แบรนด์ต้อง login ก่อน
+ * — token สีคาสเคดลงลูกทั้งหมด · โหมดสว่าง/มืดอยู่ที่ <html> (อ่านจาก cookie ใน root layout)
  */
 export default async function AppLayout({
   children,
@@ -20,18 +23,23 @@ export default async function AppLayout({
 
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("display_name, username, role")
-    .eq("id", user.id)
-    .single();
+  const [{ data: profile }, { data: settings }] = await Promise.all([
+    supabase.from("profiles").select("display_name, username, role").eq("id", user.id).single(),
+    supabase.from("app_settings").select("kind, value").in("kind", ["brand_name", "brand_color", "logo_url", "default_mode"]),
+  ]);
 
   const role = (profile?.role ?? "viewer") as Role;
   const displayName = profile?.display_name ?? profile?.username ?? user.email ?? "ผู้ใช้";
+  const branding = brandingFromSettings(settings);
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Nav workspaces={workspacesFor(role)} displayName={displayName} role={role} />
+    <div data-brand={branding.color} className="min-h-screen bg-page text-ink">
+      <Nav
+        workspaces={workspacesFor(role)}
+        displayName={displayName}
+        role={role}
+        branding={branding}
+      />
       {/* pb ล่างบนมือถือ กันเนื้อหาโดน bottom-tab บัง */}
       <main className="mx-auto max-w-6xl px-4 py-6 pb-24 md:pb-6">{children}</main>
     </div>

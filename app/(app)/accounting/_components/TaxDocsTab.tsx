@@ -147,75 +147,75 @@ export function TaxDocsTab({ period, entityId, active }: { period: string; entit
     setBusy(false);
   }
 
-  const box = "rounded-2xl border border-slate-200 bg-white p-4";
-  if (!realEntity) return <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">เลือกกิจการ (ไม่ใช่ &quot;ทุกกิจการ&quot;) ด้านบนก่อนออกเอกสารสรรพากร</div>;
+  const box = "rounded-2xl border border-line bg-card p-4";
+  if (!realEntity) return <div className="rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">เลือกกิจการ (ไม่ใช่ &quot;ทุกกิจการ&quot;) ด้านบนก่อนออกเอกสารสรรพากร</div>;
 
   return (
     <div className="space-y-4">
-      {msg && <div className={`rounded-lg px-3 py-2 text-sm ${msg.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>{msg.text}</div>}
+      {msg && <div className={`rounded-lg px-3 py-2 text-sm ${msg.ok ? "bg-ok-bg text-ok" : "bg-crit-bg text-crit"}`}>{msg.text}</div>}
 
       <ReportChecklist month={period} items={TAX_CHECKLIST} runs={runs} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className={box}>
-          <h3 className="mb-1 font-semibold text-slate-800">ภพ.30 — รายงานภาษีซื้อ-ขาย</h3>
-          <p className="mb-2 text-sm text-slate-600">ภาษีซื้อยกมา (เดือนก่อน): <b>{fwd === null ? "…" : fmt(fwd)}</b> <span className="text-xs text-slate-400">← เช็คว่าตรงกับ ภพ.30 เดือนก่อน</span></p>
-          <button onClick={genPhorPor30} disabled={busy} className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">สร้าง ภพ.30</button>
+          <h3 className="mb-1 font-semibold text-ink">ภพ.30 — รายงานภาษีซื้อ-ขาย</h3>
+          <p className="mb-2 text-sm text-muted">ภาษีซื้อยกมา (เดือนก่อน): <b>{fwd === null ? "…" : fmt(fwd)}</b> <span className="text-xs text-faint">← เช็คว่าตรงกับ ภพ.30 เดือนก่อน</span></p>
+          <button onClick={genPhorPor30} disabled={busy} className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-on-brand disabled:opacity-50">สร้าง ภพ.30</button>
         </div>
         <div className={box}>
-          <h3 className="mb-1 font-semibold text-slate-800">ภงด.3 / ภงด.53</h3>
-          <p className="mb-2 text-sm text-slate-500">แยกบุคคล/นิติบุคคลอัตโนมัติ</p>
-          <button onClick={genPnd} disabled={busy} className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">สร้าง ภงด.3/53</button>
+          <h3 className="mb-1 font-semibold text-ink">ภงด.3 / ภงด.53</h3>
+          <p className="mb-2 text-sm text-faint">แยกบุคคล/นิติบุคคลอัตโนมัติ</p>
+          <button onClick={genPnd} disabled={busy} className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-on-brand disabled:opacity-50">สร้าง ภงด.3/53</button>
         </div>
       </div>
 
       {/* tax_summaries management */}
       <div className={box}>
-        <h3 className="mb-2 font-semibold text-slate-800">ประวัติยอด ภพ.30 ที่บันทึกไว้ (tax_summaries)</h3>
-        {summaries.length === 0 ? <p className="text-sm text-slate-400">— ยังไม่มี —</p> : (
+        <h3 className="mb-2 font-semibold text-ink">ประวัติยอด ภพ.30 ที่บันทึกไว้ (tax_summaries)</h3>
+        {summaries.length === 0 ? <p className="text-sm text-faint">— ยังไม่มี —</p> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="text-left text-slate-500"><th className="p-1">เดือน</th><th className="p-1 text-right">ภาษีขาย</th><th className="p-1 text-right">ภาษีซื้อ</th><th className="p-1 text-right">ยกมา</th><th className="p-1 text-right">ต้องชำระ</th><th className="p-1 text-right">ยกไป</th><th className="p-1"></th></tr></thead>
+              <thead><tr className="text-left text-faint"><th className="p-1">เดือน</th><th className="p-1 text-right">ภาษีขาย</th><th className="p-1 text-right">ภาษีซื้อ</th><th className="p-1 text-right">ยกมา</th><th className="p-1 text-right">ต้องชำระ</th><th className="p-1 text-right">ยกไป</th><th className="p-1"></th></tr></thead>
               <tbody>
                 {summaries.map((s) => (
-                  <tr key={s.id as number} className="border-t border-slate-100">
+                  <tr key={s.id as number} className="border-t border-line-soft">
                     <td className="p-1">{s.report_month as string}</td>
                     <td className="p-1 text-right">{fmt(s.total_sales_vat as number)}</td>
                     <td className="p-1 text-right">{fmt(s.total_purchase_vat as number)}</td>
                     <td className="p-1 text-right">{fmt(s.forwarded_vat_in as number)}</td>
                     <td className="p-1 text-right">{fmt(s.net_payable as number)}</td>
                     <td className="p-1 text-right">{fmt(s.forwarded_vat_out as number)}</td>
-                    <td className="p-1"><button onClick={() => { if (confirm("ลบแถวนี้?")) deleteTaxSummaryAction(s.id as number).then(reload); }} className="text-red-500 hover:underline">ลบ</button></td>
+                    <td className="p-1"><button onClick={() => { if (confirm("ลบแถวนี้?")) deleteTaxSummaryAction(s.id as number).then(reload); }} className="text-crit hover:underline">ลบ</button></td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            <p className="mt-1 text-xs text-slate-400">สร้าง ภพ.30 เดือนเดิมซ้ำ = ทับแถวเดิม (ไม่เพิ่มซ้ำ) · ลบได้ถ้าต้องการล้าง</p>
+            <p className="mt-1 text-xs text-faint">สร้าง ภพ.30 เดือนเดิมซ้ำ = ทับแถวเดิม (ไม่เพิ่มซ้ำ) · ลบได้ถ้าต้องการล้าง</p>
           </div>
         )}
       </div>
 
       {/* 50ทวิ */}
       <div className={box}>
-        <h3 className="mb-2 font-semibold text-slate-800">50ทวิ — หนังสือรับรองหัก ณ ที่จ่าย (เลขรันแยกต่อกิจการ)</h3>
-        {!wht ? <p className="text-sm text-slate-400">กำลังโหลด…</p> : (
+        <h3 className="mb-2 font-semibold text-ink">50ทวิ — หนังสือรับรองหัก ณ ที่จ่าย (เลขรันแยกต่อกิจการ)</h3>
+        {!wht ? <p className="text-sm text-faint">กำลังโหลด…</p> : (
           <>
-            <p className="mb-2 text-sm text-slate-600">ยังไม่ออกใบ ({wht.pending.length})</p>
-            {wht.pending.length === 0 ? <p className="text-sm text-slate-400">— ไม่มีรายการค้าง —</p> :
+            <p className="mb-2 text-sm text-muted">ยังไม่ออกใบ ({wht.pending.length})</p>
+            {wht.pending.length === 0 ? <p className="text-sm text-faint">— ไม่มีรายการค้าง —</p> :
               wht.pending.map((p) => <IssueRow key={p.transactionId} p={p} entityId={realEntity} onIssued={reload} onBuild={buildAndOpenWht} setMsg={setMsg} />)}
 
-            <p className="mb-2 mt-4 text-sm text-slate-600">ออกแล้วเดือนนี้ ({wht.history.length})</p>
-            {wht.history.length === 0 ? <p className="text-sm text-slate-400">— ไม่มี —</p> : (
+            <p className="mb-2 mt-4 text-sm text-muted">ออกแล้วเดือนนี้ ({wht.history.length})</p>
+            {wht.history.length === 0 ? <p className="text-sm text-faint">— ไม่มี —</p> : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead><tr className="text-left text-slate-500"><th className="p-1">เลขที่</th><th className="p-1">วันออก</th><th className="p-1">คู่ค้า</th><th className="p-1">ประเภท</th><th className="p-1 text-right">ภาษีหัก</th><th className="p-1"></th></tr></thead>
+                  <thead><tr className="text-left text-faint"><th className="p-1">เลขที่</th><th className="p-1">วันออก</th><th className="p-1">คู่ค้า</th><th className="p-1">ประเภท</th><th className="p-1 text-right">ภาษีหัก</th><th className="p-1"></th></tr></thead>
                   <tbody>
                     {wht.history.map((h) => <EditRow key={h.docNo} h={h} entityId={realEntity} onSaved={reload} onReprint={() => reprint(h)} busy={busy} />)}
                   </tbody>
                 </table>
               </div>
             )}
-            <p className="mt-2 text-xs text-slate-400">เลือกประเภทเงินได้ก่อนออก → จำนวนเงิน/ภาษี/วันจ่าย จะลงในแถวประเภทนั้นของฟอร์ม · แก้เลข/วันออก/ประเภทได้ที่รายการที่ออกแล้ว</p>
+            <p className="mt-2 text-xs text-faint">เลือกประเภทเงินได้ก่อนออก → จำนวนเงิน/ภาษี/วันจ่าย จะลงในแถวประเภทนั้นของฟอร์ม · แก้เลข/วันออก/ประเภทได้ที่รายการที่ออกแล้ว</p>
           </>
         )}
       </div>
@@ -258,10 +258,10 @@ function IssueRow({ p, entityId, onIssued, onBuild, setMsg }: {
   }
 
   return (
-    <div className="mb-2 rounded-lg border border-slate-100 p-2">
+    <div className="mb-2 rounded-lg border border-line-soft p-2">
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
         <span>{p.displayDate} · <b>{p.contactName}</b> · {p.category} · ยอด {fmt(p.amount)} · ภาษี {fmt(p.whtAmount)}</span>
-        <button onClick={openForm} className="rounded bg-slate-800 px-3 py-1 text-xs text-white">{open ? "ซ่อน" : "ออกหนังสือ"}</button>
+        <button onClick={openForm} className="rounded bg-brand px-3 py-1 text-xs text-on-brand">{open ? "ซ่อน" : "ออกหนังสือ"}</button>
       </div>
       {open && (
         <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-3">
@@ -271,7 +271,7 @@ function IssueRow({ p, entityId, onIssued, onBuild, setMsg }: {
           <Field label="ระบุประเภทเงินได้ (ถ้าอื่นๆ)"><TextInput value={otherDesc} onChange={(e) => setOtherDesc(e.target.value)} /></Field>
           <Field label="วันที่จ่าย"><TextInput type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} /></Field>
           <Field label="วันที่ออกหนังสือ"><TextInput type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} /></Field>
-          <div className="col-span-2 md:col-span-3"><button onClick={issue} disabled={pending} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm text-white disabled:opacity-50">ออก + พิมพ์</button></div>
+          <div className="col-span-2 md:col-span-3"><button onClick={issue} disabled={pending} className="rounded-lg bg-ok-bg px-4 py-2 text-sm text-white disabled:opacity-50">ออก + พิมพ์</button></div>
         </div>
       )}
     </div>
@@ -296,12 +296,12 @@ function EditRow({ h, entityId, onSaved, onReprint, busy }: {
 
   return (
     <>
-      <tr className="border-t border-slate-100">
+      <tr className="border-t border-line-soft">
         <td className="p-1">{h.docNo}</td><td className="p-1">{h.issueDate}</td><td className="p-1">{h.contactName}</td><td className="p-1">{h.pndType}</td><td className="p-1 text-right">{fmt(h.whtAmount)}</td>
-        <td className="p-1 whitespace-nowrap"><button onClick={onReprint} disabled={busy} className="text-slate-700 hover:underline">พิมพ์ซ้ำ</button><button onClick={() => setEdit((v) => !v)} className="ml-2 text-slate-700 hover:underline">แก้</button></td>
+        <td className="p-1 whitespace-nowrap"><button onClick={onReprint} disabled={busy} className="text-muted hover:underline">พิมพ์ซ้ำ</button><button onClick={() => setEdit((v) => !v)} className="ml-2 text-muted hover:underline">แก้</button></td>
       </tr>
       {edit && (
-        <tr className="bg-slate-50"><td colSpan={6} className="p-2">
+        <tr className="bg-raised"><td colSpan={6} className="p-2">
           <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
             <Field label="เลขที่"><TextInput value={docNo} onChange={(e) => setDocNo(e.target.value)} /></Field>
             <Field label="วันออก"><TextInput type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} /></Field>
@@ -309,7 +309,7 @@ function EditRow({ h, entityId, onSaved, onReprint, busy }: {
             <Field label="ประเภทเงินได้"><Select value={seq} onChange={(e) => setSeq(Number(e.target.value))}>{SEQ.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}</Select></Field>
             <Field label="ระบุ (อื่นๆ)"><TextInput value={incomeType} onChange={(e) => setIncomeType(e.target.value)} /></Field>
           </div>
-          <div className="mt-2 flex gap-2"><button onClick={save} disabled={pending} className="rounded-lg bg-slate-800 px-4 py-2 text-sm text-white disabled:opacity-50">บันทึก</button></div>
+          <div className="mt-2 flex gap-2"><button onClick={save} disabled={pending} className="rounded-lg bg-brand px-4 py-2 text-sm text-on-brand disabled:opacity-50">บันทึก</button></div>
         </td></tr>
       )}
     </>

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { getNextBatchNumberAction, saveFermentAction, getRecentFermentsAction, deleteFermentBatchAction } from "../actions";
 import { Card, Field, Msg, NumInput, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import type { Container, Material, Product } from "./types";
+import { IconTrash } from "@/lib/shared/icons";
 
 type MatRow = { material_id: string; amount: string };
 type RecentFerment = Awaited<ReturnType<typeof getRecentFermentsAction>>[number];
@@ -122,17 +123,17 @@ export function FermentTab({
           <NumInput value={containerQty} onChange={(e) => { setContainerQty(e.target.value); recalcMain(volPerTank, e.target.value); }} />
         </Field>
       </div>
-      <p className="mt-1 text-xs text-slate-400">ปริมาณต่อถัง × จำนวนภาชนะ = วัตถุดิบหลัก (แถวแรก) อัตโนมัติ — แก้ทับเองได้ · เลือกภาชนะแล้วเติมความจุให้</p>
+      <p className="mt-1 text-xs text-faint">ปริมาณต่อถัง × จำนวนภาชนะ = วัตถุดิบหลัก (แถวแรก) อัตโนมัติ — แก้ทับเองได้ · เลือกภาชนะแล้วเติมความจุให้</p>
 
       <div className="mt-5">
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-sm font-medium text-slate-700">
-            วัตถุดิบที่ใช้ <span className="text-xs text-slate-400">(แถวแรก = วัตถุดิบหลัก = ฐานคิดส่า)</span>
+          <span className="text-sm font-medium text-muted">
+            วัตถุดิบที่ใช้ <span className="text-xs text-faint">(แถวแรก = วัตถุดิบหลัก = ฐานคิดส่า)</span>
           </span>
           <button
             type="button"
             onClick={() => setRows([...rows, { material_id: "", amount: "" }])}
-            className="rounded-lg border border-slate-300 px-3 py-1 text-sm text-slate-600 hover:bg-slate-100"
+            className="rounded-lg border border-line px-3 py-1 text-sm text-muted hover:bg-raised"
           >
             + เพิ่มวัตถุดิบ
           </button>
@@ -174,7 +175,7 @@ export function FermentTab({
                 <button
                   type="button"
                   onClick={() => setRows(rows.filter((_, j) => j !== i))}
-                  className="rounded-lg border border-red-200 px-3 text-red-500 hover:bg-red-50"
+                  className="rounded-lg border border-crit-line px-3 text-crit hover:bg-crit-bg"
                 >
                   ลบ
                 </button>
@@ -196,24 +197,24 @@ export function FermentTab({
     </Card>
 
     <Card title="batch หมักล่าสุด">
-      {recent.length === 0 ? <p className="text-sm text-slate-400">— ยังไม่มี batch —</p> : (
+      {recent.length === 0 ? <p className="text-sm text-faint">— ยังไม่มี batch —</p> : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="border-b border-slate-200 text-left text-slate-500"><tr><th className="px-2 py-1">วันที่</th><th className="px-2 py-1">Batch</th><th className="px-2 py-1">ชื่อสุรา</th><th className="px-2 py-1 text-right">ถัง</th><th className="px-2 py-1 text-right">ต่อถัง (ล.)</th><th className="px-2 py-1"></th></tr></thead>
+            <thead className="border-b border-line text-left text-faint"><tr><th className="px-2 py-1">วันที่</th><th className="px-2 py-1">Batch</th><th className="px-2 py-1">ชื่อสุรา</th><th className="px-2 py-1 text-right">ถัง</th><th className="px-2 py-1 text-right">ต่อถัง (ล.)</th><th className="px-2 py-1"></th></tr></thead>
             <tbody>
               {recent.map((r) => (
-                <tr key={r.batch} className="border-b border-slate-100">
+                <tr key={r.batch} className="border-b border-line-soft">
                   <td className="whitespace-nowrap px-2 py-1">{String(r.fermentDate).slice(0, 10)}</td>
-                  <td className="px-2 py-1 font-medium text-slate-800">{r.batch}</td>
+                  <td className="px-2 py-1 font-medium text-ink">{r.batch}</td>
                   <td className="px-2 py-1">{r.productName}</td>
                   <td className="px-2 py-1 text-right">{r.tanks || "—"}</td>
                   <td className="px-2 py-1 text-right">{r.volPerTank ?? "—"}</td>
-                  <td className="px-2 py-1"><button onClick={() => del(r)} disabled={pending} className="text-red-500 hover:text-red-700" title="ลบ batch">🗑️</button></td>
+                  <td className="px-2 py-1"><button onClick={() => del(r)} disabled={pending} className="text-crit hover:text-crit" title="ลบ batch"><IconTrash size={16} /></button></td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <p className="mt-1 text-xs text-slate-400">ลบ batch = คืนวัตถุดิบที่เบิก + ลบค่าติดตามหมัก · batch ที่กลั่นแล้วลบไม่ได้ (กันข้อมูล ภส. หาย)</p>
+          <p className="mt-1 text-xs text-faint">ลบ batch = คืนวัตถุดิบที่เบิก + ลบค่าติดตามหมัก · batch ที่กลั่นแล้วลบไม่ได้ (กันข้อมูล ภส. หาย)</p>
         </div>
       )}
     </Card>

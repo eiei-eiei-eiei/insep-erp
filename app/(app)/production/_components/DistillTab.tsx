@@ -12,7 +12,9 @@ import {
 } from "../actions";
 import { Card, Field, Msg, NumInput, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import { LineChart } from "./LineChart";
+import { chartColor } from "@/lib/shared/chart";
 import { DISTILL_PHASES, type PendingBatch } from "./types";
+import { IconTrash } from "@/lib/shared/icons";
 
 type RunRow = {
   id: number;
@@ -173,7 +175,7 @@ export function DistillTab({
       <Card title="กลั่น — เลือก batch">
         <Msg msg={msg} />
         {batches.length === 0 && (
-          <p className="text-sm text-amber-600">ไม่มี batch รอกลั่น (ลงหมักก่อน)</p>
+          <p className="text-sm text-warn">ไม่มี batch รอกลั่น (ลงหมักก่อน)</p>
         )}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Batch ที่จะกลั่น">
@@ -192,7 +194,7 @@ export function DistillTab({
                 + เริ่มหม้อใหม่
               </SaveButton>
               {activeRun && (
-                <span className="ml-3 self-center text-sm text-emerald-600">
+                <span className="ml-3 self-center text-sm text-ok">
                   ● กำลังกลั่นหม้อที่ {activeRun.potNo} — บันทึกค่าต่อได้เลย
                 </span>
               )}
@@ -224,7 +226,7 @@ export function DistillTab({
               <NumInput value={vaporTemp} onChange={(e) => setVaporTemp(e.target.value)} />
             </Field>
             <Field label="ดีกรี@20°C (คำนวณ)">
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700">
+              <div className="rounded-lg border border-line bg-raised px-3 py-2 text-muted">
                 {abvObs && tempSpirit
                   ? abv20 === null
                     ? "นอกช่วงตาราง"
@@ -239,7 +241,7 @@ export function DistillTab({
               <TextInput value={note} onChange={(e) => setNote(e.target.value)} />
             </Field>
           </div>
-          <p className="mt-2 text-xs text-slate-400">
+          <p className="mt-2 text-xs text-faint">
             บันทึกช่วง &quot;จบหม้อ&quot; พร้อมปริมาณสะสม+ดีกรี เพื่อใช้สรุปปิด batch
           </p>
           <div className="mt-3">
@@ -253,11 +255,11 @@ export function DistillTab({
       {batch && (
         <Card title="ค่าที่บันทึกไว้ของ batch นี้">
           {readings.length === 0 ? (
-            <p className="text-sm text-slate-400">ยังไม่มีค่า</p>
+            <p className="text-sm text-faint">ยังไม่มีค่า</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="border-b border-slate-200 text-left text-slate-500">
+                <thead className="border-b border-line text-left text-faint">
                   <tr>
                     <th className="px-2 py-1">หม้อ</th>
                     <th className="px-2 py-1">ช่วง</th>
@@ -270,14 +272,14 @@ export function DistillTab({
                 </thead>
                 <tbody>
                   {readings.map((r) => (
-                    <tr key={r.id} className="border-b border-slate-100">
+                    <tr key={r.id} className="border-b border-line-soft">
                       <td className="px-2 py-1">{r.pot_no}</td>
                       <td className="px-2 py-1">{r.phase}</td>
                       <td className="px-2 py-1">{r.abv_obs ?? "—"}</td>
                       <td className="px-2 py-1">{r.temp_spirit ?? "—"}</td>
                       <td className="px-2 py-1">{r.abv20 ?? "—"}</td>
                       <td className="px-2 py-1">{r.cum_vol ?? "—"}</td>
-                      <td className="px-2 py-1"><button onClick={() => delReading(r)} className="text-red-500 hover:text-red-700" title="ลบค่านี้">🗑️</button></td>
+                      <td className="px-2 py-1"><button onClick={() => delReading(r)} className="text-crit hover:text-crit" title="ลบค่านี้"><IconTrash size={16} /></button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -293,8 +295,8 @@ export function DistillTab({
             labels={readings.map((r, i) => (r.minute != null ? `${r.minute}′` : `#${i + 1}`))}
             xLabel="นาทีที่ / ลำดับที่บันทึก"
             series={[
-              { name: "ดีกรี@20", color: "#7c3aed", axis: "L", values: readings.map((r) => r.abv20) },
-              { name: "อุณหภูมิไอ °C", color: "#dc2626", axis: "R", values: readings.map((r) => r.vapor_temp) },
+              { name: "ดีกรี@20", color: chartColor(3), axis: "L", values: readings.map((r) => r.abv20) },
+              { name: "อุณหภูมิไอ °C", color: chartColor(2), axis: "R", values: readings.map((r) => r.vapor_temp) },
             ]}
           />
         </Card>
@@ -302,7 +304,7 @@ export function DistillTab({
 
       {batch && (
         <Card title="ปิด Batch (log_distill 1 แถว — กฎ ภส.)">
-          <p className="mb-3 text-sm text-slate-600">
+          <p className="mb-3 text-sm text-muted">
             สรุปจากค่าจบหม้อ {summary.count} หม้อ — ปริมาณหัวใจ{" "}
             <b>{summary.totalVol.toFixed(2)}</b> ล. · ดีกรี@20 เฉลี่ยถ่วงน้ำหนัก{" "}
             <b>{summary.totalAbv.toFixed(2)}</b>%
@@ -321,7 +323,7 @@ export function DistillTab({
               <button
                 type="button"
                 onClick={prefillClose}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
+                className="rounded-lg border border-line px-3 py-2 text-sm text-muted hover:bg-raised"
               >
                 ใช้ค่าสรุป
               </button>

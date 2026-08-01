@@ -57,11 +57,11 @@ export function MenuTab({ active }: { active: boolean }) {
     <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
       <Card title="เมนูขาย (sale_menu)">
         {loading ? (
-          <div className="py-8 text-center text-slate-400">กำลังโหลด…</div>
+          <div className="py-8 text-center text-faint">กำลังโหลด…</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[560px] text-left text-sm">
-              <thead className="bg-slate-100 text-xs text-slate-600">
+              <thead className="bg-raised text-xs text-muted">
                 <tr>
                   <th className="p-2">ชื่อเมนู</th>
                   <th className="p-2 text-right">ราคา</th>
@@ -73,19 +73,19 @@ export function MenuTab({ active }: { active: boolean }) {
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.id} className="border-b hover:bg-slate-50">
-                    <td className="p-2 font-medium text-slate-800">{r.menuName}</td>
+                  <tr key={r.id} className="border-b hover:bg-raised">
+                    <td className="p-2 font-medium text-ink">{r.menuName}</td>
                     <td className="p-2 text-right">฿{fmt(r.price)}</td>
                     <td className="p-2">
-                      <span className={`rounded px-1.5 py-0.5 text-[10px] ${r.category === "สุรา" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600"}`}>{r.category || "-"}</span>
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] ${r.category === "สุรา" ? "bg-warn-bg text-warn" : "bg-raised text-muted"}`}>{r.category || "-"}</span>
                     </td>
-                    <td className="p-2 font-mono text-xs text-slate-500">{r.productId || "-"}</td>
+                    <td className="p-2 font-mono text-xs text-faint">{r.productId || "-"}</td>
                     <td className="p-2 text-center">{r.multiplier}</td>
                     <td className="p-2 text-right">
-                      <button onClick={() => edit(r)} className="mr-1 rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100">
+                      <button onClick={() => edit(r)} className="mr-1 rounded border border-line px-2 py-1 text-xs hover:bg-raised">
                         แก้ไข
                       </button>
-                      <button onClick={() => del(r)} className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50">
+                      <button onClick={() => del(r)} className="rounded border border-crit-line px-2 py-1 text-xs text-crit hover:bg-crit-bg">
                         ลบ
                       </button>
                     </td>
@@ -93,7 +93,7 @@ export function MenuTab({ active }: { active: boolean }) {
                 ))}
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="p-6 text-center text-slate-400">
+                    <td colSpan={6} className="p-6 text-center text-faint">
                       ยังไม่มีเมนู
                     </td>
                   </tr>
@@ -108,29 +108,29 @@ export function MenuTab({ active }: { active: boolean }) {
         <Msg msg={msg} />
         <div className="space-y-3 text-sm">
           <label className="block">
-            <span className="mb-1 block text-slate-600">ชื่อเมนู *</span>
+            <span className="mb-1 block text-muted">ชื่อเมนู *</span>
             <TextInput value={form.menuName} onChange={(e) => setForm({ ...form, menuName: e.target.value })} />
           </label>
           <label className="block">
-            <span className="mb-1 block text-slate-600">ราคาขายต่อหน่วย (รวม VAT แล้ว)</span>
+            <span className="mb-1 block text-muted">ราคาขายต่อหน่วย (รวม VAT แล้ว)</span>
             <NumBox value={form.price} blankZero onChange={(v) => setForm({ ...form, price: v === "" ? 0 : v })} />
-            <span className="mt-1 block text-xs text-slate-400">ใส่ราคาที่ลูกค้าจ่ายจริง เช่น 210 → ระบบถอด VAT ให้เอง (196.26 + 13.74)</span>
+            <span className="mt-1 block text-xs text-faint">ใส่ราคาที่ลูกค้าจ่ายจริง เช่น 210 → ระบบถอด VAT ให้เอง (196.26 + 13.74)</span>
           </label>
           <label className="block">
-            <span className="mb-1 block text-slate-600">ประเภท</span>
+            <span className="mb-1 block text-muted">ประเภท</span>
             <Select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
               <option value="สุรา">สุรา (ตัดสต็อกผลิต)</option>
               <option value="ทั่วไป">ทั่วไป (ตัดสต็อกคลัง)</option>
             </Select>
           </label>
           <label className="block">
-            <span className="mb-1 block text-slate-600">เชื่อมรหัสสินค้า {form.category === "สุรา" ? "(products)" : "(warehouse_stock)"}</span>
+            <span className="mb-1 block text-muted">เชื่อมรหัสสินค้า {form.category === "สุรา" ? "(products)" : "(warehouse_stock)"}</span>
             <input
               list="menu-link-list"
               value={form.productId}
               onChange={(e) => setForm({ ...form, productId: e.target.value })}
               placeholder="เลือกหรือพิมพ์รหัส"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-amber-500"
+              className="w-full rounded-lg border border-line px-3 py-2 outline-none focus:border-brand"
             />
             <datalist id="menu-link-list">
               {linkList.map((o) => (
@@ -141,16 +141,16 @@ export function MenuTab({ active }: { active: boolean }) {
             </datalist>
           </label>
           <label className="block">
-            <span className="mb-1 block text-slate-600">หน่วยย่อยต่อหน่วยขาย (× multiplier)</span>
+            <span className="mb-1 block text-muted">หน่วยย่อยต่อหน่วยขาย (× multiplier)</span>
             <NumInput value={form.multiplier} onChange={(e) => setForm({ ...form, multiplier: Number(e.target.value) || 1 })} />
-            <span className="mt-1 block text-xs text-slate-400">เช่น ขาย &quot;ลัง&quot; = 12 ขวด → ใส่ 12 (สต็อกเก็บเป็นขวด)</span>
+            <span className="mt-1 block text-xs text-faint">เช่น ขาย &quot;ลัง&quot; = 12 ขวด → ใส่ 12 (สต็อกเก็บเป็นขวด)</span>
           </label>
           <div className="flex gap-2 pt-1">
-            <button onClick={save} disabled={pending} className="flex-1 rounded-lg bg-amber-600 py-2 font-bold text-white hover:bg-amber-700 disabled:opacity-50">
+            <button onClick={save} disabled={pending} className="flex-1 rounded-lg bg-brand py-2 font-bold text-on-brand hover:opacity-90 disabled:opacity-50">
               {pending ? "…" : form.id ? "บันทึกการแก้ไข" : "เพิ่มเมนู"}
             </button>
             {form.id > 0 && (
-              <button onClick={reset} className="rounded-lg border border-slate-300 px-3 py-2 text-slate-600 hover:bg-slate-50">
+              <button onClick={reset} className="rounded-lg border border-line px-3 py-2 text-muted hover:bg-raised">
                 ยกเลิก
               </button>
             )}

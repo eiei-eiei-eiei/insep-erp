@@ -399,6 +399,30 @@ export async function addSettingAction(kind: string, value: string): Promise<Sav
   revalidatePath("/accounting");
   return { ok: true };
 }
+/** ตั้งค่าแบรนด์ของกิจการ (D43) — upsert ทีละ kind (app_settings เก็บ 1 แถวต่อ kind) */
+export async function saveBrandingAction(input: {
+  name: string;
+  color: string;
+  logoUrl: string;
+  defaultMode: string;
+}): Promise<SaveResult> {
+  const supabase = await db();
+  const pairs: [string, string][] = [
+    ["brand_name", input.name],
+    ["brand_color", input.color],
+    ["default_mode", input.defaultMode],
+    ["logo_url", input.logoUrl],
+  ];
+  for (const [kind, value] of pairs) {
+    await supabase.from("app_settings").delete().eq("kind", kind);
+    if (!value) continue; // ค่าว่าง (เช่นไม่ใส่โลโก้) = ไม่ต้องเก็บแถว
+    const { error } = await supabase.from("app_settings").insert({ kind, value });
+    if (error) return fail(mapDbError(error));
+  }
+  revalidatePath("/", "layout"); // แถบเมนูอยู่ใน layout — ต้อง revalidate ทั้ง layout
+  return { ok: true };
+}
+
 export async function deleteSettingAction(kind: string, value: string): Promise<SaveResult> {
   const supabase = await db();
   const { error } = await supabase.from("app_settings").delete().eq("kind", kind).eq("value", value);

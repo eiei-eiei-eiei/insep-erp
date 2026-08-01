@@ -131,8 +131,8 @@ export function ReportsApp({ options }: { options: Opt }) {
     }
   }
 
-  const box = "rounded-2xl border border-slate-200 bg-white p-4";
-  const chk = "flex items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-slate-50 cursor-pointer";
+  const box = "rounded-2xl border border-line bg-card p-4";
+  const chk = "flex items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-raised cursor-pointer";
 
   const anyMaster = useMemo(
     () => options.materials.length + options.products.length,
@@ -142,42 +142,42 @@ export function ReportsApp({ options }: { options: Opt }) {
   return (
     <div>
       {anyMaster === 0 && (
-        <div className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
+        <div className="mb-4 rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">
           ยังไม่มีข้อมูลวัตถุดิบ/สินค้า — เพิ่ม master (หรือรัน seed ทดสอบ) ก่อนออกรายงาน
         </div>
       )}
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <label className="text-sm">
-          <span className="mb-1 block text-slate-600">กิจการ</span>
-          <select value={entityId} onChange={(e) => setEntityId(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2">
+          <span className="mb-1 block text-muted">กิจการ</span>
+          <select value={entityId} onChange={(e) => setEntityId(e.target.value)} className="rounded-lg border border-line px-3 py-2">
             {options.entities.map((en) => (
               <option key={en.entity_id} value={en.entity_id}>
                 {en.entity_id} — {en.name} {en.excise_id ? "" : "(ไม่มีเลขสรรพสามิต)"}
               </option>
             ))}
           </select>
-          <span className={`mt-1 block text-xs ${selectedExcise ? "text-slate-400" : "text-red-500"}`}>
+          <span className={`mt-1 block text-xs ${selectedExcise ? "text-faint" : "text-crit"}`}>
             {selectedExcise
               ? `เลขสรรพสามิต: ${selectedExcise}`
               : "⚠️ กิจการนี้ยังไม่มีเลขสรรพสามิต — หัวฟอร์มจะว่าง (ตั้งที่ entities.excise_id)"}
           </span>
         </label>
         <label className="text-sm">
-          <span className="mb-1 block text-slate-600">เดือน</span>
-          <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2" />
+          <span className="mb-1 block text-muted">เดือน</span>
+          <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="rounded-lg border border-line px-3 py-2" />
         </label>
         <button
           onClick={generate}
           disabled={busy}
-          className="rounded-lg bg-slate-800 px-5 py-2 font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+          className="rounded-lg bg-brand px-5 py-2 font-medium text-on-brand hover:opacity-90 disabled:opacity-50"
         >
           {busy ? "กำลังสร้าง…" : "สร้าง PDF ที่เลือก"}
         </button>
       </div>
 
       {msg && (
-        <div className={`mb-4 rounded-lg px-3 py-2 text-sm ${msg.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>{msg.text}</div>
+        <div className={`mb-4 rounded-lg px-3 py-2 text-sm ${msg.ok ? "bg-ok-bg text-ok" : "bg-crit-bg text-crit"}`}>{msg.text}</div>
       )}
 
       <div className="mb-4">
@@ -192,7 +192,7 @@ export function ReportsApp({ options }: { options: Opt }) {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className={box}>
-          <label className="mb-2 flex items-center gap-2 font-semibold text-slate-800">
+          <label className="mb-2 flex items-center gap-2 font-semibold text-ink">
             <input type="checkbox" checked={en["0701"]} onChange={(e) => setEn({ ...en, "0701": e.target.checked })} />
             ภส.๐๗-๐๑/๑ บัญชีวัตถุดิบ (ต่อวัตถุดิบ)
           </label>
@@ -207,7 +207,7 @@ export function ReportsApp({ options }: { options: Opt }) {
         </div>
 
         <div className={box}>
-          <label className="mb-2 flex items-center gap-2 font-semibold text-slate-800">
+          <label className="mb-2 flex items-center gap-2 font-semibold text-ink">
             <input type="checkbox" checked={en["0702_1"]} onChange={(e) => setEn({ ...en, "0702_1": e.target.checked })} />
             ภส.๐๗-๐๒/๑(๑) บัญชีผลิตสุรา (ต่อชื่อสุรา)
           </label>
@@ -222,7 +222,7 @@ export function ReportsApp({ options }: { options: Opt }) {
         </div>
 
         <div className={box}>
-          <label className="mb-2 flex items-center gap-2 font-semibold text-slate-800">
+          <label className="mb-2 flex items-center gap-2 font-semibold text-ink">
             <input type="checkbox" checked={en["0702_2"]} onChange={(e) => setEn({ ...en, "0702_2": e.target.checked })} />
             ภส.๐๗-๐๒/๑(๒) บัญชีสุราบรรจุขวด (ต่อสินค้า)
           </label>
@@ -237,11 +237,11 @@ export function ReportsApp({ options }: { options: Opt }) {
         </div>
 
         <div className={box}>
-          <label className="mb-2 flex items-center gap-2 font-semibold text-slate-800">
+          <label className="mb-2 flex items-center gap-2 font-semibold text-ink">
             <input type="checkbox" checked={en["0704"]} onChange={(e) => setEn({ ...en, "0704": e.target.checked })} />
             ภส.๐๗-๐๔/๑ งบเดือน (รวมทั้งกิจการ)
           </label>
-          <p className="pl-6 text-sm text-slate-400">ออกทั้งเดือน ไม่ต้องเลือกรายการ</p>
+          <p className="pl-6 text-sm text-faint">ออกทั้งเดือน ไม่ต้องเลือกรายการ</p>
         </div>
       </div>
     </div>

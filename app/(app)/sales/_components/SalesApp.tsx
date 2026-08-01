@@ -7,6 +7,7 @@ import { OrdersTab } from "./OrdersTab";
 import { WarehouseTab } from "./WarehouseTab";
 import { SyncHistoryTab } from "./SyncHistoryTab";
 import { MenuTab } from "./MenuTab";
+import { IconCart } from "@/lib/shared/icons";
 
 type Tab = "create" | "orders" | "warehouse" | "sync" | "manage";
 
@@ -45,23 +46,23 @@ export function SalesApp({ boot }: { boot: SalesBoot }) {
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <span className="text-2xl">🛒</span>
-        <h1 className="text-2xl font-bold text-slate-800">ขาย</h1>
-        <span className="ml-auto text-sm text-slate-500">
+        <IconCart size={24} className="text-brand" />
+        <h1 className="text-2xl font-bold text-ink">ขาย</h1>
+        <span className="ml-auto text-sm text-faint">
           บทบาท <b>{boot.role}</b>
         </span>
       </div>
 
       {boot.role === "viewer" && (
-        <div className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">บทบาท viewer — ดูได้อย่างเดียว</div>
+        <div className="mb-4 rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">บทบาท viewer — ดูได้อย่างเดียว</div>
       )}
 
-      <div className="mb-5 -mx-4 flex gap-1 overflow-x-auto border-b border-slate-200 px-4">
+      <div className="mb-5 -mx-4 flex gap-1 overflow-x-auto border-b border-line px-4">
         {ALL_TABS.filter((t) => allowed.includes(t.key)).map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`shrink-0 whitespace-nowrap rounded-t-lg px-4 py-2 text-sm font-medium transition ${tab === t.key ? "border-b-2 border-amber-600 text-amber-700" : "text-slate-500 hover:text-slate-700"}`}
+            className={`shrink-0 whitespace-nowrap rounded-t-lg px-4 py-2 text-sm font-medium transition ${tab === t.key ? "border-b-2 border-warn-line text-warn" : "text-faint hover:text-ink"}`}
           >
             {t.label}
           </button>

@@ -37,16 +37,16 @@ export function HistoryTab({ boot, entityId }: { boot: Bootstrap; entityId: stri
           <Field label="คู่ค้า"><Select value={contact} onChange={(e) => setContact(e.target.value)}><option value="">ทั้งหมด</option>{boot.contacts.map((c) => <option key={c.contact_id} value={c.name}>{c.name}</option>)}</Select></Field>
           <div className="flex items-end pb-2"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={includePriceCheck} onChange={(e) => setIncludePriceCheck(e.target.checked)} /> รวมใบเช็คราคา</label></div>
         </div>
-        <p className="mt-1 text-xs text-slate-400">กรองตามกิจการที่เลือกด้านบน ({entityId === "ALL" ? "ทุกกิจการ" : entityId})</p>
+        <p className="mt-1 text-xs text-faint">กรองตามกิจการที่เลือกด้านบน ({entityId === "ALL" ? "ทุกกิจการ" : entityId})</p>
       </Card>
       <Card title={`ผลลัพธ์ (${shown.length})`}>
-        {loading ? <p className="text-slate-400">กำลังโหลด…</p> : shown.length === 0 ? <p className="text-sm text-slate-400">— ไม่มีรายการ —</p> : (
+        {loading ? <p className="text-faint">กำลังโหลด…</p> : shown.length === 0 ? <p className="text-sm text-faint">— ไม่มีรายการ —</p> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="text-left text-slate-500"><th className="p-1">วันที่</th><th className="p-1">รายการ</th><th className="p-1">คู่ค้า</th><th className="p-1">ประเภท</th><th className="p-1 text-right">จำนวน</th><th className="p-1 text-right">ราคา(ex)</th><th className="p-1 text-right">รวม</th></tr></thead>
+              <thead><tr className="text-left text-faint"><th className="p-1">วันที่</th><th className="p-1">รายการ</th><th className="p-1">คู่ค้า</th><th className="p-1">ประเภท</th><th className="p-1 text-right">จำนวน</th><th className="p-1 text-right">ราคา(ex)</th><th className="p-1 text-right">รวม</th></tr></thead>
               <tbody>
                 {shown.map((r, i) => (
-                  <tr key={r.txId + i} className="border-t border-slate-100"><td className="p-1 whitespace-nowrap">{r.date}</td><td className="p-1">{r.itemName}</td><td className="p-1">{r.contactName}</td><td className="p-1">{r.type}</td><td className="p-1 text-right">{fmt(r.quantity)}</td><td className="p-1 text-right">{fmt(r.exVat)}</td><td className="p-1 text-right">{fmt(r.totalPrice)}</td></tr>
+                  <tr key={r.txId + i} className="border-t border-line-soft"><td className="p-1 whitespace-nowrap">{r.date}</td><td className="p-1">{r.itemName}</td><td className="p-1">{r.contactName}</td><td className="p-1">{r.type}</td><td className="p-1 text-right">{fmt(r.quantity)}</td><td className="p-1 text-right">{fmt(r.exVat)}</td><td className="p-1 text-right">{fmt(r.totalPrice)}</td></tr>
                 ))}
               </tbody>
             </table>
