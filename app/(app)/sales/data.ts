@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { formatThaiDate, type OrderState } from "@/lib/sales/orders";
+import { fetchAllRows } from "@/lib/shared/paginate";
 
 async function db() {
   return createClient();
@@ -120,10 +121,13 @@ export type OrderRow = {
   docToPrint: string;
   nextStatus: string;
   category: string;
+  saleName: string;
+  isDeposit: boolean;
+  depositPercent: number;
 };
 
 const ORDER_COLS =
-  "qu_no, order_no, created_at, customer_id, customer_name, sub_total, discount, sub_discount, vat_amount, grand_total, status, deposit, outstanding_balance, due_date, payment_method, inv_no, tax_no1, tax_no2, remarks, doc_date1, doc_date2, check_detail1, check_detail2, wht_percent, wht_amount, net_payable, doc_to_print, next_status, category";
+  "qu_no, order_no, created_at, customer_id, customer_name, sale_name, sub_total, discount, sub_discount, vat_amount, grand_total, status, deposit, outstanding_balance, due_date, payment_method, inv_no, tax_no1, tax_no2, remarks, doc_date1, doc_date2, check_detail1, check_detail2, wht_percent, wht_amount, net_payable, doc_to_print, next_status, category, is_deposit, deposit_percent";
 
 type SoRow = Record<string, unknown>;
 function mapOrder(r: SoRow, contactMap: Map<string, { address: string; taxId: string; branch: string }>): OrderRow {
@@ -161,6 +165,9 @@ function mapOrder(r: SoRow, contactMap: Map<string, { address: string; taxId: st
     docToPrint: (r.doc_to_print as string) ?? "",
     nextStatus: (r.next_status as string) ?? "",
     category: (r.category as string) ?? "รายได้ค่าสินค้า",
+    saleName: (r.sale_name as string) ?? "",
+    isDeposit: Boolean(r.is_deposit),
+    depositPercent: Number(r.deposit_percent) || 0,
   };
 }
 
@@ -172,25 +179,23 @@ async function contactInfoMap(supabase: Awaited<ReturnType<typeof db>>) {
   return map;
 }
 
-/** ดึงออเดอร์ทุกแถวแบบแบ่งหน้า — กัน PostgREST cap `max_rows` ตัดออเดอร์เก่าเงียบ ๆ (ประวัติขาด) */
+/**
+ * ดึงออเดอร์ทุกแถวแบบแบ่งหน้า — กัน PostgREST cap `max_rows` ตัดออเดอร์เก่าเงียบ ๆ (ประวัติขาด)
+ * ตรรกะวน/ตรวจยอดกับ count อยู่ที่ lib/shared/paginate (มี unit test)
+ */
 async function fetchAllOrders(supabase: Awaited<ReturnType<typeof db>>): Promise<SoRow[]> {
-  const CHUNK = 1000;
-  const all: SoRow[] = [];
-  let from = 0;
-  for (let i = 0; i < 1000; i++) {
-    const { data, error } = await supabase
-      .from("sales_orders")
-      .select(ORDER_COLS)
-      .order("created_at", { ascending: false })
-      .order("qu_no", { ascending: false })
-      .range(from, from + CHUNK - 1);
-    if (error) throw new Error(error.message);
-    const rows = (data ?? []) as SoRow[];
-    all.push(...rows);
-    if (rows.length === 0) break;
-    from += rows.length;
-  }
-  return all;
+  return fetchAllRows<SoRow>(
+    async (from, to) => {
+      const { data, error, count } = await supabase
+        .from("sales_orders")
+        .select(ORDER_COLS, from === 0 ? { count: "exact" } : undefined)
+        .order("created_at", { ascending: false })
+        .order("qu_no", { ascending: false })
+        .range(from, to);
+      return { data: (data ?? []) as SoRow[], error, count };
+    },
+    { label: "ออเดอร์ขาย" },
+  );
 }
 
 /** ประวัติออเดอร์ทั้งหมด (ใหม่สุดก่อน) */

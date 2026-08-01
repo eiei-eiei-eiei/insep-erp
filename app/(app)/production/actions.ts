@@ -9,6 +9,7 @@ import {
   getDistillRun,
   getFermentMonitor,
   getHistoryBatches,
+  getBatchBoard,
   getFermentMulti,
   getDistillMulti,
   getRecentMaterials,
@@ -36,6 +37,9 @@ export async function getFermentMonitorAction(batch: string) {
 }
 export async function getHistoryBatchesAction() {
   return getHistoryBatches();
+}
+export async function getBatchBoardAction() {
+  return getBatchBoard();
 }
 export async function getFermentMultiAction(batches: string[]) {
   return getFermentMulti(batches);
@@ -88,6 +92,57 @@ export async function deleteDistillRunAction(id: number): Promise<SaveResult> {
 export async function getRecentMaterialsAction() { return getRecentMaterials(); }
 export async function getRecentDilutesAction() { return getRecentDilutes(); }
 export async function getRecentProductsAction() { return getRecentProducts(); }
+
+// แก้ inline (RLS main คุม · stock วัตถุดิบ/สุรา คำนวณจาก log → แก้แล้วตรงอัตโนมัติ · edit_log จับ audit)
+export async function updateMaterialLogAction(id: number, patch: {
+  date: string; transType: string; materialId: string; amount: number; docRef?: string; note?: string;
+}): Promise<SaveResult> {
+  const supabase = await db();
+  const { error } = await supabase.from("log_material").update({
+    doc_date: patch.date,
+    trans_type: patch.transType,
+    material_id: patch.materialId,
+    amount: patch.amount,
+    doc_ref: patch.docRef || null,
+    note: patch.note || null,
+  }).eq("id", id);
+  if (error) return fail(mapDbError(error));
+  revalidatePath("/production");
+  return { ok: true };
+}
+export async function updateDiluteLogAction(id: number, patch: {
+  date: string; productName: string; bottleSize?: string | null;
+  startVol: number | null; startAbv: number | null; water: number | null;
+  finalVol: number | null; finalAbv: number | null; note?: string;
+}): Promise<SaveResult> {
+  const supabase = await db();
+  const { error } = await supabase.from("log_dilute").update({
+    dilute_date: patch.date,
+    product_name: patch.productName,
+    bottle_size: patch.bottleSize || null,
+    start_vol: patch.startVol, start_abv: patch.startAbv, water: patch.water,
+    final_vol: patch.finalVol, final_abv: patch.finalAbv,
+    note: patch.note || null,
+  }).eq("id", id);
+  if (error) return fail(mapDbError(error));
+  revalidatePath("/production");
+  return { ok: true };
+}
+export async function updateProductLogAction(id: number, patch: {
+  date: string; transType: string; productId: string; amount: number; note?: string;
+}): Promise<SaveResult> {
+  const supabase = await db();
+  const { error } = await supabase.from("log_product").update({
+    doc_date: patch.date,
+    trans_type: patch.transType,
+    product_id: patch.productId,
+    amount: patch.amount,
+    note: patch.note || null,
+  }).eq("id", id);
+  if (error) return fail(mapDbError(error));
+  revalidatePath("/production");
+  return { ok: true };
+}
 
 export async function deleteMaterialLogAction(id: number): Promise<SaveResult> {
   const supabase = await db();

@@ -43,9 +43,11 @@ export function QuotationTab({
 
   const customer = customers.find((c) => c.id === selCustId);
 
-  // โหลดออเดอร์ที่จะแก้ไข → prefill
+  // โหลดออเดอร์ที่จะแก้ไข → prefill "ทุก field" (ไม่งั้นค่าที่ไม่ถูก prefill จะทับของเดิมตอนอัปเดต)
+  const editing = useRef(false);
   useEffect(() => {
-    if (!editOrder) return;
+    if (!editOrder) { editing.current = false; return; }
+    editing.current = true;
     setMsg(null);
     setSelCustId(editOrder.customerId);
     setDiscount(editOrder.discount || 0);
@@ -53,11 +55,16 @@ export function QuotationTab({
     setRemarks(editOrder.remarks || "");
     setIsWht((editOrder.whtPercent || 0) > 0);
     setWhtPct(editOrder.whtPercent > 0 ? editOrder.whtPercent : 3);
+    setIsDeposit(editOrder.isDeposit);
+    setDepositPct(editOrder.depositPercent > 0 ? editOrder.depositPercent : 50);
+    setSaleName(editOrder.saleName || "");
     getOrderItemsAction(editOrder.quNo).then((its) => setItems(its.map((i) => ({ ...i }))));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editOrder?.quNo]);
 
+  // เปลี่ยนลูกค้าเอง → เติมผู้เสนอราคาประจำลูกค้า (ไม่ทับค่าที่ prefill มาจากออเดอร์ที่กำลังแก้)
   useEffect(() => {
+    if (editing.current) { editing.current = false; return; }
     if (customer && !saleName) setSaleName(customer.saleName || "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selCustId]);

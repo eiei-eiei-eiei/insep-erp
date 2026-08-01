@@ -17,9 +17,17 @@ type MonitorRow = {
 };
 type EditFields = { measureDate: string; measureTime: string; ph: string; brix: string; temp: string; note: string };
 
-export function MonitorTab({ pending: batches }: { pending: PendingBatch[] }) {
+export function MonitorTab({
+  pending: batches,
+  batch,
+  onBatchChange,
+}: {
+  pending: PendingBatch[];
+  batch: string;              // batch ร่วมของ workspace (เลือกครั้งเดียวใช้ทุกแท็บ)
+  onBatchChange: (b: string) => void;
+}) {
   const { pending, msg, run } = useSaver();
-  const [batch, setBatch] = useState("");
+  const setBatch = onBatchChange;
   const [date, setDate] = useState(todayISO());
   const [time, setTime] = useState("");
   const [ph, setPh] = useState("");

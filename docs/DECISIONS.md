@@ -458,6 +458,55 @@
   · **วัตถุดิบหลัก (แถวแรก) = ปริมาณต่อถัง × จำนวนถัง** อัตโนมัติ แก้ทับเองได้ · **ไม่เก็บเป็นคอลัมน์** (report ย้อนคำนวณจาก material หลัก/qty เหมือนเดิม — byte-compatible)
 - **จบกติกาเหล็ก** "ทุกจุดบันทึกได้ต้องแก้/ลบได้" ครบทุก log แล้ว
 
+### D42 — ปิดงานที่เหลือทั้งหมดจาก APP_REVIEW_2026-07 (multi-branch, กระดาน batch, PWA, รวม ui)
+**migration 0021** (`20260801000021_multibranch_and_quotation_terms.sql`) — ต้อง `npm run db:push` ก่อนใช้
+
+- **คู่ค้าหลายสาขาชื่อเดียวกัน (ต่อจาก D30) — audit ทั้ง repo เจอช่องโหว่ที่เหลือ 3 จุด แก้ครบ**
+  1. **รายรับจากขาย ไม่เก็บ `contact_id`** (bug จริง ผลกระทบสูงสุด): `fn_apply_order_action` insert `transactions`
+     โดยไม่มี contact_id → `resolveContact()` ของ ภพ.30/ภงด. fallback ชื่อ = ได้ **taxId/สาขาแรก** เสมอ
+     → เลขยื่นสรรพากรผูกผิดสาขา · แก้: `RevenuePayload.contactId` (lib/sales/orders) → RPC insert `contact_id`
+     + **backfill** ข้อมูลเดิมจาก `sales_orders.customer_id` ผ่าน idempotency_key · golden test เพิ่ม 2 เคส (180 เทส)
+  2. **50ทวิ**: `wht_certificates` เพิ่มคอลัมน์ `contact_id` (nullable) · `fn_issue_wht` รับ `p_contact_id`
+     · `DashPending.contactId` → บันทึกตอนออกใบ → **พิมพ์ซ้ำได้สาขาถูก** · ใบเก่า = null → fallback ชื่อเหมือนเดิม
+     · backfill เฉพาะชื่อที่ตรงคู่ค้ารายเดียว (ชื่อซ้ำ = ไม่เดา ปล่อย null — ไม่เดาข้อมูลราชการ)
+  3. **เครดิตเทอมออเดอร์**: `OrdersTab` หาลูกค้าด้วย `customerId` (fallback ชื่อ) → dueDate ไม่ผิดสาขา
+     · **บิลล่าสุดของคู่ค้า** (`getRecentBillsByContact`) กรองด้วย contact_id เมื่อรู้สาขา
+  - *จงใจคงไว้ตามเดิม*: ค้นบิล / ประวัติราคา / dashboard จัดกลุ่มด้วย **ชื่อ** — ผู้ใช้ค้นด้วยชื่อและอยากเห็นรวมทุกสาขา
+- **ขาย — แก้ใบเสนอราคา prefill ครบ**: `sales_orders` เพิ่ม `is_deposit` / `deposit_percent` (เก็บเงื่อนไขมัดจำ)
+  · prefill `saleName`/`isDeposit`/`depositPct` ตอนกดแก้ (เดิม saleName ค้างค่าเก่าแล้วทับ `sale_name` ในออเดอร์)
+  · `fn_update_quotation` อัปเดต `customer_id`/`customer_name` ด้วย (เดิมเปลี่ยนลูกค้าตอนแก้แล้วถูกเมินเงียบ ๆ)
+  · พิมพ์ใบเสนอราคาซ้ำได้ผู้เสนอราคา/เครดิตเทอมจริง (เดิม hardcode "" และ 0)
+- **ผลิต — กระดาน batch (FLOW sec 3) + batch ร่วมข้ามแท็บ**: แท็บแรกใหม่ "กระดาน batch" (`getBatchBoard`)
+  การ์ดละ batch บอกขั้น (ลงหมัก/ติดตามหมัก/กำลังกลั่น/ปิดแล้ว) + ค่าวัดล่าสุด + หม้อที่ยังไม่จบ + ปุ่มกระโดดไปแท็บที่ถูก
+  · `batch` ยกเป็น state ของ `ProductionApp` แชร์ MonitorTab/DistillTab (เลือกครั้งเดียวใช้ทุกแท็บ)
+- **ผลิต — แก้ inline เต็มรูปแบบ** (ปิดของที่ค้างจาก D39): `log_material`/`log_dilute`/`log_product` มีปุ่ม ✏️ แก้ในตาราง
+  (`update*LogAction`) — เลิก "ลบแล้วบันทึกใหม่" · `getRecentDilutes` เพิ่มคอลัมน์ `water` ที่ขาด
+- **report_runs checklist** (FLOW sec 6 — ตารางมีมาตั้งแต่ 0005 แต่ไม่เคยมี UI อ่าน): คอมโพเนนต์ร่วม
+  `app/(app)/_components/ReportChecklist` แสดง ✅/⬜ + วันที่สร้างล่าสุด — ใช้ในแท็บเอกสารสรรพากร (ภพ.30/ภงด.)
+  และ /reports (ภส. 4 ฟอร์ม · เพิ่ม `markExciseRunAction` ตอนสร้าง PDF สำเร็จ)
+- **รวม ui.tsx 3 ชุด → `lib/shared/ui.tsx`**: ตรรกะที่ต้องเหมือนกันเสมอ (NumBox buffer ทศนิยม, Combobox คีย์บอร์ด,
+  useSaver, fmt) อยู่ที่เดียว · ต่างกันแค่ `accent` (slate/amber) · ไฟล์เดิมของ 3 โดเมนเหลือ re-export → **import เดิมไม่ต้องแก้**
+  · ผลพลอยได้: ผลิตได้ NumBox/Combobox ที่แก้บั๊กแล้วฟรี · production `TextInput` เดิม **ทิ้ง className ที่ส่งเข้ามา** (บั๊กเงียบ) → แก้แล้ว
+- **สกัด EditBillModal ซ้ำ → `accounting/_components/billItems.ts`**: `makeItemHandlers` (in↔ex VAT, ส่วนลด %↔บาท),
+  `buildItemInputs`, `useBillAmounts` (โหมดแก้ยอดเอง) ใช้ร่วม EntryTab + EditBillModal — สูตรจริงยังอยู่ `lib/accounting/calc`
+  · ตัดโค้ดซ้ำ ~150 บรรทัด กัน "เลขตอนแก้ ≠ เลขตอนสร้าง"
+- **เทสชั้น data-access (ที่รีวิวบอกว่าไม่มีเลย)**: ย้าย pagination เป็น `lib/shared/paginate.ts` (บริสุทธิ์ เทสได้)
+  + **ตรวจยอดกับ `count: "exact"` แล้ว throw ถ้าได้ไม่ครบ** (ดีกว่าปล่อยเลขขาดขึ้น ภพ.30) · 7 เทส
+  · ใช้ทั้ง `accounting/data.ts` (transactions) และ `sales/data.ts` (orders)
+- **scan rate-limit ตามเวลาไทย**: `lib/shared/datetime.ts` (`bangkokDayStartUTC`) — เดิม `setHours(0,0,0,0)` บน UTC
+  = โควตารีเซ็ต 7 โมงเช้าไทย · 4 เทส
+- **อื่น ๆ**: `app/(app)/error.tsx` + `app/global-error.tsx` ภาษาไทย + ปุ่มลองใหม่ (เดิมจอขาว Next default)
+  · ฟอนต์ไทย **self-host** ด้วย `next/font/google` Noto Sans Thai (เดิมพึ่งฟอนต์ในเครื่อง — Windows ไม่มี)
+  · **PWA**: `app/manifest.ts` + `public/icon.svg|icon-192|icon-512|apple-icon` (ติดตั้งลงโฮมสกรีนได้ ยังไม่ทำ offline)
+  · touch target ≥44px บนจอเล็กใน SaveButton/RowBtn/ActBtn/ปุ่มค้นบิล + แยก "ยกเลิก" ออกจาก "แก้ไข"
+- **ตัดสินใจ: ไม่ย้ายการออกเลข INV/TAX เข้า RPC** (ผู้ใช้อนุมัติ) — เดิม `processOrderActionAction` gen เลขก่อนเรียก
+  `fn_apply_order_action` ถ้า RPC fail เลขใบกำกับข้ามเบอร์
+  - **เหตุผลที่ไม่ทำ**: `revenue.taxInvoiceNo` มาจาก `taxDocNo()` (ลำดับ taxNo2 > taxNo1 > invNo) ใน `lib/sales/orders`
+    ซึ่งมี golden test คุม — ย้ายเข้า RPC ต้องเขียนลำดับนี้ซ้ำใน SQL = เสี่ยง drift กับ lib มากกว่าปัญหาที่แก้
+  - **ผลที่ยอมรับ**: RPC fail (แทบไม่เกิด — เกิดเฉพาะ DB ล่ม/สิทธิ์ไม่พอ) แล้วเลขข้าม 1 เบอร์
+  - **ถ้าเกิดจริงทำยังไง**: เลขที่ข้ามอธิบายกับสรรพากรได้ (เอกสารยกเลิก/ไม่ได้ใช้) — บันทึกเหตุไว้
+    หรือแก้เลขในออเดอร์เองจาก Supabase (`sales_orders.inv_no/tax_no1/tax_no2`) ก่อนพิมพ์เอกสาร
+
 ## ค้างต้องถามผู้ใช้ (ยังไม่ตัดสิน — MIGRATION_PLAN sec 11)
 - ~~อีเมล login (ข้อ 9)~~ → **ตัดสินแล้ว (D9)**: username-based `<username>@insep.local`
 - ~~ไฟล์ wh3 (50ทวิ)~~ → **ผู้ใช้ยืนยันว่าเป็นเทมเพลตเปล่า** — อัปโหลดด้วย `--include-wh3` เป็น `wht/wh3_template.pdf`

@@ -28,9 +28,17 @@ type RunRow = {
   note: string | null;
 };
 
-export function DistillTab({ pending: batches }: { pending: PendingBatch[] }) {
+export function DistillTab({
+  pending: batches,
+  batch,
+  onBatchChange,
+}: {
+  pending: PendingBatch[];
+  batch: string;              // batch ร่วมของ workspace (เลือกครั้งเดียวใช้ทุกแท็บ)
+  onBatchChange: (b: string) => void;
+}) {
   const { pending, msg, run, setMsg } = useSaver();
-  const [batch, setBatch] = useState("");
+  const setBatch = onBatchChange;
   const [readings, setReadings] = useState<RunRow[]>([]);
   const [activeRun, setActiveRun] = useState<{ runId: string; potNo: number } | null>(null);
 

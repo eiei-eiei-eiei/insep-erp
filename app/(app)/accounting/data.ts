@@ -15,6 +15,7 @@ import {
   type LedgerTx,
   type AccountMeta,
 } from "@/lib/accounting/ledger";
+import { fetchAllRows } from "@/lib/shared/paginate";
 
 // คอลัมน์ transactions ที่ใช้ทุกรายงาน
 const TX_COLS =
@@ -24,34 +25,29 @@ async function db() {
   return createClient();
 }
 
-function txBase(supabase: Awaited<ReturnType<typeof db>>) {
-  return supabase.from("transactions").select(TX_COLS);
+function txBase(supabase: Awaited<ReturnType<typeof db>>, withCount = false) {
+  return supabase.from("transactions").select(TX_COLS, withCount ? { count: "exact" } : undefined);
 }
 type TxBuilder = ReturnType<typeof txBase>;
 
 /**
  * ดึงทุกแถวของ transactions แบบแบ่งหน้า (range) — กัน PostgREST cap `max_rows` ตัดเงียบ
  * ทำให้รายงานเงิน/ภาษี (dashboard/ยอดบัญชี/ภพ.30/statement) ขาดแถวเก่าโดยไม่มี error เมื่อข้อมูลโต
- * วนจนกว่าจะได้หน้าเปล่า → ครบทุกแถวแม้ max_rows จะเท่าใด (เลื่อนตามจำนวนที่ได้จริง)
+ * ตรรกะวน/ตรวจยอดกับ count อยู่ที่ lib/shared/paginate (มี unit test — paginate.test.ts)
  */
 async function fetchAllTransactions(
   supabase: Awaited<ReturnType<typeof db>>,
   applyFilters?: (q: TxBuilder) => TxBuilder,
 ): Promise<Record<string, unknown>[]> {
-  const CHUNK = 1000;
-  const all: Record<string, unknown>[] = [];
-  let from = 0;
-  for (let i = 0; i < 1000; i++) { // safety cap 1,000,000 แถว
-    let q = txBase(supabase);
-    if (applyFilters) q = applyFilters(q);
-    const { data, error } = await q.order("tx_id", { ascending: true }).range(from, from + CHUNK - 1);
-    if (error) throw new Error(error.message);
-    const rows = (data ?? []) as Record<string, unknown>[];
-    all.push(...rows);
-    if (rows.length === 0) break;
-    from += rows.length;
-  }
-  return all;
+  return fetchAllRows<Record<string, unknown>>(
+    async (from, to) => {
+      let q = txBase(supabase, from === 0); // ขอ count เฉพาะหน้าแรก → ตรวจว่าได้ครบ
+      if (applyFilters) q = applyFilters(q);
+      const { data, error, count } = await q.order("tx_id", { ascending: true }).range(from, to);
+      return { data: (data ?? []) as Record<string, unknown>[], error, count };
+    },
+    { label: "รายการบัญชี" },
+  );
 }
 
 /** ชื่อบัญชีในระบบภาษี (app_settings kind='tax_account') — fallback บัญชีบริษัท */
@@ -273,14 +269,15 @@ export async function searchBills(params: {
 }
 
 /** C2-5 — บิลล่าสุดของคู่ค้า (เติม description/หมวดหมู่/รายการอัตโนมัติ) เทียบ legacy getRecentTransactionsByContact */
-export async function getRecentBillsByContact(contactName: string, limit = 5, entityId?: string) {
+export async function getRecentBillsByContact(contactName: string, limit = 5, entityId?: string, contactId?: string) {
   const supabase = await db();
-  if (!contactName?.trim()) return [] as RecentBill[];
+  if (!contactName?.trim() && !contactId) return [] as RecentBill[];
   let q = supabase
     .from("transactions")
     .select("tx_id, transaction_date, type, category, description, net_amount, entity_id")
-    .eq("contact_name", contactName)
     .eq("status", "ปกติ")
+    // ระบุสาขาที่แน่นอนก่อน (multi-branch D30) — ไม่มี contact_id ค่อย fallback ชื่อ
+    .eq(contactId ? "contact_id" : "contact_name", contactId || contactName)
     .order("transaction_date", { ascending: false })
     .order("tx_id", { ascending: false })
     .limit(limit);
@@ -477,7 +474,7 @@ export async function getWhtBundle(period: string, entityId: string) {
   const dash = await getDashboard(period, entityId);
   const { data: certs } = await supabase
     .from("wht_certificates")
-    .select("doc_no, issue_date, contact_name, address, wht_amount, pnd_type, income_type, income_seq, base_amount, tx_ids, entity_id")
+    .select("doc_no, issue_date, contact_name, contact_id, address, wht_amount, pnd_type, income_type, income_seq, base_amount, tx_ids, entity_id")
     .order("doc_no");
   const inScope = (e: string) => !entityId || entityId === "ALL" || (e || "EID01") === entityId;
   const scoped = (certs ?? []).filter((c) => inScope((c.entity_id as string) ?? ""));
@@ -490,6 +487,7 @@ export async function getWhtBundle(period: string, entityId: string) {
       docNo: c.doc_no as string,
       issueDate: (c.issue_date as string) ?? "",
       contactName: (c.contact_name as string) ?? "",
+      contactId: (c.contact_id as string) ?? "", // multi-branch: พิมพ์ซ้ำได้สาขาถูก (ใบเก่า = "" → fallback ชื่อ)
       address: (c.address as string) ?? "",
       whtAmount: Number(c.wht_amount) || 0,
       pndType: (c.pnd_type as string) ?? "",
@@ -502,6 +500,27 @@ export async function getWhtBundle(period: string, entityId: string) {
   // เลขเอกสารที่มีแล้วของกิจการนี้ (รันเลขแยกต่อกิจการ)
   const existingDocNos = scoped.map((c) => c.doc_no as string);
   return { pending: dash.whtPending, history, existingDocNos };
+}
+
+/**
+ * FLOW sec 6/8 — "เดือนนี้สร้างรายงานครบยัง" อ่านจาก report_runs ที่เขียนอยู่แล้วตอนกดสร้าง
+ * คืน { report_key: วันที่สร้างล่าสุด } ของเดือน/กิจการนั้น (ไม่มี = ยังไม่ได้สร้าง)
+ */
+export async function getReportRuns(month: string, entityId: string): Promise<Record<string, string>> {
+  const supabase = await db();
+  let q = supabase
+    .from("report_runs")
+    .select("report_key, entity_id, created_at")
+    .eq("month", month)
+    .order("created_at", { ascending: false });
+  if (entityId && entityId !== "ALL") q = q.eq("entity_id", entityId);
+  const { data } = await q;
+  const out: Record<string, string> = {};
+  for (const r of data ?? []) {
+    const k = r.report_key as string;
+    if (!out[k]) out[k] = String(r.created_at).slice(0, 10); // แถวแรก = ล่าสุด (order desc)
+  }
+  return out;
 }
 
 /** ชุดข้อมูล ภพ.30 / ภงด. สำหรับ PDF (เรียกจาก /reports) */

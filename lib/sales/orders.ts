@@ -47,7 +47,8 @@ export type ActionPayload = {
 export type GeneratedSerials = { invNo?: string; taxNo1?: string; taxNo2?: string };
 
 /** ฟิลด์คู่ค้า (จาก contacts) สำหรับแนบ payload บัญชี */
-export type ContactInfo = { taxId: string; branch: string; address: string };
+/** contactId = สาขาที่แน่นอนของลูกค้า (multi-branch D30) — ว่าง = ข้อมูลเก่า fallback ชื่อ */
+export type ContactInfo = { taxId: string; branch: string; address: string; contactId?: string };
 
 /** config รายรับขาย (จาก app_settings) — บัญชีรับเงิน + กิจการ */
 export type RevenueConfig = { accountName: string; entityId: string };
@@ -75,6 +76,7 @@ export type RevenuePayload = {
   entityId: string;
   category: string;
   contactName: string;
+  contactId: string; // สาขาลูกค้าที่แน่นอน → transactions.contact_id (ภพ.30/ภงด. ได้สาขาถูก)
   taxId: string;
   branch: string;
   address: string;
@@ -277,6 +279,7 @@ export function processOrder(
       entityId: config.entityId,
       category: order.category || "รายได้จากการขาย",
       contactName: order.customerName,
+      contactId: contact.contactId || "",
       taxId: contact.taxId || "",
       branch: contact.branch || "สำนักงานใหญ่",
       address: contact.address || "",

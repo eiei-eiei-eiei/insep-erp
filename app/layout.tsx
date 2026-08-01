@@ -1,9 +1,29 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { Noto_Sans_Thai } from "next/font/google";
 import "./globals.css";
+
+// self-host ฟอนต์ไทยตอน build (ไม่พึ่ง CDN ตอน runtime) — Windows ไม่มี Noto Sans Thai ในเครื่อง
+// จึงเคยได้ Leelawadee/Tahoma ปนกัน · ตัวแปร --font-thai ถูกใช้ใน globals.css
+const notoThai = Noto_Sans_Thai({
+  subsets: ["thai", "latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+  variable: "--font-thai",
+});
 
 export const metadata: Metadata = {
   title: "Insep ERP",
   description: "ระบบ ERP ภายในโรงกลั่นสุราคราฟต์ — ผลิต · ขาย · บัญชี · รายงานราชการ",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "Insep ERP" },
+  icons: { icon: "/icon.svg", apple: "/apple-icon.png" }, // iOS โฮมสกรีนต้องเป็น PNG
+};
+
+export const viewport: Viewport = {
+  themeColor: "#1e293b",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -12,7 +32,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="th">
+    <html lang="th" className={notoThai.variable}>
       <body>{children}</body>
     </html>
   );

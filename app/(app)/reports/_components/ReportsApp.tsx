@@ -1,9 +1,24 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PDFDocument } from "pdf-lib";
 import { fillExciseForm, EXCISE_TEMPLATE_KEY, FONT_KEY, type ExciseKind } from "@/lib/pdf/excise";
-import { getExciseReportData, getPdfAssetUrl } from "../actions";
+import { getExciseReportData, getPdfAssetUrl, getExciseReportRunsAction, markExciseRunAction } from "../actions";
+import { ReportChecklist } from "../../_components/ReportChecklist";
+
+// report_key ของ report_runs ↔ ฟอร์ม ภส. (FLOW sec 6 — "เดือนนี้สร้างครบยัง")
+const EXCISE_CHECKLIST = [
+  { key: "phor_so_07_01", label: "ภส.๐๗-๐๑/๑ บัญชีวัตถุดิบ" },
+  { key: "phor_so_07_02_1", label: "ภส.๐๗-๐๒/๑(๑) บัญชีผลิตสุรา" },
+  { key: "phor_so_07_02_2", label: "ภส.๐๗-๐๒/๑(๒) บัญชีสุราบรรจุขวด" },
+  { key: "phor_so_07_04", label: "ภส.๐๗-๐๔ งบเดือน" },
+];
+const RUN_KEY: Record<ExciseKind, string> = {
+  "0701": "phor_so_07_01",
+  "0702_1": "phor_so_07_02_1",
+  "0702_2": "phor_so_07_02_2",
+  "0704": "phor_so_07_04",
+};
 
 type Opt = { entities: { entity_id: string; name: string; excise_id: string | null }[]; materials: { material_id: string; name: string; unit: string | null }[]; products: { product_id: string; name: string; degree: number | null; bottle_size_l: number | null }[]; productNames: string[] };
 
@@ -55,6 +70,13 @@ export function ReportsApp({ options }: { options: Opt }) {
 
   const assetCache = useRef<Record<string, Uint8Array>>({});
 
+  const [runs, setRuns] = useState<Record<string, string>>({});
+  const loadRuns = useCallback(() => {
+    if (!month || !entityId) return;
+    getExciseReportRunsAction(month, entityId).then(setRuns);
+  }, [month, entityId]);
+  useEffect(() => { loadRuns(); }, [loadRuns]);
+
   async function fetchAsset(path: string): Promise<Uint8Array> {
     if (assetCache.current[path]) return assetCache.current[path];
     const { url, error } = await getPdfAssetUrl(path);
@@ -96,10 +118,12 @@ export function ReportsApp({ options }: { options: Opt }) {
         }
         const bytes = await mergePdfs(parts);
         download(bytes, `${j.file}_${month}.pdf`);
+        await markExciseRunAction(RUN_KEY[j.kind], month, entityId); // ติ๊ก checklist (ไม่กระทบตัว PDF)
         count++;
         await new Promise((r) => setTimeout(r, 400));
       }
       setMsg({ ok: true, text: `สร้างรายงานสำเร็จ ${count} ไฟล์ (ดูในโฟลเดอร์ดาวน์โหลด)` });
+      loadRuns();
     } catch (e) {
       setMsg({ ok: false, text: e instanceof Error ? e.message : "เกิดข้อผิดพลาด" });
     } finally {
@@ -155,6 +179,16 @@ export function ReportsApp({ options }: { options: Opt }) {
       {msg && (
         <div className={`mb-4 rounded-lg px-3 py-2 text-sm ${msg.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>{msg.text}</div>
       )}
+
+      <div className="mb-4">
+        <ReportChecklist
+          title="เช็กลิสต์ฟอร์มสรรพสามิตของเดือนนี้"
+          month={month}
+          items={EXCISE_CHECKLIST}
+          runs={runs}
+          note="ติ๊กอัตโนมัติเมื่อกดสร้าง PDF ฟอร์มนั้น (แยกตามกิจการ) — เอกสารสรรพากร (ภพ.30/ภงด.) ดูที่ workspace บัญชี แท็บเอกสารสรรพากร"
+        />
+      </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className={box}>

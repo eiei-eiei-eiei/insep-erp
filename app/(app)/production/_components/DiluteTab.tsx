@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { diluteCalc } from "@/lib/production/calc";
-import { getRemainingDistillVolAction, saveDiluteAction, getRecentDilutesAction, deleteDiluteLogAction } from "../actions";
-import { Card, Field, Msg, NumInput, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
+import { getRemainingDistillVolAction, saveDiluteAction, getRecentDilutesAction, deleteDiluteLogAction, updateDiluteLogAction } from "../actions";
+import { Card, Field, Msg, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import type { Product } from "./types";
 
 type RecentDilute = Awaited<ReturnType<typeof getRecentDilutesAction>>[number];
+type EditFields = { date: string; productName: string; bottleSize: string; startVol: string; startAbv: string; water: string; finalVol: string; finalAbv: string; note: string };
 
 export function DiluteTab({ products }: { products: Product[] }) {
   const { pending, msg, run } = useSaver();
@@ -24,14 +25,42 @@ export function DiluteTab({ products }: { products: Product[] }) {
   const [v2, setV2] = useState(""); // ปริมาตรปลายทาง
   const [water, setWater] = useState("");
   const [recent, setRecent] = useState<RecentDilute[]>([]);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [edit, setEdit] = useState<EditFields>({ date: "", productName: "", bottleSize: "", startVol: "", startAbv: "", water: "", finalVol: "", finalAbv: "", note: "" });
 
   const productNames = Array.from(new Set(products.map((p) => p.name)));
 
   function loadRecent() { getRecentDilutesAction().then((r) => setRecent(r as RecentDilute[])); }
+  function refreshRemaining() { if (productName) getRemainingDistillVolAction(productName).then(setRemaining); }
   useEffect(() => { loadRecent(); }, []);
   function del(r: RecentDilute) {
     if (!confirm(`ลบรายการปรุง ${r.product_name} (${String(r.dilute_date).slice(0, 10)})?`)) return;
-    run(() => deleteDiluteLogAction(r.id as number), "ลบรายการเรียบร้อย", loadRecent);
+    run(() => deleteDiluteLogAction(r.id as number), "ลบรายการเรียบร้อย", () => { loadRecent(); refreshRemaining(); });
+  }
+  function startEdit(r: RecentDilute) {
+    setEditId(r.id as number);
+    const s = (v: unknown) => (v === null || v === undefined ? "" : String(v));
+    setEdit({
+      date: String(r.dilute_date).slice(0, 10),
+      productName: (r.product_name as string) ?? "",
+      bottleSize: (r.bottle_size as string) ?? "",
+      startVol: s(r.start_vol), startAbv: s(r.start_abv), water: s(r.water),
+      finalVol: s(r.final_vol), finalAbv: s(r.final_abv),
+      note: (r.note as string) ?? "",
+    });
+  }
+  function saveEdit() {
+    if (editId == null) return;
+    const n = (v: string) => (v === "" ? null : parseFloat(v));
+    run(
+      () => updateDiluteLogAction(editId, {
+        date: edit.date, productName: edit.productName, bottleSize: edit.bottleSize,
+        startVol: n(edit.startVol), startAbv: n(edit.startAbv), water: n(edit.water),
+        finalVol: n(edit.finalVol), finalAbv: n(edit.finalAbv), note: edit.note,
+      }),
+      "แก้ไขรายการปรุงเรียบร้อย",
+      () => { setEditId(null); loadRecent(); refreshRemaining(); },
+    );
   }
 
   useEffect(() => {
@@ -149,25 +178,48 @@ export function DiluteTab({ products }: { products: Product[] }) {
       </div>
     </Card>
 
-    <Card title="รายการล่าสุด (แก้ = ลบแล้วบันทึกใหม่)">
+    <Card title="รายการล่าสุด (แก้ไข / ลบ ได้จากแอป)">
       {recent.length === 0 ? <p className="text-sm text-slate-400">— ยังไม่มีรายการ —</p> : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="border-b border-slate-200 text-left text-slate-500"><tr><th className="px-2 py-1">วันที่</th><th className="px-2 py-1">ชื่อสุรา</th><th className="px-2 py-1 text-right">V1→V2 (ล.)</th><th className="px-2 py-1 text-right">ดีกรี</th><th className="px-2 py-1">หมายเหตุ</th><th className="px-2 py-1"></th></tr></thead>
             <tbody>
               {recent.map((r) => (
-                <tr key={r.id as number} className="border-b border-slate-100">
-                  <td className="whitespace-nowrap px-2 py-1">{String(r.dilute_date).slice(0, 10)}</td>
-                  <td className="px-2 py-1">{r.product_name as string}</td>
-                  <td className="whitespace-nowrap px-2 py-1 text-right">{(r.start_vol as number) ?? "—"} → {(r.final_vol as number) ?? "—"}</td>
-                  <td className="whitespace-nowrap px-2 py-1 text-right">{(r.start_abv as number) ?? "—"}° → {(r.final_abv as number) ?? "—"}°</td>
-                  <td className="px-2 py-1 text-slate-500">{(r.note as string) ?? ""}</td>
-                  <td className="px-2 py-1"><button onClick={() => del(r)} disabled={pending} className="text-red-500 hover:text-red-700" title="ลบ">🗑️</button></td>
-                </tr>
+                editId === (r.id as number) ? (
+                  <tr key={r.id as number} className="border-b border-slate-100 bg-amber-50/50">
+                    <td className="px-1 py-1"><TextInput type="date" value={edit.date} onChange={(e) => setEdit({ ...edit, date: e.target.value })} className="w-36" /></td>
+                    <td className="px-1 py-1">
+                      <Select value={edit.productName} onChange={(e) => setEdit({ ...edit, productName: e.target.value })} className="w-40">
+                        {!productNames.includes(edit.productName) && edit.productName && <option value={edit.productName}>{edit.productName}</option>}
+                        {productNames.map((n) => <option key={n} value={n}>{n}</option>)}
+                      </Select>
+                      <TextInput value={edit.bottleSize} onChange={(e) => setEdit({ ...edit, bottleSize: e.target.value })} className="mt-1 w-40" placeholder="ขนาดขวด" />
+                    </td>
+                    <td className="px-1 py-1"><div className="flex items-center gap-1"><NumInput value={edit.startVol} onChange={(e) => setEdit({ ...edit, startVol: e.target.value })} className="w-20 text-right" />→<NumInput value={edit.finalVol} onChange={(e) => setEdit({ ...edit, finalVol: e.target.value })} className="w-20 text-right" /></div><NumInput value={edit.water} onChange={(e) => setEdit({ ...edit, water: e.target.value })} className="mt-1 w-full text-right" placeholder="น้ำที่เติม" /></td>
+                    <td className="px-1 py-1"><div className="flex items-center gap-1"><NumInput value={edit.startAbv} onChange={(e) => setEdit({ ...edit, startAbv: e.target.value })} className="w-16 text-right" />→<NumInput value={edit.finalAbv} onChange={(e) => setEdit({ ...edit, finalAbv: e.target.value })} className="w-16 text-right" /></div></td>
+                    <td className="px-1 py-1"><TextInput value={edit.note} onChange={(e) => setEdit({ ...edit, note: e.target.value })} /></td>
+                    <td className="whitespace-nowrap px-1 py-1">
+                      <RowBtn tone="green" onClick={saveEdit} disabled={pending || !edit.productName}>บันทึก</RowBtn>
+                      <RowBtn onClick={() => setEditId(null)} className="ml-1">ยกเลิก</RowBtn>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={r.id as number} className="border-b border-slate-100">
+                    <td className="whitespace-nowrap px-2 py-1">{String(r.dilute_date).slice(0, 10)}</td>
+                    <td className="px-2 py-1">{r.product_name as string}</td>
+                    <td className="whitespace-nowrap px-2 py-1 text-right">{(r.start_vol as number) ?? "—"} → {(r.final_vol as number) ?? "—"}</td>
+                    <td className="whitespace-nowrap px-2 py-1 text-right">{(r.start_abv as number) ?? "—"}° → {(r.final_abv as number) ?? "—"}°</td>
+                    <td className="px-2 py-1 text-slate-500">{(r.note as string) ?? ""}</td>
+                    <td className="whitespace-nowrap px-2 py-1">
+                      <button onClick={() => startEdit(r)} disabled={pending} className="text-slate-600 hover:text-slate-800" title="แก้ไข">✏️</button>
+                      <button onClick={() => del(r)} disabled={pending} className="ml-2 text-red-500 hover:text-red-700" title="ลบ">🗑️</button>
+                    </td>
+                  </tr>
+                )
               ))}
             </tbody>
           </table>
-          <p className="mt-1 text-xs text-slate-400">แสดง 30 รายการล่าสุด · ลบแล้วปริมาณคงเหลือรอปรุงปรับให้อัตโนมัติ</p>
+          <p className="mt-1 text-xs text-slate-400">แสดง 30 รายการล่าสุด · แก้/ลบแล้วปริมาณคงเหลือรอปรุงปรับให้อัตโนมัติ</p>
         </div>
       )}
     </Card>

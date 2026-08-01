@@ -112,6 +112,9 @@ function buildQuotationDbPayload(input: QuotationPayload) {
       wht_amount: t.whtAmount,
       remarks: input.remarks ?? "",
       category: input.category,
+      // เงื่อนไขมัดจำ (0021) — เก็บไว้ให้กดแก้ใบเสนอราคาแล้ว prefill กลับมาครบ
+      is_deposit: input.isDepositRequired,
+      deposit_percent: input.isDepositRequired ? input.depositPercent : 0,
     },
     items: input.items.map((i) => ({ name: i.name, qty: i.qty, price: i.price })),
     totals: t,
@@ -169,7 +172,12 @@ export async function processOrderActionAction(quNo: string, action: OrderAction
       : Promise.resolve({ data: null }),
     getOrderItems(quNo),
   ]);
-  const contact = { taxId: (contactRow?.tax_id as string) ?? "", branch: (contactRow?.branch as string) ?? "", address: (contactRow?.address as string) ?? "" };
+  const contact = {
+    taxId: (contactRow?.tax_id as string) ?? "",
+    branch: (contactRow?.branch as string) ?? "",
+    address: (contactRow?.address as string) ?? "",
+    contactId: customerId ?? "", // multi-branch: ลงบัญชีด้วย contact_id ให้ ภพ.30/ภงด. ได้สาขาถูก (D42)
+  };
 
   // generate เลข INV/TAX เฉพาะที่ needed (atomic ผ่าน counters)
   const need = neededSerials(action, order);

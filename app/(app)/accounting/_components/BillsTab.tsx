@@ -2,9 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { searchBillsAction, getBillDetailAction, voidTransactionAction, updateTransactionAction } from "../actions";
-import {
-  entryCalc, itemTotal, itemDiscBahtFromPct, inVatFromExVat, exVatFromInVat, round2,
-} from "@/lib/accounting/calc";
+import { entryCalc, itemTotal } from "@/lib/accounting/calc";
+import { qn, emptyItem, makeItemHandlers, buildItemInputs, useBillAmounts, type BillItem } from "./billItems";
 import type { Bootstrap } from "./types";
 import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, fmt, useSaver } from "./ui";
 
@@ -55,11 +54,13 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
   }
 
   // ปุ่มต่อบิล (ใช้ร่วมทั้งตาราง desktop และการ์ด mobile)
+  // มือถือ: touch target ≥ 44px + เว้น "ยกเลิก" ออกจาก "แก้ไข" (กดพลาดแล้วบิลถูก void)
+  const actBtn = "min-h-[44px] rounded border px-3 sm:min-h-0 sm:py-1";
   const billActions = (r: Bills[number]) => (
     <>
-      <button onClick={() => openDetail(r.tx_id)} className="rounded border border-slate-300 px-3 py-1 text-slate-700 hover:bg-slate-50">ดู</button>
-      {!readOnly && canEdit(r as BillRow) && <button onClick={() => setEditId(r.tx_id)} disabled={pending} className="rounded border border-blue-300 px-3 py-1 text-blue-600 hover:bg-blue-50 disabled:opacity-50">แก้ไข</button>}
-      {!readOnly && r.status !== "ยกเลิก" && <button onClick={() => doVoid(r.tx_id)} disabled={pending} className="rounded border border-red-300 px-3 py-1 text-red-500 hover:bg-red-50 disabled:opacity-50">ยกเลิก</button>}
+      <button onClick={() => openDetail(r.tx_id)} className={`${actBtn} border-slate-300 text-slate-700 hover:bg-slate-50`}>ดู</button>
+      {!readOnly && canEdit(r as BillRow) && <button onClick={() => setEditId(r.tx_id)} disabled={pending} className={`${actBtn} border-blue-300 text-blue-600 hover:bg-blue-50 disabled:opacity-50`}>แก้ไข</button>}
+      {!readOnly && r.status !== "ยกเลิก" && <button onClick={() => doVoid(r.tx_id)} disabled={pending} className={`${actBtn} ml-auto border-red-300 text-red-500 hover:bg-red-50 disabled:opacity-50 sm:ml-2`}>ยกเลิก</button>}
     </>
   );
 
@@ -159,10 +160,7 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
 }
 
 // ── แก้ไขบิลเดี่ยว (โหลด detail → ฟอร์มแก้ไข → fn_edit_transaction) ────────────────
-type Qty = number | "";
-type EItem = { itemName: string; itemCategory: string; itemJob: string; quantity: Qty; exVat: number; inVat: number; discPct: number; discBaht: number };
-const qn = (q: Qty): number => (q === "" ? 0 : q);
-
+// รายการสินค้า/ยอด ใช้ตรรกะชุดเดียวกับฟอร์มบันทึก (billItems.ts) — กันเลขตอนแก้ ≠ ตอนสร้าง
 function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: Bootstrap; onClose: () => void; onSaved: () => void }) {
   const { pending, msg, run, setMsg } = useSaver();
   const [loading, setLoading] = useState(true);
@@ -180,11 +178,12 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
   const [hasVat, setHasVat] = useState(false);
   const [hasWht, setHasWht] = useState(false);
   const [whtRate, setWhtRate] = useState(0);
-  const [items, setItems] = useState<EItem[]>([]);
-  const [manualAmt, setManualAmt] = useState(false);
-  const [ovAfterDisc, setOvAfterDisc] = useState(0);
-  const [ovVat, setOvVat] = useState(0);
-  const [ovWht, setOvWht] = useState(0);
+  const [items, setItems] = useState<BillItem[]>([]);
+  const amt = useBillAmounts({ items, discount, hasVat, hasWht, whtRate });
+  const { calc, manualAmt, effAfterDisc, effVat, effWht, effNet, unlockAmounts, lockAmounts } = amt;
+  // setter ล่าสุดสำหรับใช้ใน effect โหลดบิล (ไม่ต้องใส่ทุกตัวใน deps)
+  const amtRef = useRef(amt);
+  amtRef.current = amt;
 
   useEffect(() => {
     let alive = true;
@@ -205,7 +204,7 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
       setHasVat((Number(tx.vat_amount) || 0) > 0);
       setHasWht((Number(tx.wht_amount) || 0) > 0 || (Number(tx.wht_rate) || 0) > 0);
       setWhtRate(Number(tx.wht_rate) || 0);
-      const loadedItems: EItem[] = (d.items ?? []).map((it) => {
+      const loadedItems: BillItem[] = (d.items ?? []).map((it) => {
         const r = it as Record<string, unknown>;
         return {
           itemName: (r.item_name as string) ?? "", itemCategory: (r.item_category as string) ?? "", itemJob: (r.item_job as string) ?? "",
@@ -216,11 +215,11 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
       setItems(loadedItems);
       // ยอดที่บันทึกไว้ (บิลเจ้าอื่นอาจมีทศนิยมไม่ตรงสูตร) — เก็บไว้เป็นค่าแก้เอง
       const sAfter = Number(tx.amount_after_discount) || 0, sVat = Number(tx.vat_amount) || 0, sWht = Number(tx.wht_amount) || 0;
-      setOvAfterDisc(sAfter); setOvVat(sVat); setOvWht(sWht);
+      amtRef.current.setOvAfterDisc(sAfter); amtRef.current.setOvVat(sVat); amtRef.current.setOvWht(sWht);
       // ถ้ายอดที่บันทึกต่างจากสูตร (ปัดทศนิยม) → เปิดโหมดแก้เองไว้เลย เพื่อคงเลขเดิม
       const computed = entryCalc({ items: loadedItems.map((it) => ({ quantity: qn(it.quantity), exVat: it.exVat, discBaht: it.discBaht })), discount: Number(tx.discount) || 0, hasVat: sVat > 0, hasWht: sWht > 0 || (Number(tx.wht_rate) || 0) > 0, whtRate: Number(tx.wht_rate) || 0 });
       const odd = Math.abs(computed.amountAfterDiscount - sAfter) > 0.005 || Math.abs(computed.vatAmount - sVat) > 0.005 || Math.abs(computed.whtAmount - sWht) > 0.005;
-      setManualAmt(odd);
+      amtRef.current.setManualAmt(odd);
       setLoading(false);
     });
     return () => { alive = false; };
@@ -234,36 +233,13 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
   const effBranchId = multiBranch ? (nameMatches.some((c) => c.contact_id === contactId) ? contactId : nameMatches[0].contact_id) : "";
   const resolvedContactId = nameMatches.length === 1 ? nameMatches[0].contact_id : multiBranch ? effBranchId : (contactId || undefined);
 
-  const calc = useMemo(
-    () => entryCalc({ items: items.map((it) => ({ quantity: qn(it.quantity), exVat: it.exVat, discBaht: it.discBaht })), discount, hasVat, hasWht, whtRate }),
-    [items, discount, hasVat, hasWht, whtRate],
-  );
-  const effAfterDisc = manualAmt ? ovAfterDisc : calc.amountAfterDiscount;
-  const effVat = manualAmt ? ovVat : calc.vatAmount;
-  const effWht = manualAmt ? ovWht : calc.whtAmount;
-  const effNet = round2(effAfterDisc + effVat - effWht);
-  function unlockAmounts() { setOvAfterDisc(effAfterDisc); setOvVat(effVat); setOvWht(effWht); setManualAmt(true); }
-  function lockAmounts() { setManualAmt(false); }
-
-  function setItem(i: number, patch: Partial<EItem>) { setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, ...patch } : it))); }
-  function onExVat(i: number, v: number) { setItem(i, { exVat: v, inVat: inVatFromExVat(v), discBaht: round2(v * qn(items[i].quantity) * items[i].discPct / 100) }); }
-  function onInVat(i: number, v: number) { const ex = exVatFromInVat(v); setItem(i, { inVat: v, exVat: ex, discBaht: round2(ex * qn(items[i].quantity) * items[i].discPct / 100) }); }
-  function onQty(i: number, q: Qty) { setItem(i, { quantity: q, discBaht: itemDiscBahtFromPct(qn(q), items[i].exVat, items[i].discPct) }); }
-  function onDiscPct(i: number, v: number) { setItem(i, { discPct: v, discBaht: itemDiscBahtFromPct(qn(items[i].quantity), items[i].exVat, v) }); }
-  function onDiscBaht(i: number, v: number) { const gross = qn(items[i].quantity) * items[i].exVat; setItem(i, { discBaht: v, discPct: gross > 0 ? round2((v / gross) * 100) : 0 }); }
-  function addItem() { setItems((p) => [...p, { itemName: "", itemCategory: "", itemJob: "", quantity: 1, exVat: 0, inVat: 0, discPct: 0, discBaht: 0 }]); }
+  const { setItem, onExVat, onInVat, onQty, onDiscPct, onDiscBaht, removeItem } = makeItemHandlers(items, setItems);
+  function addItem() { setItems((p) => [...p, emptyItem()]); }
 
   function save() {
     if (!category) { setMsg({ ok: false, text: "เลือกหมวดหมู่" }); return; }
     if (items.every((it) => !it.itemName && !it.exVat)) { setMsg({ ok: false, text: "ต้องมีรายการอย่างน้อย 1 รายการ" }); return; }
-    const itemInputs = items.filter((it) => it.itemName || it.exVat).map((it) => {
-      const q = it.quantity === "" ? 1 : it.quantity;
-      return {
-        item_name: it.itemName, quantity: q, in_vat: it.inVat || inVatFromExVat(it.exVat), ex_vat: it.exVat,
-        total_price: itemTotal(q, it.exVat, it.discBaht), discount_pct: it.discPct, discount_baht: it.discBaht,
-        item_category: it.itemCategory, item_job: it.itemJob,
-      };
-    });
+    const itemInputs = buildItemInputs(items);
     run(() => updateTransactionAction(txId, {
       transaction_date: txDate, type, account_name: accountName, category, contact_name: contactName, contact_id: resolvedContactId, description,
       base_amount: calc.baseAmount, discount, amount_after_discount: effAfterDisc, vat_amount: effVat,
@@ -313,7 +289,7 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
                       <td className="p-1"><NumBox value={it.discPct} blankZero onChange={(v) => onDiscPct(i, v === "" ? 0 : v)} /></td>
                       <td className="p-1"><NumBox value={it.discBaht} blankZero onChange={(v) => onDiscBaht(i, v === "" ? 0 : v)} /></td>
                       <td className="p-1 text-right font-medium">{fmt(itemTotal(qn(it.quantity), it.exVat, it.discBaht))}</td>
-                      <td className="p-1"><button type="button" onClick={() => setItems((p) => p.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700">✕</button></td>
+                      <td className="p-1"><button type="button" onClick={() => removeItem(i)} title="ลบรายการนี้" className="text-red-500 hover:text-red-700">✕</button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -337,9 +313,9 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
             <dl className="mt-1 space-y-1 text-sm">
               {manualAmt ? (
                 <>
-                  <ERowEdit k="ยอดหลังหักส่วนลด" value={ovAfterDisc} onChange={setOvAfterDisc} />
-                  <ERowEdit k="VAT" value={ovVat} onChange={setOvVat} />
-                  <ERowEdit k="หัก ณ ที่จ่าย" value={ovWht} onChange={setOvWht} />
+                  <ERowEdit k="ยอดหลังหักส่วนลด" value={amt.ovAfterDisc} onChange={amt.setOvAfterDisc} />
+                  <ERowEdit k="VAT" value={amt.ovVat} onChange={amt.setOvVat} />
+                  <ERowEdit k="หัก ณ ที่จ่าย" value={amt.ovWht} onChange={amt.setOvWht} />
                 </>
               ) : (
                 <>

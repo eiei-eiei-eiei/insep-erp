@@ -2,15 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  entryCalc,
   itemTotal,
-  itemDiscBahtFromPct,
   inVatFromExVat,
-  exVatFromInVat,
   reverseWht,
   splitInstallments,
   round2,
 } from "@/lib/accounting/calc";
+// ตรรกะแถวรายการ/ยอดบิล ใช้ร่วมกับฟอร์มแก้บิล (BillsTab → EditBillModal)
+import { qn, emptyItem, makeItemHandlers, buildItemInputs, useBillAmounts, type BillItem } from "./billItems";
 import {
   saveTransactionAction,
   saveInstallmentsAction,
@@ -18,28 +17,14 @@ import {
   addContactAction,
   getRecentBillsByContactAction,
   getItemHistoryAction,
-  type TxItemInput,
 } from "../actions";
 import type { Bootstrap, Contact } from "./types";
 import { Card, Field, Msg, NumBox, NumInput, SaveButton, Select, TextInput, cleanTaxId13, fmt, todayISO, useSaver } from "./ui";
 
-type Qty = number | "";
-type Item = {
-  itemName: string;
-  itemCategory: string;
-  itemJob: string;
-  quantity: Qty;
-  exVat: number;
-  inVat: number;
-  discPct: number;
-  discBaht: number;
-};
+type Item = BillItem;
 type Inst = { percent: number; dueDate: string };
 type RecentBill = Awaited<ReturnType<typeof getRecentBillsByContactAction>>[number];
 type ItemHist = Awaited<ReturnType<typeof getItemHistoryAction>>;
-
-const emptyItem = (cat = "", job = ""): Item => ({ itemName: "", itemCategory: cat, itemJob: job, quantity: 1, exVat: 0, inVat: 0, discPct: 0, discBaht: 0 });
-const qn = (q: Qty): number => (q === "" ? 0 : q); // จำนวนสำหรับคำนวณ (ช่องว่าง = 0)
 
 const DRAFT_KEY = "acc-entry-draft-v1";
 type Draft = {
@@ -74,11 +59,13 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   const [insts, setInsts] = useState<Inst[]>([{ percent: 50, dueDate: "" }, { percent: 50, dueDate: "" }]);
   const [showOpt, setShowOpt] = useState(false);
 
-  // แก้ยอดเอง (ยอดหลังหักส่วนลด/VAT/หัก ณ ที่จ่าย) — ล็อกไว้ ต้องกดปลดล็อกก่อนแก้ (กันเผลอ)
-  const [manualAmt, setManualAmt] = useState(false);
-  const [ovAfterDisc, setOvAfterDisc] = useState(0);
-  const [ovVat, setOvVat] = useState(0);
-  const [ovWht, setOvWht] = useState(0);
+  // ยอดของบิล: ปกติคำนวณอัตโนมัติ · โหมด "แก้ยอดเอง" ล็อกไว้ ต้องกดปลดล็อกก่อนแก้ (กันเผลอ)
+  // ตรรกะร่วมกับฟอร์มแก้บิล (billItems.ts) — สูตรจริงยังอยู่ lib/accounting/calc
+  const amt = useBillAmounts({ items, discount, hasVat, hasWht, whtRate });
+  const {
+    calc, manualAmt, setManualAmt, ovAfterDisc, setOvAfterDisc, ovVat, setOvVat, ovWht, setOvWht,
+    effAfterDisc, effVat, effWht, effNet, unlockAmounts, lockAmounts,
+  } = amt;
 
   // คู่ค้า (state ท้องถิ่น — เพิ่มใหม่ได้ทันที)
   const [contacts, setContacts] = useState<Contact[]>(boot.contacts);
@@ -136,6 +123,8 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
       }
     } catch { /* ignore */ }
     setHydrated(true);
+    // กู้ร่างครั้งเดียวตอน mount · setter จาก useBillAmounts เสถียร (useState) ไม่ต้องใส่ deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
     if (!hydrated) return;
@@ -156,17 +145,26 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   const refreshItemHist = useCallback(() => { getItemHistoryAction(effEntity).then(setItemHist); }, [effEntity]);
   useEffect(() => { refreshItemHist(); }, [refreshItemHist]);
 
-  // ── บิลล่าสุดของคู่ค้า (เมื่อชื่อตรงกับคู่ค้าในระบบ) ──
   const norm = (s: string) => s.trim().toLowerCase();
+  // multi-branch (D30): คู่ค้าที่ชื่อตรงกับที่พิมพ์ — ถ้ามีหลายสาขาให้เลือกสาขา → ส่ง contact_id ที่แน่นอน
+  const nameMatches = contacts.filter((c) => norm(c.name) === norm(contactName));
+  const multiBranch = nameMatches.length > 1;
+  const effBranchId = multiBranch
+    ? (nameMatches.some((c) => c.contact_id === branchId) ? branchId : nameMatches[0].contact_id)
+    : "";
+  const resolvedContactId =
+    nameMatches.length === 1 ? nameMatches[0].contact_id : multiBranch ? effBranchId : undefined;
+
+  // ── บิลล่าสุดของคู่ค้า (เมื่อชื่อตรงกับคู่ค้าในระบบ) — ผูกสาขาที่เลือกไว้ ไม่ปนสาขาอื่น ──
   useEffect(() => {
     const name = contactName.trim();
-    if (!name || !contacts.some((c) => norm(c.name) === norm(name))) { setRecentBills([]); setShowRecent(false); return; }
+    if (!name || nameMatches.length === 0) { setRecentBills([]); setShowRecent(false); return; }
     let alive = true;
     const h = setTimeout(() => {
-      getRecentBillsByContactAction(name, 5, effEntity).then((r) => { if (alive) { setRecentBills(r); setShowRecent(r.length > 0); } });
+      getRecentBillsByContactAction(name, 5, effEntity, resolvedContactId).then((r) => { if (alive) { setRecentBills(r); setShowRecent(r.length > 0); } });
     }, 300);
     return () => { alive = false; clearTimeout(h); };
-  }, [contactName, effEntity, contacts]);
+  }, [contactName, effEntity, nameMatches.length, resolvedContactId]);
 
   function applyRecentBill(b: RecentBill) {
     setDescription(b.description);
@@ -192,64 +190,18 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
     if (!t || t === "ทั้งสอง") return true;
     return type === "รายรับ" ? t === "ลูกค้า" : t === "ผู้ขาย";
   });
-  // multi-branch (D30): คู่ค้าที่ชื่อตรงกับที่พิมพ์ — ถ้ามีหลายสาขาให้เลือกสาขา → ส่ง contact_id ที่แน่นอน
-  const nameMatches = contacts.filter((c) => norm(c.name) === norm(contactName));
-  const multiBranch = nameMatches.length > 1;
-  const effBranchId = multiBranch
-    ? (nameMatches.some((c) => c.contact_id === branchId) ? branchId : nameMatches[0].contact_id)
-    : "";
-  const resolvedContactId =
-    nameMatches.length === 1 ? nameMatches[0].contact_id : multiBranch ? effBranchId : undefined;
-
-  const calc = useMemo(
-    () => entryCalc({ items: items.map((it) => ({ quantity: qn(it.quantity), exVat: it.exVat, discBaht: it.discBaht })), discount, hasVat, hasWht, whtRate }),
-    [items, discount, hasVat, hasWht, whtRate],
-  );
-  // ยอดที่ใช้จริง: โหมดปกติ = คำนวณอัตโนมัติ · โหมดแก้เอง = ค่าที่ผู้ใช้กรอก (แก้ทศนิยมให้ตรงเจ้าอื่น)
-  const effAfterDisc = manualAmt ? ovAfterDisc : calc.amountAfterDiscount;
-  const effVat = manualAmt ? ovVat : calc.vatAmount;
-  const effWht = manualAmt ? ovWht : calc.whtAmount;
-  const effNet = round2(effAfterDisc + effVat - effWht);
-  function unlockAmounts() { setOvAfterDisc(effAfterDisc); setOvVat(effVat); setOvWht(effWht); setManualAmt(true); }
-  function lockAmounts() { setManualAmt(false); }
 
   const instRows = useMemo(() => splitInstallments(effAfterDisc, insts, hasVat, hasWht ? whtRate : 0), [effAfterDisc, insts, hasVat, hasWht, whtRate]);
   const instSumPct = insts.reduce((s, i) => s + (Number(i.percent) || 0), 0);
 
-  function setItem(i: number, patch: Partial<Item>) {
-    setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
-  }
-  // แก้ราคา: in↔ex VAT สลับกัน · ส่วนลด %↔บาท
-  function onExVat(i: number, v: number) { setItem(i, { exVat: v, inVat: inVatFromExVat(v), discBaht: round2(v * qn(items[i].quantity) * items[i].discPct / 100) }); }
-  function onInVat(i: number, v: number) { const ex = exVatFromInVat(v); setItem(i, { inVat: v, exVat: ex, discBaht: round2(ex * qn(items[i].quantity) * items[i].discPct / 100) }); }
-  function onQty(i: number, q: Qty) { setItem(i, { quantity: q, discBaht: itemDiscBahtFromPct(qn(q), items[i].exVat, items[i].discPct) }); }
-  function onDiscPct(i: number, v: number) { setItem(i, { discPct: v, discBaht: itemDiscBahtFromPct(qn(items[i].quantity), items[i].exVat, v) }); }
-  function onDiscBaht(i: number, v: number) { const gross = qn(items[i].quantity) * items[i].exVat; setItem(i, { discBaht: v, discPct: gross > 0 ? round2((v / gross) * 100) : 0 }); }
+  // แก้ราคา: in↔ex VAT สลับกัน · ส่วนลด %↔บาท (ตรรกะร่วมกับ EditBillModal — billItems.ts)
+  const { setItem, onExVat, onInVat, onQty, onDiscPct, onDiscBaht, removeItem } = makeItemHandlers(items, setItems);
   function addItem() { const last = items[items.length - 1]; setItems((p) => [...p, emptyItem(last?.itemCategory ?? "", last?.itemJob ?? "")]); }
   // Enter ในช่องตัวเลข (ไม่ใช่ช่องมี datalist) = เพิ่มแถวใหม่ · Ctrl+Enter = บันทึก (จับที่ระดับบน)
   function onItemsKeyDown(e: React.KeyboardEvent) {
     if (e.key !== "Enter" || e.ctrlKey || e.metaKey) return;
     const t = e.target as HTMLInputElement;
     if (t.tagName === "INPUT" && !t.getAttribute("list")) { e.preventDefault(); addItem(); }
-  }
-
-  function buildItemInputs(): TxItemInput[] {
-    return items
-      .filter((it) => it.itemName || it.exVat)
-      .map((it) => {
-        const q = it.quantity === "" ? 1 : it.quantity; // ช่องว่าง = 1 ตอนบันทึก
-        return {
-          item_name: it.itemName,
-          quantity: q,
-          in_vat: it.inVat || inVatFromExVat(it.exVat),
-          ex_vat: it.exVat,
-          total_price: itemTotal(q, it.exVat, it.discBaht),
-          discount_pct: it.discPct,
-          discount_baht: it.discBaht,
-          item_category: it.itemCategory,
-          item_job: it.itemJob,
-        };
-      });
   }
 
   type ErrField = "entity" | "category" | "account" | "items";
@@ -270,7 +222,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   function doSave() {
     const err = validate();
     if (err) { setMsg({ ok: false, text: err.text }); flagError(err.field); return; }
-    const itemInputs = buildItemInputs();
+    const itemInputs = buildItemInputs(items);
 
     if (isInst) {
       if (Math.abs(instSumPct - 100) > 0.01) { setMsg({ ok: false, text: `ผลรวมงวด = ${instSumPct}% (ต้อง 100%)` }); return; }
@@ -454,7 +406,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
                   {showOpt && <td className="p-1"><NumBox value={it.discPct} blankZero onChange={(v) => onDiscPct(i, v === "" ? 0 : v)} /></td>}
                   {showOpt && <td className="p-1"><NumBox value={it.discBaht} blankZero onChange={(v) => onDiscBaht(i, v === "" ? 0 : v)} /></td>}
                   <td className="p-1 text-right font-medium">{fmt(itemTotal(qn(it.quantity), it.exVat, it.discBaht))}</td>
-                  <td className="p-1"><button type="button" onClick={() => setItems((p) => p.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700">✕</button></td>
+                  <td className="p-1"><button type="button" onClick={() => removeItem(i)} title="ลบรายการนี้" className="text-red-500 hover:text-red-700">✕</button></td>
                 </tr>
               ))}
             </tbody>
@@ -476,7 +428,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
                     <TextInput list="hist-item-names" value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })} placeholder="ชื่อสินค้า/บริการ" />
                   )}
                 </div>
-                <button type="button" onClick={() => setItems((p) => p.filter((_, idx) => idx !== i))} className="px-2 py-1 text-red-500 hover:text-red-700">✕</button>
+                <button type="button" onClick={() => removeItem(i)} title="ลบรายการนี้" className="px-2 py-1 text-red-500 hover:text-red-700">✕</button>
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <label className="block"><span className="mb-0.5 block text-slate-500">จำนวน</span><NumBox value={it.quantity} onChange={(v) => onQty(i, v)} /></label>

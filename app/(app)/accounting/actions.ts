@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { nextWhtDocNo } from "@/lib/accounting/wht";
 import { previousVat, type InstallmentRow, type TaxReport, type TaxSummaryRow } from "@/lib/accounting/calc";
 import { mapDbError } from "@/lib/shared/dbError";
+import { bangkokDayStartUTC } from "@/lib/shared/datetime";
 import {
   getDashboard,
   getApAr,
@@ -19,6 +20,7 @@ import {
   getTaxReportBundle,
   getRecentBillsByContact,
   getItemHistory,
+  getReportRuns,
 } from "./data";
 
 export type SaveResult = { ok: boolean; error?: string; data?: unknown };
@@ -48,8 +50,8 @@ export async function searchBillsAction(params: Parameters<typeof searchBills>[0
 export async function getBillDetailAction(txId: string) {
   return getBillDetail(txId);
 }
-export async function getRecentBillsByContactAction(contactName: string, limit?: number, entityId?: string) {
-  return getRecentBillsByContact(contactName, limit, entityId);
+export async function getRecentBillsByContactAction(contactName: string, limit?: number, entityId?: string, contactId?: string) {
+  return getRecentBillsByContact(contactName, limit, entityId, contactId);
 }
 export async function getItemHistoryAction(entityId?: string) {
   return getItemHistory(entityId);
@@ -248,6 +250,7 @@ export async function issueWhtAction(input: {
   docNo: string;
   txIds: string[];
   contactName: string;
+  contactId?: string; // สาขาที่แน่นอน (multi-branch D30) — เก็บไว้ให้พิมพ์ซ้ำได้ที่อยู่/เลขภาษีถูกสาขา
   address?: string;
   whtAmount: number;
   pndType: string;
@@ -272,6 +275,7 @@ export async function issueWhtAction(input: {
     p_base_amount: input.baseAmount,
     p_payment_date: input.paymentDate ?? null,
     p_entity_id: input.entityId,
+    p_contact_id: input.contactId || null,
   });
   if (error) return fail(mapDbError(error));
   const res = data as { ok: boolean; error?: string; doc_no?: string };
@@ -473,6 +477,11 @@ export async function deleteContactAction(contactId: string): Promise<SaveResult
   return { ok: true };
 }
 
+/** checklist "เดือนนี้สร้างรายงานครบยัง" (FLOW sec 6) */
+export async function getReportRunsAction(month: string, entityId: string) {
+  return getReportRuns(month, entityId);
+}
+
 export async function markReportRunAction(reportKey: string, month: string, entityId: string): Promise<SaveResult> {
   const supabase = await db();
   const { error } = await supabase.from("report_runs").insert({ report_key: reportKey, month, entity_id: entityId });
@@ -497,9 +506,9 @@ export async function scanReceiptAction(base64: string, mimeType: string): Promi
     return fail("ยังไม่ได้ตั้งค่า ANTHROPIC_API_KEY");
   }
 
-  // rate limit: นับ scan สำเร็จของ user วันนี้
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
+  // rate limit: นับ scan สำเร็จของ user "วันนี้ตามเวลาไทย"
+  // (server เป็น UTC บน Vercel — ถ้าใช้ setHours(0,0,0,0) โควตาจะรีเซ็ต 7 โมงเช้าไทย ไม่ใช่เที่ยงคืน)
+  const todayStart = bangkokDayStartUTC();
   const { count } = await supabase
     .from("scan_log")
     .select("id", { count: "exact", head: true })

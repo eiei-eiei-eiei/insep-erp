@@ -250,3 +250,35 @@ describe("cheque details ไปช่องถูก", () => {
     expect(r.update.checkDetail1).toBeUndefined();
   });
 });
+
+describe("multi-branch: contactId ลงบัญชีด้วย (ภพ.30/ภงด. ต้องได้สาขาถูก — D42)", () => {
+  it("ส่ง contactId มา → อยู่ใน revenue payload (ไปลง transactions.contact_id)", () => {
+    const r = processOrder(
+      baseOrder(),
+      "DEPOSIT_AND_SEND",
+      { amount: 535, method: "โอนเงิน", docDate: "2026-07-21", creditDays: 30 },
+      items,
+      { invNo: "INV260721-001", taxNo1: "TAX260721-001" },
+      { ...contact, contactId: "C-0123" },
+      config,
+    );
+    expect(r.revenue!.contactId).toBe("C-0123");
+    // ค่าอื่นไม่เปลี่ยน (เป็นแค่ฟิลด์เพิ่ม ไม่แตะสูตรเงิน)
+    expect(r.revenue!.netAmount).toBe(535);
+    expect(r.revenue!.taxInvoiceNo).toBe("TAX260721-001");
+  });
+
+  it("ไม่มี contactId (ออเดอร์เก่า) → คืนค่าว่าง แล้ว fallback ชื่อเหมือนเดิม", () => {
+    const r = processOrder(
+      baseOrder(),
+      "DEPOSIT_AND_SEND",
+      { amount: 535, method: "โอนเงิน", docDate: "2026-07-21", creditDays: 30 },
+      items,
+      { invNo: "I", taxNo1: "T" },
+      contact,
+      config,
+    );
+    expect(r.revenue!.contactId).toBe("");
+    expect(r.revenue!.contactName).toBe("บริษัท เทส จำกัด");
+  });
+});

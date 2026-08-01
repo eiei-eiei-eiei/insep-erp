@@ -453,6 +453,7 @@ export type DashPending = {
   displayDate: string; // dd/mm/yy (พ.ศ.)
   transactionDateISO: string; // yyyy-MM-dd (วันออกหนังสือ 50ทวิ)
   contactName: string;
+  contactId: string; // สาขาที่แน่นอน (multi-branch D30) — "" = ข้อมูลเก่า fallback ชื่อ
   category: string;
   amount: number;
   whtAmount: number;
@@ -508,6 +509,7 @@ export function dashboardData(
           displayDate: formatDateBE(filterDate, "/"),
           transactionDateISO: String(tx.transaction_date ?? "").substring(0, 10),
           contactName: tx.contact_name ?? "",
+          contactId: tx.contact_id ?? "",
           category: tx.category ?? "",
           amount,
           whtAmount,

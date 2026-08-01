@@ -14,7 +14,8 @@ body {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Thai",
+  /* --font-thai = Noto Sans Thai ที่ next/font self-host ตอน build (ดู app/layout.tsx) */
+  font-family: var(--font-thai), system-ui, -apple-system, "Segoe UI", Roboto,
     sans-serif;
 }
 

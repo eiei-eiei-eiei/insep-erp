@@ -82,7 +82,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
       customerAddress: o.customerAddress,
       customerTaxId: o.customerTaxId,
       customerBranch: o.customerBranch,
-      creditTerm: 0,
+      creditTerm: boot.customers.find((c) => c.id === o.customerId)?.creditTerm ?? 0,
       items,
       subTotal: o.subTotal,
       discount: estDiscount > 0 ? estDiscount : 0,
@@ -93,7 +93,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
       whtAmount: o.whtAmount,
       netPayable: o.netPayable,
       remarks: o.remarks,
-      saleName: "",
+      saleName: o.saleName,
     }, w);
   }
 
@@ -232,7 +232,11 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
         <PaymentDialog
           order={dialog.order}
           action={dialog.action}
-          creditDays={boot.customers.find((c) => c.name === dialog.order.customerName)?.creditTerm ?? 0}
+          /* หาด้วย customerId — ลูกค้าหลายสาขาชื่อเดียวกันมีเครดิตเทอมคนละค่า (dueDate ผิด) · fallback ชื่อสำหรับออเดอร์เก่าที่ไม่มี id */
+          creditDays={
+            (boot.customers.find((c) => c.id === dialog.order.customerId) ??
+              boot.customers.find((c) => c.name === dialog.order.customerName))?.creditTerm ?? 0
+          }
           onClose={() => setDialog(null)}
           onDone={(text) => {
             setDialog(null);
@@ -255,8 +259,9 @@ const COLORS: Record<string, string> = {
   red: "bg-red-500 hover:bg-red-600",
 };
 function ActBtn({ color, onClick, children }: { color: string; onClick: () => void; children: React.ReactNode }) {
+  // มือถือ: touch target ≥ 44px (หน้านี้ใช้นอกสถานที่จริง — ไปส่งของ/เก็บเงิน) · desktop คงขนาดเดิม
   return (
-    <button onClick={onClick} className={`whitespace-nowrap rounded px-2.5 py-1.5 text-xs font-medium text-white shadow-sm transition ${COLORS[color]}`}>
+    <button onClick={onClick} className={`min-h-[44px] whitespace-nowrap rounded px-3 text-xs font-medium text-white shadow-sm transition sm:min-h-0 sm:px-2.5 sm:py-1.5 ${COLORS[color]}`}>
       {children}
     </button>
   );

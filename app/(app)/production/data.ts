@@ -99,7 +99,7 @@ export async function getRecentDilutes() {
   const supabase = await createClient();
   const { data } = await supabase
     .from("log_dilute")
-    .select("id, dilute_date, product_name, bottle_size, start_vol, start_abv, final_vol, final_abv, note")
+    .select("id, dilute_date, product_name, bottle_size, start_vol, start_abv, water, final_vol, final_abv, note")
     .order("dilute_date", { ascending: false })
     .order("id", { ascending: false })
     .limit(30);
@@ -141,6 +141,109 @@ export async function getRecentProducts() {
     .order("id", { ascending: false })
     .limit(30);
   return data ?? [];
+}
+
+/**
+ * กระดาน batch (FLOW_REDESIGN sec 3) — 1 การ์ด = 1 batch พร้อมสถานะว่าอยู่ขั้นไหน
+ * อ่านอย่างเดียว ไม่คำนวณเงิน/ดีกรีใหม่ — แค่รวบ log ที่มีอยู่มาบอก "ทำอะไรต่อ"
+ */
+export type BatchCard = {
+  batch: string;
+  productName: string;
+  fermentDate: string;
+  tanks: number;
+  fermVol: number;               // วัตถุดิบหลักรวม (ฐานคิดส่า P4) — แสดงเฉย ๆ
+  monitorCount: number;
+  lastMeasure: { date: string; ph: number | null; brix: number | null; temp: number | null } | null;
+  pots: number;                  // จำนวนหม้อที่เริ่มกลั่นแล้ว
+  activePot: number | null;      // หม้อที่ยังไม่ "จบหม้อ" (ค้างอยู่)
+  closed: { date: string; vol: number; abv: number } | null; // ปิด batch แล้ว (log_distill)
+  stage: "ลงหมัก" | "ติดตามหมัก" | "กำลังกลั่น" | "ปิด batch แล้ว";
+};
+
+export async function getBatchBoard(): Promise<BatchCard[]> {
+  const supabase = await createClient();
+  const { data: fermRows } = await supabase
+    .from("log_ferment")
+    .select("batch, ferment_date, product_name, container_qty, material_amounts")
+    .order("ferment_date", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(400);
+
+  // รวมหลายถัง/หลายแถวเป็น batch เดียว (เรียงใหม่→เก่าตามวันลงหมัก)
+  const byBatch = new Map<string, BatchCard>();
+  for (const r of fermRows ?? []) {
+    const b = r.batch as string;
+    const mainAmt = parseFloat(String(r.material_amounts ?? "").split(",")[0]) || 0; // ★ค่าแรก = วัตถุดิบหลัก
+    const e = byBatch.get(b);
+    if (!e) {
+      byBatch.set(b, {
+        batch: b,
+        productName: (r.product_name as string) ?? "",
+        fermentDate: (r.ferment_date as string) ?? "",
+        tanks: Number(r.container_qty) || 0,
+        fermVol: mainAmt,
+        monitorCount: 0, lastMeasure: null, pots: 0, activePot: null, closed: null,
+        stage: "ลงหมัก",
+      });
+    } else {
+      e.tanks += Number(r.container_qty) || 0;
+      e.fermVol += mainAmt;
+      if ((r.ferment_date as string) < e.fermentDate) e.fermentDate = r.ferment_date as string;
+    }
+  }
+  const batches = [...byBatch.keys()];
+  if (batches.length === 0) return [];
+
+  const [monitors, runs, distills] = await Promise.all([
+    supabase.from("log_ferment_monitor").select("batch, measure_date, measure_time, ph, brix, temp").in("batch", batches),
+    supabase.from("log_distill_run").select("batch, pot_no, phase").in("batch", batches),
+    supabase.from("log_distill").select("batch, distill_date, vol, abv").in("batch", batches),
+  ]);
+
+  const lastKey = new Map<string, string>(); // batch → คีย์เรียง "วันที่ เวลา" ของค่าวัดล่าสุด
+  for (const m of monitors.data ?? []) {
+    const c = byBatch.get(m.batch as string);
+    if (!c) continue;
+    c.monitorCount++;
+    const key = `${String(m.measure_date).slice(0, 10)} ${String(m.measure_time ?? "")}`;
+    if (!c.lastMeasure || key >= (lastKey.get(c.batch) ?? "")) {
+      lastKey.set(c.batch, key);
+      c.lastMeasure = {
+        date: `${String(m.measure_date).slice(0, 10)}${m.measure_time ? " " + String(m.measure_time).slice(0, 5) : ""}`,
+        ph: m.ph === null ? null : Number(m.ph),
+        brix: m.brix === null ? null : Number(m.brix),
+        temp: m.temp === null ? null : Number(m.temp),
+      };
+    }
+  }
+  // หม้อที่เริ่มแล้ว vs หม้อที่ยังไม่จบ (ตรงกับ resume ของ DistillTab, D39)
+  const potPhases = new Map<string, Map<number, boolean>>(); // batch → potNo → มีแถว 'จบหม้อ'
+  for (const r of runs.data ?? []) {
+    const b = r.batch as string;
+    const pot = Number(r.pot_no) || 0;
+    const m = potPhases.get(b) ?? new Map<number, boolean>();
+    m.set(pot, (m.get(pot) ?? false) || r.phase === "จบหม้อ");
+    potPhases.set(b, m);
+  }
+  for (const [b, pots] of potPhases) {
+    const c = byBatch.get(b);
+    if (!c) continue;
+    c.pots = pots.size;
+    const open = [...pots.entries()].filter(([, done]) => !done).map(([p]) => p);
+    c.activePot = open.length > 0 ? Math.max(...open) : null;
+  }
+  for (const d of distills.data ?? []) {
+    const c = byBatch.get(d.batch as string);
+    if (!c) continue;
+    c.closed = { date: String(d.distill_date).slice(0, 10), vol: Number(d.vol) || 0, abv: Number(d.abv) || 0 };
+  }
+
+  for (const c of byBatch.values()) {
+    c.stage = c.closed ? "ปิด batch แล้ว" : c.pots > 0 ? "กำลังกลั่น" : c.monitorCount > 0 ? "ติดตามหมัก" : "ลงหมัก";
+    c.fermVol = Math.round(c.fermVol * 100) / 100;
+  }
+  return [...byBatch.values()].sort((a, b) => (a.fermentDate < b.fermentDate ? 1 : a.fermentDate > b.fermentDate ? -1 : b.batch.localeCompare(a.batch)));
 }
 
 /** รายชื่อ batch สำหรับหน้าประวัติ: หมัก (มีค่าวัด) / กลั่น (มี run) + startDate/ชื่อสุรา */

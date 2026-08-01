@@ -134,6 +134,21 @@ _(ข้ามตามที่ผู้ใช้ตัดสินใจ — �
 ### แอปผลิต — ลบ batch หมัก (D41)
 - [ ] **`npm run db:push` apply migration `0020_delete_ferment.sql`** (fn_delete_ferment_batch) — ต้องรันก่อนปุ่มลบ batch หมักในแท็บลงหมักจะทำงาน (ไม่งั้น error `function ... does not exist`)
 
+### ปิดงานรีวิว D42 — multi-branch + กระดาน batch + PWA (2026-08-01)
+- [ ] **`npm run db:push` apply migration `0021_multibranch_and_quotation_terms.sql`** — **ต้องรันก่อนใช้งานต่อ** ไม่งั้น:
+  - กดออก 50ทวิ จะ error (`fn_issue_wht` เปลี่ยน signature — รับ `p_contact_id` เพิ่ม)
+  - สร้าง/แก้ใบเสนอราคาจะ error (คอลัมน์ `is_deposit`/`deposit_percent` ยังไม่มี)
+  - `getOrders` จะ error (select คอลัมน์ใหม่)
+  - migration นี้ทำ **backfill อัตโนมัติ** ให้ด้วย: เติม `contact_id` ให้รายรับขายเดิม (จาก `sales_orders.customer_id`)
+    และให้ใบ 50ทวิ เก่าที่ชื่อคู่ค้าตรงกับ contact **รายเดียว** (ชื่อซ้ำหลายสาขา = ปล่อยว่าง ไม่เดา)
+- [ ] **ตรวจใบ 50ทวิ เก่าที่ backfill ไม่ได้** (คู่ค้าชื่อซ้ำหลายสาขา): ถ้ามีและต้องพิมพ์ซ้ำ ให้ใส่ `contact_id` เองใน
+      Supabase → ตาราง `wht_certificates` (คอลัมน์ `contact_id`) ให้ตรงสาขาที่ออกใบจริง
+      · ตรวจด้วย: `select doc_no, contact_name from wht_certificates where contact_id is null;`
+- [ ] **ตรวจรายรับขายเดิมที่ยังไม่มี contact_id** (ถ้ามี): `select tx_id, contact_name from transactions where source='sales' and contact_id is null;`
+      — ถ้าคู่ค้ารายนั้นมีสาขาเดียวก็ไม่มีผล (fallback ชื่อได้ถูกอยู่แล้ว) · มีหลายสาขาเมื่อไหร่ค่อยเติม
+- ℹ️ **ไม่ต้องตั้งค่าเพิ่ม**: กระดาน batch · checklist รายงาน · ฟอนต์ไทย (self-host ตอน build) · PWA (ติดตั้งลงโฮมสกรีนได้เลย
+      — บนมือถือเปิดเว็บแล้วเลือก "เพิ่มไปยังหน้าจอโฮม") · error page ภาษาไทย
+
 ### ปรับ UX แอปบัญชี (D35 — หน้าบันทึก/แดชบอร์ด/ค้นบิล)
 - [x] **apply migration `0019_edit_transaction.sql`** ด้วย `npm run db:push` (2026-07-29 — CLI ใช้ได้แล้ว ไม่ต้องผ่าน dashboard)
       — สร้างฟังก์ชัน `fn_edit_transaction` · จำเป็นสำหรับปุ่ม "แก้ไข" ในหน้าค้นบิล

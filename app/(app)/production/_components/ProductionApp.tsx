@@ -11,8 +11,10 @@ import { ProductTab } from "./ProductTab";
 import { StockTab } from "./StockTab";
 import { MasterTab } from "./MasterTab";
 import { HistoryTab } from "./HistoryTab";
+import { BoardTab } from "./BoardTab";
 
 const TABS = [
+  "กระดาน batch",
   "วัตถุดิบ",
   "ลงหมัก",
   "ติดตามหมัก",
@@ -38,12 +40,19 @@ export function ProductionApp({
   pending: PendingBatch[];
   stock: StockRow[];
 }) {
-  const [tab, setTab] = useState<Tab>("วัตถุดิบ");
+  const [tab, setTab] = useState<Tab>("กระดาน batch");
 
   // mount แท็บครั้งเดียวแล้วคงไว้ (ซ่อนด้วย CSS) → สลับแท็บลื่น + คงสถานะ (เช่น หม้อกลั่นที่เลือก/ค่าที่กรอกค้าง)
-  const [visited, setVisited] = useState<Set<Tab>>(() => new Set<Tab>(["วัตถุดิบ"]));
+  const [visited, setVisited] = useState<Set<Tab>>(() => new Set<Tab>(["กระดาน batch"]));
   useEffect(() => { setVisited((v) => (v.has(tab) ? v : new Set(v).add(tab))); }, [tab]);
   const show = (t: Tab) => (tab === t ? "" : "hidden");
+
+  // batch ที่เลือก = state ร่วมของทั้ง workspace → เลือกครั้งเดียวใช้ได้ทุกแท็บ (APP_REVIEW A6)
+  const [batch, setBatch] = useState("");
+  function openBatch(b: string, target: string) {
+    setBatch(b);
+    if ((TABS as readonly string[]).includes(target)) setTab(target as Tab);
+  }
 
   return (
     <div>
@@ -68,12 +77,15 @@ export function ProductionApp({
         ))}
       </div>
 
+      {visited.has("กระดาน batch") && (
+        <div className={show("กระดาน batch")}><BoardTab active={tab === "กระดาน batch"} onOpen={openBatch} /></div>
+      )}
       {visited.has("วัตถุดิบ") && <div className={show("วัตถุดิบ")}><MaterialTab materials={materials} /></div>}
       {visited.has("ลงหมัก") && (
         <div className={show("ลงหมัก")}><FermentTab materials={materials} containers={containers} products={products} /></div>
       )}
-      {visited.has("ติดตามหมัก") && <div className={show("ติดตามหมัก")}><MonitorTab pending={pending} /></div>}
-      {visited.has("กลั่น") && <div className={show("กลั่น")}><DistillTab pending={pending} /></div>}
+      {visited.has("ติดตามหมัก") && <div className={show("ติดตามหมัก")}><MonitorTab pending={pending} batch={batch} onBatchChange={setBatch} /></div>}
+      {visited.has("กลั่น") && <div className={show("กลั่น")}><DistillTab pending={pending} batch={batch} onBatchChange={setBatch} /></div>}
       {visited.has("ปรุง/ปรับดีกรี") && <div className={show("ปรุง/ปรับดีกรี")}><DiluteTab products={products} /></div>}
       {visited.has("บรรจุ/จ่าย") && <div className={show("บรรจุ/จ่าย")}><ProductTab products={products} /></div>}
       {visited.has("ประวัติ/เทียบ") && <div className={show("ประวัติ/เทียบ")}><HistoryTab products={products} /></div>}

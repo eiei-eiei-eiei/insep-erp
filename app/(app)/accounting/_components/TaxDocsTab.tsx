@@ -19,9 +19,16 @@ import {
   updateWhtAction,
   listTaxSummariesAction,
   deleteTaxSummaryAction,
+  getReportRunsAction,
 } from "../actions";
 import { getPdfAssetUrl } from "../../reports/actions";
+import { ReportChecklist } from "../../_components/ReportChecklist";
 import { Field, Select, TextInput, fmt, todayISO, useSaver } from "./ui";
+
+const TAX_CHECKLIST = [
+  { key: "phor_por_30", label: "ภพ.30 — รายงานภาษีซื้อ-ขาย" },
+  { key: "pnd_3_53", label: "ภงด.3 / ภงด.53 — หัก ณ ที่จ่าย" },
+];
 
 const SEQ = [
   { v: 1, label: "1. เงินเดือน/ค่าจ้าง ม.40(1)" },
@@ -48,6 +55,7 @@ export function TaxDocsTab({ period, entityId, active }: { period: string; entit
   const [fwd, setFwd] = useState<number | null>(null);
   const [wht, setWht] = useState<WhtBundle | null>(null);
   const [summaries, setSummaries] = useState<Summaries>([]);
+  const [runs, setRuns] = useState<Record<string, string>>({});
   const assetCache = useRef<Record<string, Uint8Array>>({});
   const realEntity = entityId === "ALL" ? "" : entityId;
 
@@ -67,14 +75,16 @@ export function TaxDocsTab({ period, entityId, active }: { period: string; entit
     getWhtBundleAction(period, realEntity).then(setWht);
     getForwardedVatAction(period, realEntity).then(setFwd);
     listTaxSummariesAction(realEntity).then(setSummaries);
+    getReportRunsAction(period, realEntity).then(setRuns);
   }
   useEffect(() => {
     if (!active) return;
-    if (!realEntity) { setWht(null); setFwd(null); setSummaries([]); return; }
+    if (!realEntity) { setWht(null); setFwd(null); setSummaries([]); setRuns({}); return; }
     let alive = true;
     getWhtBundleAction(period, realEntity).then((d) => { if (alive) setWht(d); });
     getForwardedVatAction(period, realEntity).then((d) => { if (alive) setFwd(d); });
     listTaxSummariesAction(realEntity).then((d) => { if (alive) setSummaries(d); });
+    getReportRunsAction(period, realEntity).then((d) => { if (alive) setRuns(d); });
     return () => { alive = false; };
   }, [period, realEntity, active]);
 
@@ -124,7 +134,8 @@ export function TaxDocsTab({ period, entityId, active }: { period: string; entit
     const w = openBlankTab(); // เปิดก่อน await
     setBusy(true); setMsg(null);
     try {
-      const ctx = await getWht50ContextAction(h.entityId || realEntity, h.contactName);
+      // ระบุสาขาด้วย contact_id ที่เก็บไว้ตอนออกใบ (ใบเก่าไม่มี → fallback ชื่อเหมือนเดิม, D30/D42)
+      const ctx = await getWht50ContextAction(h.entityId || realEntity, h.contactName, h.contactId || undefined);
       const payDate = (await getTxPaymentDateAction(h.txIds[0])) ?? h.issueDate;
       const print = buildWht50PrintData({ docNo: h.docNo, whtAmount: h.whtAmount, transactionDate: h.issueDate, paymentDate: payDate });
       await buildAndOpenWht({
@@ -142,6 +153,8 @@ export function TaxDocsTab({ period, entityId, active }: { period: string; entit
   return (
     <div className="space-y-4">
       {msg && <div className={`rounded-lg px-3 py-2 text-sm ${msg.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>{msg.text}</div>}
+
+      <ReportChecklist month={period} items={TAX_CHECKLIST} runs={runs} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className={box}>
@@ -232,10 +245,10 @@ function IssueRow({ p, entityId, onIssued, onBuild, setMsg }: {
     if (!docNo.trim()) { setMsg({ ok: false, text: "กรอกเลขที่หนังสือ" }); return; }
     const w = window.open("", "_blank"); // เปิดก่อน await กัน popup blocker (ถ้าบันทึกไม่ผ่าน = แท็บว่าง ปิดเองได้)
     run(
-      () => issueWhtAction({ docNo: docNo.trim(), txIds: [p.transactionId], contactName: p.contactName, whtAmount: p.whtAmount, pndType, incomeType: otherDesc, incomeSeq: seq, baseAmount: p.amount, issueDate, paymentDate, entityId }),
+      () => issueWhtAction({ docNo: docNo.trim(), txIds: [p.transactionId], contactName: p.contactName, contactId: p.contactId, whtAmount: p.whtAmount, pndType, incomeType: otherDesc, incomeSeq: seq, baseAmount: p.amount, issueDate, paymentDate, entityId }),
       "ออกหนังสือแล้ว",
       async () => {
-        const ctx = await getWht50ContextAction(entityId, p.contactName);
+        const ctx = await getWht50ContextAction(entityId, p.contactName, p.contactId || undefined);
         const print = buildWht50PrintData({ docNo: docNo.trim(), whtAmount: p.whtAmount, transactionDate: issueDate, paymentDate });
         await onBuild({ docNo: docNo.trim(), entInfo: ctx.entInfo, payeeName: ctx.payee.name, payeeAddress: ctx.payee.address, payeeTaxId: ctx.payee.taxId, pndType, seq, otherDesc, amount: p.amount, whtAmount: p.whtAmount, dateText: print.dateText, bahtText: print.bahtText, issueDateISO: issueDate }, w);
         setMsg({ ok: true, text: `ออก 50ทวิ เลขที่ ${docNo.trim()} แล้ว` });
