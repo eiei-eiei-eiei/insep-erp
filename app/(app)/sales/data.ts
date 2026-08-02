@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { formatThaiDate, type OrderState } from "@/lib/sales/orders";
+import { companyFromEntity, pickDocEntity, type EntityDocRow } from "@/lib/sales/company";
 import { fetchAllRows } from "@/lib/shared/paginate";
 
 async function db() {
@@ -29,10 +30,12 @@ export type CustomerRow = {
   isExport: boolean;
 };
 
-/** ข้อมูลตั้งต้นหน้าขาย: role + ลูกค้า (contacts) + เมนู (+ live stock) */
+const ENTITY_DOC_COLS = "entity_id, name, name_eng, tax_id, branch, address, phone, bank_line";
+
+/** ข้อมูลตั้งต้นหน้าขาย: role + ลูกค้า (contacts) + เมนู (+ live stock) + กิจการที่ออกเอกสาร */
 export async function getSalesBootstrap() {
   const supabase = await db();
-  const [{ data: user }, contacts, menu, stockP, whStock] = await Promise.all([
+  const [{ data: user }, contacts, menu, stockP, whStock, entities, docSettings] = await Promise.all([
     supabase.auth.getUser(),
     supabase
       .from("contacts")
@@ -41,6 +44,8 @@ export async function getSalesBootstrap() {
     supabase.from("sale_menu").select("menu_name, price, category, product_id, multiplier").order("menu_name"),
     supabase.from("stock_product").select("product_id, balance"),
     supabase.from("warehouse_stock").select("item_code, qty"),
+    supabase.from("entities").select(ENTITY_DOC_COLS).order("entity_id"),
+    supabase.from("app_settings").select("kind, value").in("kind", ["sales_doc_entity", "sales_revenue_entity"]),
   ]);
 
   let role = "viewer";
@@ -85,7 +90,13 @@ export async function getSalesBootstrap() {
     isExport: Boolean(c.is_export),
   }));
 
-  return { role, customers, menu: menuList };
+  // หัวเอกสารการค้า = ข้อมูลกิจการจาก DB (D44) — ไม่ hardcode แล้ว
+  const st = docSettings.data ?? [];
+  const wantedEntity =
+    st.find((r) => r.kind === "sales_doc_entity")?.value ?? st.find((r) => r.kind === "sales_revenue_entity")?.value ?? "";
+  const company = companyFromEntity(pickDocEntity((entities.data ?? []) as EntityDocRow[], wantedEntity));
+
+  return { role, customers, menu: menuList, company };
 }
 
 export type OrderRow = {

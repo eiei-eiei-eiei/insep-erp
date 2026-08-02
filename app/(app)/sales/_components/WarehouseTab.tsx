@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import type { WarehouseOrder, StockItem } from "./types";
 import { Badge, Card, Msg, NumInput, Select, TextInput, fmt, useSaver } from "./ui";
 import { getPendingWarehouseAction, getWarehouseStockAction, confirmFulfillmentAction, manualStockMoveAction } from "../actions";
-import { printSalesDocs, type OrderLike } from "./print";
+import { printSalesDocs, type CompanyInfo, type OrderLike } from "./print";
 
-export function WarehouseTab({ role, active }: { role: string; active: boolean }) {
+export function WarehouseTab({ role, company, active }: { role: string; company: CompanyInfo; active: boolean }) {
   const [sub, setSub] = useState<"orders" | "stock">("orders");
   const canWrite = role === "main" || role === "warehouse";
   return (
@@ -19,12 +19,12 @@ export function WarehouseTab({ role, active }: { role: string; active: boolean }
           สต็อกรวม
         </button>
       </div>
-      {sub === "orders" ? <PendingOrders canWrite={canWrite} active={active} /> : <StockPanel canWrite={canWrite} active={active} />}
+      {sub === "orders" ? <PendingOrders canWrite={canWrite} company={company} active={active} /> : <StockPanel canWrite={canWrite} active={active} />}
     </div>
   );
 }
 
-function PendingOrders({ canWrite, active }: { canWrite: boolean; active: boolean }) {
+function PendingOrders({ canWrite, company, active }: { canWrite: boolean; company: CompanyInfo; active: boolean }) {
   const [orders, setOrders] = useState<WarehouseOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const { msg, setMsg } = useSaver();
@@ -58,7 +58,7 @@ function PendingOrders({ canWrite, active }: { canWrite: boolean; active: boolea
 
   function printDoc(o: WarehouseOrder) {
     const docTypes = o.docToPrint ? o.docToPrint.split(",") : ["invoice"];
-    printSalesDocs(o as OrderLike, o.items, docTypes);
+    printSalesDocs(company, o as OrderLike, o.items, docTypes);
   }
 
   if (loading) return <div className="py-10 text-center text-faint">กำลังโหลด…</div>;

@@ -423,6 +423,50 @@ export async function saveBrandingAction(input: {
   return { ok: true };
 }
 
+/**
+ * ข้อมูลผู้ขายบนเอกสารการค้า (D44) — แก้แถว `entities` + จำว่ากิจการไหนเป็นคนออกเอกสาร
+ * ค่าชุดนี้ขึ้นหัวใบเสนอราคา/ใบแจ้งหนี้/ใบกำกับภาษี/ใบเสร็จ และใช้ร่วมกับฟอร์มราชการ
+ * (ภพ.30/ภงด./50ทวิ/ภส. อ่านจากตารางเดียวกัน) → หัวเอกสารทั้งระบบตรงกันเสมอ
+ */
+export async function saveCompanyDocAction(input: {
+  entityId: string;
+  name: string;
+  nameEng: string;
+  taxId: string;
+  branch: string;
+  address: string;
+  phone: string;
+  bankLine: string;
+}): Promise<SaveResult> {
+  const supabase = await db();
+  const entityId = input.entityId.trim();
+  if (!entityId) return fail("เลือกกิจการที่ใช้ออกเอกสารก่อน");
+  if (!input.name.trim()) return fail("กรอกชื่อกิจการ (ขึ้นหัวเอกสาร)");
+
+  const { error } = await supabase
+    .from("entities")
+    .update({
+      name: input.name.trim(),
+      name_eng: input.nameEng.trim() || null,
+      tax_id: input.taxId.trim() || null,
+      branch: input.branch.trim() || null,
+      address: input.address.trim() || null,
+      phone: input.phone.trim() || null,
+      bank_line: input.bankLine.trim() || null,
+    })
+    .eq("entity_id", entityId);
+  if (error) return fail(mapDbError(error));
+
+  // 1 แถวต่อ kind (เหมือน saveBrandingAction) — ลบของเดิมแล้วใส่ใหม่
+  await supabase.from("app_settings").delete().eq("kind", "sales_doc_entity");
+  const { error: e2 } = await supabase.from("app_settings").insert({ kind: "sales_doc_entity", value: entityId });
+  if (e2) return fail(mapDbError(e2));
+
+  revalidatePath("/accounting");
+  revalidatePath("/sales");
+  return { ok: true };
+}
+
 export async function deleteSettingAction(kind: string, value: string): Promise<SaveResult> {
   const supabase = await db();
   const { error } = await supabase.from("app_settings").delete().eq("kind", kind).eq("value", value);

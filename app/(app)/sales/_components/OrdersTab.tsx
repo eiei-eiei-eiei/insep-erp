@@ -59,7 +59,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
     if (o.deposit > 0) docs = ["invoice", "tax-invoice-deposit"];
     else if (o.status === "รอชำระเงิน (จ่ายเต็ม)") docs = ["invoice-only"];
     else docs = ["invoice"];
-    printSalesDocs(o as OrderLike, items, docs, w);
+    printSalesDocs(boot.company, o as OrderLike, items, docs, w);
   }
   async function doPrintClosed(o: OrderRow) {
     const w = openPrintWindow();
@@ -69,7 +69,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
     if (o.deposit > 0) docs = ["tax-invoice-balance"];
     else if (o.dueDate === "" && o.deposit === 0) docs = ["tax-invoice-receipt-do"];
     else docs = ["tax-invoice-receipt"];
-    printSalesDocs(o as OrderLike, items, docs, w);
+    printSalesDocs(boot.company, o as OrderLike, items, docs, w);
   }
   async function doReprintQuotation(o: OrderRow) {
     const w = openPrintWindow();
@@ -77,7 +77,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
     const items = await loadItems(o.quNo);
     let estDiscount = roundTo2(o.subTotal + o.vatAmount - o.grandTotal);
     if (Math.abs(estDiscount) < 0.1) estDiscount = 0;
-    printQuotation({
+    printQuotation(boot.company, {
       quNo: o.quNo,
       date: o.timestamp,
       quExp: "-",

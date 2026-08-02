@@ -5,31 +5,22 @@
  *   port verbatim จาก docs/legacy/sales/_templates_print.html + _js_orders.html (setupDoc)
  *   วิธี: เปิด window ใหม่เขียน HTML แล้ว print (แทน iframe เดิม)
  *
- * ⚠️ หัวกระดาษ/เลขบัญชี = ข้อมูลบริษัทจริง (คงตามเดิมเป๊ะ — ผู้ใช้พิมพ์ทุกวัน)
- *    แก้ได้ที่ constant COMPANY ด้านล่าง (ดู GOLIVE_CHECKLIST Phase 4)
+ * ⚠️ หัวกระดาษ/เลขบัญชี = ข้อมูลกิจการจริง — ต้องส่งเข้ามาเป็น argument (D44)
+ *    ค่าอยู่ในตาราง `entities` ของแต่ละ tenant ไม่ใช่ในโค้ด (ตรรกะประกอบข้อความ: lib/sales/company)
+ *    ตั้งค่าที่ บัญชี › ตั้งค่า › ข้อมูลบนเอกสารการค้า
+ * ⚠️ ไฟล์นี้ห้ามผูกกับธีมแอป (ต้องดำบนขาวเสมอ) — เปิดโหมดมืดแล้วพิมพ์ต้องไม่ได้กระดาษพื้นดำ
  */
 import { reverseCalcPrint, roundTo2 } from "@/lib/sales/calc";
 import { formatThaiDate } from "@/lib/sales/orders";
+import { branchLabel, type CompanyInfo } from "@/lib/sales/company";
 import type { OrderItem } from "./types";
 
-const COMPANY = {
-  name: "บริษัท อินทร์ เสพเทมเบ้อ จำกัด",
-  nameEng: "IN SEPTEMBER CO.,LTD.",
-  address: "(สำนักงานใหญ่) 5/15 ม.8 ต.ท่าน้ำอ้อย อ.พยุหะคีรี จ.นครสวรรค์ 60130",
-  taxLine: "เลขประจำตัวผู้เสียภาษี (Tax ID): 0605567002178 | โทร: 088-818-1804",
-  bank: "ธนาคารกสิกรไทย เลขที่บัญชี 195-1-19799-4<br>ชื่อบัญชี บริษัท อินทร์ เสพเทมเบ้อ จำกัด",
-};
+export type { CompanyInfo };
 
 const nf = (n: number) => (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!);
-
-export function formatBranch(branchText: string): string {
-  if (!branchText) return "";
-  const b = branchText.toString().trim();
-  if (b === "สำนักงานใหญ่" || b.includes("สำนักงานใหญ่")) return "(สำนักงานใหญ่)";
-  if (/^\d+$/.test(b)) return `(สาขาที่ ${b})`;
-  return `(${b})`;
-}
+/** ข้อความหลายบรรทัด → HTML (escape ก่อน แล้วค่อยเปลี่ยน \n เป็น <br>) */
+const escMultiline = (s: string) => esc(s).replace(/\r?\n/g, "<br>");
 
 function formatChequeDetail(text: string): string {
   if (!text) return "";
@@ -54,11 +45,13 @@ body { font-family: 'Kanit', sans-serif; -webkit-print-color-adjust: exact; prin
 .a4-container { width: 100%; max-width: 210mm; margin: 0 auto; box-sizing: border-box; background: white; padding: 0 2mm; }
 </style>`;
 
-function companyHeader(rightTitle: string, rightEng: string, copyType?: string): string {
+function companyHeader(c: CompanyInfo, rightTitle: string, rightEng: string, copyType?: string): string {
+  const title = [esc(c.name), esc(c.nameEng)].filter(Boolean).join("<br>");
+  const sub = [esc(c.address), esc(c.taxLine)].filter(Boolean).join("<br>");
   return `<table style="width:100%;margin-bottom:15px;border-bottom:2px solid #1e293b;padding-bottom:10px;"><tr>
     <td style="width:50%;vertical-align:top;">
-      <h1 style="margin:0;font-size:24px;color:#0f172a;font-weight:600;">${COMPANY.name}<br>${COMPANY.nameEng}</h1>
-      <p style="margin:5px 0 0 0;font-size:11px;color:#334155;line-height:1.4;">${COMPANY.address}<br>${COMPANY.taxLine}</p>
+      <h1 style="margin:0;font-size:24px;color:#0f172a;font-weight:600;">${title}</h1>
+      <p style="margin:5px 0 0 0;font-size:11px;color:#334155;line-height:1.4;">${sub}</p>
     </td>
     <td style="width:50%;vertical-align:top;text-align:right;white-space:nowrap;">
       <h2 style="margin:0;font-size:${copyType ? 20 : 28}px;color:#0f172a;font-weight:600;">${esc(rightTitle)}</h2>
@@ -67,8 +60,15 @@ function companyHeader(rightTitle: string, rightEng: string, copyType?: string):
     </td></tr></table>`;
 }
 
+/** หัวข้อ + รายละเอียดช่องทางโอนเงิน · ไม่ได้กรอกไว้ = ไม่ขึ้นหัวข้อเปล่า */
+function bankLines(c: CompanyInfo): string {
+  if (!c.bank) return "";
+  return `<div style="font-weight:600;margin-bottom:4px;color:#0f172a;font-size:13px;">ช่องทางการโอนเงิน / Bank Transfer:</div>
+            <div style="color:#0f172a;line-height:1.4;margin-bottom:10px;font-size:14px;font-weight:500;">${escMultiline(c.bank)}</div>`;
+}
+
 function customerBox(name: string, address: string, taxId: string, branch: string): string {
-  const br = branch ? `<span style="margin-left:5px;">${esc(formatBranch(branch))}</span>` : "";
+  const br = branch ? `<span style="margin-left:5px;">${esc(branchLabel(branch))}</span>` : "";
   return `<div style="width:57%;border:2px solid #cbd5e1;padding:12px 15px;border-radius:8px;background-color:#f8fafc;box-sizing:border-box;">
     <div style="font-weight:600;margin-bottom:8px;font-size:15px;color:#0f172a;">ลูกค้า / Customer:</div>
     <div style="font-size:15px;font-weight:500;margin-bottom:4px;">${esc(name)}</div>
@@ -125,7 +125,7 @@ export type QuotationDoc = {
   saleName: string;
 };
 
-function quotationHtml(d: QuotationDoc): string {
+function quotationHtml(c: CompanyInfo, d: QuotationDoc): string {
   // โมเดล inclusive: line items = ราคารวม VAT → รวมได้ = grandIncl · summary ถอด VAT ออก
   const grandIncl = roundTo2(d.items.reduce((s, it) => s + it.price * it.qty, 0));
   const discountIncl = roundTo2(grandIncl - d.grandTotal);
@@ -142,7 +142,7 @@ function quotationHtml(d: QuotationDoc): string {
     ? "border-bottom:1px solid #cbd5e1;"
     : "border-bottom:4px double #0f172a;background-color:#f1f5f9;";
   return `<div class="a4-container" style="font-family:'Kanit',sans-serif;color:#111;line-height:1.5;">
-    ${companyHeader("ใบเสนอราคา", "Quotation")}
+    ${companyHeader(c, "ใบเสนอราคา", "Quotation")}
     <div style="display:flex;justify-content:space-between;width:100%;margin-bottom:15px;font-size:14px;box-sizing:border-box;">
       ${customerBox(d.customerName, d.customerAddress, d.customerTaxId, d.customerBranch)}
       <div style="width:41%;border:2px solid #cbd5e1;padding:12px 15px;border-radius:8px;background-color:#f8fafc;box-sizing:border-box;">
@@ -159,8 +159,7 @@ function quotationHtml(d: QuotationDoc): string {
       <table style="width:100%;font-size:14px;"><tr>
         <td style="width:55%;vertical-align:bottom;padding-right:20px;">
           <div style="border:2px solid #cbd5e1;padding:12px 15px;border-radius:8px;min-height:120px;background-color:#fffbeb;box-sizing:border-box;">
-            <div style="font-weight:600;margin-bottom:4px;color:#0f172a;font-size:13px;">ช่องทางการโอนเงิน / Bank Transfer:</div>
-            <div style="color:#0f172a;line-height:1.4;margin-bottom:10px;font-size:14px;font-weight:500;">${COMPANY.bank}</div>
+            ${bankLines(c)}
             <div style="font-weight:600;margin-bottom:4px;color:#b45309;font-size:13px;">หมายเหตุ / Remarks:</div>
             <div style="color:#475569;line-height:1.4;font-size:13px;white-space:pre-wrap;">${esc(d.remarks || "-")}</div>
           </div>
@@ -229,8 +228,33 @@ function openPrint(inner: string, pre?: Window | null) {
   }, 300);
 }
 
-export function printQuotation(d: QuotationDoc, w?: Window | null) {
-  openPrint(quotationHtml(d), w);
+/**
+ * กันพิมพ์หัวกระดาษเปล่า — ยังไม่ได้ตั้งข้อมูลกิจการ = เอกสารไม่มีชื่อผู้ขาย (ใช้ไม่ได้ทางกฎหมาย)
+ * คืน true = พิมพ์ต่อได้
+ */
+function ensureCompany(c: CompanyInfo, w?: Window | null): boolean {
+  if (c?.name) return true;
+  if (w) w.close();
+  alert(
+    "ยังไม่ได้ตั้งข้อมูลกิจการที่ใช้ออกเอกสาร — หัวกระดาษจะว่าง\n\n" +
+      "ไปที่ บัญชี › ตั้งค่า › ข้อมูลบนเอกสารการค้า แล้วเลือกกิจการ + กรอกชื่อ/ที่อยู่/เลขภาษี ก่อน",
+  );
+  return false;
+}
+
+export function printQuotation(company: CompanyInfo, d: QuotationDoc, w?: Window | null) {
+  if (!ensureCompany(company, w)) return;
+  openPrint(quotationHtml(company, d), w);
+}
+
+/** หัวเอกสารจริง (ใช้แสดงตัวอย่างในหน้าตั้งค่า — เห็นเหมือนที่พิมพ์ออกมาแน่นอน) */
+export function companyHeaderPreviewHtml(company: CompanyInfo): string {
+  return `<div style="font-family:'Kanit',sans-serif;color:#111;line-height:1.5;background:#fff;padding:14px;">
+    ${companyHeader(company, "ใบเสนอราคา", "Quotation")}
+    <div style="width:60%;border:2px solid #cbd5e1;padding:12px 15px;border-radius:8px;background-color:#fffbeb;box-sizing:border-box;font-size:14px;">
+      ${bankLines(company) || '<div style="color:#94a3b8;font-size:13px;">— ยังไม่ได้กรอกช่องทางการโอนเงิน (กล่องนี้จะไม่ขึ้นบนเอกสาร) —</div>'}
+    </div>
+  </div>`;
 }
 
 // ── เอกสารขาย B2B (setupDoc + template) ──────────────────────────────────────
@@ -413,12 +437,11 @@ function docSignatures(dt: string): string {
   return `<table style="width:100%;margin-top:40px;text-align:center;font-size:13px;"><tr>${cells}</tr></table>`;
 }
 
-function bankOrPaymentBox(doc: PreparedDoc): string {
+function bankOrPaymentBox(c: CompanyInfo, doc: PreparedDoc): string {
   const dt = doc.docType as string;
-  if (dt.includes("invoice") && !dt.includes("tax-") && Number(doc.outstandingBalance) > 0) {
+  if (dt.includes("invoice") && !dt.includes("tax-") && Number(doc.outstandingBalance) > 0 && c.bank) {
     return `<div style="border:2px solid #cbd5e1;padding:12px 15px;border-radius:8px;background-color:#fffbeb;box-sizing:border-box;">
-      <div style="font-weight:600;margin-bottom:4px;color:#0f172a;font-size:13px;">ช่องทางการโอนเงิน / Bank Transfer:</div>
-      <div style="color:#0f172a;line-height:1.4;margin-bottom:10px;font-size:14px;font-weight:500;">${COMPANY.bank}</div></div>`;
+      ${bankLines(c)}</div>`;
   }
   const cq =
     doc.paymentMethod === "เช็ค" && doc.chequeDetails
@@ -429,10 +452,10 @@ function bankOrPaymentBox(doc: PreparedDoc): string {
     <div style="color:#475569;font-size:13px;margin-top:4px;">อ้างอิงวิธีชำระ: ${esc(doc.paymentMethod || "ไม่ระบุ")}</div>${cq}</div>`;
 }
 
-function b2bDocHtml(doc: PreparedDoc, idx: number): string {
+function b2bDocHtml(c: CompanyInfo, doc: PreparedDoc, idx: number): string {
   const brk = idx > 0 ? "page-break-before:always;break-before:page;margin-top:15px;" : "";
   return `<div class="a4-container" style="${brk}font-family:'Kanit',sans-serif;color:#111;line-height:1.5;">
-    ${companyHeader(doc.receiptTitle as string, doc.receiptTitleEng as string, doc.copyType)}
+    ${companyHeader(c, doc.receiptTitle as string, doc.receiptTitleEng as string, doc.copyType)}
     <div style="display:flex;justify-content:space-between;width:100%;margin-bottom:15px;font-size:14px;box-sizing:border-box;">
       ${customerBox(doc.customerName as string, doc.customerAddress as string, doc.customerTaxId as string, doc.customerBranch as string)}
       <div style="width:41%;border:2px solid #cbd5e1;padding:12px 15px;border-radius:8px;background-color:#f8fafc;box-sizing:border-box;">
@@ -446,7 +469,7 @@ function b2bDocHtml(doc: PreparedDoc, idx: number): string {
     ${itemsTable(doc.items as OrderItem[], false)}
     <div style="page-break-inside:avoid;break-inside:avoid;">
       <table style="width:100%;font-size:14px;"><tr>
-        <td style="width:55%;vertical-align:bottom;padding-right:20px;">${bankOrPaymentBox(doc)}</td>
+        <td style="width:55%;vertical-align:bottom;padding-right:20px;">${bankOrPaymentBox(c, doc)}</td>
         <td style="width:45%;vertical-align:top;"><table style="width:100%;border-collapse:collapse;">${docSummaryRows(doc)}</table></td>
       </tr></table>
       ${docSignatures(doc.docType)}
@@ -455,11 +478,12 @@ function b2bDocHtml(doc: PreparedDoc, idx: number): string {
 }
 
 /** พิมพ์เอกสารขาย (ต้นฉบับ + สำเนา ต่อ docType) */
-export function printSalesDocs(order: OrderLike, items: OrderItem[], docTypes: string[], w?: Window | null) {
+export function printSalesDocs(company: CompanyInfo, order: OrderLike, items: OrderItem[], docTypes: string[], w?: Window | null) {
+  if (!ensureCompany(company, w)) return;
   const docs: PreparedDoc[] = [];
   for (const dt of docTypes) {
     docs.push(setupDoc(order, items, dt, "(ต้นฉบับ / Original)"));
     docs.push(setupDoc(order, items, dt, "(สำเนา / Copy)"));
   }
-  openPrint(docs.map((d, i) => b2bDocHtml(d, i)).join(""), w);
+  openPrint(docs.map((d, i) => b2bDocHtml(company, d, i)).join(""), w);
 }

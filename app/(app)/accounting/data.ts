@@ -77,7 +77,10 @@ export async function getBootstrap() {
   const supabase = await db();
   const [{ data: user }, entities, accounts, settings, contacts, materials] = await Promise.all([
     supabase.auth.getUser(),
-    supabase.from("entities").select("entity_id, name, excise_id, is_vat").order("entity_id"),
+    supabase
+      .from("entities")
+      .select("entity_id, name, excise_id, is_vat, name_eng, tax_id, branch, address, phone, bank_line")
+      .order("entity_id"),
     supabase.from("bank_accounts").select("account_name, entity_ids, opening_balance, kind").order("account_name"),
     supabase.from("app_settings").select("kind, value, sort").order("sort"),
     supabase.from("contacts").select("contact_id, name, tax_id, branch, address, contact_type, roles").order("name"),
@@ -105,6 +108,8 @@ export async function getBootstrap() {
     whtRates: byKind("wht_rate"),
     taxAccounts: taxAccounts.length ? taxAccounts : ["บัญชีบริษัท"],
     branding: brandingFromSettings(s as { kind: string; value: string }[]),
+    // กิจการที่ใช้ออกเอกสารการค้า (D44) — ยังไม่ตั้ง → ใช้กิจการที่รับรายได้ขายเป็นค่าตั้งต้น
+    docEntityId: byKind("sales_doc_entity")[0] ?? byKind("sales_revenue_entity")[0] ?? "",
   };
 }
 

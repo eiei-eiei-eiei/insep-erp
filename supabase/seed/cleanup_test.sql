@@ -29,7 +29,7 @@ delete from integration_log where idempotency_key in (select order_no from sales
 delete from sales_orders    where customer_id like 'T-%' or customer_name like '%ทดสอบ%';
 delete from stock_moves     where item_code like 'T-%' or remarks like '%ทดสอบ%';
 delete from warehouse_stock where item_code like 'T-%';
-delete from app_settings    where kind in ('sales_revenue_entity','sales_revenue_account');
+delete from app_settings    where kind in ('sales_revenue_entity','sales_revenue_account','sales_doc_entity');
 
 -- 3) บัญชี (Phase 3): certs/summaries/report_runs + items ก่อน transactions (กัน FK)
 delete from wht_certificates where entity_id = 'EID99';

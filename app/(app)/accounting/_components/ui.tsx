@@ -18,6 +18,7 @@ export {
   TextInput,
   NumInput,
   Select,
+  TextArea,
   NumBox,
   Combobox,
   SaveButton,

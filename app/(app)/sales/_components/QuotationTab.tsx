@@ -116,7 +116,7 @@ export function QuotationTab({
       const w = openPrintWindow(); // เปิดก่อน await กัน popup blocker (มือถือ/iPad)
       run(() => saveQuotationAction(payload), "สร้างใบเสนอราคาแล้ว", (data) => {
         const res = data as { qu_no: string; qu_expire: string };
-        printQuotation({
+        printQuotation(boot.company, {
           quNo: res.qu_no,
           date: new Date().toLocaleDateString("th-TH"),
           quExp: res.qu_expire,

@@ -12,11 +12,13 @@ import {
 import type { AccountRow, Bootstrap, Contact } from "./types";
 import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, cleanTaxId13, fmt, useSaver } from "./ui";
 import { BrandingCard } from "./BrandingCard";
+import { CompanyDocCard } from "./CompanyDocCard";
 
 export function SettingsTab({ boot }: { boot: Bootstrap }) {
   return (
     <div className="space-y-4">
       <BrandingCard current={boot.branding} />
+      <CompanyDocCard entities={boot.entities} docEntityId={boot.docEntityId} />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ChipList kind="expense_cat" title="หมวดหมู่รายจ่าย" initial={boot.expenseCats} />
         <ChipList kind="income_cat" title="หมวดหมู่รายรับ" initial={boot.incomeCats} />

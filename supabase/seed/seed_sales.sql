@@ -11,6 +11,14 @@ insert into entities (entity_id, name, is_vat, tax_id, branch, excise_id)
 values ('EID99', 'กิจการทดสอบ (ลบได้)', true, '9999999999999', 'สำนักงานใหญ่', '12345678901234567')
 on conflict (entity_id) do nothing;
 
+-- ข้อมูลหัวเอกสารการค้าของกิจการทดสอบ (D44 · migration 0023) — พิมพ์แล้วต้องเห็นหัวกระดาษครบ
+update entities set
+  name_eng  = 'TEST ENTITY CO.,LTD.',
+  address   = '9/99 ถ.ทดสอบ ต.ทดสอบ อ.เมือง จ.ทดสอบ 99999',
+  phone     = '09-9999-9999',
+  bank_line = E'ธนาคารทดสอบ เลขที่บัญชี 999-9-99999-9\nชื่อบัญชี กิจการทดสอบ (ลบได้)'
+where entity_id = 'EID99';
+
 -- ล้างของเก่า (กันซ้ำ) — items→orders ก่อน
 delete from sales_order_items where qu_no in (select qu_no from sales_orders where customer_id like 'T-%' or customer_name like '%ทดสอบ%');
 delete from sales_orders     where customer_id like 'T-%' or customer_name like '%ทดสอบ%';
@@ -54,7 +62,8 @@ on conflict (contact_id) do nothing;
 -- config รายรับขาย (บัญชี + กิจการ) — ชี้ไป EID99 + บัญชีทดสอบ (go-live เปลี่ยนเป็นค่าจริง)
 insert into app_settings (kind, value, sort) values
   ('sales_revenue_entity',  'EID99',       95),
-  ('sales_revenue_account', 'กสิกร ทดสอบ', 96)
+  ('sales_revenue_account', 'กสิกร ทดสอบ', 96),
+  ('sales_doc_entity',      'EID99',       97)   -- กิจการบนหัวเอกสารการค้า (D44)
 on conflict (kind, value) do nothing;
 
 select 'seed ขาย (Phase 4) เรียบร้อย — เข้า /sales ทดสอบได้เลย' as result;

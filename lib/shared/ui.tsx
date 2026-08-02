@@ -124,6 +124,9 @@ export function NumInput({ className = "", ...props }: React.InputHTMLAttributes
 export function Select({ className = "", ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return <select {...props} className={`${inputCls} ${className}`} />;
 }
+export function TextArea({ className = "", rows = 3, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <textarea rows={rows} {...props} className={`${inputCls} ${className}`} />;
+}
 
 /**
  * ช่องกรอกตัวเลขที่พิมพ์ทศนิยมได้ลื่น (เก็บ buffer ข้อความระหว่างพิมพ์)
