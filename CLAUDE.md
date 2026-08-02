@@ -2,6 +2,7 @@
 
 > ระบบ ERP ภายในของโรงกลั่นสุราคราฟต์ (solo entrepreneur) — ย้ายมาจาก Google Apps Script + Google Sheets 3 แอป
 > **เอกสารหลัก**: `docs/MIGRATION_PLAN.md` (แผนละเอียดทุก section — อ่านก่อนทำงานทุกครั้ง) + `docs/FLOW_REDESIGN.md` (โฟลว์/UI ใหม่ 4 workspace — ถ้าขัดกัน: เรื่องโฟลว์/UI ยึด FLOW_REDESIGN, เรื่องสูตร/ข้อมูล ยึด MIGRATION_PLAN sec 6)
+> **งานที่เหลือ/ส่งต่อ session ใหม่**: `docs/NEXT_STEPS.md` — **อ่านก่อนเริ่มงานใหม่ทุกครั้ง**
 > **หน้าตา/สี/ไอคอน**: `docs/DESIGN_SYSTEM.md` — **อ่านก่อนแตะ UI ทุกครั้ง** · ห้ามเขียนคลาสสีดิบ (`bg-slate-800`, `text-red-500`, hex) ใน component ใช้ token เท่านั้น
 > **โค้ดระบบเดิม (reference)**: `docs/legacy/production/`, `docs/legacy/accounting/`, `docs/legacy/sales/`
 > **ผู้ใช้เขียนโค้ดไม่ได้** — ส่งมอบไฟล์เต็มเสมอ อธิบายขั้นตอนที่ผู้ใช้ต้องทำเอง (รันคำสั่ง/กดปุ่ม) ทีละบรรทัด ตอบภาษาไทย คงศัพท์เทคนิคอังกฤษ
