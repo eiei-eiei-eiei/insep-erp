@@ -1,71 +1,38 @@
-"use client";
+import { headers } from "next/headers";
+import { createClient } from "@/lib/supabase/server";
+import { TENANT_SLUG_HEADER } from "@/lib/supabase/middleware";
+import { brandingFromTenantRow, DEFAULT_BRANDING } from "@/lib/shared/branding";
+import LoginForm from "./LoginForm";
 
-import { useActionState } from "react";
-import { login, type LoginState } from "./actions";
+/**
+ * หน้า login — server component เพราะต้องรู้ว่าเป็นลูกค้าเจ้าไหน "ก่อน" ล็อกอิน
+ *
+ * ปัญหาเดิม (NEXT_STEPS ข้อ 2): อ่าน app_settings ไม่ได้เพราะ RLS บล็อกก่อน login
+ * → ทางแก้: subdomain บอกว่าใคร + view `tenant_branding` (0025) เปิดให้ anon อ่าน
+ *   เฉพาะคอลัมน์แบรนด์
+ *
+ * 🚨 slug ที่ได้ตรงนี้ใช้ "แต่งหน้า + ประกอบชื่อบัญชีที่จะลองล็อกอิน" เท่านั้น
+ *    ไม่ได้แจกสิทธิ์อะไร — ยังต้องมีรหัสผ่านของบัญชีนั้น และหลังล็อกอินสิทธิ์มาจาก
+ *    profiles.tenant_id → my_tenant() → RLS เท่านั้น (NEXT_STEPS:181)
+ */
+export default async function LoginPage() {
+  const slug = (await headers()).get(TENANT_SLUG_HEADER)?.trim() ?? "";
 
-const initialState: LoginState = { error: null };
+  if (!slug) {
+    // ไม่มี subdomain = โหมดลิงก์เดียว/ใช้เอง → หน้าตาเดิมเป๊ะ
+    return <LoginForm branding={DEFAULT_BRANDING} isTenant={false} />;
+  }
 
-export default function LoginPage() {
-  const [state, formAction, pending] = useActionState(login, initialState);
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("tenant_branding")
+    .select("brand_name, logo_url, brand_color")
+    .eq("slug", slug)
+    .maybeSingle();
 
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-raised p-4">
-      <div className="w-full max-w-sm rounded-lg bg-card p-8 shadow-lg">
-        <div className="mb-6 text-center">
-          <h1 className="text-2xl font-bold text-ink">Insep ERP</h1>
-          <p className="mt-1 text-sm text-faint">ระบบภายในโรงกลั่นสุราคราฟต์</p>
-        </div>
+  // เดา slug มั่วแล้วไม่มีจริง → กลับไปหน้าตากลาง ไม่บอกว่า "ไม่พบลูกค้ารายนี้"
+  // (ไม่ต้องช่วยคนนอกไล่เดาว่าลูกค้าเจ้าไหนมีอยู่จริง)
+  if (!data) return <LoginForm branding={DEFAULT_BRANDING} isTenant={false} />;
 
-        <form action={formAction} className="space-y-4">
-          <div>
-            <label
-              htmlFor="username"
-              className="mb-1 block text-sm font-medium text-muted"
-            >
-              ชื่อผู้ใช้
-            </label>
-            <input
-              id="username"
-              name="username"
-              type="text"
-              autoComplete="username"
-              required
-              className="w-full rounded-lg border border-line px-3 py-2 text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft"
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="password"
-              className="mb-1 block text-sm font-medium text-muted"
-            >
-              รหัสผ่าน
-            </label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              className="w-full rounded-lg border border-line px-3 py-2 text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft"
-            />
-          </div>
-
-          {state.error && (
-            <p className="rounded-lg bg-crit-bg px-3 py-2 text-sm text-crit">
-              {state.error}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={pending}
-            className="w-full rounded-lg bg-brand py-2.5 font-medium text-on-brand transition hover:opacity-90 disabled:opacity-50"
-          >
-            {pending ? "กำลังเข้าสู่ระบบ…" : "เข้าสู่ระบบ"}
-          </button>
-        </form>
-      </div>
-    </main>
-  );
+  return <LoginForm branding={brandingFromTenantRow(data)} isTenant />;
 }

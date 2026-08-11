@@ -12,6 +12,7 @@
     "test:tenant": "vitest run --config vitest.tenant.config.ts",
     "db:push": "supabase db push",
     "upload:templates": "tsx scripts/upload-pdf-templates.ts",
+    "seed:demo-tenant": "tsx scripts/seed-demo-tenant.ts",
     "migrate:split": "tsx migration/split-xlsx.ts",
     "migrate:import": "tsx migration/import-csv.ts",
     "migrate:reconcile": "tsx migration/reconcile.ts",

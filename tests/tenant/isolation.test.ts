@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  assertTestEnv, cleanupTestTenants, seedTenant, signIn, admin,
+  assertTestEnv, cleanupTestTenants, seedTenant, signIn, admin, anonClient,
   TENANT_TABLES, type Tenant,
 } from "./harness";
+// ใช้ path ตรง ไม่ใช่ alias @/ — vitest config ชุดนี้ไม่ได้ตั้ง resolve.alias ไว้
+import { usernameToEmail } from "../../lib/shared/auth-domain";
 
 /**
  * เทสกันข้อมูลรั่วข้ามลูกค้า — NEXT_STEPS:164 ระบุว่านี่คือความเสี่ยงอันดับ 1 ของ multi-tenant
@@ -46,9 +48,28 @@ describe("คีย์ซ้ำข้ามลูกค้าได้ (ผล�
   });
 
   it("ชื่อผู้ใช้ซ้ำกันได้เพราะ slug คั่นในอีเมลภายใน", () => {
+    expect(A.username).toBe(B.username); // ทั้งคู่ชื่อ 'owner'
     expect(A.email).not.toBe(B.email);
-    expect(A.email.startsWith("owner@")).toBe(true);
-    expect(B.email.startsWith("owner@")).toBe(true);
+  });
+
+  it("★ สูตร usernameToEmail(username, slug) ต้องล็อกอินเข้าบัญชีที่ seed ไว้ได้จริง", async () => {
+    // เทสนี้เชื่อมสิ่งที่แอปคำนวณ (lib/shared/auth-domain) เข้ากับบัญชีที่มีอยู่จริงใน DB
+    // ถ้า local-part ของอีเมลกับ username ไม่ตรงกัน จะจับได้ตรงนี้ก่อนถึงมือผู้ใช้
+    for (const t of [A, B]) {
+      expect(usernameToEmail(t.username, t.slug)).toBe(t.email);
+
+      const c = anonClient();
+      const { error } = await c.auth.signInWithPassword({
+        email: usernameToEmail(t.username, t.slug),
+        password: t.password,
+      });
+      expect(error, `ล็อกอินด้วย username+slug ของ ${t.slug} ไม่ผ่าน`).toBeNull();
+      await c.auth.signOut();
+    }
+  });
+
+  it("ชื่อผู้ใช้เดียวกันแต่คนละ slug = คนละบัญชี (ไม่ใช่คนเดียวกัน)", () => {
+    expect(usernameToEmail("owner", A.slug)).not.toBe(usernameToEmail("owner", B.slug));
   });
 });
 

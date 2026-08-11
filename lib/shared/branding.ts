@@ -37,6 +37,32 @@ export const DEFAULT_BRANDING: Branding = {
 
 const COLOR_KEYS = new Set<string>(BRAND_COLORS.map((c) => c.key));
 
+/** ชื่อสินค้าที่ต่อท้าย "powered by" บนหน้า login (co-brand) — ยังไม่เคาะชื่อจริง
+ *  เก็บไว้ที่เดียวเพื่อให้เปลี่ยนทีหลังจบในบรรทัดนี้บรรทัดเดียว */
+export const PRODUCT_NAME = "Insep ERP";
+
+/**
+ * แถวจาก view `tenant_branding` (migration 0025) → Branding
+ *
+ * คนละรูปกับ app_settings (ที่นั่นเก็บเป็น kind/value รายแถว · ที่นี่เป็นคอลัมน์)
+ * แต่ใช้ type + การตรวจสีชุดเดียวกัน — ห้ามเขียน validation ใหม่แยก ไม่งั้นวันหนึ่งจะเพี้ยนกัน
+ *
+ * ใช้ตอน "ก่อนล็อกอิน" เท่านั้น (ยังอ่าน app_settings ไม่ได้เพราะ RLS บล็อก)
+ * → ไม่มี default_mode ในนี้ ใช้ค่าเริ่มต้นไปก่อน
+ */
+export function brandingFromTenantRow(
+  row: { brand_name?: string | null; logo_url?: string | null; brand_color?: string | null } | null | undefined,
+): Branding {
+  if (!row) return DEFAULT_BRANDING;
+  const color = (row.brand_color ?? "").trim();
+  return {
+    name: (row.brand_name ?? "").trim() || DEFAULT_BRANDING.name,
+    color: COLOR_KEYS.has(color) ? (color as BrandColor) : DEFAULT_BRANDING.color,
+    logoUrl: (row.logo_url ?? "").trim() || null,
+    defaultMode: DEFAULT_BRANDING.defaultMode,
+  };
+}
+
 /** อ่านค่าจากแถว app_settings (kind/value) → Branding ที่ใช้ได้แน่นอน */
 export function brandingFromSettings(
   rows: { kind: string; value: string }[] | null | undefined,

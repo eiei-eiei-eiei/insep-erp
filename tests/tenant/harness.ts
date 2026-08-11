@@ -65,6 +65,8 @@ export type Tenant = {
   tenantId: string;
   entityId: string;
   email: string;
+  /** ชื่อผู้ใช้ที่พิมพ์ในหน้า login (ซ้ำกันได้ข้าม tenant — slug เป็นตัวแยก) */
+  username: string;
   password: string;
   /**
    * คีย์ "ซ้ำกันทั้งสอง tenant" — พิสูจน์ว่าอยู่ร่วมกันได้หลังผ่าตัด PK (0027)
@@ -122,10 +124,18 @@ export async function cleanupTestTenants() {
   must("cleanup tenants", (await db.from("tenants").delete().in("id", ids)).error);
 }
 
-/** สร้าง tenant ทดสอบ 1 ราย พร้อมผู้ใช้ role main + ข้อมูลตัวอย่างครบทุกโดเมน */
-export async function seedTenant(suffix: string): Promise<Tenant> {
+/**
+ * สร้าง tenant ทดสอบ 1 ราย พร้อมผู้ใช้ role main + ข้อมูลตัวอย่างครบทุกโดเมน
+ *
+ * @param opts.slug ระบุ slug เองได้ (ไม่มี TEST_PREFIX) — ใช้ตอน seed tenant สาธิต
+ *   ที่ต้องการให้**ค้างอยู่** ไม่โดน cleanupTestTenants() ลบทิ้งตอนรันเทสรอบถัดไป
+ */
+export async function seedTenant(
+  suffix: string,
+  opts: { slug?: string } = {},
+): Promise<Tenant> {
   const db = admin();
-  const slug = `${TEST_PREFIX}${suffix}`;
+  const slug = opts.slug ?? `${TEST_PREFIX}${suffix}`;
   const password = "TestPass!2569";
 
   const { data: t, error: tErr } = await db
@@ -143,11 +153,15 @@ export async function seedTenant(suffix: string): Promise<Tenant> {
     is_vat: true, is_default: true,
   })).error);
 
-  // ผู้ใช้ role main — อีเมลภายในมี slug คั่น (ชื่อ owner ซ้ำกันได้ทั้งสอง tenant)
-  const email = `owner@${slug}.insep.local`;
+  // ผู้ใช้ role main — ★ ชื่อผู้ใช้ 'owner' เหมือนกันทั้งสอง tenant โดยตั้งใจ
+  //   (profiles.username unique เป็น (tenant_id, username) แล้ว — 0027)
+  // ⚠️ local-part ของอีเมลต้องเท่ากับ username เป๊ะ ไม่งั้นสูตรจริงใน
+  //    usernameToEmail(username, slug) จะหาบัญชีนี้ไม่เจอตอนล็อกอินผ่านหน้าจอ
+  const username = "owner";
+  const email = `${username}@${slug}.insep.local`;
   const { data: u, error: uErr } = await db.auth.admin.createUser({
     email, password, email_confirm: true,
-    user_metadata: { username: `owner-${suffix}`, display_name: `เจ้าของ ${suffix}`, tenant_id: tenantId },
+    user_metadata: { username, display_name: `เจ้าของ ${suffix}`, tenant_id: tenantId },
   });
   must("สร้างผู้ใช้", uErr);
   must("ตั้ง role main", (await db.from("profiles")
@@ -210,7 +224,7 @@ export async function seedTenant(suffix: string): Promise<Tenant> {
   })).error);
 
   return {
-    slug, tenantId, entityId, email, password,
+    slug, tenantId, entityId, email, username, password,
     quNo, txId, batch, quNoOwn, txIdOwn,
     materialName, productId, contactId,
   };
