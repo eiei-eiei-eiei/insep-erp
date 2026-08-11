@@ -41,8 +41,16 @@ async function main() {
 
   const t = await seedTenant(slug, { slug });
 
-  // ตั้งชื่อแบรนด์ให้ดูออกว่าเป็นเจ้าไหนเวลาเปิดหน้า login
-  await admin().from("tenants").update({ name, brand_name: name }).eq("id", t.tenantId);
+  // แบรนด์อยู่ใน app_settings ที่เดียว (0030) — หน้า login กับในแอปจึงเห็นตรงกันเสมอ
+  const db = admin();
+  await db.from("tenants").update({ name }).eq("id", t.tenantId);
+  await db.from("app_settings").update({ value: name })
+    .eq("tenant_id", t.tenantId).eq("kind", "brand_name");
+  const color = argOf("color");
+  if (color) {
+    await db.from("app_settings").update({ value: color })
+      .eq("tenant_id", t.tenantId).eq("kind", "brand_color");
+  }
 
   console.log(`\n✅ สร้างลูกค้าสาธิตแล้ว`);
   console.log(`   slug      : ${slug}`);

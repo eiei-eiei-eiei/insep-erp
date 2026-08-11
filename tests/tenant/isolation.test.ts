@@ -221,6 +221,44 @@ describe("ชั้น 2 — RPC: ใช้คีย์ของลูกค้�
   });
 });
 
+// ── แบรนด์: หน้า login กับในแอปต้องเห็นค่าเดียวกันเสมอ ──────────────────────
+describe("แบรนด์มีแหล่งเดียว (0030 — บั๊กที่ผู้ใช้เจอ: ตั้งสีในแอปแล้วหน้า login ไม่เปลี่ยน)", () => {
+  it("view tenant_branding ต้องตรงกับ app_settings ของ tenant นั้นเป๊ะ", async () => {
+    for (const t of [A, B]) {
+      const { data: view } = await admin()
+        .from("tenant_branding").select("brand_name, brand_color, logo_url").eq("slug", t.slug).single();
+      const { data: rows } = await admin()
+        .from("app_settings").select("kind, value").eq("tenant_id", t.tenantId)
+        .in("kind", ["brand_name", "brand_color", "logo_url"]);
+      const m = Object.fromEntries((rows ?? []).map((r) => [r.kind, r.value]));
+
+      expect(view?.brand_name, `${t.slug}: ชื่อแบรนด์สองแหล่งไม่ตรงกัน`).toBe(m.brand_name ?? null);
+      expect(view?.brand_color, `${t.slug}: สีแบรนด์สองแหล่งไม่ตรงกัน`).toBe(m.brand_color ?? null);
+      expect(view?.logo_url, `${t.slug}: โลโก้สองแหล่งไม่ตรงกัน`).toBe(m.logo_url ?? null);
+    }
+  });
+
+  it("แก้สีใน app_settings แล้ว view ต้องเปลี่ยนตามทันที", async () => {
+    await admin().from("app_settings").update({ value: "wine" })
+      .eq("tenant_id", A.tenantId).eq("kind", "brand_color");
+
+    const { data } = await admin()
+      .from("tenant_branding").select("brand_color").eq("slug", A.slug).single();
+    expect(data?.brand_color, "หน้า login จะยังโชว์สีเก่า = บั๊กเดิมกลับมา").toBe("wine");
+  });
+
+  it("🚨 view ต้องไม่หลุด app_settings ชนิดอื่น (anon อ่าน view นี้ได้)", async () => {
+    // ยัดค่าที่ห้ามหลุดเข้าไปแล้วดูว่า view โผล่มาไหม
+    await admin().from("app_settings").insert({
+      tenant_id: A.tenantId, kind: "tax_account", value: "ความลับ-ห้ามหลุด",
+    });
+    const { data } = await admin().from("tenant_branding").select("*").eq("slug", A.slug).single();
+    const cols = Object.keys(data ?? {});
+    expect(cols.sort()).toEqual(["brand_color", "brand_name", "logo_url", "slug"]);
+    expect(JSON.stringify(data)).not.toContain("ความลับ-ห้ามหลุด");
+  });
+});
+
 // ── ชั้น 3: positive control — ของตัวเองต้องยังทำงานปกติ ────────────────────
 describe("ชั้น 3 — positive control (กันเทสผ่านเพราะพังหมดทุกอย่าง)", () => {
   it("A แก้ออเดอร์ของตัวเองได้ปกติ", async () => {

@@ -140,11 +140,18 @@ export async function seedTenant(
 
   const { data: t, error: tErr } = await db
     .from("tenants")
-    .insert({ slug, name: `กิจการทดสอบ ${suffix}`, brand_name: `แบรนด์ ${suffix}` })
+    .insert({ slug, name: `กิจการทดสอบ ${suffix}` })
     .select("id")
     .single();
   must("สร้าง tenant", tErr);
   const tenantId = t!.id as string;
+
+  // แบรนด์อยู่ใน app_settings ที่เดียว (0030) — หน้า login อ่านผ่าน view tenant_branding
+  must("แบรนด์", (await db.from("app_settings").insert([
+    { tenant_id: tenantId, kind: "brand_name", value: `แบรนด์ ${suffix}` },
+    { tenant_id: tenantId, kind: "brand_color", value: "steel" },
+    { tenant_id: tenantId, kind: "default_mode", value: "light" },
+  ])).error);
 
   // ★ ทั้งสอง tenant ใช้ 'EID01' เหมือนกัน — พิสูจน์ว่า composite PK (tenant_id, entity_id) ทำงาน
   const entityId = "EID01";
@@ -190,6 +197,14 @@ export async function seedTenant(
   })).error);
   must("contact", (await db.from("contacts").insert({
     ...base, contact_id: contactId, name: `ลูกค้าทดสอบ ${suffix}`, roles: ["ลูกค้า"],
+  })).error);
+  // ★ ต้องมีแถวหมักด้วย ไม่ใช่แค่แถวปิด batch — หน้า "ลงหมัก" เดาเลข batch ถัดไป
+  //   จาก log_ferment เท่านั้น (nextBatchNumber ใน lib/production/calc.ts)
+  //   ถ้า seed แต่ log_distill หน้าจอจะเสนอ 1/69 เหมือนกันทุก tenant = ดูไม่ออกว่าแยกกันจริง
+  must("log_ferment", (await db.from("log_ferment").insert({
+    ...base, ferment_date: "2026-01-01", product_name: "สุราทดสอบ", batch,
+    container_id: "T-CON-01", container_qty: 1,
+    material_ids: "T-MAT-01", material_amounts: "100",
   })).error);
   must("log_distill", (await db.from("log_distill").insert({
     ...base, distill_date: "2026-01-01", product_name: "สุราทดสอบ", batch, vol: 100, abv: 40,
