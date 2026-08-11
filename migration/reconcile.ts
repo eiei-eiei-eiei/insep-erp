@@ -8,7 +8,7 @@
  * หมายเหตุ: ยอดบัญชี + PDF ราชการ = เทียบมือ (sec 7.3 ท้ายตาราง) — ไม่อัตโนมัติ
  */
 import { buildDataset } from "./lib/transform";
-import { serviceClient } from "./lib/client";
+import { serviceClient, requireTenantArg } from "./lib/client";
 import { loadWorkbook, rows } from "./lib/loader";
 import * as C from "./lib/clean";
 
@@ -22,6 +22,7 @@ const money = (n: number) => n.toLocaleString("th-TH", { minimumFractionDigits: 
 const eq2 = (a: number, b: number) => Math.abs(a - b) < 0.005;
 
 async function main() {
+  const TENANT = requireTenantArg();
   const db = serviceClient();
   const ds = buildDataset();
   const prod = loadWorkbook("production");
@@ -30,7 +31,7 @@ async function main() {
   console.log("\n【1】 จำนวนแถว (imported = DB)");
   for (const t of ds.order) {
     const expected = ds.tables[t].length;
-    const { count, error } = await db.from(t).select("*", { count: "exact", head: true });
+    const { count, error } = await db.from(t).select("*", { count: "exact", head: true }).eq("tenant_id", TENANT);
     if (error) {
       check(false, t, error.message);
       continue;
@@ -39,7 +40,7 @@ async function main() {
   }
   // stock_product แยก (สร้างจาก recompute ไม่ใช่ import ตรง)
   {
-    const { count } = await db.from("stock_product").select("*", { count: "exact", head: true });
+    const { count } = await db.from("stock_product").select("*", { count: "exact", head: true }).eq("tenant_id", TENANT);
     console.log(`  ℹ️  stock_product ใน DB: ${count} แถว (สร้างจาก recompute)`);
   }
 
@@ -67,7 +68,8 @@ async function main() {
   const fromSheet = pivot(ds.tables.transactions);
   const { data: dbTx, error: txErr } = await db
     .from("transactions")
-    .select("transaction_date, entity_id, type, base_amount, vat_amount, net_amount");
+    .select("transaction_date, entity_id, type, base_amount, vat_amount, net_amount")
+    .eq("tenant_id", TENANT);
   if (txErr) {
     check(false, "โหลด transactions จาก DB", txErr.message);
   } else {
@@ -99,7 +101,7 @@ async function main() {
     const pid = C.strReq(r[0]);
     if (pid) sheetStock.set(pid, C.num0(r[1]));
   }
-  const { data: dbStock, error: stErr } = await db.from("stock_product").select("product_id, balance");
+  const { data: dbStock, error: stErr } = await db.from("stock_product").select("product_id, balance").eq("tenant_id", TENANT);
   if (stErr) {
     check(false, "โหลด stock_product", stErr.message);
   } else {
@@ -119,7 +121,7 @@ async function main() {
 
   // ── 4. log_distill batch ไม่ซ้ำ ─────────────────────────────────────────
   console.log("\n【4】 log_distill batch unique");
-  const { data: batches, error: bErr } = await db.from("log_distill").select("batch");
+  const { data: batches, error: bErr } = await db.from("log_distill").select("batch").eq("tenant_id", TENANT);
   if (bErr) check(false, "โหลด log_distill", bErr.message);
   else {
     const all = (batches as { batch: string }[]).map((b) => b.batch);

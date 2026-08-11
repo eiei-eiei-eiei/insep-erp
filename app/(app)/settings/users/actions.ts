@@ -13,7 +13,9 @@ const ROLES = ["main", "viewer", "sale", "warehouse"] as const;
  * ตรวจว่า caller เป็น main จริง (ผ่าน session ปกติ + RLS) — ป้องกันคนอื่นเรียก action ตรง ๆ
  * คืน user id ของ caller ไว้ใช้กันลบ/แก้ตัวเอง
  */
-async function requireMain(): Promise<string> {
+type Caller = { callerId: string; tenantId: string; slug: string | null };
+
+async function requireMain(): Promise<Caller> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -21,13 +23,42 @@ async function requireMain(): Promise<string> {
   if (!user) throw new Error("ต้องเข้าสู่ระบบก่อน");
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, tenant_id")
     .eq("id", user.id)
     .single();
   if (profile?.role !== "main") {
     throw new Error("เฉพาะเจ้าของกิจการ (main) เท่านั้นที่จัดการผู้ใช้ได้");
   }
-  return user.id;
+  if (!profile.tenant_id) {
+    throw new Error("บัญชีนี้ยังไม่ได้ผูกกับกิจการ (tenant) — ติดต่อผู้ดูแลระบบ");
+  }
+  // slug ใช้ประกอบอีเมลภายในให้ชื่อผู้ใช้ไม่ชนข้ามลูกค้า (ดู lib/shared/auth-domain.ts)
+  const { data: tenant } = await supabase
+    .from("tenants")
+    .select("slug")
+    .eq("id", profile.tenant_id)
+    .single();
+  return {
+    callerId: user.id,
+    tenantId: profile.tenant_id as string,
+    slug: (tenant?.slug as string | undefined) ?? null,
+  };
+}
+
+/**
+ * 🚨 กันแตะผู้ใช้ของลูกค้าเจ้าอื่น
+ * action ที่ใช้ service role รับ user id ดิบ ๆ มาจาก client → ถ้าไม่เช็ค tenant
+ * main ของลูกค้า A จะรีเซ็ตรหัส/ลบผู้ใช้ของ B ได้ถ้าเดา uuid ถูก (RLS ช่วยไม่ได้ เพราะ bypass)
+ */
+async function assertSameTenant(userId: string, tenantId: string) {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("profiles")
+    .select("id")
+    .eq("id", userId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (!data) throw new Error("ไม่พบผู้ใช้นี้ในกิจการของคุณ");
 }
 
 function guard<T extends unknown[]>(
@@ -49,7 +80,7 @@ export const createUserAction = guard(async (input: {
   password: string;
   role: string;
 }): Promise<ActionResult> => {
-  await requireMain();
+  const me = await requireMain();
   const username = input.username.trim().toLowerCase();
   const displayName = input.displayName.trim() || username;
   const password = input.password;
@@ -64,10 +95,12 @@ export const createUserAction = guard(async (input: {
 
   const admin = createAdminClient();
   const { data, error } = await admin.auth.admin.createUser({
-    email: usernameToEmail(username),
+    // slug คั่นให้ชื่อผู้ใช้ไม่ชนข้ามลูกค้า (auth.users.email unique ทั้ง project เติม tenant ไม่ได้)
+    email: usernameToEmail(username, me.slug),
     password,
     email_confirm: true, // ไม่ต้องยืนยันอีเมล — login ได้ทันที
-    user_metadata: { username, display_name: displayName },
+    // ★ handle_new_user() (0025) อ่าน tenant_id จากตรงนี้ — ไม่ส่ง = สร้าง profile ไม่ได้
+    user_metadata: { username, display_name: displayName, tenant_id: me.tenantId },
   });
   if (error) {
     if (/already been registered|already exists/i.test(error.message))
@@ -93,7 +126,7 @@ export const updateRoleAction = guard(async (input: {
   id: string;
   role: string;
 }): Promise<ActionResult> => {
-  const callerId = await requireMain();
+  const { callerId } = await requireMain();
   if (!ROLES.includes(input.role as (typeof ROLES)[number]))
     return { ok: false, error: "role ไม่ถูกต้อง" };
   if (input.id === callerId && input.role !== "main")
@@ -115,9 +148,10 @@ export const resetPasswordAction = guard(async (input: {
   id: string;
   password: string;
 }): Promise<ActionResult> => {
-  await requireMain();
+  const me = await requireMain();
   if (input.password.length < 6)
     return { ok: false, error: "รหัสผ่านอย่างน้อย 6 ตัวอักษร" };
+  await assertSameTenant(input.id, me.tenantId);
 
   const admin = createAdminClient();
   const { error } = await admin.auth.admin.updateUserById(input.id, {
@@ -131,9 +165,10 @@ export const resetPasswordAction = guard(async (input: {
 export const deleteUserAction = guard(async (input: {
   id: string;
 }): Promise<ActionResult> => {
-  const callerId = await requireMain();
+  const { callerId, tenantId } = await requireMain();
   if (input.id === callerId)
     return { ok: false, error: "ห้ามลบบัญชีตัวเอง" };
+  await assertSameTenant(input.id, tenantId);
 
   const admin = createAdminClient();
   const { error } = await admin.auth.admin.deleteUser(input.id);

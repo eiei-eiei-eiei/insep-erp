@@ -3,7 +3,7 @@
  * ถ้าตัดสินใจถอยหลัง cutover: export ข้อมูลที่คีย์ในระบบใหม่กลับเป็น CSV เพื่อวางกลับชีทเดิม
  * ออกไฟล์ที่ migration/export/<table>.csv (gitignore — ข้อมูลจริง)
  */
-import { serviceClient } from "./lib/client";
+import { serviceClient, requireTenantArg } from "./lib/client";
 import { writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 
@@ -35,10 +35,11 @@ function toCsv(records: Record<string, unknown>[]): string {
 
 async function main() {
   mkdirSync(OUT, { recursive: true });
+  const TENANT = requireTenantArg();
   const db = serviceClient();
   let n = 0;
   for (const t of TABLES) {
-    const { data, error } = await db.from(t).select("*");
+    const { data, error } = await db.from(t).select("*").eq("tenant_id", TENANT);
     if (error) {
       console.log(`  ⚠️ ${t}: ${error.message}`);
       continue;

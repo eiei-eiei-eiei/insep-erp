@@ -20,6 +20,27 @@ export function serviceClient(): SupabaseClient {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
+/**
+ * อ่าน --tenant=<uuid> จาก argv — **บังคับใส่ทุกสคริปต์ migration**
+ *
+ * 🚨 สคริปต์พวกนี้ใช้ service role ที่ bypass RLS ทั้งหมด → ไม่มีอะไรกันการอ่าน/เขียน
+ *    ข้ามลูกค้าเลยนอกจากค่านี้ · ปล่อยให้ default ไม่ได้ เพราะเดาผิดทีเดียว = ทับข้อมูลลูกค้าจริง
+ */
+export function requireTenantArg(): string {
+  const v = process.argv
+    .find((a) => a.startsWith("--tenant="))
+    ?.split("=").slice(1).join("=").trim() ?? "";
+  if (!v) {
+    console.error(
+      "\n❌ ต้องระบุ --tenant=<uuid>\n" +
+        "   สคริปต์นี้ใช้ service role ที่ bypass RLS — ถ้าไม่ระบุ tenant จะไม่มีอะไร\n" +
+        "   กันการอ่าน/เขียนข้ามข้อมูลลูกค้าเจ้าอื่น · ดู uuid ได้จากตาราง tenants",
+    );
+    process.exit(1);
+  }
+  return v;
+}
+
 /** insert เป็นชุด (batch) กัน payload ใหญ่เกิน — คืน error แรกที่เจอ */
 export async function insertBatch(
   db: SupabaseClient,
