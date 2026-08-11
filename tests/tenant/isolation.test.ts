@@ -83,7 +83,10 @@ describe("ชั้น 1 — RLS: อ่านข้ามลูกค้าไ�
 
 // ── ชั้น 2: ยิง RPC ด้วยคีย์ของอีกฝั่งไม่ได้ ★ สำคัญที่สุด ──────────────────
 describe("ชั้น 2 — RPC: ใช้คีย์ของลูกค้าอื่นไม่ได้ (definer bypass RLS)", () => {
-  /** ผ่าน = โยน error หรือคืน ok:false · ไม่ผ่าน = ทำงานสำเร็จกับข้อมูลของ B */
+  /**
+   * ⚠️ ต้องใช้ `quNoOwn`/`txIdOwn` (คีย์ที่มีเฉพาะฝั่ง B) เท่านั้น
+   *    ถ้าใช้คีย์ที่ซ้ำกันทั้งสองฝั่ง A จะไปโดนของตัวเองแล้วสำเร็จ = เทสไม่ได้ทดสอบอะไรเลย
+   */
   const expectDenied = (label: string, res: { data: unknown; error: unknown }) => {
     if (res.error) return; // โยน exception = ปฏิเสธแล้ว
     const d = res.data as { ok?: boolean } | null;
@@ -93,55 +96,75 @@ describe("ชั้น 2 — RPC: ใช้คีย์ของลูกค้�
     ).not.toBe(true);
   };
 
-  it("fn_apply_order_action ด้วย qu_no ของ B → ต้องถูกปฏิเสธ", async () => {
+  it("ตั้งต้น: A ต้องไม่มีเอกสารเลขเดียวกับชุดเฉพาะของ B (ไม่งั้นเทสข้างล่างไม่มีความหมาย)", async () => {
+    const { count: q } = await admin().from("sales_orders")
+      .select("*", { count: "exact", head: true }).eq("tenant_id", A.tenantId).eq("qu_no", B.quNoOwn);
+    const { count: t } = await admin().from("transactions")
+      .select("*", { count: "exact", head: true }).eq("tenant_id", A.tenantId).eq("tx_id", B.txIdOwn);
+    expect(q ?? 0).toBe(0);
+    expect(t ?? 0).toBe(0);
+  });
+
+  it("fn_apply_order_action ด้วย qu_no เฉพาะของ B → ต้องถูกปฏิเสธ", async () => {
     expectDenied(
       "fn_apply_order_action",
       await asA.rpc("fn_apply_order_action", {
-        p_qu_no: B.quNo, p_update: { status: "ยกเลิก" }, p_revenue: null,
+        p_qu_no: B.quNoOwn, p_update: { status: "ยกเลิก" }, p_revenue: null,
       }),
     );
-    // และออเดอร์ของ B ต้องไม่ถูกแตะ
-    const { data } = await admin()
-      .from("sales_orders").select("status").eq("tenant_id", B.tenantId).eq("qu_no", B.quNo).single();
+    const { data } = await admin().from("sales_orders")
+      .select("status").eq("tenant_id", B.tenantId).eq("qu_no", B.quNoOwn).single();
     expect(data?.status, "สถานะออเดอร์ของ B ถูกเปลี่ยน!").toBe("รอคอนเฟิร์ม");
   });
 
-  it("fn_cancel_order ด้วย qu_no ของ B → ต้องถูกปฏิเสธ", async () => {
-    expectDenied("fn_cancel_order", await asA.rpc("fn_cancel_order", { p_qu_no: B.quNo }));
-    const { data } = await admin()
-      .from("sales_orders").select("status").eq("tenant_id", B.tenantId).eq("qu_no", B.quNo).single();
-    expect(data?.status).not.toBe("ยกเลิก");
+  it("fn_cancel_order ด้วย qu_no เฉพาะของ B → ต้องถูกปฏิเสธ", async () => {
+    expectDenied("fn_cancel_order", await asA.rpc("fn_cancel_order", { p_qu_no: B.quNoOwn }));
+    const { data } = await admin().from("sales_orders")
+      .select("status").eq("tenant_id", B.tenantId).eq("qu_no", B.quNoOwn).single();
+    expect(data?.status, "ออเดอร์ของ B ถูกยกเลิก!").not.toBe("ยกเลิก");
   });
 
-  it("fn_void_deposit_invoice ด้วย qu_no ของ B → ต้องถูกปฏิเสธ", async () => {
+  it("fn_void_deposit_invoice ด้วย qu_no เฉพาะของ B → ต้องถูกปฏิเสธ", async () => {
     expectDenied(
       "fn_void_deposit_invoice",
-      await asA.rpc("fn_void_deposit_invoice", { p_qu_no: B.quNo }),
+      await asA.rpc("fn_void_deposit_invoice", { p_qu_no: B.quNoOwn }),
     );
   });
 
-  it("fn_confirm_fulfillment ด้วย qu_no ของ B → ต้องถูกปฏิเสธ", async () => {
+  it("fn_confirm_fulfillment ด้วย qu_no เฉพาะของ B → ต้องถูกปฏิเสธ", async () => {
     expectDenied(
       "fn_confirm_fulfillment",
-      await asA.rpc("fn_confirm_fulfillment", { p_qu_no: B.quNo, p_user: "attacker" }),
+      await asA.rpc("fn_confirm_fulfillment", { p_qu_no: B.quNoOwn, p_user: "attacker" }),
     );
   });
 
-  it("fn_void_transaction ด้วย tx_id ของ B → ต้องถูกปฏิเสธ", async () => {
-    expectDenied("fn_void_transaction", await asA.rpc("fn_void_transaction", { p_tx_id: B.txId }));
-    const { data } = await admin()
-      .from("transactions").select("status").eq("tenant_id", B.tenantId).eq("tx_id", B.txId).single();
+  it("fn_void_transaction ด้วย tx_id เฉพาะของ B → ต้องถูกปฏิเสธ", async () => {
+    expectDenied("fn_void_transaction", await asA.rpc("fn_void_transaction", { p_tx_id: B.txIdOwn }));
+    const { data } = await admin().from("transactions")
+      .select("status").eq("tenant_id", B.tenantId).eq("tx_id", B.txIdOwn).single();
     expect(data?.status, "บิลของ B ถูกยกเลิก!").toBe("ปกติ");
   });
 
-  it("fn_settle_apar ด้วย tx_id ของ B → ต้องถูกปฏิเสธ", async () => {
+  it("fn_settle_apar ด้วย tx_id เฉพาะของ B → ต้องถูกปฏิเสธ", async () => {
     expectDenied(
       "fn_settle_apar",
-      await asA.rpc("fn_settle_apar", { p_tx_id: B.txId, p_account_name: "บัญชีทดสอบ" }),
+      await asA.rpc("fn_settle_apar", { p_tx_id: B.txIdOwn, p_account_name: "บัญชีทดสอบ" }),
     );
-    const { data } = await admin()
-      .from("transactions").select("ap_ar_status").eq("tenant_id", B.tenantId).eq("tx_id", B.txId).single();
+    const { data } = await admin().from("transactions")
+      .select("ap_ar_status").eq("tenant_id", B.tenantId).eq("tx_id", B.txIdOwn).single();
     expect(data?.ap_ar_status, "บิลค้างของ B ถูกเคลียร์!").toBe("AR");
+  });
+
+  it("คีย์ที่ซ้ำกันทั้งสองฝั่ง: A ทำงานกับ 'ของตัวเอง' ไม่ใช่ของ B", async () => {
+    // เคสนี้ต้องสำเร็จ (ไม่ใช่ช่องโหว่) — แต่ต้องไม่ไปแตะแถวของ B
+    const res = await asA.rpc("fn_apply_order_action", {
+      p_qu_no: A.quNo, p_update: { status: "ยกเลิก" }, p_revenue: null,
+    });
+    expect(res.error).toBeNull();
+
+    const { data: bRow } = await admin().from("sales_orders")
+      .select("status").eq("tenant_id", B.tenantId).eq("qu_no", B.quNo).single();
+    expect(bRow?.status, "เลขเอกสารซ้ำกันแล้วไปโดนของอีกเจ้า!").toBe("รอคอนเฟิร์ม");
   });
 
   it("fn_receive_material: ชื่อวัตถุดิบของ B ต้องหาไม่เจอจากฝั่ง A", async () => {

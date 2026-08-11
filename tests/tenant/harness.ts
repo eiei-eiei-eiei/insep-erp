@@ -13,10 +13,15 @@
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-try {
-  process.loadEnvFile?.(".env.tenant-test");
-} catch {
-  /* ไม่มีไฟล์ → เช็คด้านล่างจะฟ้องเอง */
+/** รับได้ทั้ง 2 ชื่อ — `.local` เข้าชุดกับ .env.local ที่โปรเจกต์ใช้อยู่ */
+export const ENV_FILES = [".env.tenant-test.local", ".env.tenant-test"] as const;
+for (const f of ENV_FILES) {
+  try {
+    process.loadEnvFile?.(f);
+    break;
+  } catch {
+    /* ลองชื่อถัดไป — ไม่เจอสักอันให้ assertTestEnv() ฟ้องเอง */
+  }
 }
 
 const URL = process.env.TENANT_TEST_SUPABASE_URL ?? "";
@@ -32,13 +37,13 @@ export function assertTestEnv() {
   ].filter(Boolean);
   if (missing.length) {
     throw new Error(
-      `ยังไม่ได้ตั้ง .env.tenant-test — ขาด: ${missing.join(", ")}\n` +
+      `ยังไม่ได้ตั้ง ${ENV_FILES[0]} — ขาด: ${missing.join(", ")}\n` +
         "  ดูตัวอย่างค่าที่ต้องใส่ใน .env.example หัวข้อ 'เทสกันข้อมูลรั่ว'",
     );
   }
   if (CONFIRM !== "disposable") {
     throw new Error(
-      "ต้องใส่ TENANT_TEST_CONFIRM=disposable ใน .env.tenant-test\n" +
+      `ต้องใส่ TENANT_TEST_CONFIRM=disposable ใน ${ENV_FILES[0]}\n` +
         "  = ยืนยันว่า project นี้เป็นของทิ้งได้ ไม่ใช่ DB ที่ใช้งานจริง\n" +
         "  (เทสชุดนี้สร้างและลบข้อมูลจริง — กันชี้ผิด project)",
     );
@@ -61,10 +66,17 @@ export type Tenant = {
   entityId: string;
   email: string;
   password: string;
-  /** business key ไว้ให้อีกฝั่งลองยิงข้าม */
+  /**
+   * คีย์ "ซ้ำกันทั้งสอง tenant" — พิสูจน์ว่าอยู่ร่วมกันได้หลังผ่าตัด PK (0027)
+   * ⚠️ ห้ามใช้ทดสอบการยิงข้าม tenant — เพราะอีกฝั่งก็มีคีย์นี้ของตัวเอง
+   *    เรียกไปจะไปโดนของตัวเอง แล้วสำเร็จ (ถูกต้องแล้ว) ทำให้เทสไม่ได้ทดสอบอะไรเลย
+   */
   quNo: string;
   txId: string;
   batch: string;
+  /** คีย์ "เฉพาะ tenant นี้" — อีกฝั่งไม่มี → ใช้ทดสอบยิงข้ามได้จริง */
+  quNoOwn: string;
+  txIdOwn: string;
   materialName: string;
   productId: string;
   contactId: string;
@@ -149,6 +161,9 @@ export async function seedTenant(suffix: string): Promise<Tenant> {
   const batch = "9/69";
   const quNo = `QU990101-001`;
   const txId = `TR-99010101-0001`;
+  // คีย์เฉพาะของ tenant นี้ (อีกฝั่งไม่มี) — ไว้ให้อีกฝั่งลองยิงข้าม
+  const quNoOwn = `QU9902${suffix}-001`;
+  const txIdOwn = `TR-9902${suffix}-0001`;
 
   must("material", (await db.from("materials").insert({
     ...base, material_id: "T-MAT-01", name: materialName, unit: "กก.",
@@ -182,7 +197,23 @@ export async function seedTenant(suffix: string): Promise<Tenant> {
     net_amount: 100, status: "ปกติ", ap_ar_status: "AR",
   })).error);
 
-  return { slug, tenantId, entityId, email, password, quNo, txId, batch, materialName, productId, contactId };
+  // ── ชุดคีย์เฉพาะ tenant นี้ (อีกฝั่งไม่มีเลข/เอกสารพวกนี้) ──
+  must("sales_order เฉพาะตัว", (await db.from("sales_orders").insert({
+    tenant_id: tenantId, entity_id: entityId, qu_no: quNoOwn, order_no: `ORD9902${suffix}-001`,
+    customer_id: contactId, customer_name: `ลูกค้าทดสอบ ${suffix}`,
+    status: "รอคอนเฟิร์ม", grand_total: 200, outstanding_balance: 200,
+  })).error);
+  must("transaction เฉพาะตัว", (await db.from("transactions").insert({
+    tenant_id: tenantId, entity_id: entityId, tx_id: txIdOwn,
+    transaction_date: "2026-01-01", type: "รายรับ", account_name: "บัญชีทดสอบ",
+    net_amount: 200, status: "ปกติ", ap_ar_status: "AR",
+  })).error);
+
+  return {
+    slug, tenantId, entityId, email, password,
+    quNo, txId, batch, quNoOwn, txIdOwn,
+    materialName, productId, contactId,
+  };
 }
 
 /** ล็อกอินเป็นผู้ใช้ของ tenant นั้น → client ที่ RLS มีผลเต็ม */
