@@ -9,6 +9,7 @@
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:tenant": "vitest run --config vitest.tenant.config.ts",
     "db:push": "supabase db push",
     "upload:templates": "tsx scripts/upload-pdf-templates.ts",
     "migrate:split": "tsx migration/split-xlsx.ts",

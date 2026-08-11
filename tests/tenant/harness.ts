@@ -1,0 +1,194 @@
+/**
+ * harness.ts — เครื่องมือสร้าง/ล้าง tenant ทดสอบ สำหรับเทสกันข้อมูลรั่วข้ามลูกค้า
+ *
+ * 🚨 อ่าน env จาก **.env.tenant-test เท่านั้น ไม่แตะ .env.local**
+ *    เพราะ .env.local ชี้ DB ที่ใช้งานจริง (ยื่นภาษี) — เทสชุดนี้สร้าง/ลบข้อมูลจริง
+ *    ถ้าเผลอชี้ผิดที่ = ยัด tenant ทดสอบลงระบบจริง · แยกไฟล์ = พลาดไม่ได้เลย
+ *
+ * ตั้งค่าใน .env.tenant-test (ไฟล์นี้ถูก .gitignore แล้ว):
+ *   TENANT_TEST_SUPABASE_URL=https://<ref>.supabase.co
+ *   TENANT_TEST_SERVICE_ROLE_KEY=...
+ *   TENANT_TEST_ANON_KEY=...
+ *   TENANT_TEST_CONFIRM=disposable      ← ยืนยันว่า project นี้ทิ้งได้ ไม่ใช่ของจริง
+ */
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+
+try {
+  process.loadEnvFile?.(".env.tenant-test");
+} catch {
+  /* ไม่มีไฟล์ → เช็คด้านล่างจะฟ้องเอง */
+}
+
+const URL = process.env.TENANT_TEST_SUPABASE_URL ?? "";
+const SERVICE = process.env.TENANT_TEST_SERVICE_ROLE_KEY ?? "";
+const ANON = process.env.TENANT_TEST_ANON_KEY ?? "";
+const CONFIRM = process.env.TENANT_TEST_CONFIRM ?? "";
+
+export function assertTestEnv() {
+  const missing = [
+    !URL && "TENANT_TEST_SUPABASE_URL",
+    !SERVICE && "TENANT_TEST_SERVICE_ROLE_KEY",
+    !ANON && "TENANT_TEST_ANON_KEY",
+  ].filter(Boolean);
+  if (missing.length) {
+    throw new Error(
+      `ยังไม่ได้ตั้ง .env.tenant-test — ขาด: ${missing.join(", ")}\n` +
+        "  ดูตัวอย่างค่าที่ต้องใส่ใน .env.example หัวข้อ 'เทสกันข้อมูลรั่ว'",
+    );
+  }
+  if (CONFIRM !== "disposable") {
+    throw new Error(
+      "ต้องใส่ TENANT_TEST_CONFIRM=disposable ใน .env.tenant-test\n" +
+        "  = ยืนยันว่า project นี้เป็นของทิ้งได้ ไม่ใช่ DB ที่ใช้งานจริง\n" +
+        "  (เทสชุดนี้สร้างและลบข้อมูลจริง — กันชี้ผิด project)",
+    );
+  }
+}
+
+/** marker สำหรับ cleanup — ลบทุกอย่างที่ขึ้นต้นด้วยนี้ทีเดียวได้ */
+export const TEST_PREFIX = "zz-test-";
+
+export const admin = (): SupabaseClient =>
+  createClient(URL, SERVICE, { auth: { persistSession: false, autoRefreshToken: false } });
+
+/** client แบบผู้ใช้ทั่วไป (anon key) — RLS มีผลเต็ม */
+export const anonClient = (): SupabaseClient =>
+  createClient(URL, ANON, { auth: { persistSession: false, autoRefreshToken: false } });
+
+export type Tenant = {
+  slug: string;
+  tenantId: string;
+  entityId: string;
+  email: string;
+  password: string;
+  /** business key ไว้ให้อีกฝั่งลองยิงข้าม */
+  quNo: string;
+  txId: string;
+  batch: string;
+  materialName: string;
+  productId: string;
+  contactId: string;
+};
+
+/** ทุกตารางที่มีคอลัมน์ tenant_id — ใช้วนเช็คว่าอ่านข้ามกันไม่ได้ */
+export const TENANT_TABLES = [
+  "entities", "bank_accounts", "app_settings", "contacts", "counters", "integration_log",
+  "materials", "containers", "products",
+  "log_material", "log_ferment", "log_distill", "log_distill_run",
+  "log_ferment_monitor", "log_dilute", "log_product", "stock_product",
+  "transactions", "transaction_items", "tax_summaries", "wht_certificates", "scan_log",
+  "sale_menu", "sales_orders", "sales_order_items", "warehouse_stock", "stock_moves",
+  "report_runs", "edit_log", "snapshots", "profiles",
+] as const;
+
+const must = (label: string, error: { message: string } | null) => {
+  if (error) throw new Error(`${label}: ${error.message}`);
+};
+
+/** ล้าง tenant ทดสอบทั้งหมด (เรียกได้เสมอ — idempotent · ไม่มี env ก็ไม่ระเบิด) */
+export async function cleanupTestTenants() {
+  if (!URL || !SERVICE) return; // env ไม่ครบ = ยังไม่เคยสร้างอะไร ไม่มีอะไรต้องล้าง
+  const db = admin();
+
+  const { data: tenants } = await db.from("tenants").select("id, slug").like("slug", `${TEST_PREFIX}%`);
+  if (!tenants?.length) return;
+
+  // 1) ลบ auth user ก่อน (profiles ตามไปด้วย on delete cascade)
+  const ids = tenants.map((t) => t.id as string);
+  const { data: profs } = await db.from("profiles").select("id").in("tenant_id", ids);
+  for (const p of profs ?? []) {
+    await db.auth.admin.deleteUser(p.id as string).catch(() => {});
+  }
+
+  // 2) ล้างข้อมูลของแต่ละ tenant (fn_mig_truncate ลบเฉพาะ tenant ที่ระบุ — 0029)
+  for (const t of tenants) {
+    const { error } = await db.rpc("fn_mig_truncate", { p_tenant: t.id });
+    if (error) throw new Error(`cleanup fn_mig_truncate(${t.slug}): ${error.message}`);
+  }
+
+  // 3) ลบแถว tenants (ต้องหลังสุด เพราะทุกตาราง FK มาที่นี่)
+  must("cleanup tenants", (await db.from("tenants").delete().in("id", ids)).error);
+}
+
+/** สร้าง tenant ทดสอบ 1 ราย พร้อมผู้ใช้ role main + ข้อมูลตัวอย่างครบทุกโดเมน */
+export async function seedTenant(suffix: string): Promise<Tenant> {
+  const db = admin();
+  const slug = `${TEST_PREFIX}${suffix}`;
+  const password = "TestPass!2569";
+
+  const { data: t, error: tErr } = await db
+    .from("tenants")
+    .insert({ slug, name: `กิจการทดสอบ ${suffix}`, brand_name: `แบรนด์ ${suffix}` })
+    .select("id")
+    .single();
+  must("สร้าง tenant", tErr);
+  const tenantId = t!.id as string;
+
+  // ★ ทั้งสอง tenant ใช้ 'EID01' เหมือนกัน — พิสูจน์ว่า composite PK (tenant_id, entity_id) ทำงาน
+  const entityId = "EID01";
+  must("สร้าง entity", (await db.from("entities").insert({
+    tenant_id: tenantId, entity_id: entityId, name: `กิจการทดสอบ ${suffix}`,
+    is_vat: true, is_default: true,
+  })).error);
+
+  // ผู้ใช้ role main — อีเมลภายในมี slug คั่น (ชื่อ owner ซ้ำกันได้ทั้งสอง tenant)
+  const email = `owner@${slug}.insep.local`;
+  const { data: u, error: uErr } = await db.auth.admin.createUser({
+    email, password, email_confirm: true,
+    user_metadata: { username: `owner-${suffix}`, display_name: `เจ้าของ ${suffix}`, tenant_id: tenantId },
+  });
+  must("สร้างผู้ใช้", uErr);
+  must("ตั้ง role main", (await db.from("profiles")
+    .update({ role: "main" }).eq("id", u!.user!.id)).error);
+
+  // ── ข้อมูลตัวอย่าง: ใช้คีย์ "เหมือนกันทั้งสอง tenant" เพื่อพิสูจน์ว่าไม่ชนกัน ──
+  const base = { tenant_id: tenantId, entity_id: entityId };
+  const materialName = "ข้าวเหนียวทดสอบ";
+  const productId = "T-PROD-01";
+  const contactId = "C-9001";
+  const batch = "9/69";
+  const quNo = `QU990101-001`;
+  const txId = `TR-99010101-0001`;
+
+  must("material", (await db.from("materials").insert({
+    ...base, material_id: "T-MAT-01", name: materialName, unit: "กก.",
+  })).error);
+  must("container", (await db.from("containers").insert({
+    ...base, container_id: "T-CON-01", container_type: "ถังทดสอบ", capacity_l: 200,
+  })).error);
+  must("product", (await db.from("products").insert({
+    ...base, product_id: productId, name: "สุราทดสอบ", degree: 40, bottle_size_l: 0.7,
+  })).error);
+  must("contact", (await db.from("contacts").insert({
+    ...base, contact_id: contactId, name: `ลูกค้าทดสอบ ${suffix}`, roles: ["ลูกค้า"],
+  })).error);
+  must("log_distill", (await db.from("log_distill").insert({
+    ...base, distill_date: "2026-01-01", product_name: "สุราทดสอบ", batch, vol: 100, abv: 40,
+  })).error);
+  must("log_product", (await db.from("log_product").insert({
+    ...base, doc_date: "2026-01-01", trans_type: "รับ", product_id: productId, amount: 50,
+  })).error);
+  must("sale_menu", (await db.from("sale_menu").insert({
+    ...base, menu_name: "เมนูทดสอบ", price: 100, category: "สุรา", product_id: productId,
+  })).error);
+  must("sales_order", (await db.from("sales_orders").insert({
+    tenant_id: tenantId, entity_id: entityId, qu_no: quNo, order_no: `ORD990101-001`,
+    customer_id: contactId, customer_name: `ลูกค้าทดสอบ ${suffix}`,
+    status: "รอคอนเฟิร์ม", grand_total: 100, outstanding_balance: 100,
+  })).error);
+  must("transaction", (await db.from("transactions").insert({
+    tenant_id: tenantId, entity_id: entityId, tx_id: txId,
+    transaction_date: "2026-01-01", type: "รายรับ", account_name: "บัญชีทดสอบ",
+    net_amount: 100, status: "ปกติ", ap_ar_status: "AR",
+  })).error);
+
+  return { slug, tenantId, entityId, email, password, quNo, txId, batch, materialName, productId, contactId };
+}
+
+/** ล็อกอินเป็นผู้ใช้ของ tenant นั้น → client ที่ RLS มีผลเต็ม */
+export async function signIn(t: Tenant): Promise<SupabaseClient> {
+  const c = anonClient();
+  const { error } = await c.auth.signInWithPassword({ email: t.email, password: t.password });
+  if (error) throw new Error(`ล็อกอิน ${t.slug}: ${error.message}`);
+  return c;
+}
