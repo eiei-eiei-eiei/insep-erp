@@ -113,6 +113,38 @@ npm run migrate:split                  # 4) (ทางเลือก) เก็
 ## Phase 6 — Cutover
 _(ข้ามตามที่ผู้ใช้ตัดสินใจ — ไป go-live ตรง)_
 
+## Multi-tenant (D46-D48 · migration 0025-0032) — ต้องทำตอน setup จริง
+
+### ก. ย้าย DB production ตามโค้ดใหม่ (ยังไม่ทำ — ดู `docs/NEXT_STEPS.md` 4.10)
+- [ ] จับ snapshot / backup DB production **ก่อน**
+- [ ] `supabase link` กลับไป project เดิม → ยืนยัน `cat supabase/.temp/project-ref`
+      = `vmhiwlxdyhatucioalzp` (ไม่ใช่ project ทดสอบ)
+- [ ] `npm run db:push` (0025-0032) — ข้อมูลเดิมทั้งหมดกลายเป็น tenant เดียวอัตโนมัติ
+- [ ] `cp .env.local.production-backup .env.local` แล้ว `npm run dev` ตรวจว่าทุกอย่างเหมือนเดิม
+- [ ] **ยืนยันว่าล็อกอินด้วยบัญชีเดิมได้** (รูปแบบอีเมล `<username>@insep.local` ไม่เปลี่ยน แต่ต้องพิสูจน์)
+- [ ] merge `feat/multi-tenant` → `main` → push (= deploy production)
+
+### ข. ตอนรับลูกค้าใหม่แต่ละราย
+- [ ] สร้าง tenant + entity + ผู้ใช้ (ตอนนี้ใช้ `npm run seed:demo-tenant` ไปก่อน —
+      provision script จริงอยู่ในงาน 4.5)
+- [ ] **รหัสตั้งต้นต้องสุ่มไม่ซ้ำต่อราย** — `generateInitialPassword()` ทำให้แล้ว
+      🚨 ห้ามตั้งรหัสเดียวกันให้ทุกเจ้าเด็ดขาด (ลูกค้าจะล็อกอินเข้าระบบกันเองได้ตั้งแต่วันแรก)
+- [ ] ผู้ใช้ใหม่จะถูกบังคับเปลี่ยนรหัสตอนล็อกอินครั้งแรกอัตโนมัติ (0031) — บอกลูกค้าไว้ล่วงหน้า
+- [ ] **ชื่อผู้ใช้ห้ามซ้ำกับลูกค้าเจ้าอื่น** (0032) — ถ้าชนจะขึ้นข้อความให้เติมชื่อโรงต่อท้าย
+- [ ] ตั้งแบรนด์ใน `app_settings` (`brand_name`/`brand_color`/`logo_url`) — **ไม่ใช่ที่ตาราง `tenants`**
+      (D47 ลบคอลัมน์นั้นทิ้งแล้วเพื่อไม่ให้มี 2 แหล่ง)
+- [ ] ถ้าลูกค้าต้องการ **กิจการที่ 2** (add-on) — สร้าง `entities` ให้ผ่าน service role เท่านั้น
+      ลูกค้าสร้างเองไม่ได้โดยตั้งใจ (RLS เปิดแค่ update)
+
+### ค. 🚨 ก่อนรับเงินลูกค้ารายแรก
+- [ ] **ทำ MFA ให้เสร็จ** (`docs/NEXT_STEPS.md` 4.0.1) — ถ้ารู้ชื่อผู้ใช้ของอีกเจ้า
+      + รหัสผ่านบังเอิญตรงกัน ยังเข้าข้ามกันได้ · ปิดได้ด้วย MFA เท่านั้น
+- [ ] Vercel: ใช้ **แผน Pro** (Hobby ห้ามใช้เชิงพาณิชย์) · ทีมเดียว project ไม่จำกัด
+- [ ] ตั้ง wildcard domain `*.<โดเมนเรา>` ถ้าจะให้ลูกค้าเข้าผ่าน subdomain ของตัวเอง
+      + ตั้ง `NEXT_PUBLIC_ROOT_DOMAIN` ให้ตรง
+- [ ] เชิญบัญชี Supabase เดิมเข้า organization ของบัญชีใหม่ → ล็อกอิน CLI ครั้งเดียวเห็นทุก project
+      (จำเป็นตอนต้องรัน migration ทุก DB ต่อ release — `docs/NEXT_STEPS.md` 4.9)
+
 ## 🚀 Deployment / Go-Live (ทำจริงแล้ว 2026-07-27)
 
 - [x] **โค้ดขึ้น GitHub** — commit ทั้ง repo + push `main` → `github.com/eiei-eiei-eiei/insep-erp`
