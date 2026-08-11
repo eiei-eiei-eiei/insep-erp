@@ -213,6 +213,20 @@ export async function processOrderActionAction(quNo: string, action: OrderAction
   return { ok: true, data: { newStatus: result.newStatus, duplicate: res.duplicate, warning: res.duplicate ? "รายการนี้ลงบัญชีไปแล้ว (ข้ามการบันทึกซ้ำ)" : "" } };
 }
 
+/**
+ * D45 — ยกเลิกใบแจ้งหนี้ค่ามัดจำ → กลับสถานะ 'รอคอนเฟิร์ม' (แก้ใบเสนอราคาต่อได้)
+ * ปลอดภัย: สถานะ 'รอชำระมัดจำ' ยังไม่มีรายการบัญชี/สต็อกเกิดขึ้น · role main เท่านั้น
+ */
+export async function voidDepositInvoiceAction(quNo: string): Promise<SaveResult> {
+  const supabase = await db();
+  const { data, error } = await supabase.rpc("fn_void_deposit_invoice", { p_qu_no: quNo });
+  if (error) return fail(mapDbError(error));
+  const res = data as { ok: boolean; error?: string; dep_inv_no?: string };
+  if (!res.ok) return fail(res.error ?? "ยกเลิกใบแจ้งหนี้มัดจำไม่สำเร็จ");
+  revalidatePath("/sales");
+  return { ok: true, data: res };
+}
+
 // ── S3: คลังยืนยันจัดส่ง (ตัดสต็อก + SELL_PRODUCT + LINE) ───────────────────────
 export async function confirmFulfillmentAction(quNo: string, userName: string): Promise<SaveResult> {
   const supabase = await db();

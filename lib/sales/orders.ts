@@ -6,6 +6,11 @@
  * ⚠️ กติกาเหล็ก: copy เงื่อนไขทีละบรรทัด — ทุก branch, dateCol 22 vs 23, TAX no.
  *   DECISION (ผู้ใช้เลือก): แก้ bug เดิม — PAY_BALANCE/FULL_PAYMENT_LATER "ตั้ง" docToPrint
  *   (โค้ดเดิมไม่ตั้ง → ใบเสร็จยอดค้างไม่ trigger พิมพ์). ดู docs/DECISIONS.md
+ *
+ *   D45: +ISSUE_INVOICE_DEPOSIT (ใบแจ้งหนี้ค่ามัดจำ ก่อนได้รับเงิน) — action เดียวที่
+ *   "ออกใบแจ้งหนี้แต่ยังไม่ลงบัญชี" คู่กับ ISSUE_INVOICE_FULL · เก็บเลข/วันที่/ยอด
+ *   ในคอลัมน์ dep_* แยกต่างหาก (ห้ามใช้ inv_no/doc_date1 ร่วม — สองช่องนั้นเป็นของ
+ *   ใบแจ้งหนี้ตอนส่งของ ถ้าทับ = ใบกำกับภาษีมัดจำได้วันที่ผิด)
  */
 
 import { round2, reverseVatWht, toAccItem, taxDocNo, type AccItem } from "./calc";
@@ -15,8 +20,12 @@ export type OrderAction =
   | "FULL_PAYMENT_AND_SEND"
   | "SEND_TO_WH"
   | "ISSUE_INVOICE_FULL"
+  | "ISSUE_INVOICE_DEPOSIT"
   | "PAY_BALANCE"
   | "FULL_PAYMENT_LATER";
+
+/** สถานะใหม่ D45 — ออกใบแจ้งหนี้มัดจำแล้ว รอลูกค้าโอน (ยังไม่มีรายการบัญชี) */
+export const STATUS_AWAIT_DEPOSIT = "รอชำระมัดจำ";
 
 /** สถานะ current ของออเดอร์ (จาก sales_orders) — camelCase */
 export type OrderState = {
@@ -33,6 +42,8 @@ export type OrderState = {
   invNo: string;
   taxNo1: string;
   taxNo2: string;
+  /** D45 — เลขใบแจ้งหนี้ค่ามัดจำ (ว่าง = ยังไม่เคยออก) */
+  depInvNo?: string;
 };
 
 export type ActionPayload = {
@@ -68,6 +79,11 @@ export type OrderUpdate = {
   nextStatus?: string;
   docDate1?: string;
   docDate2?: string;
+  // D45 — ใบแจ้งหนี้ค่ามัดจำ (แยกจาก invNo/docDate1 ของใบแจ้งหนี้ตอนส่งของ)
+  depInvNo?: string;
+  depInvDate?: string;
+  depInvAmount?: number;
+  depDueDate?: string;
 };
 
 export type RevenuePayload = {
@@ -141,6 +157,9 @@ export function neededSerials(action: OrderAction, order: OrderState): {
       return { inv: noInv, tax1: false, tax2: false };
     case "ISSUE_INVOICE_FULL":
       return { inv: noInv, tax1: false, tax2: false };
+    case "ISSUE_INVOICE_DEPOSIT":
+      // ใช้เลขชุด INV เดียวกัน แต่เก็บคนละช่อง (ใบแจ้งหนี้มัดจำ 1 ใบ / ออเดอร์)
+      return { inv: !order.depInvNo, tax1: false, tax2: false };
     case "PAY_BALANCE":
       return { inv: false, tax1: false, tax2: noTax2 };
     case "FULL_PAYMENT_LATER":
@@ -208,6 +227,18 @@ export function processOrder(
     if (!order.invNo && gen.invNo) update.invNo = gen.invNo;
     update.docToPrint = "invoice";
     dateField = "docDate1"; // 22
+  } else if (action === "ISSUE_INVOICE_DEPOSIT") {
+    // D45 — วางบิลค่ามัดจำ: ยังไม่ได้รับเงิน → ไม่มี revenue, ไม่แตะ deposit/outstanding,
+    // ไม่แตะ docDate1/2 (สงวนไว้ให้ใบแจ้งหนี้ + ใบกำกับภาษีตอนรับเงินจริง)
+    update.status = STATUS_AWAIT_DEPOSIT;
+    if (!order.depInvNo && gen.invNo) update.depInvNo = gen.invNo;
+    update.depInvAmount = round2(Number(payload.amount) || 0);
+    if (payload.docDate) {
+      update.depInvDate = payload.docDate;
+      update.depDueDate = dueDateISO(payload.docDate, payload.creditDays ?? 0);
+    }
+    update.docToPrint = "invoice-deposit";
+    update.nextStatus = "รอคลังจัดส่ง";
   } else if (action === "PAY_BALANCE" || action === "FULL_PAYMENT_LATER") {
     update.status = "ปิดการขาย";
     update.paymentMethod = payload.method;

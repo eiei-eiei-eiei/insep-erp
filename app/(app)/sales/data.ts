@@ -135,10 +135,15 @@ export type OrderRow = {
   saleName: string;
   isDeposit: boolean;
   depositPercent: number;
+  // D45 — ใบแจ้งหนี้ค่ามัดจำ (ออกก่อนรับเงิน)
+  depInvNo: string;
+  depInvDate: string;
+  depInvAmount: number;
+  depDueDate: string;
 };
 
 const ORDER_COLS =
-  "qu_no, order_no, created_at, customer_id, customer_name, sale_name, sub_total, discount, sub_discount, vat_amount, grand_total, status, deposit, outstanding_balance, due_date, payment_method, inv_no, tax_no1, tax_no2, remarks, doc_date1, doc_date2, check_detail1, check_detail2, wht_percent, wht_amount, net_payable, doc_to_print, next_status, category, is_deposit, deposit_percent";
+  "qu_no, order_no, created_at, customer_id, customer_name, sale_name, sub_total, discount, sub_discount, vat_amount, grand_total, status, deposit, outstanding_balance, due_date, payment_method, inv_no, tax_no1, tax_no2, remarks, doc_date1, doc_date2, check_detail1, check_detail2, wht_percent, wht_amount, net_payable, doc_to_print, next_status, category, is_deposit, deposit_percent, dep_inv_no, dep_inv_date, dep_inv_amount, dep_due_date";
 
 type SoRow = Record<string, unknown>;
 function mapOrder(r: SoRow, contactMap: Map<string, { address: string; taxId: string; branch: string }>): OrderRow {
@@ -179,6 +184,10 @@ function mapOrder(r: SoRow, contactMap: Map<string, { address: string; taxId: st
     saleName: (r.sale_name as string) ?? "",
     isDeposit: Boolean(r.is_deposit),
     depositPercent: Number(r.deposit_percent) || 0,
+    depInvNo: (r.dep_inv_no as string) ?? "",
+    depInvDate: (r.dep_inv_date as string) ?? "",
+    depInvAmount: Number(r.dep_inv_amount) || 0,
+    depDueDate: (r.dep_due_date as string) ?? "",
   };
 }
 
@@ -299,7 +308,7 @@ export async function getOrderState(quNo: string): Promise<OrderState | null> {
   const supabase = await db();
   const { data } = await supabase
     .from("sales_orders")
-    .select("qu_no, order_no, status, deposit, outstanding_balance, sub_total, discount, wht_percent, category, customer_name, customer_id, inv_no, tax_no1, tax_no2")
+    .select("qu_no, order_no, status, deposit, outstanding_balance, sub_total, discount, wht_percent, category, customer_name, customer_id, inv_no, tax_no1, tax_no2, dep_inv_no")
     .eq("qu_no", quNo)
     .maybeSingle();
   if (!data) return null;
@@ -317,6 +326,7 @@ export async function getOrderState(quNo: string): Promise<OrderState | null> {
     invNo: (data.inv_no as string) ?? "",
     taxNo1: (data.tax_no1 as string) ?? "",
     taxNo2: (data.tax_no2 as string) ?? "",
+    depInvNo: (data.dep_inv_no as string) ?? "",
   };
 }
 

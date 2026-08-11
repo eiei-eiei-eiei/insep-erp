@@ -4,6 +4,7 @@ import {
   neededSerials,
   dueDateISO,
   formatThaiDate,
+  STATUS_AWAIT_DEPOSIT,
   type OrderState,
   type ContactInfo,
   type RevenueConfig,
@@ -280,5 +281,110 @@ describe("multi-branch: contactId ลงบัญชีด้วย (ภพ.30/�
     );
     expect(r.revenue!.contactId).toBe("");
     expect(r.revenue!.contactName).toBe("บริษัท เทส จำกัด");
+  });
+});
+
+// ── S10 (D45) ใบแจ้งหนี้ค่ามัดจำ — ออกบิลก่อนได้รับเงิน ───────────────────────
+describe("S10 ISSUE_INVOICE_DEPOSIT (ใบแจ้งหนี้ค่ามัดจำ — ยังไม่ได้รับเงิน)", () => {
+  const run = (over = {}, payload = {}) =>
+    processOrder(
+      baseOrder(over),
+      "ISSUE_INVOICE_DEPOSIT",
+      { amount: 535, docDate: "2026-08-07", creditDays: 7, ...payload },
+      items,
+      { invNo: "INV260807-001" },
+      contact,
+      config,
+    );
+
+  it("สถานะ → รอชำระมัดจำ + เก็บเลข/ยอด/วันครบกำหนดในช่อง dep_*", () => {
+    const r = run();
+    expect(r.newStatus).toBe(STATUS_AWAIT_DEPOSIT);
+    expect(r.update.status).toBe("รอชำระมัดจำ");
+    expect(r.update.depInvNo).toBe("INV260807-001");
+    expect(r.update.depInvAmount).toBe(535);
+    expect(r.update.depInvDate).toBe("2026-08-07");
+    expect(r.update.depDueDate).toBe("2026-08-14");
+    expect(r.update.docToPrint).toBe("invoice-deposit");
+    expect(r.update.nextStatus).toBe("รอคลังจัดส่ง");
+  });
+
+  it("⚠️ ห้ามลงบัญชี/ห้ามแตะยอดเงิน — ยังไม่ได้รับเงิน (cash basis + tax point)", () => {
+    const r = run();
+    expect(r.revenue).toBeNull();
+    expect(r.lineMsg).toBeNull();
+    expect(r.update.deposit).toBeUndefined();
+    expect(r.update.outstandingBalance).toBeUndefined();
+    expect(r.update.paymentMethod).toBeUndefined();
+  });
+
+  it("⚠️ ห้ามแตะ invNo/docDate1/docDate2 (สงวนให้ใบแจ้งหนี้+ใบกำกับภาษีตอนรับเงิน)", () => {
+    const r = run();
+    expect(r.update.invNo).toBeUndefined();
+    expect(r.update.taxNo1).toBeUndefined();
+    expect(r.update.docDate1).toBeUndefined();
+    expect(r.update.docDate2).toBeUndefined();
+    expect(r.update.dueDate).toBeUndefined();
+  });
+
+  it("ครบกำหนด 0 วัน = วันเดียวกับวันที่ออกบิล", () => {
+    expect(run({}, { creditDays: 0 }).update.depDueDate).toBe("2026-08-07");
+  });
+
+  it("ยอดปัดทศนิยม 2 ตำแหน่ง", () => {
+    expect(run({}, { amount: 535.005 }).update.depInvAmount).toBe(535.01);
+    expect(run({}, { amount: undefined }).update.depInvAmount).toBe(0);
+  });
+
+  it("neededSerials: ขอเลข INV ครั้งแรก ไม่ขอซ้ำถ้าเคยออกแล้ว", () => {
+    expect(neededSerials("ISSUE_INVOICE_DEPOSIT", baseOrder())).toEqual({ inv: true, tax1: false, tax2: false });
+    expect(neededSerials("ISSUE_INVOICE_DEPOSIT", baseOrder({ depInvNo: "INV260807-001" }))).toEqual({
+      inv: false,
+      tax1: false,
+      tax2: false,
+    });
+    // ใบแจ้งหนี้ยอดเต็ม (inv_no) ไม่เกี่ยวกัน — ออกใบมัดจำแล้วยังต้องขอเลขใหม่ตอนส่งของ
+    expect(neededSerials("DEPOSIT_AND_SEND", baseOrder({ depInvNo: "INV260807-001" }))).toEqual({
+      inv: true,
+      tax1: true,
+      tax2: false,
+    });
+  });
+
+  it("รับเงินต่อจากสถานะ 'รอชำระมัดจำ' → เดินท่อเดิมของ DEPOSIT_AND_SEND ครบ (ลงบัญชี+ออกใบกำกับ)", () => {
+    const r = processOrder(
+      baseOrder({ status: STATUS_AWAIT_DEPOSIT, depInvNo: "INV260807-001" }),
+      "DEPOSIT_AND_SEND",
+      { amount: 535, method: "โอนเงิน", docDate: "2026-08-10", creditDays: 30 },
+      items,
+      { invNo: "INV260810-002", taxNo1: "TAX260810-001" },
+      contact,
+      config,
+    );
+    expect(r.update.status).toBe("รอคลังจัดส่ง");
+    expect(r.update.deposit).toBe(535);
+    expect(r.update.outstandingBalance).toBe(535);
+    expect(r.update.docDate1).toBe("2026-08-10");
+    expect(r.update.docToPrint).toBe("invoice,tax-invoice-deposit");
+    expect(r.revenue!.netAmount).toBe(535);
+    expect(r.revenue!.taxInvoiceNo).toBe("TAX260810-001");
+    expect(r.revenue!.idempotencyKey).toBe("ORD260721-001");
+  });
+
+  it("ลูกค้าเปลี่ยนใจจ่ายเต็มจากสถานะ 'รอชำระมัดจำ' → docDate1 (ยังไม่เคยออกบิลยอดเต็ม)", () => {
+    const r = processOrder(
+      baseOrder({ status: STATUS_AWAIT_DEPOSIT, depInvNo: "INV260807-001" }),
+      "FULL_PAYMENT_AND_SEND",
+      { method: "โอนเงิน", docDate: "2026-08-10" },
+      items,
+      { taxNo1: "TAX260810-001" },
+      contact,
+      config,
+    );
+    expect(r.update.status).toBe("รอคลังจัดส่ง");
+    expect(r.update.outstandingBalance).toBe(0);
+    expect(r.update.docDate1).toBe("2026-08-10");
+    expect(r.update.docDate2).toBeUndefined();
+    expect(r.revenue!.netAmount).toBe(1070);
   });
 });

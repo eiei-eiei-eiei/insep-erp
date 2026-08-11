@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { SalesBoot, OrderRow, OrderItem } from "./types";
 import { Card, Msg, StatusBadge, TextInput, useSaver, fmt } from "./ui";
 import { todayISO } from "./ui";
-import { getOrdersAction, getOrderItemsAction, processOrderActionAction, cancelOrderAction } from "../actions";
+import { getOrdersAction, getOrderItemsAction, processOrderActionAction, cancelOrderAction, voidDepositInvoiceAction } from "../actions";
 import type { OrderAction, ActionPayload } from "@/lib/sales/orders";
 import { printSalesDocs, printQuotation, openPrintWindow, type OrderLike } from "./print";
 import { roundTo2 } from "@/lib/sales/calc";
@@ -56,7 +56,8 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
     if (!w) { alert("เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — โปรดอนุญาต popup แล้วลองใหม่"); return; }
     const items = await loadItems(o.quNo);
     let docs: string[];
-    if (o.deposit > 0) docs = ["invoice", "tax-invoice-deposit"];
+    if (o.status === "รอชำระมัดจำ") docs = ["invoice-deposit"]; // D45 — ใบแจ้งหนี้ค่ามัดจำ
+    else if (o.deposit > 0) docs = ["invoice", "tax-invoice-deposit"];
     else if (o.status === "รอชำระเงิน (จ่ายเต็ม)") docs = ["invoice-only"];
     else docs = ["invoice"];
     printSalesDocs(boot.company, o as OrderLike, items, docs, w);
@@ -100,6 +101,17 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
     }, w);
   }
 
+  function voidDepositInvoice(o: OrderRow) {
+    if (!confirm(`ยกเลิกใบแจ้งหนี้มัดจำ ${o.depInvNo || ""} ของ ${o.quNo}?\nออเดอร์จะกลับไปสถานะ "รอคอนเฟิร์ม" (แก้ใบเสนอราคาต่อได้) · เลขใบที่ออกไปแล้วถือเป็นยกเลิก`)) return;
+    setMsg(null);
+    voidDepositInvoiceAction(o.quNo).then((r) => {
+      if (r.ok) {
+        setMsg({ ok: true, text: `ยกเลิกใบแจ้งหนี้มัดจำของ ${o.quNo} แล้ว` });
+        refresh();
+      } else setMsg({ ok: false, text: r.error ?? "ยกเลิกไม่สำเร็จ" });
+    });
+  }
+
   function cancel(o: OrderRow) {
     if (!confirm(`ยกเลิกออเดอร์ ${o.quNo}? ระบบจะย้อนรายการบัญชี/สต็อกที่เกิดแล้วให้`)) return;
     setMsg(null);
@@ -118,10 +130,21 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
     <>
       {canWrite && o.status === "รอคอนเฟิร์ม" && (
         <>
-          <ActBtn tone="primary" icon={<IconMoney size={14} />} onClick={() => setDialog({ order: o, action: "DEPOSIT_AND_SEND" })}>มัดจำ &amp; ส่งคลัง</ActBtn>
+          {/* D45 — เงื่อนไขมัดจำ: ปกติต้องวางบิลค่ามัดจำก่อน ลูกค้าถึงโอน → ปุ่มนี้เด่นสุด */}
+          <ActBtn tone={o.isDeposit ? "primary" : "secondary"} icon={<IconDoc size={14} />} onClick={() => setDialog({ order: o, action: "ISSUE_INVOICE_DEPOSIT" })}>ใบแจ้งหนี้มัดจำ</ActBtn>
+          <ActBtn tone={o.isDeposit ? "secondary" : "primary"} icon={<IconMoney size={14} />} onClick={() => setDialog({ order: o, action: "DEPOSIT_AND_SEND" })}>รับมัดจำ &amp; ส่งคลัง</ActBtn>
           <ActBtn tone="secondary" icon={<IconDoc size={14} />} onClick={() => setDialog({ order: o, action: "ISSUE_INVOICE_FULL" })}>ใบแจ้งหนี้ (เต็ม)</ActBtn>
           <ActBtn tone="secondary" icon={<IconBox size={14} />} onClick={() => setDialog({ order: o, action: "SEND_TO_WH" })}>ส่งคลัง (เครดิต)</ActBtn>
           <ActBtn tone="secondary" icon={<IconEdit size={14} />} onClick={() => onEdit(o)}>แก้ไข</ActBtn>
+        </>
+      )}
+      {canWrite && o.status === "รอชำระมัดจำ" && (
+        <>
+          <ActBtn tone="primary" icon={<IconMoney size={14} />} onClick={() => setDialog({ order: o, action: "DEPOSIT_AND_SEND" })}>รับมัดจำ &amp; ส่งคลัง</ActBtn>
+          <ActBtn tone="secondary" icon={<IconMoney size={14} />} onClick={() => setDialog({ order: o, action: "FULL_PAYMENT_AND_SEND" })}>รับเต็ม &amp; ส่งคลัง</ActBtn>
+          {boot.role === "main" && (
+            <ActBtn tone="danger" icon={<IconTrash size={14} />} onClick={() => voidDepositInvoice(o)}>ยกเลิกใบแจ้งหนี้มัดจำ</ActBtn>
+          )}
         </>
       )}
       {o.status !== "รอคอนเฟิร์ม" && o.status !== "ยกเลิก" && (
@@ -295,6 +318,7 @@ const ACTION_TITLES: Record<OrderAction, string> = {
   FULL_PAYMENT_AND_SEND: "รับชำระเต็ม & ส่งให้คลัง",
   SEND_TO_WH: "ส่งออเดอร์ให้คลัง (เครดิต)",
   ISSUE_INVOICE_FULL: "ออกใบแจ้งหนี้จ่ายเต็ม",
+  ISSUE_INVOICE_DEPOSIT: "ออกใบแจ้งหนี้ค่ามัดจำ",
   PAY_BALANCE: "ชำระยอดค้าง",
   FULL_PAYMENT_LATER: "ชำระเต็มจำนวน",
 };
@@ -312,10 +336,15 @@ function PaymentDialog({
   onClose: () => void;
   onDone: (text: string) => void;
 }) {
-  const needsAmount = action === "DEPOSIT_AND_SEND";
+  const isDepositInvoice = action === "ISSUE_INVOICE_DEPOSIT"; // D45 — วางบิลมัดจำ (ยังไม่รับเงิน)
+  const needsAmount = action === "DEPOSIT_AND_SEND" || isDepositInvoice;
   const needsMethod = ["DEPOSIT_AND_SEND", "FULL_PAYMENT_AND_SEND", "PAY_BALANCE", "FULL_PAYMENT_LATER"].includes(action);
   const target = order.netPayable || order.grandTotal;
-  const [amount, setAmount] = useState(needsAmount ? roundTo2(target * 0.5) : target);
+  // ยอดมัดจำ default: ตามเงื่อนไข % ในใบเสนอราคา → ถ้าวางบิลมัดจำไว้แล้วใช้ยอดใบนั้น
+  const depPct = order.isDeposit && order.depositPercent > 0 ? order.depositPercent : 50;
+  const defaultDeposit = order.depInvAmount > 0 && !isDepositInvoice ? order.depInvAmount : roundTo2((target * depPct) / 100);
+  const [amount, setAmount] = useState(needsAmount ? defaultDeposit : target);
+  const [depositDays, setDepositDays] = useState(7); // ครบกำหนดชำระมัดจำ (แก้ได้)
   const [method, setMethod] = useState("โอนเงิน");
   const [docDate, setDocDate] = useState(todayISO());
   const [chequeBank, setChequeBank] = useState("");
@@ -334,7 +363,7 @@ function PaymentDialog({
       docDate,
       method: needsMethod ? method : undefined,
       chequeDetails: chequeDetails || undefined,
-      creditDays: action === "DEPOSIT_AND_SEND" || action === "SEND_TO_WH" ? creditDays : undefined,
+      creditDays: isDepositInvoice ? depositDays : action === "DEPOSIT_AND_SEND" || action === "SEND_TO_WH" ? creditDays : undefined,
       amount: needsAmount ? amount : action === "PAY_BALANCE" || action === "FULL_PAYMENT_LATER" ? order.outstandingBalance : undefined,
     };
     run(() => processOrderActionAction(order.quNo, action, payload), "", (data) => {
@@ -366,9 +395,23 @@ function PaymentDialog({
 
           {needsAmount && (
             <label className="block">
-              <span className="mb-1 block font-bold text-muted">ยอดเงินมัดจำที่รับ</span>
+              <span className="mb-1 block font-bold text-muted">
+                {isDepositInvoice ? `ยอดมัดจำที่เรียกเก็บ${order.isDeposit && order.depositPercent > 0 ? ` (${order.depositPercent}% ตามใบเสนอราคา)` : ""}` : "ยอดเงินมัดจำที่รับ"}
+              </span>
               <input type="number" step="0.01" min={0.01} max={target} value={amount} onChange={(e) => setAmount(Number(e.target.value) || 0)} className="w-full rounded-lg border border-line p-2 outline-none focus:border-brand" />
             </label>
+          )}
+
+          {isDepositInvoice && (
+            <>
+              <label className="block">
+                <span className="mb-1 block font-bold text-muted">ครบกำหนดชำระมัดจำภายใน (วัน)</span>
+                <input type="number" min={0} value={depositDays} onChange={(e) => setDepositDays(Number(e.target.value) || 0)} className="w-full rounded-lg border border-line p-2 outline-none focus:border-brand" />
+              </label>
+              <div className="rounded border border-line bg-raised p-2 text-xs text-muted">
+                ใบนี้เป็น<b>ใบแจ้งหนี้</b> ยังไม่ลงบัญชีรับเงิน — เมื่อลูกค้าโอนแล้วให้กด &ldquo;รับมัดจำ &amp; ส่งคลัง&rdquo; ระบบจะออก<b>ใบกำกับภาษี/ใบเสร็จค่ามัดจำ</b>และลงบัญชีให้
+              </div>
+            </>
           )}
 
           {needsMethod && (

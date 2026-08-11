@@ -281,6 +281,12 @@ export type OrderLike = {
   customerAddress: string;
   customerTaxId: string;
   customerBranch: string;
+  // D45 — ใบแจ้งหนี้ค่ามัดจำ (docType 'invoice-deposit')
+  depInvNo?: string;
+  depInvDate?: string;
+  depInvAmount?: number;
+  depDueDate?: string;
+  depositPercent?: number;
 };
 
 type PreparedDoc = Record<string, unknown> & { docType: string; copyType: string };
@@ -341,6 +347,18 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
     doc.receiptTitleEng = "Invoice";
     doc.docNo = order.invNo;
     doc.outstandingBalance = roundTo2(netPayable - (order.deposit || 0));
+  } else if (docType === "invoice-deposit") {
+    // D45 — ใบแจ้งหนี้ "เรียกเก็บเฉพาะยอดมัดจำ" (ยังไม่ได้รับเงิน → ไม่ใช่ใบกำกับภาษี)
+    doc.receiptTitle = "ใบแจ้งหนี้";
+    doc.receiptTitleEng = "Invoice";
+    doc.docNo = order.depInvNo || "";
+    doc.documentDate = order.depInvDate ? formatThaiDate(order.depInvDate) : docDate1_th;
+    doc.dueDate = order.depDueDate ? formatThaiDate(order.depDueDate) : "";
+    doc.depositPercent = order.depositPercent || 0;
+    const depAmt = roundTo2(order.depInvAmount || 0);
+    doc.depositDue = depAmt; // ยอดที่ต้องชำระตอนนี้ (รวม VAT, หัก WHT แล้ว)
+    doc.remainAfterDeposit = roundTo2(netPayable - depAmt); // เก็บตอนส่งมอบ
+    doc.outstandingBalance = depAmt; // > 0 → footer โชว์เลขบัญชีธนาคาร (เหมือนใบแจ้งหนี้อื่น)
   } else if (docType === "tax-invoice-deposit") {
     doc.receiptTitle = "ใบกำกับภาษี/ใบเสร็จรับเงิน";
     doc.receiptTitleEng = "Tax Invoice / Receipt";
@@ -401,6 +419,29 @@ function docSummaryRows(doc: PreparedDoc): string {
       ${whtRow}
       <tr style="background-color:#f0fdf4;"><td style="padding:8px 12px;text-align:left;font-weight:bold;font-size:14px;border-bottom:4px double #15803d;color:#15803d;">ยอดรับมัดจำ (รวม VAT)</td><td style="padding:8px 12px;text-align:right;font-weight:bold;font-size:15px;border:2px solid #cbd5e1;border-bottom:4px double #15803d;color:#15803d;">${n("receiptAmount")}</td></tr>`;
   }
+  if (dt === "invoice-deposit") {
+    // D45 — วางบิลค่ามัดจำ: โชว์ยอดทั้งบิลเพื่ออ้างอิง แล้วปิดท้ายด้วย "ยอดที่ต้องชำระตอนนี้"
+    //
+    // ⚠️ ลำดับบรรทัดตามหลักบัญชี ห้ามสลับ: "ยอดรวมทั้งสิ้น" = มูลค่าสินค้า + VAT เสมอ
+    //    (บังคับบนใบกำกับภาษี ม.86/4(5) · เป็นฐาน ภพ.30 · AP ลูกค้าแมตช์กับ PO)
+    //    หัก ณ ที่จ่าย = การหักตอนจ่ายเงิน ไม่ใช่มูลค่าบิล → อยู่ใต้เสมอ แล้วปิดด้วยยอดสุทธิ
+    //    ถ้าเอา WHT ขึ้นก่อน = เลขบนใบนี้จะไม่ตรงกับใบกำกับภาษีของออเดอร์เดียวกันตอนรับเงิน
+    const pct = Number(doc.depositPercent) || 0;
+    const depLabel = `ยอดชำระมัดจำ${pct > 0 ? ` ${pct}%` : ""} สุทธิ`;
+    // มี WHT → ต้องโชว์ "ยอดสุทธิ" คั่น ไม่งั้นลูกค้าไล่ไม่ออกว่ายอดมัดจำคิดจากอะไร
+    const netRowDep =
+      whtP > 0
+        ? `<tr><td style="padding:6px 12px;text-align:left;font-size:13px;font-weight:600;">ยอดสุทธิ</td><td style="padding:6px 12px;text-align:right;font-weight:600;font-size:14px;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">${nf(Number(doc.netPayable) || Number(doc.grandTotal))}</td></tr>`
+        : "";
+    return `${head}
+      <tr><td style="padding:4px 12px;text-align:left;font-size:13px;">มูลค่าสินค้า (ก่อน VAT)</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">${n("subDiscount")}</td></tr>
+      <tr><td style="padding:4px 12px;text-align:left;font-size:13px;">ภาษีมูลค่าเพิ่ม 7%</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">${n("vatAmount")}</td></tr>
+      <tr style="background-color:#f8fafc;"><td style="padding:6px 12px;text-align:left;font-weight:bold;font-size:13px;border-bottom:1px solid #cbd5e1;">ยอดรวมทั้งสิ้น</td><td style="padding:6px 12px;text-align:right;font-weight:bold;font-size:14px;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;color:#0f172a;border-bottom:1px solid #cbd5e1;background-color:#f1f5f9;">${n("grandTotal")}</td></tr>
+      ${whtP > 0 ? `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;">หัก ณ ที่จ่าย ${whtP}%</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">-${n("whtAmount")}</td></tr>` : ""}
+      ${netRowDep}
+      <tr style="background-color:#fff1f2;"><td style="padding:8px 12px;text-align:left;font-weight:bold;font-size:14px;border-top:2px dashed #94a3b8;border-bottom:4px double #be123c;color:#be123c;">${depLabel}</td><td style="padding:8px 12px;text-align:right;font-weight:bold;font-size:15px;border:2px solid #cbd5e1;border-top:2px dashed #94a3b8;border-bottom:4px double #be123c;color:#be123c;">${n("depositDue")}</td></tr>
+      <tr><td style="padding:4px 12px;text-align:left;font-size:12px;color:#475569;">คงเหลือเรียกเก็บเมื่อส่งมอบสินค้า</td><td style="padding:4px 12px;text-align:right;font-size:12px;color:#475569;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:2px solid #cbd5e1;">${n("remainAfterDeposit")}</td></tr>`;
+  }
   if ((dt === "tax-invoice-balance" || dt === "invoice") && Number(doc.deposit) > 0) {
     const bal = dt === "tax-invoice-balance"
       ? `<tr style="background-color:#f0fdf4;"><td style="padding:8px 12px;text-align:left;font-weight:bold;font-size:14px;border-bottom:4px double #15803d;color:#15803d;">ยอดรับครั้งนี้ (รวม VAT)</td><td style="padding:8px 12px;text-align:right;font-weight:bold;font-size:15px;border:2px solid #cbd5e1;border-bottom:4px double #15803d;color:#15803d;">${n("receiptAmount")}</td></tr>`
@@ -429,7 +470,7 @@ function docSummaryRows(doc: PreparedDoc): string {
 function docSignatures(dt: string): string {
   const sig = (label: string, w = 180) => `<td style="vertical-align:top;"><div style="height:24px;"></div><div style="margin-top:5px;width:${w}px;border-top:1px dashed #64748b;margin-left:auto;margin-right:auto;"></div><div style="margin-top:5px;color:#475569;">( ${label} )</div><div style="margin-top:5px;color:#64748b;font-size:12px;">วันที่ / Date: ______/______/________</div></td>`;
   let cells = "";
-  if (dt === "invoice-only") cells += sig("ผู้ชำระเงิน / Payer", 200);
+  if (dt === "invoice-only" || dt === "invoice-deposit") cells += sig("ผู้ชำระเงิน / Payer", 200);
   if (dt === "invoice" || dt === "tax-invoice-receipt-do") cells += sig("ผู้รับสินค้า / Receiver");
   if (dt === "invoice" || dt === "tax-invoice-receipt-do") cells += sig("ผู้ส่งสินค้า / Deliverer");
   if (["tax-invoice-deposit", "tax-invoice-balance", "tax-invoice-receipt", "tax-invoice-receipt-do"].includes(dt)) cells += sig("ผู้รับเงิน / Collector");
@@ -462,6 +503,7 @@ function b2bDocHtml(c: CompanyInfo, doc: PreparedDoc, idx: number): string {
         <table style="width:100%;border-collapse:collapse;font-size:14px;">
           <tr><td style="padding:3px 0;font-weight:600;width:50%;">เลขที่ / Doc No.</td><td style="padding:3px 0;font-weight:500;text-align:right;">${esc(doc.docNo)}</td></tr>
           <tr><td style="padding:3px 0;font-weight:600;">วันที่ / Date</td><td style="padding:3px 0;text-align:right;">${esc(doc.documentDate)}</td></tr>
+          ${doc.dueDate ? `<tr><td style="padding:3px 0;font-weight:600;">ครบกำหนด / Due</td><td style="padding:3px 0;text-align:right;">${esc(doc.dueDate)}</td></tr>` : ""}
           <tr><td style="padding:3px 0;font-weight:600;">อ้างอิง / Ref No.</td><td style="padding:3px 0;text-align:right;">${esc(doc.quNo)}</td></tr>
         </table>
       </div>
