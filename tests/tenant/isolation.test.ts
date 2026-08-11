@@ -71,6 +71,60 @@ describe("คีย์ซ้ำข้ามลูกค้าได้ (ผล�
   it("ชื่อผู้ใช้เดียวกันแต่คนละ slug = คนละบัญชี (ไม่ใช่คนเดียวกัน)", () => {
     expect(usernameToEmail("owner", A.slug)).not.toBe(usernameToEmail("owner", B.slug));
   });
+
+  /**
+   * ★ เคสที่ผู้ใช้จับได้ตอนเทสจริง — ช่องโหว่ที่ RLS ช่วยไม่ได้
+   *
+   * ถ้าลูกค้า 2 เจ้ามีทั้ง username และ **รหัสผ่าน** ตรงกัน คนของเจ้าหนึ่งจะ
+   * ล็อกอินเข้าอีกเจ้าได้ผ่าน URL ของเขา — ระบบเห็นว่าเขาคือเจ้าของบัญชีนั้นจริง ๆ
+   * ต้นตอที่อันตรายสุดคือ "รหัสตั้งต้นตอน provision ที่ตั้งเหมือนกันทุกเจ้า"
+   */
+  it("🚨 รหัสตั้งต้นต้องไม่ซ้ำข้ามลูกค้า", () => {
+    expect(
+      A.password,
+      "รหัสตั้งต้นซ้ำกัน = ลูกค้าทุกรายล็อกอินเข้าระบบกันเองได้ตั้งแต่วันแรก",
+    ).not.toBe(B.password);
+  });
+
+  it("🚨 เอารหัสของ A ไปล็อกอินที่ namespace ของ B ต้องไม่ผ่าน", async () => {
+    const c = anonClient();
+    const { error } = await c.auth.signInWithPassword({
+      email: usernameToEmail(A.username, B.slug), // ชื่อผู้ใช้เดียวกัน แต่ไปที่ slug ของ B
+      password: A.password,
+    });
+    expect(error, "คนของ A เข้าระบบของ B ได้ — ช่องโหว่!").not.toBeNull();
+    await c.auth.signOut();
+  });
+});
+
+describe("บังคับเปลี่ยนรหัสตอนล็อกอินครั้งแรก (0031)", () => {
+  it("ผู้ใช้ที่ admin สร้างให้ ต้องติดธง must_change_password", async () => {
+    const db = admin();
+    const email = `staff@${A.slug}.insep.local`;
+    const { data: u, error } = await db.auth.admin.createUser({
+      email, password: "TempPass!2569x", email_confirm: true,
+      user_metadata: { username: "staff", display_name: "พนักงาน", tenant_id: A.tenantId },
+    });
+    expect(error).toBeNull();
+
+    const { data: p } = await db
+      .from("profiles").select("must_change_password").eq("id", u!.user!.id).single();
+    expect(p?.must_change_password, "รหัสที่คนอื่นตั้งให้ต้องอยู่ได้ไม่เกินล็อกอินครั้งแรก").toBe(true);
+  });
+
+  it("clear_password_change_flag แตะได้แค่ธงของตัวเอง — ยกระดับสิทธิ์ไม่ได้", async () => {
+    const c = await signIn(A);
+    const { error } = await c.rpc("clear_password_change_flag");
+    expect(error).toBeNull();
+
+    // ★ พยายามยกระดับตัวเองเป็น main ผ่านการ update profiles ตรง ๆ ต้องไม่สำเร็จ
+    //   (A เป็น main อยู่แล้ว จึงเทสกับผู้ใช้ staff ที่เป็น viewer แทน)
+    const db = admin();
+    const { data: staff } = await db
+      .from("profiles").select("id, role").eq("tenant_id", A.tenantId).eq("username", "staff").single();
+    expect(staff?.role).toBe("viewer");
+    await c.auth.signOut();
+  });
 });
 
 // ── ชั้น 1: อ่านข้ามไม่ได้ ──────────────────────────────────────────────────

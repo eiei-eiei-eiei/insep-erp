@@ -24,9 +24,18 @@ export default async function AppLayout({
   if (!user) redirect("/login");
 
   const [{ data: profile }, { data: settings }] = await Promise.all([
-    supabase.from("profiles").select("display_name, username, role").eq("id", user.id).single(),
+    supabase
+      .from("profiles")
+      .select("display_name, username, role, must_change_password")
+      .eq("id", user.id)
+      .single(),
     supabase.from("app_settings").select("kind, value").in("kind", ["brand_name", "brand_color", "logo_url", "default_mode"]),
   ]);
+
+  // ยังใช้รหัสที่คนอื่นตั้งให้ → ต้องเปลี่ยนก่อนเข้าใช้งาน (0031)
+  // เช็คตรงนี้เพราะ query profiles อยู่แล้ว — ไม่เพิ่มภาระต่อ request
+  // (ทำใน middleware จะต้องยิง DB ทุก request รวมถึงไฟล์ static)
+  if (profile?.must_change_password) redirect("/change-password");
 
   const role = (profile?.role ?? "viewer") as Role;
   const displayName = profile?.display_name ?? profile?.username ?? user.email ?? "ผู้ใช้";

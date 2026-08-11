@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { usernameToEmail, USERNAME_RE } from "@/lib/shared/auth-domain";
+import { validatePassword } from "@/lib/shared/password";
 
 export type ActionResult = { ok: boolean; error?: string };
 
@@ -88,8 +89,10 @@ export const createUserAction = guard(async (input: {
 
   if (!USERNAME_RE.test(username))
     return { ok: false, error: "username ต้องเป็น a-z 0-9 . _ - ยาว 3-32 ตัว" };
-  if (password.length < 6)
-    return { ok: false, error: "รหัสผ่านอย่างน้อย 6 ตัวอักษร" };
+  // ★ รหัสที่ตั้งให้คนอื่นเป็นรหัสชั่วคราว — ผู้ใช้จะถูกบังคับเปลี่ยนตอนล็อกอินครั้งแรก
+  //   (handle_new_user ตั้ง must_change_password = true ให้เอง — 0031)
+  const badPw = validatePassword(password, username);
+  if (badPw) return { ok: false, error: badPw };
   if (!ROLES.includes(role as (typeof ROLES)[number]))
     return { ok: false, error: "role ไม่ถูกต้อง" };
 
@@ -149,8 +152,8 @@ export const resetPasswordAction = guard(async (input: {
   password: string;
 }): Promise<ActionResult> => {
   const me = await requireMain();
-  if (input.password.length < 6)
-    return { ok: false, error: "รหัสผ่านอย่างน้อย 6 ตัวอักษร" };
+  const badPw = validatePassword(input.password);
+  if (badPw) return { ok: false, error: badPw };
   await assertSameTenant(input.id, me.tenantId);
 
   const admin = createAdminClient();
@@ -158,6 +161,12 @@ export const resetPasswordAction = guard(async (input: {
     password: input.password,
   });
   if (error) return { ok: false, error: error.message };
+
+  // เจ้าของตั้งรหัสให้ = รหัสชั่วคราว → เจ้าตัวต้องเปลี่ยนเองตอนล็อกอินครั้งถัดไป
+  const { error: flagErr } = await admin
+    .from("profiles").update({ must_change_password: true }).eq("id", input.id);
+  if (flagErr) return { ok: false, error: flagErr.message };
+
   return { ok: true };
 });
 

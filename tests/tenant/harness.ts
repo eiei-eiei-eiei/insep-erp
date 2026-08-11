@@ -12,6 +12,7 @@
  *   TENANT_TEST_CONFIRM=disposable      ← ยืนยันว่า project นี้ทิ้งได้ ไม่ใช่ของจริง
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { generateInitialPassword } from "../../lib/shared/password";
 
 /** รับได้ทั้ง 2 ชื่อ — `.local` เข้าชุดกับ .env.local ที่โปรเจกต์ใช้อยู่ */
 export const ENV_FILES = [".env.tenant-test.local", ".env.tenant-test"] as const;
@@ -132,11 +133,13 @@ export async function cleanupTestTenants() {
  */
 export async function seedTenant(
   suffix: string,
-  opts: { slug?: string } = {},
+  opts: { slug?: string; forcePasswordChange?: boolean } = {},
 ): Promise<Tenant> {
   const db = admin();
   const slug = opts.slug ?? `${TEST_PREFIX}${suffix}`;
-  const password = "TestPass!2569";
+  // 🚨 สุ่มไม่ซ้ำต่อราย — ห้ามใช้รหัสตั้งต้นตัวเดียวกันข้ามลูกค้าเด็ดขาด
+  //    ถ้าซ้ำ คนของเจ้าหนึ่งจะล็อกอินเข้าอีกเจ้าได้ผ่าน URL ของเขา (ผู้ใช้จับได้ตอนเทส)
+  const password = generateInitialPassword();
 
   const { data: t, error: tErr } = await db
     .from("tenants")
@@ -168,7 +171,12 @@ export async function seedTenant(
   const email = `${username}@${slug}.insep.local`;
   const { data: u, error: uErr } = await db.auth.admin.createUser({
     email, password, email_confirm: true,
-    user_metadata: { username, display_name: `เจ้าของ ${suffix}`, tenant_id: tenantId },
+    user_metadata: {
+      username, display_name: `เจ้าของ ${suffix}`, tenant_id: tenantId,
+      // เทสอัตโนมัติล็อกอินผ่าน API ไม่ผ่านหน้าจอ → ข้ามหน้าบังคับเปลี่ยนรหัส
+      // ส่วน tenant สาธิตตั้ง false เพื่อให้เห็นโฟลว์จริงในเบราว์เซอร์
+      skip_password_change: !opts.forcePasswordChange,
+    },
   });
   must("สร้างผู้ใช้", uErr);
   must("ตั้ง role main", (await db.from("profiles")

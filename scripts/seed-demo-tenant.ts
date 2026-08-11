@@ -39,7 +39,8 @@ async function main() {
     process.exit(1);
   }
 
-  const t = await seedTenant(slug, { slug });
+  // forcePasswordChange: ให้เห็นโฟลว์บังคับเปลี่ยนรหัสจริงตอนล็อกอินครั้งแรก (0031)
+  const t = await seedTenant(slug, { slug, forcePasswordChange: true });
 
   // แบรนด์อยู่ใน app_settings ที่เดียว (0030) — หน้า login กับในแอปจึงเห็นตรงกันเสมอ
   const db = admin();
@@ -56,7 +57,7 @@ async function main() {
   console.log(`   slug      : ${slug}`);
   console.log(`   ชื่อแบรนด์  : ${name}`);
   console.log(`   ผู้ใช้      : ${t.username}  (role main · ชื่อเดียวกันทุกเจ้า — slug เป็นตัวแยก)`);
-  console.log(`   รหัสผ่าน    : ${t.password}`);
+  console.log(`   รหัสผ่านชั่วคราว: ${t.password}  ← ระบบจะบังคับให้ตั้งใหม่ตอนล็อกอินครั้งแรก`);
   console.log(`\n   เปิดดู: http://${slug}.localhost:3000/login`);
   console.log(`   เทียบกับ: http://localhost:3000/login  (ไม่มี subdomain = หน้าตาเดิม)\n`);
 }
