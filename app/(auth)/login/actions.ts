@@ -1,21 +1,18 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { usernameToEmail } from "@/lib/shared/auth-domain";
-import { TENANT_SLUG_HEADER } from "@/lib/supabase/middleware";
 
 export type LoginState = { error: string | null };
 
 /**
  * เข้าสู่ระบบด้วย username (ไม่ต้องมีอีเมลจริง) + password
- * username → อีเมลภายใน <username>@<slug>.insep.local (usernameToEmail)
- * · ไม่มี subdomain = <username>@insep.local เหมือนเดิมเป๊ะ
- * · กรอกอีเมลจริงก็ยังได้ (มี @) — เป็นทางออกตอนยืนผิด subdomain
+ * username → อีเมลภายใน <username>@insep.local (usernameToEmail)
  *
- * 🚨 slug จาก subdomain แค่บอกว่า "จะลองล็อกอินเข้าบัญชีชื่อไหน" — ไม่ได้แจกสิทธิ์
- *    ยังต้องมีรหัสผ่านของบัญชีนั้น และหลังล็อกอินสิทธิ์มาจาก profiles.tenant_id + RLS
+ * ★ ชื่อผู้ใช้ไม่ซ้ำทั้งระบบ (0032) → **subdomain ไม่เกี่ยวกับการล็อกอินเลย**
+ *   พิมพ์ชื่อตัวเองที่ URL ของกิจการไหนก็เข้าบัญชีตัวเองเสมอ
+ *   subdomain เหลือหน้าที่เดียวคือเลือกแบรนด์ที่แสดงบนหน้านี้ (co-brand)
  */
 export async function login(
   _prev: LoginState,
@@ -28,11 +25,9 @@ export async function login(
     return { error: "กรุณากรอกชื่อผู้ใช้และรหัสผ่าน" };
   }
 
-  const slug = (await headers()).get(TENANT_SLUG_HEADER)?.trim() || null;
-
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword({
-    email: usernameToEmail(username, slug),
+    email: usernameToEmail(username),
     password,
   });
 

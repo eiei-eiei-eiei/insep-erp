@@ -14,7 +14,7 @@ const ROLES = ["main", "viewer", "sale", "warehouse"] as const;
  * ตรวจว่า caller เป็น main จริง (ผ่าน session ปกติ + RLS) — ป้องกันคนอื่นเรียก action ตรง ๆ
  * คืน user id ของ caller ไว้ใช้กันลบ/แก้ตัวเอง
  */
-type Caller = { callerId: string; tenantId: string; slug: string | null };
+type Caller = { callerId: string; tenantId: string };
 
 async function requireMain(): Promise<Caller> {
   const supabase = await createClient();
@@ -33,17 +33,7 @@ async function requireMain(): Promise<Caller> {
   if (!profile.tenant_id) {
     throw new Error("บัญชีนี้ยังไม่ได้ผูกกับกิจการ (tenant) — ติดต่อผู้ดูแลระบบ");
   }
-  // slug ใช้ประกอบอีเมลภายในให้ชื่อผู้ใช้ไม่ชนข้ามลูกค้า (ดู lib/shared/auth-domain.ts)
-  const { data: tenant } = await supabase
-    .from("tenants")
-    .select("slug")
-    .eq("id", profile.tenant_id)
-    .single();
-  return {
-    callerId: user.id,
-    tenantId: profile.tenant_id as string,
-    slug: (tenant?.slug as string | undefined) ?? null,
-  };
+  return { callerId: user.id, tenantId: profile.tenant_id as string };
 }
 
 /**
@@ -98,8 +88,8 @@ export const createUserAction = guard(async (input: {
 
   const admin = createAdminClient();
   const { data, error } = await admin.auth.admin.createUser({
-    // slug คั่นให้ชื่อผู้ใช้ไม่ชนข้ามลูกค้า (auth.users.email unique ทั้ง project เติม tenant ไม่ได้)
-    email: usernameToEmail(username, me.slug),
+    // ชื่อผู้ใช้ไม่ซ้ำทั้งระบบ (0032) → ชนกับลูกค้าเจ้าอื่นจะถูกปฏิเสธตรงนี้
+    email: usernameToEmail(username),
     password,
     email_confirm: true, // ไม่ต้องยืนยันอีเมล — login ได้ทันที
     // ★ handle_new_user() (0025) อ่าน tenant_id จากตรงนี้ — ไม่ส่ง = สร้าง profile ไม่ได้
@@ -107,7 +97,14 @@ export const createUserAction = guard(async (input: {
   });
   if (error) {
     if (/already been registered|already exists/i.test(error.message))
-      return { ok: false, error: `username "${username}" ถูกใช้แล้ว` };
+      return {
+        ok: false,
+        // ชื่อผู้ใช้ไม่ซ้ำทั้งระบบ (0032) → อาจถูกใช้โดยกิจการอื่นที่เราไม่เห็น
+        // จงใจไม่บอกว่าใครใช้ — บอกแค่ว่าใช้ไม่ได้ แล้วแนะทางออก
+        error:
+          `ชื่อผู้ใช้ "${username}" ถูกใช้แล้ว — ` +
+          "ลองเติมชื่อกิจการต่อท้าย เช่น " + username + ".rongkor",
+      };
     return { ok: false, error: error.message };
   }
 

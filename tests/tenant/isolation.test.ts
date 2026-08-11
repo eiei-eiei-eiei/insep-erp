@@ -47,29 +47,41 @@ describe("คีย์ซ้ำข้ามลูกค้าได้ (ผล�
     expect(A.batch).toBe(B.batch);
   });
 
-  it("ชื่อผู้ใช้ซ้ำกันได้เพราะ slug คั่นในอีเมลภายใน", () => {
-    expect(A.username).toBe(B.username); // ทั้งคู่ชื่อ 'owner'
-    expect(A.email).not.toBe(B.email);
-  });
-
-  it("★ สูตร usernameToEmail(username, slug) ต้องล็อกอินเข้าบัญชีที่ seed ไว้ได้จริง", async () => {
+  it("★ สูตร usernameToEmail(username) ต้องล็อกอินเข้าบัญชีที่ seed ไว้ได้จริง", async () => {
     // เทสนี้เชื่อมสิ่งที่แอปคำนวณ (lib/shared/auth-domain) เข้ากับบัญชีที่มีอยู่จริงใน DB
     // ถ้า local-part ของอีเมลกับ username ไม่ตรงกัน จะจับได้ตรงนี้ก่อนถึงมือผู้ใช้
     for (const t of [A, B]) {
-      expect(usernameToEmail(t.username, t.slug)).toBe(t.email);
+      expect(usernameToEmail(t.username)).toBe(t.email);
 
       const c = anonClient();
       const { error } = await c.auth.signInWithPassword({
-        email: usernameToEmail(t.username, t.slug),
+        email: usernameToEmail(t.username),
         password: t.password,
       });
-      expect(error, `ล็อกอินด้วย username+slug ของ ${t.slug} ไม่ผ่าน`).toBeNull();
+      expect(error, `ล็อกอินด้วย username ของ ${t.slug} ไม่ผ่าน`).toBeNull();
       await c.auth.signOut();
     }
   });
 
-  it("ชื่อผู้ใช้เดียวกันแต่คนละ slug = คนละบัญชี (ไม่ใช่คนเดียวกัน)", () => {
-    expect(usernameToEmail("owner", A.slug)).not.toBe(usernameToEmail("owner", B.slug));
+  /**
+   * ★ กติกาที่ 0032 เปลี่ยน: ชื่อผู้ใช้ห้ามซ้ำ **ทั้งระบบ** ไม่ใช่แค่ในกิจการ
+   *   เพราะถ้าซ้ำได้ คนของกิจการหนึ่งพิมพ์ชื่อตัวเองที่ URL ของอีกกิจการแล้วเข้าได้เลย
+   *   เมื่อรหัสผ่านบังเอิญตรงกัน (ผู้ใช้จับได้ตอนเทสจริง)
+   */
+  it("🚨 ลูกค้าอีกเจ้าใช้ชื่อผู้ใช้ที่มีคนใช้แล้วไม่ได้", async () => {
+    const db = admin();
+    const { error } = await db.auth.admin.createUser({
+      email: `${A.username}@insep.local`, // ชื่อเดียวกับของ A เป๊ะ
+      password: "SomeOther!2569x",
+      email_confirm: true,
+      user_metadata: { username: A.username, display_name: "ปลอม", tenant_id: B.tenantId },
+    });
+    expect(error, "สร้างชื่อผู้ใช้ซ้ำข้ามกิจการได้ — ช่องโหว่กลับมาแล้ว").not.toBeNull();
+  });
+
+  it("subdomain ไม่เกี่ยวกับการล็อกอินอีกต่อไป — ชื่อเดียวกันได้อีเมลเดียวกันเสมอ", () => {
+    // เลิกใช้ slug คั่นแล้ว → พิมพ์ชื่อตัวเองที่ URL ไหนก็เข้าบัญชีตัวเอง
+    expect(usernameToEmail("owner")).toBe("owner@insep.local");
   });
 
   /**
@@ -86,13 +98,16 @@ describe("คีย์ซ้ำข้ามลูกค้าได้ (ผล�
     ).not.toBe(B.password);
   });
 
-  it("🚨 เอารหัสของ A ไปล็อกอินที่ namespace ของ B ต้องไม่ผ่าน", async () => {
+  it("🚨 พิมพ์ชื่อตัวเองที่ URL ของอีกกิจการ ต้องเข้าบัญชีตัวเองเสมอ", async () => {
     const c = anonClient();
     const { error } = await c.auth.signInWithPassword({
-      email: usernameToEmail(A.username, B.slug), // ชื่อผู้ใช้เดียวกัน แต่ไปที่ slug ของ B
+      email: usernameToEmail(A.username), // ชื่อของ A — ตอนนี้ไม่มี slug คั่นแล้ว
       password: A.password,
     });
-    expect(error, "คนของ A เข้าระบบของ B ได้ — ช่องโหว่!").not.toBeNull();
+    // ★ ล็อกอินผ่านได้ (เป็นบัญชีตัวเอง) แต่ต้องได้ข้อมูลของ A ไม่ใช่ของ B
+    expect(error).toBeNull();
+    const { data: me } = await c.from("profiles").select("tenant_id").single();
+    expect(me?.tenant_id, "พิมพ์ชื่อตัวเองแล้วไปโผล่กิจการอื่น — ช่องโหว่!").toBe(A.tenantId);
     await c.auth.signOut();
   });
 });
@@ -100,10 +115,11 @@ describe("คีย์ซ้ำข้ามลูกค้าได้ (ผล�
 describe("บังคับเปลี่ยนรหัสตอนล็อกอินครั้งแรก (0031)", () => {
   it("ผู้ใช้ที่ admin สร้างให้ ต้องติดธง must_change_password", async () => {
     const db = admin();
-    const email = `staff@${A.slug}.insep.local`;
+    const uname = `staff-${A.slug}`;              // ชื่อผู้ใช้ห้ามซ้ำทั้งระบบ (0032)
+    const email = `${uname}@insep.local`;
     const { data: u, error } = await db.auth.admin.createUser({
       email, password: "TempPass!2569x", email_confirm: true,
-      user_metadata: { username: "staff", display_name: "พนักงาน", tenant_id: A.tenantId },
+      user_metadata: { username: uname, display_name: "พนักงาน", tenant_id: A.tenantId },
     });
     expect(error).toBeNull();
 
@@ -121,7 +137,7 @@ describe("บังคับเปลี่ยนรหัสตอนล็อ�
     //   (A เป็น main อยู่แล้ว จึงเทสกับผู้ใช้ staff ที่เป็น viewer แทน)
     const db = admin();
     const { data: staff } = await db
-      .from("profiles").select("id, role").eq("tenant_id", A.tenantId).eq("username", "staff").single();
+      .from("profiles").select("id, role").eq("tenant_id", A.tenantId).like("username", "staff-%").single();
     expect(staff?.role).toBe("viewer");
     await c.auth.signOut();
   });

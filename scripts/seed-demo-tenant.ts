@@ -56,7 +56,7 @@ async function main() {
   console.log(`\n✅ สร้างลูกค้าสาธิตแล้ว`);
   console.log(`   slug      : ${slug}`);
   console.log(`   ชื่อแบรนด์  : ${name}`);
-  console.log(`   ผู้ใช้      : ${t.username}  (role main · ชื่อเดียวกันทุกเจ้า — slug เป็นตัวแยก)`);
+  console.log(`   ผู้ใช้      : ${t.username}  (role main · ชื่อผู้ใช้ห้ามซ้ำทั้งระบบ)`);
   console.log(`   รหัสผ่านชั่วคราว: ${t.password}  ← ระบบจะบังคับให้ตั้งใหม่ตอนล็อกอินครั้งแรก`);
   console.log(`\n   เปิดดู: http://${slug}.localhost:3000/login`);
   console.log(`   เทียบกับ: http://localhost:3000/login  (ไม่มี subdomain = หน้าตาเดิม)\n`);

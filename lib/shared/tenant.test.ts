@@ -73,34 +73,33 @@ describe("isValidTenantSlug", () => {
   });
 });
 
-describe("usernameToEmail (แยก namespace ต่อ tenant)", () => {
-  it("ไม่ส่ง slug = พฤติกรรมเดิมเป๊ะ (ห้ามทำให้บัญชีเดิมล็อกอินไม่ได้)", () => {
+describe("usernameToEmail (ชื่อผู้ใช้ไม่ซ้ำทั้งระบบ — 0032)", () => {
+  it("ชื่อผู้ใช้ → อีเมลภายใน ไม่สน subdomain", () => {
     expect(usernameToEmail("admin")).toBe("admin@insep.local");
     expect(usernameToEmail("Admin")).toBe("admin@insep.local");
     expect(usernameToEmail("  admin  ")).toBe("admin@insep.local");
   });
 
-  it("ส่ง slug = แยก namespace → 2 ลูกค้าใช้ชื่อ admin พร้อมกันได้", () => {
-    expect(usernameToEmail("admin", "rongkor")).toBe("admin@rongkor.insep.local");
-    expect(usernameToEmail("admin", "rongkhor")).toBe("admin@rongkhor.insep.local");
-    expect(usernameToEmail("admin", "rongkor")).not.toBe(usernameToEmail("admin", "rongkhor"));
+  /**
+   * ★ กติกาที่ทำให้ต้องเปลี่ยนมาเป็นชื่อไม่ซ้ำทั้งระบบ
+   *   เคยแยก namespace ด้วย slug (admin@rongkor.insep.local) เพื่อให้ทุกเจ้าใช้ชื่อ admin ได้
+   *   แต่เปิดช่องให้คนของกิจการหนึ่งพิมพ์ชื่อตัวเองที่ URL ของอีกกิจการแล้วเข้าได้
+   *   ถ้ารหัสผ่านบังเอิญตรงกัน — ตอนนี้พิมพ์ชื่อเดียวกันได้อีเมลเดียวกันเสมอ
+   */
+  it("ชื่อเดียวกันได้อีเมลเดียวกันเสมอ ไม่ว่ายืนอยู่ที่ subdomain ไหน", () => {
+    const fromAnywhere = usernameToEmail("admin");
+    expect(fromAnywhere).toBe("admin@insep.local");
+    // ไม่มีพารามิเตอร์ slug ให้ส่งอีกแล้ว — ประกอบอีเมลต่างกันตาม URL ไม่ได้โดยโครงสร้าง
+    expect(usernameToEmail.length).toBe(1);
   });
 
-  it("slug รูปแบบไม่ผ่าน = ถอยไปโดเมนกลาง ไม่ประกอบอีเมลพิกล", () => {
-    expect(usernameToEmail("admin", "rong.kor")).toBe("admin@insep.local");
-    expect(usernameToEmail("admin", "")).toBe("admin@insep.local");
-    expect(usernameToEmail("admin", null)).toBe("admin@insep.local");
-  });
-
-  it("กรอกอีเมลเต็มเอง = ใช้ตามนั้น ไม่สนใจ slug ของ subdomain ที่ยืนอยู่", () => {
-    // เคสนี้คือทางออกตอนล็อกอินผิด subdomain — ได้ข้อมูลถูก (RLS ตัดสินจาก profile) แบรนด์ผิด
-    expect(usernameToEmail("admin@rongkor.insep.local", "rongkhor")).toBe(
-      "admin@rongkor.insep.local",
-    );
+  it("กรอกอีเมลจริงเองก็ยังได้", () => {
+    expect(usernameToEmail("somchai@gmail.com")).toBe("somchai@gmail.com");
+    expect(usernameToEmail("Somchai@Gmail.com")).toBe("somchai@gmail.com");
   });
 
   it("ค่าว่างคืนค่าว่าง ไม่ประกอบอีเมลลอย ๆ", () => {
-    expect(usernameToEmail("", "rongkor")).toBe("");
-    expect(usernameToEmail("   ", "rongkor")).toBe("");
+    expect(usernameToEmail("")).toBe("");
+    expect(usernameToEmail("   ")).toBe("");
   });
 });

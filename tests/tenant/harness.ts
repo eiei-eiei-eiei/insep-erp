@@ -163,12 +163,11 @@ export async function seedTenant(
     is_vat: true, is_default: true,
   })).error);
 
-  // ผู้ใช้ role main — ★ ชื่อผู้ใช้ 'owner' เหมือนกันทั้งสอง tenant โดยตั้งใจ
-  //   (profiles.username unique เป็น (tenant_id, username) แล้ว — 0027)
+  // ผู้ใช้ role main — ★ ชื่อผู้ใช้ต้องไม่ซ้ำ **ทั้งระบบ** (0032) ไม่ใช่แค่ในกิจการ
   // ⚠️ local-part ของอีเมลต้องเท่ากับ username เป๊ะ ไม่งั้นสูตรจริงใน
-  //    usernameToEmail(username, slug) จะหาบัญชีนี้ไม่เจอตอนล็อกอินผ่านหน้าจอ
-  const username = "owner";
-  const email = `${username}@${slug}.insep.local`;
+  //    usernameToEmail(username) จะหาบัญชีนี้ไม่เจอตอนล็อกอินผ่านหน้าจอ
+  const username = `owner-${slug}`;
+  const email = `${username}@insep.local`;
   const { data: u, error: uErr } = await db.auth.admin.createUser({
     email, password, email_confirm: true,
     user_metadata: {
