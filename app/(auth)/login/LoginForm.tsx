@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { login, type LoginState } from "./actions";
-import { PRODUCT_NAME, type Branding } from "@/lib/shared/branding";
+import { PRODUCT_NAME, PRODUCT_TAGLINE, type Branding } from "@/lib/shared/branding";
 
 const initialState: LoginState = { error: null };
 
@@ -51,7 +51,7 @@ export default function LoginForm({
 
             <h1 className="text-2xl font-bold text-ink">{branding.name}</h1>
             {!isTenant && (
-              <p className="mt-1 text-sm text-faint">ระบบภายในโรงกลั่นสุราคราฟต์</p>
+              <p className="mt-1 text-sm text-faint">{PRODUCT_TAGLINE}</p>
             )}
           </div>
 

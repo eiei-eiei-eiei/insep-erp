@@ -45,6 +45,13 @@ export function AccountingApp({ boot }: { boot: Bootstrap }) {
   const firstEntity = boot.entities[0]?.entity_id ?? "";
   const entryEntity = entityId === "ALL" ? firstEntity : entityId;
 
+  // 4.4 — ลูกค้าที่มีกิจการเดียวไม่ต้องเห็นตัวเลือกกิจการ (ไม่มีอะไรให้เลือก)
+  // 🚨 ตัดสินจาก "จำนวนกิจการที่มีจริง" ไม่ใช่ tenants.max_entities —
+  //    กิจการของเจ้าของระบบเองมี EID01+EID02 จริง แต่ max_entities ยัง default 1
+  //    ถ้าไปผูกกับ max_entities จะซ่อนตัวเลือกแล้วเข้าถึงข้อมูล EID02 ไม่ได้อีกเลย
+  //    (max_entities เป็นโควตาตอน "สร้าง" กิจการ — บังคับในสคริปต์ฝั่ง service role)
+  const multiEntity = boot.entities.length > 1;
+
   // เก็บแท็บที่เคยเปิดไว้ (mount ครั้งเดียว แล้วคงไว้ ซ่อนด้วย CSS) → สลับแท็บลื่น ไม่ refetch ซ้ำ
   const [visited, setVisited] = useState<Set<Tab>>(() => new Set<Tab>(["บันทึก"]));
   useEffect(() => { setVisited((v) => (v.has(tab) ? v : new Set(v).add(tab))); }, [tab]);
@@ -56,10 +63,12 @@ export function AccountingApp({ boot }: { boot: Bootstrap }) {
         <IconLedger size={24} className="text-brand" />
         <h1 className="text-2xl font-bold text-ink">บัญชี</h1>
         <div className="ml-auto flex flex-wrap items-center gap-2 text-sm">
-          <select value={entityId} onChange={(e) => setEntityId(e.target.value)} className="rounded-lg border border-line px-3 py-2">
-            <option value="ALL">ทุกกิจการ</option>
-            {boot.entities.map((en) => (<option key={en.entity_id} value={en.entity_id}>{en.entity_id} — {en.name}</option>))}
-          </select>
+          {multiEntity && (
+            <select value={entityId} onChange={(e) => setEntityId(e.target.value)} className="rounded-lg border border-line px-3 py-2">
+              <option value="ALL">ทุกกิจการ</option>
+              {boot.entities.map((en) => (<option key={en.entity_id} value={en.entity_id}>{en.entity_id} — {en.name}</option>))}
+            </select>
+          )}
           <div className="flex items-center gap-1">
             <button onClick={() => setMonth(shiftMonth(month, -1))} title="เดือนก่อน" className="rounded-lg border border-line px-2.5 py-2 text-muted hover:bg-raised">‹</button>
             <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="rounded-lg border border-line px-3 py-2" />

@@ -1,8 +1,11 @@
 import { getReportOptions } from "./data";
 import { ReportsApp } from "./_components/ReportsApp";
 import { IconDoc } from "@/lib/shared/icons";
+import { requireModule } from "@/lib/shared/tenant-plan";
 
 export default async function ReportsPage() {
+  // 4.5 — กันเข้าโดเมนที่ลูกค้าไม่ได้ซื้อผ่าน URL ตรง (เมนูซ่อนอย่างเดียวไม่พอ)
+  await requireModule("production");
   const options = await getReportOptions();
   return (
     <div>

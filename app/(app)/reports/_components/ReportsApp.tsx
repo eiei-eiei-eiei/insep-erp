@@ -148,15 +148,23 @@ export function ReportsApp({ options }: { options: Opt }) {
       )}
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
+        {/* 4.4 — มีกิจการเดียวก็ไม่ต้องให้เลือก · แต่ยังต้องโชว์เลขสรรพสามิตเพราะมันขึ้นหัวฟอร์ม
+            (ตัดสินจากจำนวนกิจการจริง ไม่ใช่ max_entities — เหตุผลเดียวกับ AccountingApp) */}
         <label className="text-sm">
           <span className="mb-1 block text-muted">กิจการ</span>
-          <select value={entityId} onChange={(e) => setEntityId(e.target.value)} className="rounded-lg border border-line px-3 py-2">
-            {options.entities.map((en) => (
-              <option key={en.entity_id} value={en.entity_id}>
-                {en.entity_id} — {en.name} {en.excise_id ? "" : "(ไม่มีเลขสรรพสามิต)"}
-              </option>
-            ))}
-          </select>
+          {options.entities.length > 1 ? (
+            <select value={entityId} onChange={(e) => setEntityId(e.target.value)} className="rounded-lg border border-line px-3 py-2">
+              {options.entities.map((en) => (
+                <option key={en.entity_id} value={en.entity_id}>
+                  {en.entity_id} — {en.name} {en.excise_id ? "" : "(ไม่มีเลขสรรพสามิต)"}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="block rounded-lg border border-line px-3 py-2 text-ink">
+              {options.entities[0]?.name ?? "ยังไม่มีข้อมูลกิจการ"}
+            </span>
+          )}
           <span className={`mt-1 block text-xs ${selectedExcise ? "text-faint" : "text-crit"}`}>
             {selectedExcise
               ? `เลขสรรพสามิต: ${selectedExcise}`

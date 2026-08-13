@@ -1,8 +1,8 @@
 # งานที่เหลือ — ส่งต่อให้ session ถัดไป
 
 > เขียน 2026-08-01 (D43) · อัปเดต 2026-08-02 (D44) · 2026-08-11 (D45 + สถาปัตยกรรม productization)
-> **อัปเดตล่าสุด 2026-08-12 — ย้าย DB production ขึ้น 0032 (ขั้น 6) · LINE ต่อ tenant (0033) · MFA ตกไปแล้ว**
-> **อ่านไฟล์นี้ก่อน** แล้วค่อยดู `CLAUDE.md` · `docs/DECISIONS.md` D46-D52 · `docs/DESIGN_SYSTEM.md`
+> **อัปเดตล่าสุด 2026-08-12 — ย้าย DB จริงขึ้น 0032 · LINE ต่อ tenant (0033) · MFA ตกไป · 4.4+4.5 เสร็จ (0034)**
+> **อ่านไฟล์นี้ก่อน** แล้วค่อยดู `CLAUDE.md` · `docs/DECISIONS.md` D46-D53 · `docs/DESIGN_SYSTEM.md`
 
 ---
 
@@ -13,14 +13,14 @@
 | | DB production (ของเจ้าของ) | DB แพลตฟอร์มลูกค้า (ใหม่) |
 |---|---|---|
 | ref | `vmhiwlxdyhatucioalzp` | `tnuxrufpzeyuvwdmkojv` |
-| migration | ถึง **0033** ครบ | ถึง **0033** ครบ |
+| migration | ถึง **0033** (0034 ยังไม่ลง) | ถึง **0034** ครบ |
 | ข้อมูล | ของจริงที่ใช้ยื่นภาษี | tenant สาธิต `rongkor` / `rongkhor` |
 | บัญชี Supabase | บัญชีเดิม | **บัญชีใหม่** (CLI link อยู่ที่นี่) |
 
 > ✅ **2026-08-12: ทั้งสอง DB อยู่ที่ 0032 เท่ากันแล้ว** — ข้อห้าม "ห้าม merge เข้า main" ยกเลิกแล้ว
 > (เดิมห้ามเพราะ DB production ยังไม่มี `profiles.tenant_id` ที่โค้ดใหม่ต้องใช้ — ตอนนี้มีแล้ว)
 
-- `supabase link` + `.env.local` ตอนนี้ชี้ **DB production** (`vmhiwlxdyhatucioalzp`)
+- `supabase link` + `.env.local` ตอนนี้ชี้ **project ทดสอบ** (`tnuxrufpzeyuvwdmkojv`)
   🚨 เช็คก่อน `db:push` ทุกครั้ง: `cat supabase/.temp/project-ref`
   · ไปทดสอบ: `npx supabase link --project-ref tnuxrufpzeyuvwdmkojv` + `cp .env.local.testing-backup .env.local`
   · กลับ DB จริง: `npx supabase link --project-ref vmhiwlxdyhatucioalzp` + `cp .env.local.production-backup .env.local`
@@ -33,8 +33,8 @@
 | เรื่อง | สถานะ |
 |---|---|
 | build / lint | ✅ ผ่าน |
-| `npm run test` (unit, ออฟไลน์) | ✅ **241** |
-| `npm run test:tenant` (ยิง Supabase จริง) | ✅ **73** — ต้องมี `.env.tenant-test.local` |
+| `npm run test` (unit, ออฟไลน์) | ✅ **249** |
+| `npm run test:tenant` (ยิง Supabase จริง) | ✅ **79** — ต้องมี `.env.tenant-test.local` |
 | ตรวจโค้ดหา query ที่พังจากการเปลี่ยน PK | ✅ **ไม่พบจุดพัง** (D49) — จุดเสี่ยงที่เหลือเป็นของ 4.3 |
 | ค่าที่ต้องตั้งใน production | ✅ ครบ (ดูข้อ 6 — เหลือ opening_balance ที่**จงใจไม่ใส่**) |
 
@@ -175,8 +175,10 @@ D48 ปิดทางที่ "เกิดโดยบังเอิญ" ไ
 4.3 (VAT branching) · 4.4 (`max_entities` + ซ่อน UI เลือกกิจการ) · 4.5 (module flags + provision script)
 · 4.6 (โรงแช่ — ยังติดเทมเพลตฟอร์มสรรพสามิต) · ข้อ 3 (โลโก้บนเอกสาร) · ตัดฟีเจอร์สแกนใบเสร็จ
 
-> `scripts/seed-demo-tenant.ts` คือ **เมล็ดของ provision script (4.5)** — สร้าง tenant + entity
-> + ผู้ใช้ + ข้อมูลตั้งต้นครบแล้ว ต่อยอดจากตัวนี้ อย่าเขียนใหม่
+> ✅ **4.4 + 4.5 เสร็จแล้ว (2026-08-12 · migration 0034 · D53)** — เหลือแต่ 4.3 (VAT branching)
+> ที่เป็นก้อนใหญ่สุดและเสี่ยงสุด เพราะแตะ `lib/sales/calc.ts` ซึ่งเป็นชั้นสูตร (กติกาเหล็ก)
+> `is_vat` ยังไม่มีโค้ดไหนใช้ → **กิจการที่ไม่จด VAT ยังคิด VAT 7% และออกใบกำกับภาษีได้ (ผิดกฎหมาย)**
+> `scripts/add-entity.ts` เตือนเรื่องนี้ตอนสร้างกิจการด้วย `--no-vat` แล้ว
 
 ### 4.1 สถาปัตยกรรมที่ตัดสินแล้ว — อย่ารื้อ อย่าเปิดประเด็นซ้ำ
 
@@ -389,9 +391,9 @@ UAT + shadow verification + cutover kit — ดู `docs/MIGRATION_PLAN.md` sec 
 1. ~~ผู้ใช้เทส demo tenant ในเบราว์เซอร์~~                  ← **ผ่านแล้ว 2026-08-12**
 2. ขั้น 6 — ย้าย DB production ตามมา (ข้อ 4.10)            ← **คิวถัดไป** · เสี่ยงสุด ต้องยืนยันทีละขั้น
 3. เทียบมือยอดบัญชี + PDF ภพ.30/ภส. (ค้างจาก Phase 5)     ← ผู้ใช้ทำเอง ทำขนานได้
-4. 4.4 max_entities + ซ่อน UI เลือกกิจการ (งานเล็ก ต่อจากฐานที่มีแล้ว)
+4. ~~4.4 max_entities + ซ่อน UI เลือกกิจการ~~ **เสร็จแล้ว (D53)**
 5. 4.3 VAT branching + บล็อกใบกำกับกิจการไม่จด VAT
-6. 4.5 module flags → provision script (ต่อยอดจาก seed-demo-tenant.ts)
+6. ~~4.5 module flags → provision script~~ **เสร็จแล้ว (D53)** — `npm run provision:tenant` / `provision:add-entity`
 7. ~~MFA~~ **ตกไปแล้ว (D52)** · ~~LINE ต่อ tenant~~ **เสร็จแล้ว (D51)** → แทนที่ด้วย: ขันเกณฑ์รหัสผ่าน `validatePassword`
 8. โลโก้บนหัวเอกสาร (ข้อ 3) · 4.6 โรงแช่ (รอเทมเพลตฟอร์ม)
 ```

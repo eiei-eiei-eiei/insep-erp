@@ -239,6 +239,34 @@ _(ข้ามตามที่ผู้ใช้ตัดสินใจ — �
 
 ---
 
+## รับลูกค้าใหม่ 1 ราย (D53 · migration 0034) — ขั้นตอนมาตรฐาน
+
+- [ ] `npm run db:push` (0034) ให้ครบทั้ง DB จริงและ project ลูกค้า
+- [ ] **สร้างลูกค้า** — ชี้ `--env` ไปไฟล์ env ของ project ที่ลูกค้าจะอยู่:
+      ```
+      npm run provision:tenant -- --env=.env.local --slug=rongsomchai \
+        --name="โรงกลั่นสมชาย" --color=copper --modules=production,accounting,sales --max-entities=1
+      ```
+      · `--modules` = SKU ที่ลูกค้าซื้อ (production / accounting / sales เลือกผสมได้)
+      · ⚠️ **รหัสผ่านชั่วคราวพิมพ์ครั้งเดียว ไม่มีทางสั่งพิมพ์ซ้ำ** — ก๊อปเก็บทันทีก่อนปิด terminal
+      · ได้ระบบเปล่า ไม่มีข้อมูลตัวอย่างติดมา (ต่างจาก `seed:demo-tenant` ที่ใส่ข้อมูลทดสอบให้)
+- [ ] ส่งชื่อผู้ใช้ + รหัสชั่วคราวให้ลูกค้า — ระบบบังคับให้ตั้งรหัสใหม่เองตอนล็อกอินครั้งแรก
+- [ ] **ลูกค้าต้องตั้งเองหลังเข้าระบบ**: ข้อมูลบนเอกสารการค้า · `entities.excise_id` · แจ้งเตือน LINE
+- [ ] **ขาย add-on กิจการที่ 2** (฿390–590/เดือน) — เก็บเงินก่อน แล้วค่อย:
+      1. ขยายโควตาใน Supabase Dashboard → SQL Editor:
+         `update tenants set max_entities = 2 where slug = 'rongsomchai';`
+      2. `npm run provision:add-entity -- --env=.env.local --slug=rongsomchai --entity=EID02 --name="..."`
+      · สคริปต์**ปฏิเสธเองถ้าโควตาไม่พอ** — จงใจไม่ให้ขยายโควตาอัตโนมัติ
+        (การเพิ่มกิจการกับการอนุมัติว่าจ่ายเงินแล้ว ต้องเป็นคนละการตัดสินใจ)
+- [ ] **เปลี่ยนแพ็กเกจทีหลัง** (ลูกค้าซื้อโมดูลเพิ่ม) — SQL Editor:
+      `update tenants set modules_enabled = '{production,accounting,sales}' where slug = '...';`
+      · ลูกค้าเห็นเมนูใหม่ทันทีที่รีเฟรช · **ลูกค้าแก้ค่านี้เองไม่ได้** (ตาราง `tenants` ไม่มี policy update)
+
+> ⚠️ **กิจการที่ไม่จด VAT ยังใช้ไม่ได้จริง** — งาน 4.3 ยังไม่ทำ ระบบยังคิด VAT 7% ทุกกิจการ
+> และยังออกใบกำกับภาษีได้ ซึ่ง**ผิดกฎหมายถ้ากิจการไม่จด VAT** · `add-entity.ts` เตือนตอนใช้ `--no-vat` แล้ว
+
+---
+
 ## หมายเหตุถาวร
 - ข้อมูลทดสอบทั้งหมดใช้ marker `EID99` / `T-*` / "ทดสอบ" → ก่อน cutover จริงรัน `supabase/seed/cleanup_test.sql` ให้สะอาด
 - อย่าลืม rotate `ANTHROPIC_API_KEY` + secrets ที่เคยอยู่ในโค้ดเดิม (ถือว่า leaked แล้ว)

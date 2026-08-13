@@ -23,13 +23,15 @@ export default async function AppLayout({
 
   if (!user) redirect("/login");
 
-  const [{ data: profile }, { data: settings }] = await Promise.all([
+  const [{ data: profile }, { data: settings }, { data: tenant }] = await Promise.all([
     supabase
       .from("profiles")
       .select("display_name, username, role, must_change_password")
       .eq("id", user.id)
       .single(),
     supabase.from("app_settings").select("kind, value").in("kind", ["brand_name", "brand_color", "logo_url", "default_mode"]),
+    // โมดูลที่ลูกค้าซื้อ (4.5) — RLS กรองเหลือแถวของ tenant ตัวเองอยู่แล้ว
+    supabase.from("tenants").select("modules_enabled").maybeSingle(),
   ]);
 
   // ยังใช้รหัสที่คนอื่นตั้งให้ → ต้องเปลี่ยนก่อนเข้าใช้งาน (0031)
@@ -44,7 +46,7 @@ export default async function AppLayout({
   return (
     <div data-brand={branding.color} className="min-h-screen bg-page text-ink">
       <Nav
-        workspaces={workspacesFor(role)}
+        workspaces={workspacesFor(role, tenant?.modules_enabled as string[] | null)}
         displayName={displayName}
         role={role}
         branding={branding}
