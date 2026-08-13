@@ -13,18 +13,18 @@
 | | DB production (ของเจ้าของ) | DB แพลตฟอร์มลูกค้า (ใหม่) |
 |---|---|---|
 | ref | `vmhiwlxdyhatucioalzp` | `tnuxrufpzeyuvwdmkojv` |
-| migration | ถึง **0032** ครบ (ย้ายแล้ว 2026-08-12) | ถึง **0032** ครบ |
+| migration | ถึง **0033** ครบ | ถึง **0033** ครบ |
 | ข้อมูล | ของจริงที่ใช้ยื่นภาษี | tenant สาธิต `rongkor` / `rongkhor` |
 | บัญชี Supabase | บัญชีเดิม | **บัญชีใหม่** (CLI link อยู่ที่นี่) |
 
 > ✅ **2026-08-12: ทั้งสอง DB อยู่ที่ 0032 เท่ากันแล้ว** — ข้อห้าม "ห้าม merge เข้า main" ยกเลิกแล้ว
 > (เดิมห้ามเพราะ DB production ยังไม่มี `profiles.tenant_id` ที่โค้ดใหม่ต้องใช้ — ตอนนี้มีแล้ว)
 
-- `supabase link` + `.env.local` ตอนนี้ชี้ **project ทดสอบ** (`tnuxrufpzeyuvwdmkojv`) — สลับกลับมาหลังจบขั้น 6
+- `supabase link` + `.env.local` ตอนนี้ชี้ **DB production** (`vmhiwlxdyhatucioalzp`)
   🚨 เช็คก่อน `db:push` ทุกครั้ง: `cat supabase/.temp/project-ref`
-  · ไป DB จริง: `npx supabase link --project-ref vmhiwlxdyhatucioalzp` + `cp .env.local.production-backup .env.local`
-  · กลับมาทดสอบ: `npx supabase link --project-ref tnuxrufpzeyuvwdmkojv` + `cp .env.local.testing-backup .env.local`
-- ⚠️ **migration 0033 ยังไม่ได้ลง DB production** (ลงแต่ project ทดสอบ) — ต้อง `db:push` ก่อน push โค้ด
+  · ไปทดสอบ: `npx supabase link --project-ref tnuxrufpzeyuvwdmkojv` + `cp .env.local.testing-backup .env.local`
+  · กลับ DB จริง: `npx supabase link --project-ref vmhiwlxdyhatucioalzp` + `cp .env.local.production-backup .env.local`
+  ⚠️ `npm run test:tenant` อ่าน `.env.tenant-test.local` แยกต่างหาก (ชี้ project ทดสอบเสมอ) — ไม่กระทบกัน
 - **บัญชี Supabase**: บัญชีใหม่ถูกเชิญเข้า org เก่าแล้ว → CLI เห็นทั้ง 2 project ไม่ต้องสลับ login อีก
 - **สำรอง DB ก่อนแตะ migration เสมอ**: `npx tsx scripts/backup-tables.ts --env=<ไฟล์ env> --out=<โฟลเดอร์นอก repo>`
   (`supabase db dump` ใช้ไม่ได้ — ต้องมี Docker/pg_dump ซึ่งเครื่องผู้ใช้ไม่มี)
