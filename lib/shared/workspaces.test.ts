@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { workspacesFor, hasModule, WORKSPACES, ALL_MODULES } from "./workspaces";
+import { workspacesFor, workspacesWithLock, hasModule, WORKSPACES, ALL_MODULES } from "./workspaces";
 
 /**
  * เมนูถูกกรอง 2 ชั้น: role (ทำอะไรได้) × โมดูล (ซื้ออะไรไว้)
@@ -48,5 +48,23 @@ describe("workspacesFor — role × โมดูล", () => {
   it("ไม่ส่งโมดูลมา = เปิดหมด (พฤติกรรมเดิมก่อนมี 4.5 ต้องไม่พัง)", () => {
     expect(keys(workspacesFor("main"))).toEqual(keys(WORKSPACES));
     expect(keys(workspacesFor("viewer"))).toEqual(["accounting", "production", "reports", "sales"]);
+  });
+});
+
+describe("workspacesWithLock — หน้าแรกโชว์ของที่ยังไม่ได้ซื้อเป็นสีเทา", () => {
+  it("ไม่ตัดทิ้ง แต่ติดธง locked ให้ตัวที่ยังไม่ได้ซื้อ", () => {
+    const ws = workspacesWithLock("main", ["production"]);
+    expect(ws).toHaveLength(4); // ครบทุกอัน ไม่หายไปไหน
+    const locked = ws.filter((w) => w.locked).map((w) => w.key).sort();
+    expect(locked).toEqual(["accounting", "sales"]);
+  });
+
+  it("ซื้อครบ = ไม่มีอันไหน locked", () => {
+    expect(workspacesWithLock("main", ALL_MODULES).some((w) => w.locked)).toBe(false);
+  });
+
+  it("★ role ยังตัดทิ้งเหมือนเดิม — คลังไม่ต้องเห็นว่ามีโมดูลบัญชีให้ซื้อ", () => {
+    const ws = workspacesWithLock("warehouse", ["sales"]);
+    expect(ws.map((w) => w.key)).toEqual(["sales"]);
   });
 });

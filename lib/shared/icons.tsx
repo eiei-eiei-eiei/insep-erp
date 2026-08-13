@@ -312,6 +312,16 @@ export function IconMoney(p: IconProps) {
   );
 }
 
+/** โมดูลที่ยังไม่ได้ซื้อ — กุญแจล็อก */
+export function IconLock(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <rect x="4.5" y="10.5" width="15" height="10" rx="1.5" />
+      <path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" />
+    </Svg>
+  );
+}
+
 /** map จาก key ของ workspace → ไอคอน (ใช้ใน nav) */
 export const WORKSPACE_ICON: Record<string, (p: IconProps) => React.ReactElement> = {
   production: IconStill,

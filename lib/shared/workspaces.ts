@@ -81,6 +81,26 @@ export function workspacesFor(role: Role, modules?: string[] | null): Workspace[
   );
 }
 
+/**
+ * เหมือน workspacesFor แต่ **ไม่ตัดตัวที่ยังไม่ได้ซื้อทิ้ง** — ติดธง `locked` มาแทน
+ *
+ * ใช้ที่หน้าแรกเพื่อให้ลูกค้าเห็นว่า "ยังมีของให้ซื้อเพิ่ม" (กดไม่ได้ แต่เห็น)
+ * ส่วนแถบเมนูยังใช้ workspacesFor ตัวเดิมที่ตัดทิ้ง — เมนูที่ใช้ทุกวันต้องสะอาด
+ * ไม่ใช่ที่โฆษณา
+ *
+ * ★ role ยังตัดทิ้งเหมือนเดิม — พนักงานคลังไม่ควรเห็นว่า "มีโมดูลบัญชีให้ซื้อ"
+ *   เพราะไม่ใช่คนตัดสินใจซื้อ และเห็นแล้วสับสนเปล่า ๆ
+ */
+export function workspacesWithLock(
+  role: Role,
+  modules?: string[] | null,
+): (Workspace & { locked: boolean })[] {
+  return WORKSPACES.filter((w) => role === "main" || w.roles.includes(role)).map((w) => ({
+    ...w,
+    locked: !hasModule(modules, w.module),
+  }));
+}
+
 export const ROLE_LABEL: Record<Role, string> = {
   main: "เจ้าของกิจการ",
   viewer: "ผู้ดูข้อมูล",
