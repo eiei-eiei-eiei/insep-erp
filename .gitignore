@@ -19,6 +19,13 @@
 /supabase/.branches
 /supabase/.temp
 
+# ⛔ ข้อมูลจริง (ใช้ยื่นภาษี) — ห้ามขึ้น git เด็ดขาด
+/migration/export/
+/migration/data/
+/backup/
+*.dump
+
+
 # vercel
 .vercel
 

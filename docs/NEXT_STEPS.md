@@ -13,7 +13,7 @@
 | | DB production (ของเจ้าของ) | DB แพลตฟอร์มลูกค้า (ใหม่) |
 |---|---|---|
 | ref | `vmhiwlxdyhatucioalzp` | `tnuxrufpzeyuvwdmkojv` |
-| migration | ถึง **0024** เท่านั้น | ถึง **0032** ครบ |
+| migration | ถึง **0032** ครบ (ย้ายแล้ว 2026-08-12) | ถึง **0032** ครบ |
 | ข้อมูล | ของจริงที่ใช้ยื่นภาษี | tenant สาธิต `rongkor` / `rongkhor` |
 | บัญชี Supabase | บัญชีเดิม | **บัญชีใหม่** (CLI link อยู่ที่นี่) |
 
@@ -367,20 +367,25 @@ UAT + shadow verification + cutover kit — ดู `docs/MIGRATION_PLAN.md` sec 
 8. โลโก้บนหัวเอกสาร (ข้อ 3) · 4.6 โรงแช่ (รอเทมเพลตฟอร์ม)
 ```
 
-### 4.10 ขั้น 6 — ย้าย DB production ตามมา (ยังไม่ทำ · เสี่ยงสุดของทั้งงาน)
+### 4.10 ✅ ขั้น 6 — ย้าย DB production **เสร็จแล้ว (2026-08-12)** เหลือแค่ merge+push
 
-DB production ยังอยู่ที่ migration 0024 · โค้ดบน `feat/multi-tenant` ต้องการถึง 0032
-→ **ต้อง `db:push` ลง DB production ก่อน แล้วค่อย merge+push โค้ด** ไม่งั้นแอปจริงพัง
+**DB production อยู่ที่ migration 0032 แล้ว** · ข้อมูล 1,685 แถว 30 ตาราง ตรงกับไฟล์สำรองเป๊ะ
+· EID01+EID02 ครบ · ผู้ใช้ `ceo` ล็อกอินเดิมได้ · ผู้ใช้ตรวจในเบราว์เซอร์ผ่านครบแล้ว
 
-ลำดับที่ปลอดภัย:
-1. จับ snapshot / backup DB production ก่อน
-2. `supabase link` กลับไป project เดิม → **ยืนยัน `cat supabase/.temp/project-ref`**
-   (ต้องสลับบัญชี Supabase ด้วย — หรือเชิญบัญชีเดิมเข้า org ใหม่ให้เห็นทั้งสอง project)
-3. `npm run db:push` (0025-0032 · ข้อมูลเดิมทั้งหมดกลายเป็น tenant เดียว)
-4. `cp .env.local.production-backup .env.local` → `npm run dev` → ผู้ใช้ตรวจว่าทุกอย่างเหมือนเดิม
-   **โดยเฉพาะ: ล็อกอินด้วยบัญชีเดิมได้ไหม** (0032 ไม่แตะรูปแบบอีเมลเดิม `<username>@insep.local`
-   จึงควรได้เหมือนเดิม แต่ต้องพิสูจน์)
-5. merge เข้า main → push (= deploy production)
+| ทำอะไรไป | ผล |
+|---|---|
+| 1. สำรองข้อมูล | `scripts/backup-tables.ts` → `D:\insep-erp-backup\2026-08-12-before-0025\` (1,685 แถว) |
+| 2. เชิญบัญชีใหม่เข้า org เก่า → `supabase link` | CLI เห็นทั้ง 2 project · link ไป `vmhiwlxdyhatucioalzp` |
+| 3. `db push` รอบแรก | ❌ **ล้มที่ 0026** (D50 — trigger audit) · 0026 ย้อนกลับสะอาด ข้อมูลไม่เสีย |
+| 4. แก้ 0025+0026 ปิด user trigger ตอน backfill → push ใหม่ | ✅ ครบ 0026-0032 |
+| 5. ลบ audit ปลอม 674 แถวที่ 0025 รอบแรกทิ้งไว้ | ✅ พิสูจน์ก่อนลบ 4 ด่าน · เหลือของจริง 43 แถวตรงไฟล์สำรอง |
+
+**เหลือขั้นเดียว**: merge `feat/multi-tenant` → `main` → push (= deploy production)
+⚠️ ตอนนี้ **DB ใหม่ + โค้ดที่ deploy อยู่ยังเก่า** — ใช้งานได้ปกติเพราะโค้ดเก่าไม่รู้จักคอลัมน์ใหม่
+แต่ก็ไม่ได้ใช้มัน · อย่าทิ้งไว้นาน
+
+> 🪤 **บทเรียนที่ต้องใช้กับลูกค้ารายต่อไป**: migration ที่ backfill ข้อมูลเดิม **ต้องปิด user trigger**
+> ไม่งั้นล้ม (หรือทิ้งขยะใน audit log) · DB ทดสอบที่ยังไม่มีข้อมูลจับไม่ได้ — ดู D50
 
 ---
 

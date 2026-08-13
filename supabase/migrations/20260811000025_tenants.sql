@@ -74,8 +74,15 @@ declare
 begin
   foreach t in array tables loop
     execute format('alter table %I add column if not exists tenant_id uuid', t);
+
+    -- ปิด user trigger ระหว่าง backfill ด้วยเหตุผลเดียวกับ 0026 (ดูคำอธิบายยาวที่นั่น)
+    -- ที่นี่ไม่ถึงกับล้ม แต่ทำให้ edit_log บวมด้วย audit ปลอม 1 แถวต่อทุกแถวที่ backfill
+    -- (ตอน push ลง production 2026-08-12 ได้ขยะมา 674 แถว ต้องมาตามลบทีหลัง)
+    execute format('alter table %I disable trigger user', t);
     execute format(
       'update %I set tenant_id = ''00000000-0000-0000-0000-000000000001'' where tenant_id is null', t);
+    execute format('alter table %I enable trigger user', t);
+
     execute format('alter table %I alter column tenant_id set not null', t);
     execute format('alter table %I alter column tenant_id set default my_tenant()', t);
 

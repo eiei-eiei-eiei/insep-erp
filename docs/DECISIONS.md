@@ -721,6 +721,39 @@
 **จงใจไม่แก้ตอนนี้** เพราะแก้ให้ถูกต้องคือการออกแบบตัวเลือกกิจการฝั่งผลิต/ขาย = เนื้องานของ 4.3 เอง
 แก้ครึ่ง ๆ ตอนนี้จะได้โค้ดที่กรอง entity แบบเดาไปก่อน แล้วต้องรื้อซ้ำ
 
+### D50 — migration ที่ backfill ต้องปิด user trigger ก่อน (เจอตอนย้าย DB จริง 2026-08-12)
+
+**อาการ**: `db push` ลง DB production ล้มที่ 0026
+`null value in column "tenant_id" of relation "edit_log" violates not-null constraint`
+
+**สาเหตุ** (ห่วงโซ่ 3 ต่อ — ไม่มีต่อไหนผิดเดี่ยว ๆ):
+1. 9 ตารางผลิต/ขายมี trigger `trg_audit` (0005) เขียน `edit_log` ทุก INSERT/UPDATE/DELETE
+2. 0025 ตั้ง `edit_log.tenant_id` เป็น `not null default my_tenant()`
+3. 0026 สั่ง `update <ตาราง> set entity_id = ...` เพื่อ backfill → trigger ยิง → insert `edit_log`
+   → ตอน migration ไม่มี `auth.uid()` → `my_tenant()` = null → ชน not null → **ล้มทั้ง migration**
+
+**ทำไม DB ทดสอบไม่เจอ** ← จุดที่ต้องจำ: DB ทดสอบตอนรัน migration **ยังไม่มีข้อมูล**
+→ UPDATE โดน 0 แถว → trigger ไม่ยิงเลย · **บั๊กชนิดนี้โผล่เฉพาะกับ DB ที่มีของจริงเท่านั้น**
+→ เทสอัตโนมัติ 241 + 67 ตัวจับไม่ได้สักตัว และจะจับไม่ได้ตลอดไปถ้าไม่เปลี่ยนวิธีเทส
+
+**แก้**: ในลูป backfill ของ 0025 + 0026 ครอบด้วย
+`alter table %I disable trigger user` … UPDATE … `alter table %I enable trigger user`
+- ⚠️ ต้องเป็น `user` ห้ามเป็น `all` — `all` ปิด trigger ที่บังคับ FK ด้วย
+- migration ล้มกลางคัน = DDL ย้อนพร้อม transaction → trigger ไม่ค้างสถานะปิด
+- โปรเจกต์มี `fn_mig_set_triggers(boolean)` (0014) ทำเรื่องนี้อยู่แล้วสำหรับ import
+  แต่รายชื่อตารางตายตัวและไม่ครบชุดของ 0026 → ทำ inline ในลูปตรงกว่า
+
+**กติกาสำหรับ migration ต่อไป**: ถ้า migration มี `UPDATE`/`INSERT` ที่แตะแถวเดิมของลูกค้า
+**ต้องปิด user trigger เสมอ** — ไม่ใช่เพราะมันจะล้ม แต่เพราะ audit log จะบวมด้วยประวัติปลอม
+(รอบนี้ 0025 ทิ้งขยะไว้ 674 แถว ต้องเขียนสคริปต์ตามลบทีหลัง)
+
+**ผลลัพธ์การย้าย**: ข้อมูล 1,685 แถว 30 ตาราง **ตรงกับไฟล์สำรองเป๊ะทุกตารางหลังย้าย**
+· EID01+EID02 อยู่ครบ · ผู้ใช้ `ceo` ล็อกอินเดิมได้ ไม่โดนบังคับเปลี่ยนรหัส
+
+**สิ่งที่ช่วยชีวิต**: สำรองข้อมูลก่อนด้วย `scripts/backup-tables.ts` (เขียนใหม่รอบนี้ เพราะ
+`supabase db dump` ต้องมี Docker/pg_dump ซึ่งเครื่องผู้ใช้ไม่มี) — ไฟล์สำรองกลายเป็น
+**ตัวอ้างอิงในการพิสูจน์ว่าไม่มีอะไรหาย** ไม่ใช่แค่ของเผื่อกู้ · เก็บนอก repo + `.gitignore` กันซ้ำ
+
 ## ค้างต้องถามผู้ใช้ (ยังไม่ตัดสิน — MIGRATION_PLAN sec 11)
 - ~~อีเมล login (ข้อ 9)~~ → **ตัดสินแล้ว (D9)**: username-based `<username>@insep.local`
 - ~~ไฟล์ wh3 (50ทวิ)~~ → **ผู้ใช้ยืนยันว่าเป็นเทมเพลตเปล่า** — อัปโหลดด้วย `--include-wh3` เป็น `wht/wh3_template.pdf`

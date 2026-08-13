@@ -62,12 +62,24 @@ begin
   foreach t in array tables loop
     execute format('alter table %I add column if not exists entity_id text', t);
 
+    -- ★★ ต้องปิด user trigger ก่อน backfill — ไม่ปิดแล้ว migration **ล้มทั้งตัว** ★★
+    --   ตารางผลิต/ขายมี trigger audit (trg_audit, 0005) เขียนลง edit_log ทุก UPDATE
+    --   edit_log.tenant_id ถูกตั้ง not null default my_tenant() ไปแล้วใน 0025
+    --   → ตอน migration ไม่มี auth.uid() → my_tenant() = null → ชน not null → ล้ม
+    --   (เจอจริงตอน push ลง DB production 2026-08-12 · DB ทดสอบไม่เจอเพราะตอนนั้นยังไม่มีข้อมูล
+    --    = 0 แถวถูก update = trigger ไม่ยิง — บั๊กชนิดที่โผล่เฉพาะกับ DB ที่มีของจริงเท่านั้น)
+    --   ⚠️ 'user' เท่านั้น ห้ามใช้ 'all' — 'all' ปิด trigger ที่บังคับ FK ด้วย
+    --   ถ้า migration ล้มกลางคัน DDL ย้อนกลับพร้อม transaction → trigger ไม่ค้างปิด
+    execute format('alter table %I disable trigger user', t);
+
     -- backfill = กิจการหลักของ tenant นั้น (join ผ่าน tenant_id ที่ 0025 เติมไว้แล้ว)
     execute format($f$
       update %I x set entity_id = e.entity_id
       from entities e
       where e.tenant_id = x.tenant_id and e.is_default and x.entity_id is null
     $f$, t);
+
+    execute format('alter table %I enable trigger user', t);
 
     execute format('alter table %I alter column entity_id set not null', t);
     execute format('alter table %I alter column entity_id set default my_default_entity()', t);
