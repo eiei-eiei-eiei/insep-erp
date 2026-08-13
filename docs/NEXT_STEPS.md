@@ -3,6 +3,7 @@
 > เขียน 2026-08-01 (D43) · อัปเดต 2026-08-02 (D44) · 2026-08-11 (D45 + สถาปัตยกรรม productization)
 > **อัปเดตล่าสุด 2026-08-12 — ย้าย DB จริงขึ้น 0032 · LINE ต่อ tenant (0033) · MFA ตกไป · 4.4+4.5 เสร็จ (0034)**
 > **อ่านไฟล์นี้ก่อน** แล้วค่อยดู `CLAUDE.md` · `docs/DECISIONS.md` D46-D53 · `docs/DESIGN_SYSTEM.md`
+> **แอปจัดการหลังบ้าน (ยังไม่เริ่ม)**: `docs/ADMIN_APP_REQUIREMENTS.md` — เจ้าของระบบจะเปิดแชทใหม่ทำตัวนี้
 
 ---
 
@@ -13,14 +14,14 @@
 | | DB production (ของเจ้าของ) | DB แพลตฟอร์มลูกค้า (ใหม่) |
 |---|---|---|
 | ref | `vmhiwlxdyhatucioalzp` | `tnuxrufpzeyuvwdmkojv` |
-| migration | ถึง **0033** (0034 ยังไม่ลง) | ถึง **0034** ครบ |
+| migration | ถึง **0034** ครบ | ถึง **0034** ครบ |
 | ข้อมูล | ของจริงที่ใช้ยื่นภาษี | tenant สาธิต `rongkor` / `rongkhor` |
 | บัญชี Supabase | บัญชีเดิม | **บัญชีใหม่** (CLI link อยู่ที่นี่) |
 
 > ✅ **2026-08-12: ทั้งสอง DB อยู่ที่ 0032 เท่ากันแล้ว** — ข้อห้าม "ห้าม merge เข้า main" ยกเลิกแล้ว
 > (เดิมห้ามเพราะ DB production ยังไม่มี `profiles.tenant_id` ที่โค้ดใหม่ต้องใช้ — ตอนนี้มีแล้ว)
 
-- `supabase link` + `.env.local` ตอนนี้ชี้ **project ทดสอบ** (`tnuxrufpzeyuvwdmkojv`)
+- `supabase link` + `.env.local` ตอนนี้ชี้ **DB production** (`vmhiwlxdyhatucioalzp`)
   🚨 เช็คก่อน `db:push` ทุกครั้ง: `cat supabase/.temp/project-ref`
   · ไปทดสอบ: `npx supabase link --project-ref tnuxrufpzeyuvwdmkojv` + `cp .env.local.testing-backup .env.local`
   · กลับ DB จริง: `npx supabase link --project-ref vmhiwlxdyhatucioalzp` + `cp .env.local.production-backup .env.local`
@@ -33,7 +34,7 @@
 | เรื่อง | สถานะ |
 |---|---|
 | build / lint | ✅ ผ่าน |
-| `npm run test` (unit, ออฟไลน์) | ✅ **249** |
+| `npm run test` (unit, ออฟไลน์) | ✅ **252** |
 | `npm run test:tenant` (ยิง Supabase จริง) | ✅ **79** — ต้องมี `.env.tenant-test.local` |
 | ตรวจโค้ดหา query ที่พังจากการเปลี่ยน PK | ✅ **ไม่พบจุดพัง** (D49) — จุดเสี่ยงที่เหลือเป็นของ 4.3 |
 | ค่าที่ต้องตั้งใน production | ✅ ครบ (ดูข้อ 6 — เหลือ opening_balance ที่**จงใจไม่ใส่**) |
