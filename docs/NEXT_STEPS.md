@@ -1,8 +1,8 @@
 # งานที่เหลือ — ส่งต่อให้ session ถัดไป
 
 > เขียน 2026-08-01 (D43) · อัปเดต 2026-08-02 (D44) · 2026-08-11 (D45 + สถาปัตยกรรม productization)
-> **อัปเดตล่าสุด 2026-08-11 — จบงานฐาน multi-tenant (D46-D48, migration 0025-0032)**
-> **อ่านไฟล์นี้ก่อน** แล้วค่อยดู `CLAUDE.md` · `docs/DECISIONS.md` D46-D48 · `docs/DESIGN_SYSTEM.md`
+> **อัปเดตล่าสุด 2026-08-12 — ย้าย DB production ขึ้น 0032 สำเร็จ (ขั้น 6) + เจอช่องโหว่ LINE ต่อ tenant**
+> **อ่านไฟล์นี้ก่อน** แล้วค่อยดู `CLAUDE.md` · `docs/DECISIONS.md` D46-D50 · `docs/DESIGN_SYSTEM.md`
 
 ---
 
@@ -17,13 +17,18 @@
 | ข้อมูล | ของจริงที่ใช้ยื่นภาษี | tenant สาธิต `rongkor` / `rongkhor` |
 | บัญชี Supabase | บัญชีเดิม | **บัญชีใหม่** (CLI link อยู่ที่นี่) |
 
-- `supabase link` ตอนนี้ชี้ **project ใหม่** · เช็คก่อน push ทุกครั้ง: `cat supabase/.temp/project-ref`
-- `.env.local` ตอนนี้ชี้ **project ใหม่** (LINE ถูกล้างค่ากันยิงเข้ากลุ่มจริง)
-  · กลับของจริง: `cp .env.local.production-backup .env.local`
-- **git**: `main` = `origin/main` (ปลอดภัย) · งาน multi-tenant ทั้งหมดอยู่บน branch **`feat/multi-tenant`**
-  (15 commit) **ยังไม่ push ที่ไหนเลย**
-- 🚨 **ห้าม merge `feat/multi-tenant` เข้า main แล้ว push** จนกว่าจะทำขั้น 6 (ดูข้อ 4.10)
-  เพราะโค้ดใหม่หา `profiles.tenant_id` ที่ DB production ยังไม่มี → หน้าจัดการผู้ใช้/ข้อมูลจะพัง
+> ✅ **2026-08-12: ทั้งสอง DB อยู่ที่ 0032 เท่ากันแล้ว** — ข้อห้าม "ห้าม merge เข้า main" ยกเลิกแล้ว
+> (เดิมห้ามเพราะ DB production ยังไม่มี `profiles.tenant_id` ที่โค้ดใหม่ต้องใช้ — ตอนนี้มีแล้ว)
+
+- `supabase link` ตอนนี้ชี้ **DB production** (`vmhiwlxdyhatucioalzp`)
+  🚨 เช็คก่อน `db:push` ทุกครั้ง: `cat supabase/.temp/project-ref` · จะกลับไป project ลูกค้า:
+  `npx supabase link --project-ref tnuxrufpzeyuvwdmkojv`
+- `.env.local` ตอนนี้ชี้ **DB production** · config ของ project ทดสอบเก็บไว้ที่ `.env.local.testing-backup`
+  · สลับไปมา: `cp .env.local.testing-backup .env.local` / `cp .env.local.production-backup .env.local`
+- **บัญชี Supabase**: บัญชีใหม่ถูกเชิญเข้า org เก่าแล้ว → CLI เห็นทั้ง 2 project ไม่ต้องสลับ login อีก
+- **สำรอง DB ก่อนแตะ migration เสมอ**: `npx tsx scripts/backup-tables.ts --env=<ไฟล์ env> --out=<โฟลเดอร์นอก repo>`
+  (`supabase db dump` ใช้ไม่ได้ — ต้องมี Docker/pg_dump ซึ่งเครื่องผู้ใช้ไม่มี)
+  ของรอบย้าย: `D:\insep-erp-backup\2026-08-12-before-0025\`
 
 | เรื่อง | สถานะ |
 |---|---|
@@ -140,6 +145,24 @@ D48 ปิดทางที่ "เกิดโดยบังเอิญ" ไ
 งานที่ต้องทำ: หน้าเปิดใช้ + QR + recovery code + **ขั้นตอนกู้ตอนลูกค้าทำมือถือหาย** (ตัวนี้กินเวลาสุด)
 
 > ตัดสินใจเลื่อนไว้เพราะยังไม่มีข้อมูลลูกค้าจริงสักเจ้า — แต่**ต้องเสร็จก่อนรับเงินลูกค้ารายแรก**
+
+### 4.0.1b 🚨 LINE ผูกกับ deployment ไม่ใช่กับลูกค้า — **ข้อมูลรั่วข้ามลูกค้า** (พบ 2026-08-12)
+
+`lib/line.ts:10-11` อ่าน `LINE_CHANNEL_TOKEN` / `LINE_GROUP_ID` จาก **env ของ Vercel project**
+ไม่ได้อ่านจาก DB → ลูกค้าทุกเจ้าที่อยู่ deployment เดียวกัน **ยิงเข้ากลุ่ม LINE กลุ่มเดียวกันหมด**
+→ ลูกค้า ก. เห็นออเดอร์/ยอดเงินของลูกค้า ข.
+
+- **ความรุนแรงเท่ากับ RLS รั่ว** — ต่างกันแค่รั่วออกทาง LINE แทนที่จะรั่วในแอป
+  (เทส `test:tenant` 67 ตัวจับไม่ได้ เพราะเทสดูแต่ DB ไม่ได้ดู side effect ที่ยิงออกนอก)
+- **ยังไม่ระเบิด**: ยังไม่มีลูกค้า และ Vercel project สำหรับลูกค้ายังไม่ถูกสร้าง
+- **ทางแก้**: ย้ายไปเก็บใน `app_settings` ต่อ tenant (ที่เดียวกับ `brand_color` — D47)
+  แล้วให้ `notifyLine()` รับ tenant context · ไม่มีค่า = ไม่ยิง (silent fail เดิม)
+- ⚠️ **ห้ามตั้งค่า LINE ใน Vercel project ของลูกค้าจนกว่าจะแก้เสร็จ**
+
+> เจอตอนตอบคำถามว่า "ต้องทำ Vercel ใหม่ให้ลูกค้าไหม" — env ที่ผูกกับ deployment
+> **ทุกตัว** ต้องไล่ดูว่าควรเป็นค่าต่อ tenant หรือไม่ ไม่ใช่แค่ LINE
+> (ตรวจแล้ว: `DEFAULT_ENTITY_ID`/`LIQUOR_ENTITY_ID` ใน `.env.example` **ไม่มีโค้ดไหนใช้แล้ว** = ซากเก่า ลบได้
+> · `ANTHROPIC_API_KEY`/`SCAN_DAILY_LIMIT` = โควตาต่อ deployment ซึ่งตั้งใจอยู่แล้ว แต่ผูกกับฟีเจอร์สแกนใบเสร็จที่จะตัดทิ้ง)
 
 ### 4.0.2 ที่ยังไม่ทำในก้อนนี้
 
@@ -363,7 +386,7 @@ UAT + shadow verification + cutover kit — ดู `docs/MIGRATION_PLAN.md` sec 
 4. 4.4 max_entities + ซ่อน UI เลือกกิจการ (งานเล็ก ต่อจากฐานที่มีแล้ว)
 5. 4.3 VAT branching + บล็อกใบกำกับกิจการไม่จด VAT
 6. 4.5 module flags → provision script (ต่อยอดจาก seed-demo-tenant.ts)
-7. 🚨 MFA (4.0.1)                                          ← ก่อนรับลูกค้ารายแรก ห้ามข้าม
+7. 🚨 MFA (4.0.1) + LINE ต่อ tenant (4.0.1b)              ← ก่อนรับลูกค้ารายแรก ห้ามข้าม
 8. โลโก้บนหัวเอกสาร (ข้อ 3) · 4.6 โรงแช่ (รอเทมเพลตฟอร์ม)
 ```
 
