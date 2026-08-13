@@ -13,12 +13,16 @@ import type { AccountRow, Bootstrap, Contact } from "./types";
 import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, cleanTaxId13, fmt, useSaver } from "./ui";
 import { BrandingCard } from "./BrandingCard";
 import { CompanyDocCard } from "./CompanyDocCard";
+import { LineCard } from "./LineCard";
 
 export function SettingsTab({ boot }: { boot: Bootstrap }) {
   return (
     <div className="space-y-4">
       <BrandingCard current={boot.branding} />
       <CompanyDocCard entities={boot.entities} docEntityId={boot.docEntityId} />
+      {/* โทเคน LINE อ่านได้เฉพาะ main (policy app_settings_sel — 0033)
+          role อื่นเปิดมาจะเห็นการ์ดว่าง จึงซ่อนไปเลยให้ตรงกับสิทธิ์จริง */}
+      {boot.role === "main" && <LineCard current={boot.line} />}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ChipList kind="expense_cat" title="หมวดหมู่รายจ่าย" initial={boot.expenseCats} />
         <ChipList kind="income_cat" title="หมวดหมู่รายรับ" initial={boot.incomeCats} />

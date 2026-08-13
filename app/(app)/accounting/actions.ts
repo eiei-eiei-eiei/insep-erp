@@ -424,6 +424,52 @@ export async function saveBrandingAction(input: {
 }
 
 /**
+ * แจ้งเตือน LINE ต่อกิจการ (0033) — ของเดิมอ่านจาก env ของ Vercel
+ * → ลูกค้าทุกเจ้าใน deployment เดียวกันยิงเข้ากลุ่มเดียวกันหมด (เห็นออเดอร์กัน)
+ *
+ * ★ `token = null` แปลว่า "ไม่เปลี่ยนโทเคนเดิม" — หน้าจอไม่เคยได้ค่าเต็มกลับไป
+ *   จึงส่งกลับมาไม่ได้ · ส่งสตริงว่างมาไม่ได้แปลว่าลบ (ใช้ปุ่มลบแยก)
+ * สิทธิ์: บังคับด้วย RLS `app_settings_w` (main เท่านั้น) ไม่ต้องเช็คซ้ำในนี้
+ */
+export async function saveLineAction(input: {
+  token: string | null;
+  groupId: string;
+}): Promise<SaveResult> {
+  const supabase = await db();
+  const groupId = input.groupId.trim();
+  const token = input.token?.trim() ?? null;
+
+  await supabase.from("app_settings").delete().eq("kind", "line_group_id");
+  if (groupId) {
+    const { error } = await supabase.from("app_settings").insert({ kind: "line_group_id", value: groupId });
+    if (error) return fail(mapDbError(error));
+  }
+
+  if (token !== null) {
+    await supabase.from("app_settings").delete().eq("kind", "line_channel_token");
+    if (token) {
+      const { error } = await supabase.from("app_settings").insert({ kind: "line_channel_token", value: token });
+      if (error) return fail(mapDbError(error));
+    }
+  }
+
+  revalidatePath("/accounting");
+  return { ok: true };
+}
+
+/** ปิดแจ้งเตือน LINE ของกิจการนี้ — ลบทั้งโทเคนและกลุ่ม */
+export async function clearLineAction(): Promise<SaveResult> {
+  const supabase = await db();
+  const { error } = await supabase
+    .from("app_settings")
+    .delete()
+    .in("kind", ["line_channel_token", "line_group_id"]);
+  if (error) return fail(mapDbError(error));
+  revalidatePath("/accounting");
+  return { ok: true };
+}
+
+/**
  * ข้อมูลผู้ขายบนเอกสารการค้า (D44) — แก้แถว `entities` + จำว่ากิจการไหนเป็นคนออกเอกสาร
  * ค่าชุดนี้ขึ้นหัวใบเสนอราคา/ใบแจ้งหนี้/ใบกำกับภาษี/ใบเสร็จ และใช้ร่วมกับฟอร์มราชการ
  * (ภพ.30/ภงด./50ทวิ/ภส. อ่านจากตารางเดียวกัน) → หัวเอกสารทั้งระบบตรงกันเสมอ

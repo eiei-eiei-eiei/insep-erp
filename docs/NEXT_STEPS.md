@@ -1,8 +1,8 @@
 # งานที่เหลือ — ส่งต่อให้ session ถัดไป
 
 > เขียน 2026-08-01 (D43) · อัปเดต 2026-08-02 (D44) · 2026-08-11 (D45 + สถาปัตยกรรม productization)
-> **อัปเดตล่าสุด 2026-08-12 — ย้าย DB production ขึ้น 0032 สำเร็จ (ขั้น 6) + เจอช่องโหว่ LINE ต่อ tenant**
-> **อ่านไฟล์นี้ก่อน** แล้วค่อยดู `CLAUDE.md` · `docs/DECISIONS.md` D46-D50 · `docs/DESIGN_SYSTEM.md`
+> **อัปเดตล่าสุด 2026-08-12 — ย้าย DB production ขึ้น 0032 (ขั้น 6) · LINE ต่อ tenant (0033) · MFA ตกไปแล้ว**
+> **อ่านไฟล์นี้ก่อน** แล้วค่อยดู `CLAUDE.md` · `docs/DECISIONS.md` D46-D52 · `docs/DESIGN_SYSTEM.md`
 
 ---
 
@@ -20,11 +20,11 @@
 > ✅ **2026-08-12: ทั้งสอง DB อยู่ที่ 0032 เท่ากันแล้ว** — ข้อห้าม "ห้าม merge เข้า main" ยกเลิกแล้ว
 > (เดิมห้ามเพราะ DB production ยังไม่มี `profiles.tenant_id` ที่โค้ดใหม่ต้องใช้ — ตอนนี้มีแล้ว)
 
-- `supabase link` ตอนนี้ชี้ **DB production** (`vmhiwlxdyhatucioalzp`)
-  🚨 เช็คก่อน `db:push` ทุกครั้ง: `cat supabase/.temp/project-ref` · จะกลับไป project ลูกค้า:
-  `npx supabase link --project-ref tnuxrufpzeyuvwdmkojv`
-- `.env.local` ตอนนี้ชี้ **DB production** · config ของ project ทดสอบเก็บไว้ที่ `.env.local.testing-backup`
-  · สลับไปมา: `cp .env.local.testing-backup .env.local` / `cp .env.local.production-backup .env.local`
+- `supabase link` + `.env.local` ตอนนี้ชี้ **project ทดสอบ** (`tnuxrufpzeyuvwdmkojv`) — สลับกลับมาหลังจบขั้น 6
+  🚨 เช็คก่อน `db:push` ทุกครั้ง: `cat supabase/.temp/project-ref`
+  · ไป DB จริง: `npx supabase link --project-ref vmhiwlxdyhatucioalzp` + `cp .env.local.production-backup .env.local`
+  · กลับมาทดสอบ: `npx supabase link --project-ref tnuxrufpzeyuvwdmkojv` + `cp .env.local.testing-backup .env.local`
+- ⚠️ **migration 0033 ยังไม่ได้ลง DB production** (ลงแต่ project ทดสอบ) — ต้อง `db:push` ก่อน push โค้ด
 - **บัญชี Supabase**: บัญชีใหม่ถูกเชิญเข้า org เก่าแล้ว → CLI เห็นทั้ง 2 project ไม่ต้องสลับ login อีก
 - **สำรอง DB ก่อนแตะ migration เสมอ**: `npx tsx scripts/backup-tables.ts --env=<ไฟล์ env> --out=<โฟลเดอร์นอก repo>`
   (`supabase db dump` ใช้ไม่ได้ — ต้องมี Docker/pg_dump ซึ่งเครื่องผู้ใช้ไม่มี)
@@ -34,7 +34,7 @@
 |---|---|
 | build / lint | ✅ ผ่าน |
 | `npm run test` (unit, ออฟไลน์) | ✅ **241** |
-| `npm run test:tenant` (ยิง Supabase จริง) | ✅ **67** — ต้องมี `.env.tenant-test.local` |
+| `npm run test:tenant` (ยิง Supabase จริง) | ✅ **73** — ต้องมี `.env.tenant-test.local` |
 | ตรวจโค้ดหา query ที่พังจากการเปลี่ยน PK | ✅ **ไม่พบจุดพัง** (D49) — จุดเสี่ยงที่เหลือเป็นของ 4.3 |
 | ค่าที่ต้องตั้งใน production | ✅ ครบ (ดูข้อ 6 — เหลือ opening_balance ที่**จงใจไม่ใส่**) |
 
@@ -136,31 +136,37 @@
 | 4.7 ส่วน auth + แบรนด์ตาม subdomain | ✅ (subdomain กลายเป็นของแต่งหน้าล้วน ๆ หลัง 0032) |
 | รหัสผ่าน/ชื่อผู้ใช้ (D48) | ✅ สุ่มรหัสไม่ซ้ำ · บังคับเปลี่ยนครั้งแรก · ชื่อผู้ใช้ห้ามซ้ำทั้งระบบ |
 
-### 4.0.1 🚨 MFA — **เงื่อนไขก่อนรับลูกค้ารายแรก ห้ามข้าม**
+### 4.0.1 ❌ MFA — **ตกไปแล้ว (2026-08-12) อย่าเสนอซ้ำ** · ดู D52
+
+ผู้ใช้ตัดสินว่าไม่ทำ ใช้การเตือนลูกค้าตอนตั้งรหัสผ่านแทน — เหตุผลและ**ความเสี่ยงที่รับไว้**
+เขียนครบใน `docs/DECISIONS.md` **D52**
+
+**สิ่งที่ยังเปิดอยู่และควรทำแทน (ถูกกว่ามาก ยังไม่ได้ทำ)**: ขันเกณฑ์ `validatePassword`
+(`lib/shared/password.ts`) ให้ปฏิเสธรหัสที่คาดเดาง่าย → บังคับได้จริงโดยไม่ต้องพึ่งวินัยลูกค้า
+และไม่มีต้นทุนกับลูกค้าเลย
+
+<details><summary>เหตุผลเดิมที่เคยเขียนว่า "ห้ามข้าม" (เก็บไว้ดูบริบท)</summary>
 
 D48 ปิดทางที่ "เกิดโดยบังเอิญ" ได้แล้ว (ชื่อผู้ใช้ซ้ำ) แต่**ยังเหลือทางที่ตั้งใจเจาะ**:
 รู้ชื่อผู้ใช้ของอีกเจ้า + รหัสผ่านบังเอิญตรงกัน → เข้าได้ · ชื่อผู้ใช้ไม่ใช่ความลับ
+มีแต่ MFA ที่ปิดได้ — งานที่ต้องทำ: หน้าเปิดใช้ + QR + recovery code + ขั้นตอนกู้ตอนลูกค้าทำมือถือหาย
 
-**มีแต่ MFA ที่ปิดได้** — Supabase รองรับ TOTP อยู่แล้ว
-งานที่ต้องทำ: หน้าเปิดใช้ + QR + recovery code + **ขั้นตอนกู้ตอนลูกค้าทำมือถือหาย** (ตัวนี้กินเวลาสุด)
+</details>
 
-> ตัดสินใจเลื่อนไว้เพราะยังไม่มีข้อมูลลูกค้าจริงสักเจ้า — แต่**ต้องเสร็จก่อนรับเงินลูกค้ารายแรก**
+### 4.0.1b ✅ LINE ต่อ tenant — **แก้แล้ว (2026-08-12 · migration 0033 · D51)**
 
-### 4.0.1b 🚨 LINE ผูกกับ deployment ไม่ใช่กับลูกค้า — **ข้อมูลรั่วข้ามลูกค้า** (พบ 2026-08-12)
+`lib/line.ts` เลิกอ่าน env แล้ว — อ่านจาก `app_settings` ต่อ tenant (`line_channel_token` / `line_group_id`)
+· tenant มาจาก session เสมอ · **ไม่มี fallback ไป env โดยตั้งใจ** (fallback = ตัวบั๊กเอง)
+· โทเคนอ่านได้เฉพาะ `main` — บังคับที่ RLS ไม่ใช่ซ่อน UI (anon key เป็นค่าสาธารณะ)
+· UI = บัญชี → ตั้งค่า → การ์ด **"แจ้งเตือน LINE"** (ขึ้นเฉพาะ main · โทเคนแสดงแค่ 4 ตัวท้าย)
+· เทส `tests/tenant/line-config.test.ts` 6 ตัว
 
-`lib/line.ts:10-11` อ่าน `LINE_CHANNEL_TOKEN` / `LINE_GROUP_ID` จาก **env ของ Vercel project**
-ไม่ได้อ่านจาก DB → ลูกค้าทุกเจ้าที่อยู่ deployment เดียวกัน **ยิงเข้ากลุ่ม LINE กลุ่มเดียวกันหมด**
-→ ลูกค้า ก. เห็นออเดอร์/ยอดเงินของลูกค้า ข.
+**เหลือ (ผู้ใช้)**: ย้ายค่าจาก Vercel env เข้าแอป แล้วลบ env ทิ้ง — ขั้นตอนอยู่ใน `docs/GOLIVE_CHECKLIST.md`
+⚠️ ระหว่างที่ยังไม่กรอก **แจ้งเตือนจะเงียบ** (ไม่ error ไม่กระทบการบันทึก)
 
-- **ความรุนแรงเท่ากับ RLS รั่ว** — ต่างกันแค่รั่วออกทาง LINE แทนที่จะรั่วในแอป
-  (เทส `test:tenant` 67 ตัวจับไม่ได้ เพราะเทสดูแต่ DB ไม่ได้ดู side effect ที่ยิงออกนอก)
-- **ยังไม่ระเบิด**: ยังไม่มีลูกค้า และ Vercel project สำหรับลูกค้ายังไม่ถูกสร้าง
-- **ทางแก้**: ย้ายไปเก็บใน `app_settings` ต่อ tenant (ที่เดียวกับ `brand_color` — D47)
-  แล้วให้ `notifyLine()` รับ tenant context · ไม่มีค่า = ไม่ยิง (silent fail เดิม)
-- ⚠️ **ห้ามตั้งค่า LINE ใน Vercel project ของลูกค้าจนกว่าจะแก้เสร็จ**
-
-> เจอตอนตอบคำถามว่า "ต้องทำ Vercel ใหม่ให้ลูกค้าไหม" — env ที่ผูกกับ deployment
-> **ทุกตัว** ต้องไล่ดูว่าควรเป็นค่าต่อ tenant หรือไม่ ไม่ใช่แค่ LINE
+> 🪤 **บทเรียนที่ต้องใช้ต่อ**: เจอตอนตอบคำถามว่า "ต้องทำ Vercel ใหม่ให้ลูกค้าไหม" —
+> **env ที่ผูกกับ deployment ทุกตัวต้องไล่ดูว่าควรเป็นค่าต่อ tenant หรือไม่** ไม่ใช่แค่ LINE
+> และ**เทส 67 ตัวจับไม่ได้** เพราะดูแต่ข้อมูลใน DB ไม่ได้ดู side effect ที่ยิงออกนอกระบบ
 > (ตรวจแล้ว: `DEFAULT_ENTITY_ID`/`LIQUOR_ENTITY_ID` ใน `.env.example` **ไม่มีโค้ดไหนใช้แล้ว** = ซากเก่า ลบได้
 > · `ANTHROPIC_API_KEY`/`SCAN_DAILY_LIMIT` = โควตาต่อ deployment ซึ่งตั้งใจอยู่แล้ว แต่ผูกกับฟีเจอร์สแกนใบเสร็จที่จะตัดทิ้ง)
 
@@ -386,7 +392,7 @@ UAT + shadow verification + cutover kit — ดู `docs/MIGRATION_PLAN.md` sec 
 4. 4.4 max_entities + ซ่อน UI เลือกกิจการ (งานเล็ก ต่อจากฐานที่มีแล้ว)
 5. 4.3 VAT branching + บล็อกใบกำกับกิจการไม่จด VAT
 6. 4.5 module flags → provision script (ต่อยอดจาก seed-demo-tenant.ts)
-7. 🚨 MFA (4.0.1) + LINE ต่อ tenant (4.0.1b)              ← ก่อนรับลูกค้ารายแรก ห้ามข้าม
+7. ~~MFA~~ **ตกไปแล้ว (D52)** · ~~LINE ต่อ tenant~~ **เสร็จแล้ว (D51)** → แทนที่ด้วย: ขันเกณฑ์รหัสผ่าน `validatePassword`
 8. โลโก้บนหัวเอกสาร (ข้อ 3) · 4.6 โรงแช่ (รอเทมเพลตฟอร์ม)
 ```
 

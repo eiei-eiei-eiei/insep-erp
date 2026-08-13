@@ -37,4 +37,6 @@ export type Bootstrap = {
   branding: Branding;
   /** กิจการที่ใช้ออกเอกสารการค้า (app_settings sales_doc_entity) */
   docEntityId: string;
+  /** แจ้งเตือน LINE ต่อกิจการ (0033) — ★ ไม่มีโทเคนเต็ม มีแค่ 4 ตัวท้ายไว้ยืนยันด้วยตา */
+  line: { hasToken: boolean; tokenTail: string; groupId: string };
 };

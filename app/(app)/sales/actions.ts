@@ -127,7 +127,7 @@ export async function saveQuotationAction(input: QuotationPayload): Promise<Save
   const { data, error } = await supabase.rpc("fn_save_quotation", { p, p_items: items });
   if (error) return fail(mapDbError(error));
   const res = data as { ok: boolean; qu_no: string; order_no: string; qu_expire: string };
-  await sendLine(`🛒 ออเดอร์ใหม่\n[${res.qu_no}] ${input.customer.name}\n${items.length} รายการ | ยอด ฿${totals.grandTotal.toLocaleString("th-TH", { minimumFractionDigits: 0 })}`);
+  await sendLine(supabase, `🛒 ออเดอร์ใหม่\n[${res.qu_no}] ${input.customer.name}\n${items.length} รายการ | ยอด ฿${totals.grandTotal.toLocaleString("th-TH", { minimumFractionDigits: 0 })}`);
   revalidatePath("/sales");
   return { ok: true, data: res };
 }
@@ -139,7 +139,7 @@ export async function updateQuotationAction(quNo: string, input: QuotationPayloa
   if (error) return fail(mapDbError(error));
   const res = data as { ok: boolean; error?: string; qu_no?: string };
   if (!res.ok) return fail(res.error ?? "แก้ไขไม่สำเร็จ");
-  await sendLine(`✏️ แก้ไขออเดอร์\n[${quNo}] ${input.customer.name}\n${items.length} รายการ | ยอด ฿${totals.grandTotal.toLocaleString("th-TH", { minimumFractionDigits: 0 })}`);
+  await sendLine(supabase, `✏️ แก้ไขออเดอร์\n[${quNo}] ${input.customer.name}\n${items.length} รายการ | ยอด ฿${totals.grandTotal.toLocaleString("th-TH", { minimumFractionDigits: 0 })}`);
   revalidatePath("/sales");
   return { ok: true, data: res };
 }
@@ -206,7 +206,7 @@ export async function processOrderActionAction(quNo: string, action: OrderAction
   const res = data as { ok: boolean; duplicate: boolean; tx_id?: string };
 
   // LINE หลัง commit (silent fail) — ไม่ส่งซ้ำถ้าเป็น duplicate
-  if (result.lineMsg && !res.duplicate) await sendLine(result.lineMsg);
+  if (result.lineMsg && !res.duplicate) await sendLine(supabase, result.lineMsg);
 
   revalidatePath("/sales");
   revalidatePath("/accounting");
@@ -251,7 +251,7 @@ export async function confirmFulfillmentAction(quNo: string, userName: string): 
     msg += "\n—";
     for (const s of summary) msg += `\n• ${s.name}: คงเหลือ ${Number(s.remaining).toLocaleString("th-TH", { minimumFractionDigits: 0 })}`;
   }
-  await sendLine(msg);
+  await sendLine(supabase, msg);
 
   revalidatePath("/sales");
   return { ok: true, data: res };
