@@ -30,7 +30,7 @@ export type CustomerRow = {
   isExport: boolean;
 };
 
-const ENTITY_DOC_COLS = "entity_id, name, name_eng, tax_id, branch, address, phone, bank_line";
+const ENTITY_DOC_COLS = "entity_id, name, name_eng, tax_id, branch, address, phone, bank_line, is_vat";
 
 /** ข้อมูลตั้งต้นหน้าขาย: role + ลูกค้า (contacts) + เมนู (+ live stock) + กิจการที่ออกเอกสาร */
 export async function getSalesBootstrap() {
@@ -94,9 +94,15 @@ export async function getSalesBootstrap() {
   const st = docSettings.data ?? [];
   const wantedEntity =
     st.find((r) => r.kind === "sales_doc_entity")?.value ?? st.find((r) => r.kind === "sales_revenue_entity")?.value ?? "";
-  const company = companyFromEntity(pickDocEntity((entities.data ?? []) as EntityDocRow[], wantedEntity));
+  const docEntity = pickDocEntity((entities.data ?? []) as EntityDocRow[], wantedEntity);
+  const company = companyFromEntity(docEntity);
 
-  return { role, customers, menu: menuList, company };
+  // 4.3 — กิจการที่ออกเอกสารจด VAT ไหม · ใช้ซ่อนบรรทัด VAT ในตะกร้าและเปลี่ยนชื่อเอกสาร
+  // ★ ค่านี้ส่งไปหน้าจอเพื่อ "แสดงผล" เท่านั้น — ตอนบันทึกจริง server อ่านใหม่เองเสมอ
+  //   (client แก้ค่าที่ส่งกลับมาได้ · ห้ามเชื่อ)
+  const isVat = (docEntity as { is_vat?: boolean } | null)?.is_vat !== false;
+
+  return { role, customers, menu: menuList, company, isVat };
 }
 
 export type OrderRow = {

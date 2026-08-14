@@ -388,3 +388,47 @@ describe("S10 ISSUE_INVOICE_DEPOSIT (ใบแจ้งหนี้ค่าม�
     expect(r.revenue!.netAmount).toBe(1070);
   });
 });
+
+// ── S11: กิจการที่ไม่จด VAT (4.3) ────────────────────────────────────────────
+describe("S11 — ไม่จด VAT: ห้ามได้เลขใบกำกับภาษี (ม.86/13)", () => {
+  it("★ ทุก action ต้องไม่ได้ tax1/tax2 เลย", () => {
+    const actions = [
+      "DEPOSIT_AND_SEND", "FULL_PAYMENT_AND_SEND", "SEND_TO_WH",
+      "ISSUE_INVOICE_FULL", "ISSUE_INVOICE_DEPOSIT", "PAY_BALANCE", "FULL_PAYMENT_LATER",
+    ] as const;
+    for (const a of actions) {
+      const s = neededSerials(a, baseOrder(), false);
+      expect(s.tax1, `${a} ยังขอเลขใบกำกับ`).toBe(false);
+      expect(s.tax2, `${a} ยังขอเลขใบกำกับ`).toBe(false);
+    }
+  });
+
+  it("เลข INV (ใบแจ้งหนี้/ใบส่งของ) ยังออกได้ปกติ — ผู้ไม่จด VAT ออกได้", () => {
+    expect(neededSerials("DEPOSIT_AND_SEND", baseOrder(), false).inv).toBe(true);
+    expect(neededSerials("SEND_TO_WH", baseOrder(), false).inv).toBe(true);
+    // มีเลขแล้วก็ไม่ขอซ้ำ (พฤติกรรมเดิม)
+    expect(neededSerials("SEND_TO_WH", baseOrder({ invNo: "INV1" }), false).inv).toBe(false);
+  });
+
+  it("ไม่ส่ง isVat มา = จด VAT (พฤติกรรมเดิมต้องไม่พัง)", () => {
+    expect(neededSerials("DEPOSIT_AND_SEND", baseOrder())).toEqual({ inv: true, tax1: true, tax2: false });
+  });
+
+  it("★★ payload บัญชีของกิจการไม่จด VAT: vat = 0 และฐานคิดจาก (1 − wht)", () => {
+    // รับเงินเต็ม 97 · WHT 3% → ฐาน 97/(1−0.03) = 100 · vat 0 · wht 3
+    const r = processOrder(
+      baseOrder({ status: "รอคอนเฟิร์ม", outstandingBalance: 97, whtPercent: 3 }),
+      "FULL_PAYMENT_LATER",
+      { docDate: "2026-08-14" },
+      [{ name: "สุรา", qty: 1, price: 97 }],
+      { invNo: "INV9", taxNo1: undefined, taxNo2: undefined },
+      contact,
+      { accountName: "บัญชีรับเงินขาย", entityId: "EID02", isVat: false },
+    );
+    expect(r.revenue).not.toBeNull();
+    expect(r.revenue!.vatAmount).toBe(0);
+    expect(r.revenue!.amountAfterDiscount).toBe(100);
+    expect(r.revenue!.whtAmount).toBe(3);
+    expect(r.revenue!.netAmount).toBe(97);
+  });
+});

@@ -95,8 +95,8 @@ export type QuotationPayload = {
   remarks?: string;
 };
 
-function buildQuotationDbPayload(input: QuotationPayload) {
-  const t = quotationTotals(input);
+function buildQuotationDbPayload(input: QuotationPayload, isVat: boolean) {
+  const t = quotationTotals(input, isVat);
   return {
     p: {
       customer_id: input.customer.id,
@@ -123,7 +123,10 @@ function buildQuotationDbPayload(input: QuotationPayload) {
 
 export async function saveQuotationAction(input: QuotationPayload): Promise<SaveResult> {
   const supabase = await db();
-  const { p, items, totals } = buildQuotationDbPayload(input);
+  const config = await loadRevenueConfig(supabase);
+  const vat = await resolveSalesVat(supabase, config.entityId);
+  if ('conflict' in vat) return fail(vat.conflict);
+  const { p, items, totals } = buildQuotationDbPayload(input, vat.isVat);
   const { data, error } = await supabase.rpc("fn_save_quotation", { p, p_items: items });
   if (error) return fail(mapDbError(error));
   const res = data as { ok: boolean; qu_no: string; order_no: string; qu_expire: string };
@@ -134,7 +137,10 @@ export async function saveQuotationAction(input: QuotationPayload): Promise<Save
 
 export async function updateQuotationAction(quNo: string, input: QuotationPayload): Promise<SaveResult> {
   const supabase = await db();
-  const { p, items, totals } = buildQuotationDbPayload(input);
+  const config = await loadRevenueConfig(supabase);
+  const vat = await resolveSalesVat(supabase, config.entityId);
+  if ('conflict' in vat) return fail(vat.conflict);
+  const { p, items, totals } = buildQuotationDbPayload(input, vat.isVat);
   const { data, error } = await supabase.rpc("fn_update_quotation", { p_qu_no: quNo, p, p_items: items });
   if (error) return fail(mapDbError(error));
   const res = data as { ok: boolean; error?: string; qu_no?: string };
@@ -142,6 +148,50 @@ export async function updateQuotationAction(quNo: string, input: QuotationPayloa
   await sendLine(supabase, `✏️ แก้ไขออเดอร์\n[${quNo}] ${input.customer.name}\n${items.length} รายการ | ยอด ฿${totals.grandTotal.toLocaleString("th-TH", { minimumFractionDigits: 0 })}`);
   revalidatePath("/sales");
   return { ok: true, data: res };
+}
+
+/**
+ * สถานะ VAT ของกิจการที่ออกเอกสาร — **อ่านจาก DB ฝั่ง server เสมอ** (4.3)
+ *
+ * 🚨 ห้ามรับค่านี้จาก client เด็ดขาด — หน้าเว็บส่ง `isVat: true` มาเองได้
+ *    = ผู้ไม่จด VAT ออกใบกำกับภาษี (ผิด ประมวลรัษฎากร ม.86/13)
+ *    (ด่านสุดท้ายคือ trigger ใน 0036 แต่ไม่ควรปล่อยให้ไปตายที่นั่น — error จะอ่านไม่รู้เรื่อง)
+ *
+ * คืน `null` เมื่อกิจการที่ออกเอกสารกับกิจการที่รับรายได้ **มีสถานะ VAT ต่างกัน** →
+ * ผู้เรียกต้องปฏิเสธ ไม่ใช่เดาข้างใดข้างหนึ่ง (จะได้ใบเสนอราคาคิด VAT แต่ลงบัญชีไม่มี VAT)
+ */
+async function resolveSalesVat(
+  supabase: Awaited<ReturnType<typeof db>>,
+  revenueEntityId: string,
+): Promise<{ isVat: boolean } | { conflict: string }> {
+  const [{ data: st }, { data: ents }] = await Promise.all([
+    supabase.from("app_settings").select("kind, value").in("kind", ["sales_doc_entity", "sales_revenue_entity"]),
+    supabase.from("entities").select("entity_id, is_vat"),
+  ]);
+  const rows = ents ?? [];
+  const vatOf = (id: string) => rows.find((e) => e.entity_id === id)?.is_vat;
+
+  const docId =
+    (st ?? []).find((r) => r.kind === "sales_doc_entity")?.value ||
+    (st ?? []).find((r) => r.kind === "sales_revenue_entity")?.value ||
+    revenueEntityId;
+
+  const docVat = vatOf(docId);
+  // ไม่พบกิจการ = ถือว่าจด VAT (พฤติกรรมเดิม) — อย่าบล็อกคนที่ยังไม่ได้ตั้งค่าให้ครบ
+  const isVat = docVat !== false;
+
+  if (revenueEntityId && revenueEntityId !== docId) {
+    const revVat = vatOf(revenueEntityId);
+    if (revVat !== undefined && revVat !== docVat) {
+      return {
+        conflict:
+          `กิจการที่ออกเอกสาร (${docId}) กับกิจการที่รับรายได้ (${revenueEntityId}) ` +
+          `มีสถานะ VAT ต่างกัน — ระบบไม่เดาให้ว่าจะคิด VAT หรือไม่ ` +
+          `เพราะจะได้เอกสารกับบัญชีที่ตัวเลขไม่ตรงกัน · ไปแก้ที่ บัญชี → ตั้งค่า ให้ตรงกันก่อน`,
+      };
+    }
+  }
+  return { isVat };
 }
 
 /** config รายรับขาย (บัญชี + กิจการ) จาก app_settings — go-live ต้องตั้งค่า */
@@ -180,7 +230,10 @@ export async function processOrderActionAction(quNo: string, action: OrderAction
   };
 
   // generate เลข INV/TAX เฉพาะที่ needed (atomic ผ่าน counters)
-  const need = neededSerials(action, order);
+  // 4.3 — กิจการไม่จด VAT ไม่มีสิทธิ์ได้เลขใบกำกับภาษี (ด่านสุดท้ายคือ trigger ใน 0036)
+  const vat = await resolveSalesVat(supabase, config.entityId);
+  if ('conflict' in vat) return fail(vat.conflict);
+  const need = neededSerials(action, order, vat.isVat);
   const gen: GeneratedSerials = {};
   if (need.inv) {
     const { data } = await supabase.rpc("fn_next_sales_doc", { p_prefix: "INV" });
@@ -195,7 +248,9 @@ export async function processOrderActionAction(quNo: string, action: OrderAction
     gen.taxNo2 = data as string;
   }
 
-  const result = processOrder(order, action, payload, items, gen, contact, config);
+  // ★ ส่ง isVat ที่อ่านจาก DB ฝั่ง server เข้าไปกับ config — payload บัญชีจะได้ vat = 0
+  //   และฐานคิดจาก (1 − wht) เมื่อกิจการไม่จด VAT
+  const result = processOrder(order, action, payload, items, gen, contact, { ...config, isVat: vat.isVat });
 
   const { data, error } = await supabase.rpc("fn_apply_order_action", {
     p_qu_no: quNo,

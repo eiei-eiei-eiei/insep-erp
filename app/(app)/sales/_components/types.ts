@@ -9,6 +9,9 @@ export type SalesBoot = {
   menu: MenuRow[];
   /** ผู้ขายบนหัวเอกสาร (มาจากตาราง entities — ตั้งที่ บัญชี › ตั้งค่า) */
   company: CompanyInfo;
+  /** กิจการที่ออกเอกสารจดทะเบียน VAT ไหม (4.3)
+   *  ★ ใช้แสดงผลเท่านั้น — ตอนบันทึก server อ่าน `entities.is_vat` ใหม่เองเสมอ */
+  isVat: boolean;
 };
 
 export type OrderItem = { name: string; qty: number; price: number };

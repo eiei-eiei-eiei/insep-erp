@@ -49,7 +49,13 @@ function openBlankTab(): Window | null {
   return window.open("", "_blank");
 }
 
-export function TaxDocsTab({ period, entityId, active }: { period: string; entityId: string; active: boolean }) {
+/**
+ * 4.3 — `isVat` = กิจการที่เลือกอยู่จดทะเบียน VAT ไหม
+ * ไม่จด VAT → **ซ่อนเฉพาะ ภพ.30** (ยื่นไม่ได้ ไม่มีภาษีขายให้ยื่น)
+ * ★ ภงด./50ทวิ ยังต้องมี — ผู้ไม่จด VAT ยังต้องหัก ณ ที่จ่ายและออกหนังสือรับรองตามกฎหมาย
+ *   (เลือก "ทุกกิจการ" = entityId 'ALL' → ยังโชว์ ภพ.30 เพราะรวมกิจการที่จด VAT ด้วย)
+ */
+export function TaxDocsTab({ period, entityId, active, isVat = true }: { period: string; entityId: string; active: boolean; isVat?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [fwd, setFwd] = useState<number | null>(null);
@@ -154,14 +160,26 @@ export function TaxDocsTab({ period, entityId, active }: { period: string; entit
     <div className="space-y-4">
       {msg && <div className={`rounded-lg px-3 py-2 text-sm ${msg.ok ? "bg-ok-bg text-ok" : "bg-crit-bg text-crit"}`}>{msg.text}</div>}
 
-      <ReportChecklist month={period} items={TAX_CHECKLIST} runs={runs} />
+      <ReportChecklist
+        month={period}
+        items={isVat ? TAX_CHECKLIST : TAX_CHECKLIST.filter((i) => i.key !== "phor_por_30")}
+        runs={runs}
+      />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className={box}>
-          <h3 className="mb-1 font-semibold text-ink">ภพ.30 — รายงานภาษีซื้อ-ขาย</h3>
-          <p className="mb-2 text-sm text-muted">ภาษีซื้อยกมา (เดือนก่อน): <b>{fwd === null ? "…" : fmt(fwd)}</b> <span className="text-xs text-faint">← เช็คว่าตรงกับ ภพ.30 เดือนก่อน</span></p>
-          <button onClick={genPhorPor30} disabled={busy} className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-on-brand disabled:opacity-50">สร้าง ภพ.30</button>
-        </div>
+        {isVat ? (
+          <div className={box}>
+            <h3 className="mb-1 font-semibold text-ink">ภพ.30 — รายงานภาษีซื้อ-ขาย</h3>
+            <p className="mb-2 text-sm text-muted">ภาษีซื้อยกมา (เดือนก่อน): <b>{fwd === null ? "…" : fmt(fwd)}</b> <span className="text-xs text-faint">← เช็คว่าตรงกับ ภพ.30 เดือนก่อน</span></p>
+            <button onClick={genPhorPor30} disabled={busy} className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-on-brand disabled:opacity-50">สร้าง ภพ.30</button>
+          </div>
+        ) : (
+          <div className={box}>
+            <h3 className="mb-1 font-semibold text-ink">ภพ.30 — ไม่ต้องยื่น</h3>
+            <p className="text-sm text-muted">กิจการนี้ไม่ได้จดทะเบียนภาษีมูลค่าเพิ่ม จึงไม่มีภาษีขายให้ยื่น ภพ.30</p>
+            <p className="mt-1 text-xs text-faint">ภงด. และ 50ทวิ ยังต้องทำตามปกติ — หัก ณ ที่จ่ายไม่เกี่ยวกับการจดทะเบียน VAT</p>
+          </div>
+        )}
         <div className={box}>
           <h3 className="mb-1 font-semibold text-ink">ภงด.3 / ภงด.53</h3>
           <p className="mb-2 text-sm text-faint">แยกบุคคล/นิติบุคคลอัตโนมัติ</p>

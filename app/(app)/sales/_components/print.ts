@@ -127,11 +127,14 @@ export type QuotationDoc = {
 
 function quotationHtml(c: CompanyInfo, d: QuotationDoc): string {
   // โมเดล inclusive: line items = ราคารวม VAT → รวมได้ = grandIncl · summary ถอด VAT ออก
+  // 4.3 — ผู้ขายไม่จด VAT: ราคาที่เสนอคือราคาที่ลูกค้าจ่าย ไม่มีบรรทัด VAT บนใบเสนอราคา
+  const isVat = c.isVat !== false;
+  const inclLabel = (base: string) => (isVat ? `${base} (รวม VAT)` : base);
   const grandIncl = roundTo2(d.items.reduce((s, it) => s + it.price * it.qty, 0));
   const discountIncl = roundTo2(grandIncl - d.grandTotal);
   const discountRow =
     discountIncl > 0.005
-      ? `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;">หักส่วนลด (รวม VAT)</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">-${nf(discountIncl)}</td></tr>`
+      ? `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;">${inclLabel("หักส่วนลด")}</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">-${nf(discountIncl)}</td></tr>`
       : "";
   const wht =
     d.whtPercent > 0
@@ -166,10 +169,10 @@ function quotationHtml(c: CompanyInfo, d: QuotationDoc): string {
         </td>
         <td style="width:45%;vertical-align:top;">
           <table style="width:100%;border-collapse:collapse;">
-            <tr><td style="padding:4px 12px;text-align:left;font-size:13px;">รวมเป็นเงิน (รวม VAT)</td><td style="padding:4px 12px;text-align:right;width:120px;border:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;vertical-align:bottom;">${nf(grandIncl)}</td></tr>
+            <tr><td style="padding:4px 12px;text-align:left;font-size:13px;">${inclLabel("รวมเป็นเงิน")}</td><td style="padding:4px 12px;text-align:right;width:120px;border:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;vertical-align:bottom;">${nf(grandIncl)}</td></tr>
             ${discountRow}
-            <tr><td style="padding:4px 12px;text-align:left;font-size:13px;">มูลค่าสินค้า (ก่อน VAT)</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">${nf(d.subDiscount)}</td></tr>
-            <tr><td style="padding:4px 12px;text-align:left;font-size:13px;">ภาษีมูลค่าเพิ่ม 7% (รวมในราคาแล้ว)</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:2px solid #cbd5e1;">${nf(d.vat)}</td></tr>
+            ${isVat ? `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;">มูลค่าสินค้า (ก่อน VAT)</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">${nf(d.subDiscount)}</td></tr>` : ""}
+            ${isVat ? `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;">ภาษีมูลค่าเพิ่ม 7% (รวมในราคาแล้ว)</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:2px solid #cbd5e1;">${nf(d.vat)}</td></tr>` : ""}
             <tr><td style="padding:8px 12px;text-align:left;font-weight:bold;font-size:14px;${d.whtPercent ? "" : "border-bottom:4px double #0f172a;"}">ยอดรวมทั้งสิ้น</td><td style="padding:8px 12px;text-align:right;font-weight:bold;font-size:15px;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;color:#0f172a;${grandBottom}">${nf(d.grandTotal)}</td></tr>
             ${wht}
           </table>
@@ -291,7 +294,13 @@ export type OrderLike = {
 
 type PreparedDoc = Record<string, unknown> & { docType: string; copyType: string };
 
-function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyType: string): PreparedDoc {
+/**
+ * 4.3 — `isVat` = ผู้ขายจดทะเบียน VAT ไหม (มาจาก `CompanyInfo` ที่อ่าน `entities.is_vat`)
+ *
+ * 🚨 ไม่จด VAT → หัวเอกสาร **ห้ามมีคำว่า "ใบกำกับภาษี"** (ผิด ประมวลรัษฎากร ม.86/13)
+ *    และแถวมูลค่าก่อน VAT / ภาษีมูลค่าเพิ่ม **ไม่ render เลย** (ไม่ใช่โชว์ 0.00)
+ */
+function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyType: string, isVat = true): PreparedDoc {
   const docDate1_th = order.docDate1 ? formatThaiDate(order.docDate1) : new Date().toLocaleDateString("th-TH");
   const docDate2_th = order.docDate2 ? formatThaiDate(order.docDate2) : docDate1_th;
   const whtPercent = order.whtPercent || 0;
@@ -304,6 +313,7 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
 
   const doc: PreparedDoc = {
     docType,
+    isVat, // 4.3 — docSummaryRows อ่านธงนี้เพื่อซ่อนแถว VAT
     copyType,
     quNo: order.quNo,
     items,
@@ -360,8 +370,8 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
     doc.remainAfterDeposit = roundTo2(netPayable - depAmt); // เก็บตอนส่งมอบ
     doc.outstandingBalance = depAmt; // > 0 → footer โชว์เลขบัญชีธนาคาร (เหมือนใบแจ้งหนี้อื่น)
   } else if (docType === "tax-invoice-deposit") {
-    doc.receiptTitle = "ใบกำกับภาษี/ใบเสร็จรับเงิน";
-    doc.receiptTitleEng = "Tax Invoice / Receipt";
+    doc.receiptTitle = isVat ? "ใบกำกับภาษี/ใบเสร็จรับเงิน" : "ใบเสร็จรับเงิน";
+    doc.receiptTitleEng = isVat ? "Tax Invoice / Receipt" : "Receipt";
     doc.receiptAmount = order.deposit;
     doc.docNo = order.taxNo1;
     const v = reverseCalcPrint(order.deposit, whtPercent);
@@ -371,8 +381,8 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
     doc.outstandingBalance = 0;
   } else if (docType === "tax-invoice-balance") {
     doc.documentDate = docDate2_th;
-    doc.receiptTitle = "ใบกำกับภาษี/ใบเสร็จรับเงิน";
-    doc.receiptTitleEng = "Tax Invoice / Receipt";
+    doc.receiptTitle = isVat ? "ใบกำกับภาษี/ใบเสร็จรับเงิน" : "ใบเสร็จรับเงิน";
+    doc.receiptTitleEng = isVat ? "Tax Invoice / Receipt" : "Receipt";
     doc.receiptAmount = roundTo2(netPayable - (order.deposit || 0));
     doc.docNo = order.taxNo2;
     const v = reverseCalcPrint(doc.receiptAmount as number, whtPercent);
@@ -383,14 +393,14 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
     doc.outstandingBalance = 0;
   } else if (docType === "tax-invoice-receipt") {
     doc.documentDate = docDate2_th;
-    doc.receiptTitle = "ใบกำกับภาษี/ใบเสร็จรับเงิน";
-    doc.receiptTitleEng = "Tax Invoice / Receipt";
+    doc.receiptTitle = isVat ? "ใบกำกับภาษี/ใบเสร็จรับเงิน" : "ใบเสร็จรับเงิน";
+    doc.receiptTitleEng = isVat ? "Tax Invoice / Receipt" : "Receipt";
     doc.docNo = order.taxNo1;
     doc.outstandingBalance = 0;
   } else if (docType === "tax-invoice-receipt-do") {
     doc.documentDate = docDate2_th;
-    doc.receiptTitle = "ใบกำกับภาษี/ใบเสร็จรับเงิน/ใบส่งสินค้า";
-    doc.receiptTitleEng = "Tax Invoice / Receipt / Delivery Order";
+    doc.receiptTitle = isVat ? "ใบกำกับภาษี/ใบเสร็จรับเงิน/ใบส่งสินค้า" : "ใบเสร็จรับเงิน/ใบส่งสินค้า";
+    doc.receiptTitleEng = isVat ? "Tax Invoice / Receipt / Delivery Order" : "Receipt / Delivery Order";
     doc.docNo = order.taxNo1;
     doc.outstandingBalance = 0;
   }
@@ -400,22 +410,25 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
 // โมเดล inclusive: line items = ราคารวม VAT → รวมได้ = grandIncl · summary ถอด VAT ออก
 function docSummaryRows(doc: PreparedDoc): string {
   const n = (k: string) => nf(Number(doc[k]) || 0);
+  // 4.3 — ผู้ขายไม่จด VAT: ไม่มีอะไรให้ถอด → ไม่ render แถว VAT เลย และตัดคำ "(รวม VAT)" ออกจากป้าย
+  const isVat = doc.isVat !== false;
+  const inclLabel = (base: string) => (isVat ? `${base} (รวม VAT)` : base);
   const whtP = Number(doc.whtPercent) || 0;
   const dt = doc.docType as string;
   const discInc = Number(doc.discountIncl) || 0;
 
   // แถวบนสุด: รวมเป็นเงิน (รวม VAT) = ยอดที่ line items รวมได้ + (หักส่วนลดถ้ามี)
   const head =
-    `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;">รวมเป็นเงิน (รวม VAT)</td><td style="padding:4px 12px;text-align:right;width:120px;border:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;vertical-align:bottom;">${n("grandIncl")}</td></tr>` +
+    `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;">${inclLabel("รวมเป็นเงิน")}</td><td style="padding:4px 12px;text-align:right;width:120px;border:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;vertical-align:bottom;">${n("grandIncl")}</td></tr>` +
     (discInc > 0.005
-      ? `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;">หักส่วนลด (รวม VAT)</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">-${n("discountIncl")}</td></tr>`
+      ? `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;">${inclLabel("หักส่วนลด")}</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">-${n("discountIncl")}</td></tr>`
       : "");
   const whtRow = whtP > 0 ? `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;">หัก ณ ที่จ่าย ${whtP}%</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">-${n("receiptWht")}</td></tr>` : "";
 
   if (dt === "tax-invoice-deposit") {
     return `${head}
       <tr><td style="padding:4px 12px;text-align:left;font-size:13px;font-weight:bold;color:#15803d;border-top:2px dashed #94a3b8;">มูลค่ามัดจำ (ก่อน VAT)</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;border-top:2px dashed #94a3b8;font-weight:bold;color:#15803d;">${n("receiptPreVat")}</td></tr>
-      <tr><td style="padding:4px 12px;text-align:left;font-size:13px;">ภาษีมูลค่าเพิ่ม 7%</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">${n("receiptVat")}</td></tr>
+      ${isVat ? `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;">ภาษีมูลค่าเพิ่ม 7%</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">${n("receiptVat")}</td></tr>` : ""}
       ${whtRow}
       <tr style="background-color:#f0fdf4;"><td style="padding:8px 12px;text-align:left;font-weight:bold;font-size:14px;border-bottom:4px double #15803d;color:#15803d;">ยอดรับมัดจำ (รวม VAT)</td><td style="padding:8px 12px;text-align:right;font-weight:bold;font-size:15px;border:2px solid #cbd5e1;border-bottom:4px double #15803d;color:#15803d;">${n("receiptAmount")}</td></tr>`;
   }
@@ -435,7 +448,7 @@ function docSummaryRows(doc: PreparedDoc): string {
         : "";
     return `${head}
       <tr><td style="padding:4px 12px;text-align:left;font-size:13px;">มูลค่าสินค้า (ก่อน VAT)</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">${n("subDiscount")}</td></tr>
-      <tr><td style="padding:4px 12px;text-align:left;font-size:13px;">ภาษีมูลค่าเพิ่ม 7%</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">${n("vatAmount")}</td></tr>
+      ${isVat ? `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;">ภาษีมูลค่าเพิ่ม 7%</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">${n("vatAmount")}</td></tr>` : ""}
       <tr style="background-color:#f8fafc;"><td style="padding:6px 12px;text-align:left;font-weight:bold;font-size:13px;border-bottom:1px solid #cbd5e1;">ยอดรวมทั้งสิ้น</td><td style="padding:6px 12px;text-align:right;font-weight:bold;font-size:14px;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;color:#0f172a;border-bottom:1px solid #cbd5e1;background-color:#f1f5f9;">${n("grandTotal")}</td></tr>
       ${whtP > 0 ? `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;">หัก ณ ที่จ่าย ${whtP}%</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">-${n("whtAmount")}</td></tr>` : ""}
       ${netRowDep}
@@ -449,7 +462,7 @@ function docSummaryRows(doc: PreparedDoc): string {
     return `${head}
       <tr><td style="padding:4px 12px;text-align:left;font-size:13px;font-weight:600;color:#15803d;border-top:2px dashed #94a3b8;">หัก มัดจำรับแล้ว (ก่อน VAT)</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;border-top:2px dashed #94a3b8;color:#15803d;font-weight:600;">-${n("depositPreVat")}</td></tr>
       <tr><td style="padding:4px 12px;text-align:left;font-size:13px;font-weight:bold;color:#be123c;">ยอดคงค้างยกมา (ก่อน VAT)</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;font-weight:bold;color:#be123c;">${n("receiptPreVat")}</td></tr>
-      <tr><td style="padding:4px 12px;text-align:left;font-size:13px;">ภาษีมูลค่าเพิ่ม 7%</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">${n("receiptVat")}</td></tr>
+      ${isVat ? `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;">ภาษีมูลค่าเพิ่ม 7%</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">${n("receiptVat")}</td></tr>` : ""}
       ${whtRow}${bal}`;
   }
   // default (จ่ายเต็ม / invoice-only): ถอด VAT ออกจากยอดรวม
@@ -461,7 +474,7 @@ function docSummaryRows(doc: PreparedDoc): string {
     : "";
   return `${head}
     <tr><td style="padding:4px 12px;text-align:left;font-size:13px;">มูลค่าสินค้า (ก่อน VAT)</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">${n("subDiscount")}</td></tr>
-    <tr><td style="padding:4px 12px;text-align:left;font-size:13px;">ภาษีมูลค่าเพิ่ม 7% (รวมในราคาแล้ว)</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">${n("vatAmount")}</td></tr>
+    ${isVat ? `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;">ภาษีมูลค่าเพิ่ม 7% (รวมในราคาแล้ว)</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">${n("vatAmount")}</td></tr>` : ""}
     <tr style="background-color:#f8fafc;"><td style="padding:6px 12px;text-align:left;font-weight:bold;font-size:13px;border-bottom:1px solid #cbd5e1;">ยอดรวมทั้งสิ้น</td><td style="padding:6px 12px;text-align:right;font-weight:bold;font-size:14px;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;color:#0f172a;border-bottom:1px solid #cbd5e1;background-color:#f1f5f9;">${n("grandTotal")}</td></tr>
     ${whtP > 0 ? `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;">หัก ณ ที่จ่าย ${whtP}%</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">-${n("whtAmount")}</td></tr>` : ""}
     ${netRow}${outRow}`;
@@ -524,8 +537,9 @@ export function printSalesDocs(company: CompanyInfo, order: OrderLike, items: Or
   if (!ensureCompany(company, w)) return;
   const docs: PreparedDoc[] = [];
   for (const dt of docTypes) {
-    docs.push(setupDoc(order, items, dt, "(ต้นฉบับ / Original)"));
-    docs.push(setupDoc(order, items, dt, "(สำเนา / Copy)"));
+    const isVat = company.isVat !== false;
+    docs.push(setupDoc(order, items, dt, "(ต้นฉบับ / Original)", isVat));
+    docs.push(setupDoc(order, items, dt, "(สำเนา / Copy)", isVat));
   }
   openPrint(docs.map((d, i) => b2bDocHtml(company, d, i)).join(""), w);
 }

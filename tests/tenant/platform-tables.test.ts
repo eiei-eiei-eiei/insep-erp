@@ -67,7 +67,9 @@ describe("★ ลูกค้าอ่านตารางของแพลต
     });
 
     it(`${table}: insert ถูกปฏิเสธ`, async () => {
-      const row =
+      // Record<string, unknown> — สองตารางคนละคอลัมน์ ถ้าปล่อยให้ TS อนุมาน union
+      // จะฟ้องว่า type ไม่ตรงกัน (ตัวที่ยิงคือ PostgREST อยู่แล้ว ไม่ได้พึ่ง type ตรงนี้)
+      const row: Record<string, unknown> =
         table === "platform_admins"
           ? { user_id: ownerId }
           : { actor: ownerId, action: "zz-test-แอบเขียน" };

@@ -143,3 +143,92 @@ describe("round helpers", () => {
     expect(roundTo2(1.005)).toBe(1.01);
   });
 });
+
+// ── S11: กิจการที่ไม่จด VAT (4.3) ────────────────────────────────────────────
+// ★ ค่าคาดหวังทุกตัวคำนวณด้วยมือในคอมเมนต์ ไม่ได้ลอกจาก output ของโค้ด
+//   (ลอก output = เทสจะผ่านเสมอแม้สูตรผิด — ไม่มีประโยชน์)
+describe("S11 — ไม่จด VAT: ราคาที่กรอกคือราคาที่ลูกค้าจ่าย ไม่มีอะไรให้ถอด", () => {
+  it("exVatFromIncl / inclFromExVat คืนค่าเดิม", () => {
+    expect(exVatFromIncl(107, false)).toBe(107);
+    expect(inclFromExVat(100, false)).toBe(100);
+    // ยืนยันว่าเส้นทางจด VAT ไม่ขยับ
+    expect(exVatFromIncl(107, true)).toBe(100);
+    expect(inclFromExVat(100, true)).toBe(107);
+  });
+
+  it("quotationTotals: VAT = 0 · ยอดก่อน/หลัง VAT เท่ากันหมด", () => {
+    // 3 ขวด × 210 = 630 · ไม่มีส่วนลด · ไม่มี WHT
+    const t = quotationTotals(
+      { items: [{ name: "สุรา", price: 210, qty: 3 }], discount: 0, isWhtRequired: false, whtPercent: 0, isDepositRequired: false, depositPercent: 0 },
+      false,
+    );
+    expect(t.grandIncl).toBe(630);
+    expect(t.grandTotal).toBe(630);
+    expect(t.subTotal).toBe(630); // ไม่ใช่ 588.79 แบบมี VAT
+    expect(t.subDiscount).toBe(630);
+    expect(t.vatAmount).toBe(0);
+    expect(t.netPayable).toBe(630);
+  });
+
+  it("quotationTotals: ส่วนลดคิดตรง ๆ · discountEx = ส่วนลดเต็มจำนวน", () => {
+    // 630 − 30 = 600 · ไม่มี VAT → discountEx ต้องเท่ากับ 30 พอดี
+    const t = quotationTotals(
+      { items: [{ name: "สุรา", price: 210, qty: 3 }], discount: 30, isWhtRequired: false, whtPercent: 0, isDepositRequired: false, depositPercent: 0 },
+      false,
+    );
+    expect(t.grandTotal).toBe(600);
+    expect(t.subTotal).toBe(630);
+    expect(t.subDiscount).toBe(600);
+    expect(t.discountEx).toBe(30);
+    expect(t.vatAmount).toBe(0);
+  });
+
+  it("★ WHT ยังคิดเสมอ — หัก ณ ที่จ่ายเป็นภาษีเงินได้ ไม่เกี่ยวกับการจด VAT", () => {
+    // ฐาน 630 · WHT 3% = 18.90 · ลูกค้าโอน 630 − 18.90 = 611.10
+    const t = quotationTotals(
+      { items: [{ name: "บริการ", price: 210, qty: 3 }], discount: 0, isWhtRequired: true, whtPercent: 3, isDepositRequired: false, depositPercent: 0 },
+      false,
+    );
+    expect(t.subDiscount).toBe(630);
+    expect(t.whtAmount).toBe(18.9);
+    expect(t.netPayable).toBe(611.1);
+  });
+
+  it("expectedDeposit: มัดจำ 50% ของ 630 = 315 · หัก WHT 3% ของ 315 = 9.45 → 305.55", () => {
+    const d = expectedDeposit(
+      { items: [{ name: "สุรา", price: 210, qty: 3 }], discount: 0, isWhtRequired: true, whtPercent: 3, isDepositRequired: true, depositPercent: 50 },
+      false,
+    );
+    expect(d).toBe(305.55);
+  });
+
+  it("★★ reverseVatWht: ลูกค้าเป็นหนี้ 100 หัก 3% โอนมา 97 → ฐานต้องกลับเป็น 100 พอดี", () => {
+    // 97 / (1 − 0.03) = 100 · vat = 0 · wht = 100 × 3% = 3
+    const r = reverseVatWht(97, 3, true, false);
+    expect(r.preVat).toBe(100);
+    expect(r.vat).toBe(0);
+    expect(r.wht).toBe(3);
+  });
+
+  it("reverseVatWht: ไม่มี WHT → ฐาน = ยอดที่รับมาตรง ๆ", () => {
+    const r = reverseVatWht(630, 0, true, false);
+    expect(r.preVat).toBe(630);
+    expect(r.vat).toBe(0);
+    expect(r.wht).toBe(0);
+  });
+
+  it("reverseCalcPrint (ฝั่งพิมพ์เอกสาร) ให้ผลเดียวกัน", () => {
+    const r = reverseCalcPrint(97, 3, false);
+    expect(r.preVat).toBe(100);
+    expect(r.vat).toBe(0);
+    expect(r.wht).toBe(3);
+  });
+
+  it("toAccItem: exVat = ราคาที่กรอก · total = ราคา × จำนวน", () => {
+    // 3 × 210 = 630 (ไม่ใช่ 588.79 แบบถอด VAT)
+    const it = toAccItem("สุรา", 3, 210, false);
+    expect(it.inVat).toBe(210);
+    expect(it.exVat).toBe(210);
+    expect(it.totalPrice).toBe(630);
+  });
+});

@@ -19,6 +19,8 @@ export type EntityDocRow = {
   address?: string | null;
   phone?: string | null;
   bank_line?: string | null;
+  /** จดทะเบียน VAT ไหม (4.3) — ไม่จด = ออกใบกำกับภาษีไม่ได้ ตาม ม.86/13 */
+  is_vat?: boolean | null;
 };
 
 /** ข้อความพร้อมวางบนเอกสาร (ยัง escape HTML ไม่ได้ — ฝั่ง print เป็นคน escape) */
@@ -31,9 +33,15 @@ export type CompanyInfo = {
   taxLine: string;
   /** ช่องทางการโอนเงิน — หลายบรรทัดคั่นด้วย \n */
   bank: string;
+  /**
+   * ผู้ขายจดทะเบียน VAT ไหม (4.3) — ไม่ระบุ = ถือว่าจด (พฤติกรรมเดิม)
+   * ★ เกาะไปกับ CompanyInfo เพราะเป็นคุณสมบัติของ "ผู้ขาย" และถูกส่งเข้าทุกฟังก์ชันพิมพ์อยู่แล้ว
+   *   ไม่จด VAT → หัวเอกสารห้ามมีคำว่า "ใบกำกับภาษี" (ผิด ประมวลรัษฎากร ม.86/13)
+   */
+  isVat?: boolean;
 };
 
-export const EMPTY_COMPANY: CompanyInfo = { name: "", nameEng: "", address: "", taxLine: "", bank: "" };
+export const EMPTY_COMPANY: CompanyInfo = { name: "", nameEng: "", address: "", taxLine: "", bank: "", isVat: true };
 
 /** สาขา → ข้อความในวงเล็บบนเอกสาร (port เดิมจาก print.ts) */
 export function branchLabel(branchText: string | null | undefined): string {
@@ -60,6 +68,7 @@ export function companyFromEntity(e: EntityDocRow | null | undefined): CompanyIn
     address: [branchLabel(e.branch), t(e.address)].filter(Boolean).join(" "),
     taxLine,
     bank: t(e.bank_line),
+    isVat: e.is_vat !== false,
   };
 }
 

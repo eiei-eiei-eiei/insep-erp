@@ -70,7 +70,9 @@ export function QuotationTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selCustId]);
 
-  const totals = quotationTotals({ items, discount, isWhtRequired: isWht, whtPercent: whtPct, isDepositRequired: isDeposit, depositPercent: depositPct });
+  // 4.3 — กิจการที่ออกเอกสารไม่จด VAT → ไม่ถอด VAT และไม่โชว์บรรทัด VAT
+  const isVat = boot.isVat;
+  const totals = quotationTotals({ items, discount, isWhtRequired: isWht, whtPercent: whtPct, isDepositRequired: isDeposit, depositPercent: depositPct }, isVat);
 
   function addRawItem(name: string, price: number) {
     setItems((prev) => {
@@ -171,7 +173,7 @@ export function QuotationTab({
 
         <Card>
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-semibold text-ink">รายการสินค้า (ราคารวม VAT)</h2>
+            <h2 className="font-semibold text-ink">รายการสินค้า{isVat ? " (ราคารวม VAT)" : ""}</h2>
             <button
               onClick={() => setShowCustom(true)}
               disabled={!selCustId}
@@ -283,15 +285,16 @@ export function QuotationTab({
             <TextInput value={saleName} onChange={(e) => setSaleName(e.target.value)} className="w-40" placeholder="ชื่อผู้ขาย" />
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-muted">ส่วนลดพิเศษ (บาท, รวม VAT)</span>
+            <span className="text-muted">ส่วนลดพิเศษ (บาท{isVat ? ", รวม VAT" : ""})</span>
             <NumBox value={discount} blankZero onChange={(v) => setDiscount(v === "" ? 0 : v)} className="w-28 text-right" />
           </div>
 
           <div className="space-y-1 border-t pt-2 text-muted">
-            <Row label="รวมเป็นเงิน (รวม VAT)" value={totals.grandIncl} />
-            {discount > 0 && <Row label="หักส่วนลด (รวม VAT)" value={-discount} />}
-            <Row label="มูลค่าก่อน VAT" value={totals.subDiscount} />
-            <Row label="VAT 7% (รวมในราคาแล้ว)" value={totals.vatAmount} />
+            <Row label={isVat ? "รวมเป็นเงิน (รวม VAT)" : "รวมเป็นเงิน"} value={totals.grandIncl} />
+            {discount > 0 && <Row label={isVat ? "หักส่วนลด (รวม VAT)" : "หักส่วนลด"} value={-discount} />}
+            {/* กิจการไม่จด VAT: ไม่มีอะไรให้ถอด → ไม่ render 2 บรรทัดนี้เลย (ไม่ใช่โชว์ 0.00) */}
+            {isVat && <Row label="มูลค่าก่อน VAT" value={totals.subDiscount} />}
+            {isVat && <Row label="VAT 7% (รวมในราคาแล้ว)" value={totals.vatAmount} />}
             <div className="flex justify-between border-t pt-1 font-bold text-ink">
               <span>ยอดรวมทั้งสิ้น</span>
               <span>฿{fmt(totals.grandTotal)}</span>
@@ -337,6 +340,7 @@ export function QuotationTab({
       {showCustom && (
         <CustomItemModal
           onClose={() => setShowCustom(false)}
+          isVat={isVat}
           onAdd={(name, price) => {
             addRawItem(name, price);
             setShowCustom(false);
@@ -355,14 +359,15 @@ export function QuotationTab({
   );
 }
 
-function CustomItemModal({ onClose, onAdd }: { onClose: () => void; onAdd: (name: string, priceIncl: number) => void }) {
+function CustomItemModal({ onClose, onAdd, isVat }: { onClose: () => void; onAdd: (name: string, priceIncl: number) => void; isVat: boolean }) {
   const [name, setName] = useState("");
   const [price, setPrice] = useState<number | "">("");
   const [vatType, setVatType] = useState<"incl" | "excl">("incl");
   const [err, setErr] = useState("");
 
   // แปลงเป็นราคารวม VAT ก่อนใส่ตะกร้า (ระบบทำงานแบบ inclusive)
-  const priceIncl = price === "" ? 0 : vatType === "excl" ? inclFromExVat(Number(price)) : Number(price);
+  // ไม่จด VAT: ไม่มีตัวเลือก "ก่อน VAT" ให้เลือก → ราคาที่กรอกคือราคาที่ลูกค้าจ่าย
+  const priceIncl = price === "" ? 0 : vatType === "excl" ? inclFromExVat(Number(price), isVat) : Number(price);
 
   function add() {
     const p = Number(price);
@@ -388,12 +393,14 @@ function CustomItemModal({ onClose, onAdd }: { onClose: () => void; onAdd: (name
             <span className="mb-1 block font-bold text-muted">ราคาต่อหน่วย (บาท)</span>
             <div className="flex gap-2">
               <NumBox value={price} blankZero onChange={(v) => setPrice(v)} className="flex-1" />
-              <select value={vatType} onChange={(e) => setVatType(e.target.value as "incl" | "excl")} className="rounded-lg border border-line px-2 outline-none focus:border-brand">
-                <option value="incl">รวม VAT แล้ว</option>
-                <option value="excl">ก่อน VAT</option>
-              </select>
+              {isVat && (
+                <select value={vatType} onChange={(e) => setVatType(e.target.value as "incl" | "excl")} className="rounded-lg border border-line px-2 outline-none focus:border-brand">
+                  <option value="incl">รวม VAT แล้ว</option>
+                  <option value="excl">ก่อน VAT</option>
+                </select>
+              )}
             </div>
-            {price !== "" && vatType === "excl" && <div className="mt-1 text-xs text-faint">= รวม VAT ฿{fmt(priceIncl)} (จะใส่ราคานี้ลงตะกร้า)</div>}
+            {isVat && price !== "" && vatType === "excl" && <div className="mt-1 text-xs text-faint">= รวม VAT ฿{fmt(priceIncl)} (จะใส่ราคานี้ลงตะกร้า)</div>}
           </div>
           <div className="text-xs text-faint">สินค้านอกระบบไม่ตัดสต็อก (ไม่มีใน sale_menu) — ใช้กับงานสั่งทำ/บริการ</div>
           {err && <div className="rounded-lg bg-crit-bg px-3 py-2 text-xs text-crit">{err}</div>}

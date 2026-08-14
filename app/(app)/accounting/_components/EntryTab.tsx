@@ -40,6 +40,8 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   // เมื่อ header เลือก "ทุกกิจการ" → กิจการปลายทางกำกวม ให้ผู้ใช้เลือกชัดเจนในฟอร์ม (กันบันทึกเข้ากิจการผิดเงียบ ๆ)
   const [pickedEntity, setPickedEntity] = useState(entityId);
   const effEntity = ambiguous ? (pickedEntity || entityId) : entityId;
+  // 4.3 — กิจการที่ไม่จดทะเบียน VAT บันทึกรายการที่มี VAT ไม่ได้ (trigger ใน 0036 บล็อกที่ DB ด้วย)
+  const entityIsVat = (boot.entities.find((e) => e.entity_id === effEntity)?.is_vat ?? true) !== false;
   const effEntityName = boot.entities.find((e) => e.entity_id === effEntity)?.name ?? "";
   const [type, setType] = useState<"รายรับ" | "รายจ่าย">("รายจ่าย");
   const [category, setCategory] = useState("");
@@ -51,6 +53,9 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   const [taxInvoiceDate, setTaxInvoiceDate] = useState("");
   const [discount, setDiscount] = useState(0);
   const [hasVat, setHasVat] = useState(false); // ออโต้ติ๊กเมื่อกรอกเลขใบกำกับ (ผู้ใช้ override เองได้)
+  // ★ ปิดช่องติ๊กอย่างเดียวไม่พอ — ค่า hasVat ค้างมาจาก draft/สแกนใบเสร็จได้
+  //   ทุกที่ที่คิดเงินต้องใช้ effHasVat ไม่ใช่ hasVat (4.3)
+  const effHasVat = hasVat && entityIsVat;
   const [hasWht, setHasWht] = useState(false);
   const [whtRate, setWhtRate] = useState(0);
   const [items, setItems] = useState<Item[]>([emptyItem()]);
@@ -62,7 +67,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
 
   // ยอดของบิล: ปกติคำนวณอัตโนมัติ · โหมด "แก้ยอดเอง" ล็อกไว้ ต้องกดปลดล็อกก่อนแก้ (กันเผลอ)
   // ตรรกะร่วมกับฟอร์มแก้บิล (billItems.ts) — สูตรจริงยังอยู่ lib/accounting/calc
-  const amt = useBillAmounts({ items, discount, hasVat, hasWht, whtRate });
+  const amt = useBillAmounts({ items, discount, hasVat: effHasVat, hasWht, whtRate });
   const {
     calc, manualAmt, setManualAmt, ovAfterDisc, setOvAfterDisc, ovVat, setOvVat, ovWht, setOvWht,
     effAfterDisc, effVat, effWht, effNet, unlockAmounts, lockAmounts,
@@ -192,7 +197,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
     return type === "รายรับ" ? t === "ลูกค้า" : t === "ผู้ขาย";
   });
 
-  const instRows = useMemo(() => splitInstallments(effAfterDisc, insts, hasVat, hasWht ? whtRate : 0), [effAfterDisc, insts, hasVat, hasWht, whtRate]);
+  const instRows = useMemo(() => splitInstallments(effAfterDisc, insts, effHasVat, hasWht ? whtRate : 0), [effAfterDisc, insts, effHasVat, hasWht, whtRate]);
   const instSumPct = insts.reduce((s, i) => s + (Number(i.percent) || 0), 0);
 
   // แก้ราคา: in↔ex VAT สลับกัน · ส่วนลด %↔บาท (ตรรกะร่วมกับ EditBillModal — billItems.ts)
@@ -461,7 +466,10 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
             <Field label="ส่วนลดบิล"><NumBox value={discount} blankZero onChange={(v) => setDiscount(v === "" ? 0 : v)} /></Field>
           </div>
           <div className="mt-2 flex items-center gap-4 text-sm">
-            <label className="flex items-center gap-2"><input type="checkbox" checked={hasVat} onChange={(e) => setHasVat(e.target.checked)} /> มี VAT 7%</label>
+            <label className={`flex items-center gap-2 ${entityIsVat ? "" : "opacity-50"}`} title={entityIsVat ? undefined : "กิจการนี้ไม่ได้จดทะเบียน VAT"}>
+              <input type="checkbox" checked={effHasVat} disabled={!entityIsVat} onChange={(e) => setHasVat(e.target.checked)} /> มี VAT 7%
+              {!entityIsVat && <span className="text-xs text-faint">(กิจการนี้ไม่ได้จดทะเบียน VAT)</span>}
+            </label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={hasWht} onChange={(e) => setHasWht(e.target.checked)} /> หัก ณ ที่จ่าย</label>
           </div>
           {hasWht && (

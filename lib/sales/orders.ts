@@ -62,7 +62,14 @@ export type GeneratedSerials = { invNo?: string; taxNo1?: string; taxNo2?: strin
 export type ContactInfo = { taxId: string; branch: string; address: string; contactId?: string };
 
 /** config รายรับขาย (จาก app_settings) — บัญชีรับเงิน + กิจการ */
-export type RevenueConfig = { accountName: string; entityId: string };
+/**
+ * บัญชี/กิจการที่รับรายได้ + สถานะ VAT ของกิจการที่ออกเอกสาร (4.3)
+ *
+ * ★ `isVat` ต้องมาจากฝั่ง server เสมอ (อ่าน `entities.is_vat`) **ห้ามรับจาก client**
+ *   ไม่งั้นหน้าเว็บส่ง `isVat: true` มาเองได้ = ผู้ไม่จด VAT ออกใบกำกับภาษี (ผิดกฎหมาย ม.86/13)
+ *   ค่าปริยาย `true` เพื่อให้จุดเรียก/เทสเดิมได้ผลเท่าเดิมทุกตัว
+ */
+export type RevenueConfig = { accountName: string; entityId: string; isVat?: boolean };
 
 export type OrderUpdate = {
   status: string;
@@ -140,11 +147,24 @@ export function formatThaiDate(iso: string): string {
  * เลขเอกสารที่ต้อง generate ก่อนเรียก processOrder (เฉพาะช่องที่ยังว่าง — เหมือนโค้ดเดิม)
  * caller เรียก next_serial เฉพาะ true เพื่อไม่ให้ consume เลขเกินจำเป็น
  */
-export function neededSerials(action: OrderAction, order: OrderState): {
+/**
+ * เลขเอกสารที่ต้อง generate สำหรับ action นี้
+ *
+ * 🚨 กิจการที่ไม่จด VAT **ห้ามได้เลขใบกำกับภาษี (tax1/tax2) เด็ดขาด** —
+ *    ผู้ไม่จด VAT ออกใบกำกับภาษีเป็นความผิดตามประมวลรัษฎากร ม.86/13
+ *    เลข INV (ใบแจ้งหนี้/ใบส่งของ/ใบเสร็จรับเงิน) ยังออกได้ปกติ
+ *    ★ ตรงนี้เป็นแค่ด่านแรก — ด่านจริงอยู่ที่ DB (migration 0036) เพราะยิงตรงผ่าน API ได้
+ */
+export function neededSerials(action: OrderAction, order: OrderState, isVat = true): {
   inv: boolean;
   tax1: boolean;
   tax2: boolean;
 } {
+  if (!isVat) {
+    // ไม่จด VAT: ให้เฉพาะเลข INV ตามที่ action นั้นต้องการ · ตัด tax1/tax2 ทิ้งเสมอ
+    const base = neededSerials(action, order, true);
+    return { inv: base.inv, tax1: false, tax2: false };
+  }
   const noInv = !order.invNo;
   const noTax1 = !order.taxNo1;
   const noTax2 = !order.taxNo2;
@@ -280,7 +300,9 @@ export function processOrder(
 
   if (isPayment && accNet >= 0) {
     const accWhtRate = Number(order.whtPercent) || 0;
-    const { preVat: accPreVat, vat: accVat, wht: accWht } = reverseVatWht(accNet, accWhtRate);
+    // isVat มาจาก server (entities.is_vat) — ไม่จด VAT → vat = 0 และฐานคิดจาก (1 − wht)
+    const entityIsVat = config.isVat !== false;
+    const { preVat: accPreVat, vat: accVat, wht: accWht } = reverseVatWht(accNet, accWhtRate, false, entityIsVat);
 
     let accBase = 0;
     let accDiscount = 0;
@@ -293,7 +315,7 @@ export function processOrder(
     }
 
     const accItems: AccItem[] = isFirstPayment
-      ? items.map((it) => toAccItem(it.name, Number(it.qty), Number(it.price)))
+      ? items.map((it) => toAccItem(it.name, Number(it.qty), Number(it.price), entityIsVat))
       : [];
 
     const docNo = taxDocNo(
