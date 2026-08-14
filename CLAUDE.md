@@ -3,7 +3,7 @@
 > ระบบ ERP ภายในของโรงกลั่นสุราคราฟต์ (solo entrepreneur) — ย้ายมาจาก Google Apps Script + Google Sheets 3 แอป
 > **เอกสารหลัก**: `docs/MIGRATION_PLAN.md` (แผนละเอียดทุก section — อ่านก่อนทำงานทุกครั้ง) + `docs/FLOW_REDESIGN.md` (โฟลว์/UI ใหม่ 4 workspace — ถ้าขัดกัน: เรื่องโฟลว์/UI ยึด FLOW_REDESIGN, เรื่องสูตร/ข้อมูล ยึด MIGRATION_PLAN sec 6)
 > **งานที่เหลือ/ส่งต่อ session ใหม่**: `docs/NEXT_STEPS.md` — **อ่านก่อนเริ่มงานใหม่ทุกครั้ง**
-> **แอปจัดการหลังบ้าน (ยังไม่เริ่ม)**: `docs/ADMIN_APP_REQUIREMENTS.md`
+> **แอปจัดการหลังบ้าน (เฟส 1 เสร็จ · route `/platform`)**: `docs/ADMIN_APP_REQUIREMENTS.md`
 > **หน้าตา/สี/ไอคอน**: `docs/DESIGN_SYSTEM.md` — **อ่านก่อนแตะ UI ทุกครั้ง** · ห้ามเขียนคลาสสีดิบ (`bg-slate-800`, `text-red-500`, hex) ใน component ใช้ token เท่านั้น
 > **โค้ดระบบเดิม (reference)**: `docs/legacy/production/`, `docs/legacy/accounting/`, `docs/legacy/sales/`
 > **ผู้ใช้เขียนโค้ดไม่ได้** — ส่งมอบไฟล์เต็มเสมอ อธิบายขั้นตอนที่ผู้ใช้ต้องทำเอง (รันคำสั่ง/กดปุ่ม) ทีละบรรทัด ตอบภาษาไทย คงศัพท์เทคนิคอังกฤษ
@@ -77,5 +77,7 @@
 | — | **ปิดรีวิว `docs/APP_REVIEW_2026-07.md` ครบทุกข้อ** (D36–D42) | ✅ D42 (2026-08-01) · build/lint/test **180** ผ่าน · migration **0021** (ต้อง `npm run db:push`) · multi-branch ครบ (รายรับขาย+50ทวิ เก็บ contact_id) · กระดาน batch + batch ร่วมข้ามแท็บ · แก้ inline log ผลิตครบ · checklist `report_runs` · `lib/shared/ui` + `billItems` (เลิกก๊อป 3 ชุด) · `lib/shared/paginate` + เทส · error.tsx ไทย · ฟอนต์ไทย self-host · PWA · ชุดเทส `docs/TESTING.md` ส่วนที่ 22 |
 
 | — | **ขายเป็นสินค้า: LINE ต่อ tenant · โควตากิจการ · module flags** (D51-D53) | ✅ (2026-08-12) · test **249** + `npm run test:tenant` **79** · migration **0033** (LINE ต่อ tenant + ค่าลับใน app_settings อ่านได้เฉพาะ main) · **0034** (โควตา/โมดูล) · UI ซ่อนตัวเลือกกิจการเมื่อมีกิจการเดียว (★ ตัดสินจากจำนวน entity จริง **ห้ามผูกกับ max_entities**) · `workspacesFor(role, modules)` + `requireModule()` กัน URL ตรง · `npm run provision:tenant` / `provision:add-entity` (ระบบเปล่า ไม่มีข้อมูลตัวอย่าง) · `npm run backup:tables` · ❌ **MFA ตกไปแล้ว (D52)** · **เหลือ**: 4.3 VAT branching (ก้อนใหญ่สุด แตะชั้นสูตร) |
+
+| — | **แอปจัดการหลังบ้าน (platform admin) เฟส 1** (D54) | ✅ (2026-08-13) · test **274** · migration **0035** (ต้อง `npm run db:push`) · route `/platform` (route group `app/(platform)`) — รับลูกค้าใหม่ · เปิด/ปิดโมดูล · ขยายโควตา · เพิ่มกิจการ · **รีเซ็ตรหัสลูกค้า** ได้จากหน้าจอ ไม่ต้องแตะ terminal/SQL · กัน 3 ชั้น: env `PLATFORM_ADMIN=1` (middleware → **404**) + ต้องล็อกอิน + uuid ต้องอยู่ใน `platform_admins` · 🚨 ตารางแพลตฟอร์ม **RLS deny-all + revoke grant** (ลืม = ข้อมูลเชิงพาณิชย์รั่วให้ลูกค้าทุกเจ้า) · ตรรกะแหล่งเดียว `lib/platform/provision.ts` (สคริปต์เดิมเรียกตัวนี้ · **ห้าม import server-only**) · รหัสชั่วคราวขึ้นจอครั้งเดียว ห้ามลง DB · `npm run platform:grant-admin` (bootstrap ครั้งเดียว) · ชุดเทส `docs/TESTING.md` ส่วนที่ 29 + `tests/tenant/platform-tables.test.ts` · **เหลือ**: เฟส 2 ตารางค่างวด · `tenants.is_active` ยังไม่บล็อกการล็อกอิน |
 
 *Definition of Done ต่อ phase อยู่ใน MIGRATION_PLAN section 12 · คำถามค้างตัดสินใจอยู่ section 11 — ถ้างานชนคำถามเหล่านั้น ให้ถามผู้ใช้ก่อน อย่าเดา*

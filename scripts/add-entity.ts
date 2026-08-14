@@ -4,13 +4,16 @@
  *   npx tsx scripts/add-entity.ts --env=.env.local --slug=rongsomchai \
  *     --entity=EID02 --name="สมชาย (บุคคลธรรมดา)" --no-vat
  *
- * ★ นี่คือ**จุดบังคับ `max_entities` จริง** — RLS (0028) ห้ามลูกค้า insert `entities` เองอยู่แล้ว
- *   สร้างได้เฉพาะ service role = ผ่านสคริปต์นี้เท่านั้น → โควตาเลี่ยงผ่าน API ไม่ได้
+ * ★ ตั้งแต่ 0035 ทำจากแอปจัดการหลังบ้าน (`/platform`) ได้แล้ว — สคริปต์นี้เป็นทางสำรอง
+ *   ตรรกะ (รวมทั้ง**ด่านโควตา**) อยู่ที่ `lib/platform/provision.ts` ที่เดียว
  *
- * ⚠️ UI ฝั่งแอป **ไม่ได้** ดู max_entities — มันดูจากจำนวนกิจการที่มีจริง
- *   (ถ้าไปผูก UI กับโควตา ลูกค้าที่มีหลายกิจการอยู่แล้วแต่โควตาเป็น 1 จะเข้าถึงข้อมูลไม่ได้)
+ * ★ ด่าน `max_entities` บังคับจริงตรงนั้น — RLS (0028) ห้ามลูกค้า insert `entities` เองอยู่แล้ว
+ *   สร้างได้เฉพาะ service role → โควตาเลี่ยงผ่าน API ไม่ได้
+ *
+ * ⚠️ UI ฝั่งแอปลูกค้า **ไม่ได้** ดู max_entities — มันดูจากจำนวนกิจการที่มีจริง (D53)
  */
 import { adminFromEnv, argOf, hasFlag, die } from "./lib/provision";
+import { addEntityToTenant, findTenantBySlug } from "../lib/platform/provision";
 
 async function main() {
   const envFile = argOf("env") || ".env.local";
@@ -26,38 +29,16 @@ async function main() {
   const { db, ref } = adminFromEnv(envFile);
   console.log(`\n➕ เพิ่มกิจการที่ project: ${ref} · ลูกค้า: ${slug}\n`);
 
-  const { data: t } = await db
-    .from("tenants").select("id, name, max_entities").eq("slug", slug).maybeSingle();
-  if (!t) die(`ไม่พบลูกค้า slug "${slug}" ที่ project นี้`);
-  const tenantId = t!.id as string;
-  const quota = Number(t!.max_entities) || 1;
+  const tenant = await findTenantBySlug(db, slug);
+  if (!tenant) die(`ไม่พบลูกค้า slug "${slug}" ที่ project นี้`);
 
-  const { data: existing, error: exErr } = await db
-    .from("entities").select("entity_id, name").eq("tenant_id", tenantId).order("entity_id");
-  if (exErr) die(`อ่านรายการกิจการ: ${exErr.message}`);
-
-  console.log(`   กิจการที่มีอยู่ (${existing!.length}/${quota}):`);
-  for (const e of existing!) console.log(`     · ${e.entity_id} — ${e.name}`);
+  const { data: existing } = await db
+    .from("entities").select("entity_id, name").eq("tenant_id", tenant!.id).order("entity_id");
+  console.log(`   กิจการที่มีอยู่ (${existing?.length ?? 0}/${tenant!.maxEntities}):`);
+  for (const e of existing ?? []) console.log(`     · ${e.entity_id} — ${e.name}`);
   console.log("");
 
-  if (existing!.some((e) => e.entity_id === entityId)) {
-    die(`กิจการรหัส "${entityId}" มีอยู่แล้วในลูกค้ารายนี้`);
-  }
-
-  // ★ ด่านโควตา — ตรงนี้คือสิ่งที่ทำให้ "กิจการที่ 2" ขายเป็น add-on ได้จริง
-  if (existing!.length >= quota) {
-    die(
-      `ลูกค้ารายนี้ใช้โควตาครบแล้ว (${existing!.length}/${quota})\n` +
-      `   ถ้าลูกค้าซื้อ add-on กิจการเพิ่มแล้ว ให้ขยายโควตาก่อนด้วย SQL ใน Supabase Dashboard:\n` +
-      `     update tenants set max_entities = ${quota + 1} where slug = '${slug}';\n` +
-      `   (จงใจไม่ให้สคริปต์นี้ขยายโควตาเอง — เพิ่มกิจการกับอนุมัติการขายต้องเป็นคนละการตัดสินใจ)`,
-    );
-  }
-
-  const { error } = await db.from("entities").insert({
-    tenant_id: tenantId, entity_id: entityId, name, is_vat: isVat, is_default: false,
-  });
-  if (error) die(`สร้างกิจการ: ${error.message}`);
+  await addEntityToTenant(db, tenant!.id, { entityId, name, isVat });
 
   console.log(`✅ เพิ่ม ${entityId} — ${name} แล้ว (${isVat ? "จด VAT" : "ไม่จด VAT"})`);
   console.log(`   ลูกค้าจะเห็นตัวเลือกกิจการในแอปทันทีที่รีเฟรช (เพราะตอนนี้มีมากกว่า 1 กิจการ)\n`);

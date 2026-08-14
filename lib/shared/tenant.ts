@@ -22,8 +22,16 @@ export function isValidTenantSlug(slug: string): boolean {
 /** โดเมนหลักของแพลตฟอร์ม (ไม่มี = โหมดลิงก์เดียว ไม่ใช้ subdomain) */
 export const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "";
 
-/** subdomain ที่สงวนไว้ ไม่ใช่ชื่อลูกค้า */
-const RESERVED = new Set(["www", "app", "admin", "api", "static", "assets"]);
+/**
+ * subdomain ที่สงวนไว้ ไม่ใช่ชื่อลูกค้า
+ * ★ `platform` สงวนให้แถว tenants ของแอดมินแพลตฟอร์ม (0035) — ลูกค้าจองชื่อนี้ไม่ได้
+ */
+export const RESERVED_SLUGS = ["www", "app", "admin", "api", "static", "assets", "platform"];
+const RESERVED = new Set(RESERVED_SLUGS);
+
+export function isReservedSlug(slug: string): boolean {
+  return RESERVED.has(slug.trim().toLowerCase());
+}
 
 /**
  * แกะ slug ของ tenant จาก host

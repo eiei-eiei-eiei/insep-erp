@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import type { Route } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { workspacesWithLock, type Role } from "@/lib/shared/workspaces";
 import { WORKSPACE_ICON, IconLock } from "@/lib/shared/icons";
+import { isPlatformAdmin } from "@/lib/platform/auth";
 
 /**
  * หน้าแรก — เลือกพื้นที่ทำงาน
@@ -17,6 +19,10 @@ export default async function HomePage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  // แอดมินแพลตฟอร์มล็อกอินแล้วต้องไปโผล่ที่หน้าจัดการหลังบ้าน ไม่ใช่แอปลูกค้าที่ว่างเปล่า
+  // ★ บน deployment ของลูกค้า (ไม่ได้ตั้ง PLATFORM_ADMIN) ฟังก์ชันนี้คืน false ทันทีโดยไม่ยิง DB
+  if (user && (await isPlatformAdmin(user.id))) redirect("/platform");
 
   const [{ data: profile }, { data: tenant }] = await Promise.all([
     supabase.from("profiles").select("role").eq("id", user!.id).single(),

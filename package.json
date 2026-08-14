@@ -15,6 +15,7 @@
     "seed:demo-tenant": "tsx scripts/seed-demo-tenant.ts",
     "provision:tenant": "tsx scripts/provision-tenant.ts",
     "provision:add-entity": "tsx scripts/add-entity.ts",
+    "platform:grant-admin": "tsx scripts/grant-platform-admin.ts",
     "backup:tables": "tsx scripts/backup-tables.ts",
     "migrate:split": "tsx migration/split-xlsx.ts",
     "migrate:import": "tsx migration/import-csv.ts",
