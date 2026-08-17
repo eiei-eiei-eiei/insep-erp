@@ -988,6 +988,19 @@ tenant ของเจ้าของมี `app_settings.brand_name = 'Insep ER
 เหตุผลของข้อหลัง: ถ้า 0037 พังที่ก้อนแรกแล้วดันไปลงก้อนสองสำเร็จ fleet จะคนละเวอร์ชัน
 · รันซ้ำได้ปลอดภัย — CLI ดูประวัติจากตารางใน DB เอง ก้อนที่ลงแล้วถูกข้าม
 
+**🪤 2 กับดักที่เจอตอนรันจริง (2026-08-17 · Supabase CLI v2.109) — อย่าเผลอ "ปรับปรุง" กลับ**:
+
+**ก. ห้ามใช้ env `SUPABASE_DB_URL` แทน flag `--db-url`** — ดูเหมือนสะอาดกว่า (รหัสไม่โผล่ใน
+process list) แต่ทดสอบแล้ว **CLI เพิกเฉยต่อ env ตัวนั้น แล้วเงียบ ๆ ไปใช้ project ที่ `supabase link`
+ไว้แทน** · พิสูจน์ด้วยการชี้ env ไปพอร์ตที่ไม่มีอะไรอยู่ → CLI ตอบ "Remote database is up to date"
+= ลง migration ผิดก้อนโดยไม่มีใครรู้ ซึ่งคือหายนะที่สคริปต์นี้ตั้งใจกันพอดี
+· `--db-url` ตรวจแล้วว่าใช้จริง (ชี้พอร์ตเปล่า → ฟ้อง connection refused + exit 1)
+
+**ข. ห้าม `spawnSync("npx.cmd", …)` ตรง ๆ บน Windows** — พังด้วย `EINVAL`
+(Node ปิดช่องโหว่ CVE-2024-27980) · และ**ห้ามแก้ด้วย `shell: true`** เพราะเราส่ง connection
+string เป็น argument ซึ่งรหัสผ่านมี percent-encoding (`%40`) → cmd.exe แปลงเป็นตัวแปรแล้วเพี้ยน
+→ เรียก `npx-cli.js` ด้วย `process.execPath` ตรง ๆ (ได้ทั้งไม่พังและไม่ต้อง quote)
+
 **ไฟล์**: `scripts/db-push-all.ts` · `scripts/lib/db-targets.ts` (+เทส 15 ตัว)
 · `supabase/targets.example.json` (คอมมิต) → ก๊อปเป็น `supabase/targets.json` (**gitignore — มีรหัส DB**)
 · `vitest.config.ts` เพิ่ม `scripts/**/*.test.ts` เข้า include (เดิมเทสใน `scripts/` ไม่ถูกรันเลย)

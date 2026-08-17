@@ -15,27 +15,44 @@
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { argOf, hasFlag, readEnv, die } from "./lib/provision";
 import { checkTarget, maskDbUrl, parseTargets, refFromDbUrl, type DbTarget } from "./lib/db-targets";
 
-const NPX = process.platform === "win32" ? "npx.cmd" : "npx";
+/**
+ * เรียก npx โดย **ไม่ผ่าน shell**
+ *
+ * 🪤 บน Windows spawn ไฟล์ `.cmd` ตรง ๆ พังด้วย `EINVAL` (Node ปิดช่องโหว่ CVE-2024-27980)
+ *    ทางแก้ที่คนมักใช้คือ `shell: true` — **ห้ามใช้ที่นี่** เพราะเราส่ง connection string
+ *    เป็น argument และรหัสผ่านมี percent-encoding (`%40`) ซึ่ง cmd.exe จะพยายามแปลงเป็นตัวแปร
+ *    → เรียก `npx-cli.js` ด้วย node ตรง ๆ แทน ได้ทั้งไม่พังและไม่ต้องกังวลเรื่อง quote
+ */
+const NPX_CLI = path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npx-cli.js");
 
-/** เรียก supabase CLI แบบไม่ผ่าน shell — connection string มีอักขระพิเศษ ผ่าน shell แล้วเพี้ยน */
-function supabase(args: string[]): number {
-  const r = spawnSync(NPX, ["supabase", ...args], { stdio: "inherit", shell: false });
+function run(tool: string, args: string[]): number {
+  const r = existsSync(NPX_CLI)
+    ? spawnSync(process.execPath, [NPX_CLI, tool, ...args], { stdio: "inherit", shell: false })
+    : // เครื่องที่หา npx-cli.js ไม่เจอ — ยอมใช้ shell (ไม่ควรเกิด แต่ดีกว่ารันไม่ได้เลย)
+      spawnSync(process.platform === "win32" ? "npx.cmd" : "npx", [tool, ...args], {
+        stdio: "inherit",
+        shell: process.platform === "win32",
+      });
   if (r.error) throw r.error;
   return r.status ?? 1;
 }
 
+/**
+ * ⚠️ ต้องส่ง `--db-url` เป็น flag เท่านั้น **ห้ามใช้ env `SUPABASE_DB_URL`**
+ *    ทดสอบแล้ว (2026-08-17 · CLI v2.109): CLI **เพิกเฉยต่อ env ตัวนั้น** แล้วเงียบ ๆ
+ *    ไปใช้ project ที่ `supabase link` ไว้แทน → จะกลายเป็น "ลง migration ผิดก้อนโดยไม่มีใครรู้"
+ *    ซึ่งเป็นหายนะที่สคริปต์นี้ตั้งใจจะกันพอดี · flag `--db-url` ตรวจแล้วว่าใช้จริง
+ */
+const supabase = (args: string[]) => run("supabase", args);
+
 function backup(t: DbTarget, ref: string, dir: string): number {
   const out = `${dir.replace(/[/\\]+$/, "")}/${ref}`;
   console.log(`\n   📦 สำรองข้อมูลก่อน → ${out}`);
-  const r = spawnSync(NPX, ["tsx", "scripts/backup-tables.ts", `--env=${t.env}`, `--out=${out}`], {
-    stdio: "inherit",
-    shell: false,
-  });
-  if (r.error) throw r.error;
-  return r.status ?? 1;
+  return run("tsx", ["scripts/backup-tables.ts", `--env=${t.env}`, `--out=${out}`]);
 }
 
 function main() {
