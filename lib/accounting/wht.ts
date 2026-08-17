@@ -6,9 +6,11 @@
  *    (โค้ดเดิมไม่มีขีดกลาง — ยึดโค้ดเดิม, schema comment '69-001' คลาดเคลื่อน → ดู DECISIONS)
  */
 
-import { thaiBaht } from "../shared/format";
+import { thaiBaht, formatDateThai } from "../shared/format";
 
-const TH_MONTHS_ABBR = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+/** A9 — ย้ายตัวจริงไปอยู่ `lib/shared/format` แล้ว (ฝั่งลูกค้า/แพลตฟอร์มก็ต้องใช้)
+ *  re-export ไว้เพื่อให้ที่เรียกเดิม + golden test A9 ไม่ต้องแก้ — **ห้ามเขียนตัวใหม่ที่นี่** */
+export { formatDateThai };
 
 /** prefix ปี พ.ศ. 2 หลักท้าย ของปี ค.ศ. ที่ให้มา (default = ปีปัจจุบัน) */
 export function whtDocPrefix(gregorianYear: number = new Date().getFullYear()): string {
@@ -33,19 +35,6 @@ export function nextWhtDocNo(
     }
   }
   return prefix + (maxNum + 1).toString().padStart(2, "0");
-}
-
-/**
- * A9 — วันที่ไทยย่อ จาก 'yyyy-MM-dd' → "d ม.ค. 69" (ปี พ.ศ. 2 หลัก)
- * ไม่ pad วันที่ (เหมือน getDate() เดิม)
- */
-export function formatDateThai(iso: string | null | undefined): string {
-  const m = String(iso ?? "").match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!m) return "-";
-  const day = parseInt(m[3], 10);
-  const mon = TH_MONTHS_ABBR[parseInt(m[2], 10) - 1];
-  const yy = ((parseInt(m[1], 10) + 543) % 100).toString().padStart(2, "0");
-  return `${day} ${mon} ${yy}`;
 }
 
 export type Wht50PrintData = {

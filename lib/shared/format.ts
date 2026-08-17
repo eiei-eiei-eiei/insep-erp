@@ -9,6 +9,25 @@
 const NUMBER_TEXT = "ศูนย์,หนึ่ง,สอง,สาม,สี่,ห้า,หก,เจ็ด,แปด,เก้า,สิบ".split(",");
 const UNIT_TEXT = "สิบ,ร้อย,พัน,หมื่น,แสน,ล้าน".split(",");
 
+const TH_MONTHS_ABBR = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+
+/**
+ * A9 — วันที่ไทยย่อ จาก 'yyyy-MM-dd' → "d ม.ค. 69" (ปี พ.ศ. 2 หลัก) · ไม่ pad วัน
+ *
+ * ★ เดิมอยู่ใน `lib/accounting/wht.ts` (ยัง re-export จากที่นั่นเพื่อให้ golden test A9 เดิมไม่ต้องแก้)
+ *   ย้ายมาที่นี่เพราะฝั่งลูกค้า/แพลตฟอร์มก็ต้องใช้ — ปล่อยไว้จะได้ตัวก๊อปชุดที่สองแล้วเพี้ยนกันวันหนึ่ง
+ * ⚠️ แกะสตริงตรง ๆ ไม่ผ่าน `new Date()` โดยตั้งใจ — parse ISO แล้ว format ตาม timezone เครื่อง
+ *   จะได้วันคลาดไป 1 วันบนเครื่องที่ offset ติดลบ
+ */
+export function formatDateThai(iso: string | null | undefined): string {
+  const m = String(iso ?? "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return "-";
+  const day = parseInt(m[3], 10);
+  const mon = TH_MONTHS_ABBR[parseInt(m[2], 10) - 1];
+  const yy = ((parseInt(m[1], 10) + 543) % 100).toString().padStart(2, "0");
+  return `${day} ${mon} ${yy}`;
+}
+
 /**
  * A9 — แปลงตัวเลขเป็นข้อความภาษาไทย (บาทถ้วน) สำหรับ 50ทวิ
  * port ตรงจาก ThaiBaht (accounting/Config.js:99) — คง edge case เอ็ด/ยี่/สิบ/ล้าน

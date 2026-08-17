@@ -2,6 +2,7 @@ import { requirePlatformAdmin } from "@/lib/platform/auth";
 import { signOut } from "@/app/(app)/actions";
 import { PRODUCT_NAME } from "@/lib/shared/branding";
 import { IconLogout } from "@/lib/shared/icons";
+import { PlatformTabs } from "./_components/platform-tabs";
 
 /**
  * Layout ของแอปจัดการหลังบ้าน — **แยกจาก (app) โดยตั้งใจ**
@@ -30,6 +31,9 @@ export default async function PlatformLayout({ children }: { children: React.Rea
               ออกจากระบบ
             </button>
           </form>
+        </div>
+        <div className="mx-auto max-w-6xl px-4 pb-2">
+          <PlatformTabs />
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>

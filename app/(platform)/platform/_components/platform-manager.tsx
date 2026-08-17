@@ -15,6 +15,7 @@ import {
   useSaver,
 } from "@/lib/shared/ui";
 import { IconAlert, IconCheck, IconPlus } from "@/lib/shared/icons";
+import { formatDateThai } from "@/lib/shared/format";
 import { BRAND_COLORS } from "@/lib/shared/branding";
 import { MODULES, ROLE_LABEL, type Role } from "@/lib/shared/workspaces";
 import type { TenantRow } from "@/lib/platform/provision";
@@ -33,8 +34,8 @@ const MODULE_LABEL: Record<string, string> = {
   sales: "ขาย",
 };
 
-const dateTH = (iso: string) =>
-  new Date(iso).toLocaleDateString("th-TH", { year: "numeric", month: "short", day: "numeric" });
+/** วันที่ไทยย่อ — ใช้ตัวเดียวกับทั้งระบบ (`lib/shared/format`) ไม่เขียนของตัวเอง */
+const dateTH = (iso: string) => formatDateThai(iso);
 
 /**
  * แผงแสดง "รหัสชั่วคราว" — ★ หัวใจของเฟส 1

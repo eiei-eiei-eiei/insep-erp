@@ -2,6 +2,13 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { assertTestEnv, cleanupTestTenants, seedTenant, signIn, admin, anonClient, TEST_PREFIX, type Tenant } from "./harness";
 import { createTenant, listTenants } from "../../lib/platform/provision";
+import {
+  listBilling,
+  recordPayment,
+  saveSubscription,
+  voidLastPayment,
+} from "../../lib/platform/billing-db";
+import { periodEnd } from "../../lib/platform/billing";
 
 /**
  * 🚨 เทสที่สำคัญที่สุดของงานแอปจัดการหลังบ้าน (DoD ข้อ 2 ใน docs/ADMIN_APP_REQUIREMENTS.md)
@@ -17,7 +24,14 @@ import { createTenant, listTenants } from "../../lib/platform/provision";
  *   3. positive control — service role ยังอ่านได้ (ไม่งั้นเทสผ่านเพราะ "ไม่มีข้อมูลเลย")
  */
 
-const PLATFORM_TABLES = ["platform_admins", "platform_admin_log"] as const;
+/** ทุกตารางของแพลตฟอร์ม — เพิ่มตารางใหม่เมื่อไหร่ **ต้องเพิ่มที่นี่ด้วย**
+ *  เพราะ loop ข้างล่างคือสิ่งเดียวที่พิสูจน์ว่าไม่ได้ลืมเปิด RLS */
+const PLATFORM_TABLES = [
+  "platform_admins",
+  "platform_admin_log",
+  "subscriptions",          // 🚨 มีราคาที่ลูกค้าแต่ละเจ้าจ่าย (0037)
+  "subscription_payments",
+] as const;
 
 let A: Tenant;
 let asA: SupabaseClient;
@@ -45,6 +59,20 @@ beforeAll(async () => {
     actor: ownerId, action: "zz-test-action", tenant_slug: A.slug, detail: { note: "ทดสอบ" },
   });
   if (lErr) throw new Error(`seed platform_admin_log: ${lErr.message}`);
+
+  // ค่างวด (0037) — ต้องมีของจริงในตารางเหมือนกัน ไม่งั้น deny-all ผ่านเพราะตารางว่าง
+  await saveSubscription(db, A.tenantId, {
+    plan: "แพ็กเกจทดสอบ",
+    price: 1234,
+    cycle: "monthly",
+    startedOn: "2026-01-31", // ★ สิ้นเดือน — ใช้พิสูจน์เรื่อง drift ด้วยในตัว
+    status: "active",
+    note: "ทดสอบ",
+    billingNotice: true,
+  });
+  await recordPayment(db, A.tenantId, {
+    amount: 1234, paidOn: "2026-02-01", note: "ทดสอบ", actor: ownerId,
+  });
 }, 180_000);
 
 afterAll(async () => {
@@ -67,12 +95,20 @@ describe("★ ลูกค้าอ่านตารางของแพลต
     });
 
     it(`${table}: insert ถูกปฏิเสธ`, async () => {
-      // Record<string, unknown> — สองตารางคนละคอลัมน์ ถ้าปล่อยให้ TS อนุมาน union
+      // Record<string, unknown> — แต่ละตารางคนละคอลัมน์ ถ้าปล่อยให้ TS อนุมาน union
       // จะฟ้องว่า type ไม่ตรงกัน (ตัวที่ยิงคือ PostgREST อยู่แล้ว ไม่ได้พึ่ง type ตรงนี้)
-      const row: Record<string, unknown> =
-        table === "platform_admins"
-          ? { user_id: ownerId }
-          : { actor: ownerId, action: "zz-test-แอบเขียน" };
+      const rows: Record<string, Record<string, unknown>> = {
+        platform_admins: { user_id: ownerId },
+        platform_admin_log: { actor: ownerId, action: "zz-test-แอบเขียน" },
+        subscriptions: {
+          tenant_id: A.tenantId, plan: "แอบตั้งเอง", price: 0, cycle: "monthly",
+          started_on: "2026-01-01", current_period_end: "2099-01-01",
+        },
+        subscription_payments: {
+          tenant_id: A.tenantId, amount: 0, paid_on: "2026-01-01", period_end_after: "2099-01-01",
+        },
+      };
+      const row = rows[table];
       const { error } = await asA.from(table).insert(row);
       expect(error, `${table} เขียนได้ = ลูกค้าตั้งตัวเองเป็นแอดมินได้`).not.toBeNull();
     });
@@ -183,5 +219,120 @@ describe("createTenant / listTenants (lib/platform/provision)", () => {
     expect(row!.modules).toEqual(["production"]);
     expect(row!.maxEntities).toBe(1);
     expect(row!.color).toBe("copper");
+  });
+});
+
+// ── ค่างวด: ตรรกะที่หน้าจอแอดมินใช้ (0037 · เฟส 2) ──────────────────────────
+describe("subscriptions — เลื่อนรอบแบบ anniversary ไม่ drift", () => {
+  // seed ไว้ใน beforeAll: started_on = 2026-01-31 (สิ้นเดือน) · จ่ายมาแล้ว 1 รอบ
+  const ANCHOR = "2026-01-31";
+
+  it("ตั้งค่างวดแล้ว current_period_end = จุดยึด + 1 รอบ", async () => {
+    const { data } = await admin()
+      .from("subscriptions").select("*").eq("tenant_id", A.tenantId).single();
+    // beforeAll กด recordPayment ไป 1 ครั้ง → periods_paid = 2
+    expect(Number(data!.periods_paid)).toBe(2);
+    expect(data!.current_period_end).toBe(periodEnd(ANCHOR, "monthly", 2));
+    expect(data!.current_period_end).toBe("2026-03-31"); // ★ ไม่ใช่ 2026-03-28
+  });
+
+  it("★★ จ่ายอีก 2 รอบ วันตัดรอบต้องยังเป็นวันที่ 31 (พิสูจน์ว่าไม่บวกจากค่าเดิม)", async () => {
+    const db = admin();
+    await recordPayment(db, A.tenantId, { amount: 1234, paidOn: "2026-03-01", note: null, actor: ownerId });
+    const r = await recordPayment(db, A.tenantId, { amount: 1234, paidOn: "2026-04-01", note: null, actor: ownerId });
+    expect(r.periodEndAfter).toBe(periodEnd(ANCHOR, "monthly", 4));
+    expect(r.periodEndAfter).toBe("2026-05-31");
+  });
+
+  it("ย้อนรายการล่าสุดแล้วกลับไปรอบก่อนหน้าเป๊ะ", async () => {
+    const db = admin();
+    const before = await db
+      .from("subscription_payments").select("id", { count: "exact", head: true }).eq("tenant_id", A.tenantId);
+    const r = await voidLastPayment(db, A.tenantId);
+    expect(r.periodEndAfter).toBe(periodEnd(ANCHOR, "monthly", 3));
+
+    const after = await db
+      .from("subscription_payments").select("id", { count: "exact", head: true }).eq("tenant_id", A.tenantId);
+    expect((after.count ?? 0) + 1).toBe(before.count ?? 0);
+  });
+
+  it("★ trigger มิเรอร์วันครบกำหนดลง tenants.billing_due_on ให้อัตโนมัติ", async () => {
+    const db = admin();
+    const { data: sub } = await db
+      .from("subscriptions").select("current_period_end").eq("tenant_id", A.tenantId).single();
+    const { data: t } = await db
+      .from("tenants").select("billing_due_on").eq("id", A.tenantId).single();
+    expect(t!.billing_due_on).toBe(sub!.current_period_end);
+  });
+
+  it("★ หยุดพัก = ไม่มีวันครบกำหนดให้เตือน (ตกลงกันแล้วว่าพัก ห้ามไปตื๊อลูกค้า)", async () => {
+    const db = admin();
+    await saveSubscription(db, A.tenantId, {
+      plan: "แพ็กเกจทดสอบ", price: 1234, cycle: "monthly", startedOn: ANCHOR,
+      status: "paused", note: null, billingNotice: true,
+    });
+    const { data: t } = await db
+      .from("tenants").select("billing_due_on").eq("id", A.tenantId).single();
+    expect(t!.billing_due_on).toBeNull();
+
+    // คืนสถานะ active แล้วต้องกลับมา
+    await saveSubscription(db, A.tenantId, {
+      plan: "แพ็กเกจทดสอบ", price: 1234, cycle: "monthly", startedOn: ANCHOR,
+      status: "active", note: null, billingNotice: true,
+    });
+    const { data: t2 } = await db
+      .from("tenants").select("billing_due_on").eq("id", A.tenantId).single();
+    expect(t2!.billing_due_on).not.toBeNull();
+  });
+
+  it("listBilling เรียงครบกำหนดเร็วสุดก่อน และบอกว่าใครยังไม่ได้ตั้งค่างวด", async () => {
+    const rows = await listBilling(admin());
+    const mine = rows.find((r) => r.tenantId === A.tenantId);
+    expect(mine?.subscription?.plan).toBe("แพ็กเกจทดสอบ");
+    expect(mine?.payments.length).toBeGreaterThan(0);
+
+    // ลูกค้าที่ไม่มี subscription ต้องอยู่ท้ายรายการเสมอ
+    const firstMissing = rows.findIndex((r) => !r.subscription);
+    if (firstMissing >= 0) {
+      expect(rows.slice(firstMissing).every((r) => !r.subscription)).toBe(true);
+    }
+  });
+});
+
+// ── ระงับการใช้งาน: ต้อง**ไม่**ไปตัดที่ RLS ──────────────────────────────────
+describe("★ ระงับลูกค้า = กันที่ชั้นแอป ไม่ใช่ตัดข้อมูลที่ DB", () => {
+  it("ลูกค้าที่ถูกระงับยังอ่านข้อมูลตัวเองได้ที่ระดับ DB", async () => {
+    const db = admin();
+    await db.from("tenants").update({ is_active: false }).eq("id", A.tenantId);
+
+    const { data, error } = await asA.from("transactions").select("tx_id").limit(1);
+    expect(error, "ตัดที่ RLS = ลูกค้าเข้าข้อมูลภาษีตัวเองไม่ได้ และ trigger/RPC จะพังตาม").toBeNull();
+    expect(data).toBeTruthy();
+
+    await db.from("tenants").update({ is_active: true }).eq("id", A.tenantId);
+  });
+
+  it("ลูกค้าปลดระงับ/เลื่อนวันครบกำหนดให้ตัวเองไม่ได้ (tenants ไม่มี policy update)", async () => {
+    const db = admin();
+    await db.from("tenants").update({ is_active: false }).eq("id", A.tenantId);
+
+    await asA.from("tenants").update({ is_active: true }).eq("id", A.tenantId);
+    await asA.from("tenants").update({ billing_due_on: "2099-01-01" }).eq("id", A.tenantId);
+
+    const { data } = await db
+      .from("tenants").select("is_active, billing_due_on").eq("id", A.tenantId).single();
+    expect(data!.is_active, "ลูกค้าปลดระงับตัวเองได้ = ปุ่มระงับไร้ความหมาย").toBe(false);
+    expect(data!.billing_due_on).not.toBe("2099-01-01");
+
+    await db.from("tenants").update({ is_active: true }).eq("id", A.tenantId);
+  });
+
+  it("★ ลูกค้าอ่าน billing_due_on ของตัวเองได้ แต่ยังอ่าน subscriptions ไม่ได้เลย", async () => {
+    // นี่คือเหตุผลทั้งหมดที่เลือกมิเรอร์วันครบกำหนดลง tenants แทนการเปิด policy ให้อ่าน subscriptions
+    const { data: t } = await asA.from("tenants").select("billing_due_on").maybeSingle();
+    expect(t, "ลูกค้าต้องอ่านแถวตัวเองได้ ไม่งั้นแถบแจ้งเตือนขึ้นไม่ได้").toBeTruthy();
+
+    const { data: s } = await asA.from("subscriptions").select("price");
+    expect(s ?? [], "ราคาที่ลูกค้าจ่ายห้ามหลุดถึงเบราว์เซอร์").toHaveLength(0);
   });
 });

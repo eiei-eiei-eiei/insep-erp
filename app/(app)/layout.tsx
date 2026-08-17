@@ -2,7 +2,9 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { workspacesFor, type Role } from "@/lib/shared/workspaces";
 import { brandingFromSettings } from "@/lib/shared/branding";
+import { bangkokDateISO } from "@/lib/shared/datetime";
 import { Nav } from "./_components/nav";
+import { BillingNotice } from "./_components/billing-notice";
 
 /**
  * Layout ของทุกหน้าหลัง login — guard auth + โหลด profile (role/ชื่อ) + แบรนด์ของกิจการ
@@ -30,8 +32,12 @@ export default async function AppLayout({
       .eq("id", user.id)
       .single(),
     supabase.from("app_settings").select("kind, value").in("kind", ["brand_name", "brand_color", "logo_url", "default_mode"]),
-    // โมดูลที่ลูกค้าซื้อ (4.5) — RLS กรองเหลือแถวของ tenant ตัวเองอยู่แล้ว
-    supabase.from("tenants").select("modules_enabled").maybeSingle(),
+    // โมดูลที่ลูกค้าซื้อ (4.5) + สถานะการใช้งาน/ค่างวด (0037)
+    // RLS กรองเหลือแถวของ tenant ตัวเองอยู่แล้ว — ต่อคอลัมน์ในคิวรีเดิม ไม่เพิ่ม query ใหม่
+    supabase
+      .from("tenants")
+      .select("modules_enabled, is_active, is_platform, billing_due_on, billing_notice")
+      .maybeSingle(),
   ]);
 
   // ยังใช้รหัสที่คนอื่นตั้งให้ → ต้องเปลี่ยนก่อนเข้าใช้งาน (0031)
@@ -39,12 +45,27 @@ export default async function AppLayout({
   // (ทำใน middleware จะต้องยิง DB ทุก request รวมถึงไฟล์ static)
   if (profile?.must_change_password) redirect("/change-password");
 
+  // ── ระงับการใช้งาน (0037) ──────────────────────────────────────────────────
+  // 🚨 เทียบ `=== false` เท่านั้น — อ่านค่าไม่ได้/เป็น null **ห้ามถือว่าถูกระงับ**
+  //    ไม่งั้นเน็ตสะดุดทีเดียว ลูกค้าที่จ่ายเงินแล้วหลุดออกทั้งระบบ (fail-open เหมือน D53)
+  // 🚨 ข้ามเมื่อเป็น tenant ของแอดมินแพลตฟอร์ม — แถวนั้นตั้ง is_active = false ไว้ตั้งแต่ 0035
+  //    โดยตั้งใจ (กันโผล่ใน tenant_branding) ไม่ได้แปลว่าถูกระงับ
+  if (tenant?.is_active === false && !tenant?.is_platform) redirect("/suspended");
+
   const role = (profile?.role ?? "viewer") as Role;
   const displayName = profile?.display_name ?? profile?.username ?? user.email ?? "ผู้ใช้";
   const branding = brandingFromSettings(settings);
 
+  // แจ้งเตือนค่าบริการ — เฉพาะเจ้าของกิจการ และเฉพาะรายที่ยังเปิดการเตือนไว้
+  // (พนักงานขาย/คลังเห็นแล้วทำอะไรไม่ได้ · เป็นเรื่องน่าอายของเจ้าของด้วย)
+  const billingDueOn =
+    role === "main" && tenant?.billing_notice !== false
+      ? ((tenant?.billing_due_on as string | null) ?? null)
+      : null;
+
   return (
     <div data-brand={branding.color} className="min-h-screen bg-page text-ink">
+      <BillingNotice dueOn={billingDueOn} todayISO={bangkokDateISO()} />
       <Nav
         workspaces={workspacesFor(role, tenant?.modules_enabled as string[] | null)}
         displayName={displayName}
