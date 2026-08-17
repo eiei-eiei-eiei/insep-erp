@@ -37,6 +37,8 @@
 
 - งานถือว่าเสร็จเมื่อ: `npm run build` && `npm run lint` && `npm run test` ผ่านทั้งหมด แล้วให้ผู้ใช้เปิด `npm run dev` ตรวจใน browser
 - แก้ schema ผ่านไฟล์ migration ใน `supabase/migrations/` เท่านั้น (ห้ามแก้มือใน dashboard แล้วไม่จด)
+  · มี **หลาย DB** แล้ว (ของเจ้าของ + ของลูกค้า) → ลง migration ด้วย `npm run db:push:all` (D57)
+  ไม่ใช่ `supabase link` สลับทีละก้อน · ปริยายเป็น dry-run ต้อง `-- --apply` ถึงลงจริง
 - Logic เงิน/ดีกรี/สต็อก อยู่ใน `lib/` หรือ Postgres function — ห้ามฝังใน component
 - ไฟล์ยาวให้แตกตามโดเมนเหมือนโครงเดิม (`_js_*.html` เดิม → module แยก) — ผู้ใช้เคยเจ็บจากไฟล์ monolith มาแล้ว
 - **Definition of Done ต่อ phase (ทำครบทุกข้อ):**

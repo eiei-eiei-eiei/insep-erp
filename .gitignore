@@ -19,6 +19,9 @@
 /supabase/.branches
 /supabase/.temp
 
+# ⛔ รายชื่อ DB ที่เราถือ — มีรหัสผ่าน DB อยู่ในนั้น (ตัวอย่างอยู่ที่ targets.example.json)
+/supabase/targets.json
+
 # ⛔ ข้อมูลจริง (ใช้ยื่นภาษี) — ห้ามขึ้น git เด็ดขาด
 /migration/export/
 /migration/data/

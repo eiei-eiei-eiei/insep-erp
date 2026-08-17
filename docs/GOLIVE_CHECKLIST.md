@@ -324,6 +324,29 @@ _(ข้ามตามที่ผู้ใช้ตัดสินใจ — �
 
 ---
 
+## ตั้ง `db:push:all` — ลง migration ทุก DB ในคำสั่งเดียว (D57) · ทำครั้งเดียว
+
+ทำครั้งเดียวจบ หลังจากนั้นทุก migration ใหม่ใช้คำสั่งเดียว ไม่ต้อง `supabase link` สลับไปมาอีก
+
+- [ ] ก๊อป `supabase/targets.example.json` → `supabase/targets.json`
+- [ ] **หา connection string ของแต่ละ DB**: Supabase Dashboard → เลือก project →
+      ปุ่ม **Connect** ด้านบน → แท็บ **Connection String** → เลือก **Session pooler**
+      → ก๊อป URI มาใส่ช่อง `dbUrl`
+- [ ] แทน `[YOUR-PASSWORD]` ด้วยรหัสผ่าน DB จริง (คนละตัวกับรหัสล็อกอิน Supabase —
+      ถ้าจำไม่ได้: Settings → Database → **Reset database password**)
+      ⚠️ รหัสมีอักขระพิเศษ (`@ / : # ?`) ต้องแปลงเป็น percent-encoding
+      → ตั้งรหัสเป็น **ตัวอักษรกับตัวเลขล้วน** ง่ายกว่ามาก
+- [ ] `npm run db:push:all` (โหมดดูอย่างเดียว) — ต้องขึ้น ✅ ทุกก้อน ไม่มี ⚠️
+- [ ] ต่อไปเวลาลงจริง: `npm run db:push:all -- --apply --backup="D:/insep-erp-backup/<วันที่>"`
+
+> 🚨 `supabase/targets.json` **มีรหัสผ่าน DB อยู่ข้างใน** — `.gitignore` กันไว้แล้ว
+> แต่ถ้าย้ายเครื่อง/ก๊อปโฟลเดอร์ ต้องระวังไม่ให้ไฟล์นี้หลุดไปกับ zip
+>
+> ✅ สคริปต์จะ**หยุดก่อนแตะ DB** ถ้าไฟล์ env กับ connection string ชี้คนละ project
+> (กันเคสก๊อปผิดก้อน = migration ลูกค้าลงใน DB ธุรกิจตัวเอง)
+
+---
+
 ## หมายเหตุถาวร
 - ข้อมูลทดสอบทั้งหมดใช้ marker `EID99` / `T-*` / "ทดสอบ" → ก่อน cutover จริงรัน `supabase/seed/cleanup_test.sql` ให้สะอาด
 - อย่าลืม rotate `ANTHROPIC_API_KEY` + secrets ที่เคยอยู่ในโค้ดเดิม (ถือว่า leaked แล้ว)

@@ -579,7 +579,8 @@ financial gain of **anyone** involved in **any part of the production** of the p
   ออกแบบให้ **รับ client เข้ามา** ไว้แล้วตั้งแต่แรก จึงไม่ต้องรื้อ
 - 🚨 deployment เดียวถือกุญแจแม่ของทุก DB = เป้าหมายที่คุ้มค่าที่สุดในระบบ
 - ⚠️ **ตัวกินเวลาจริงของ tier นี้ไม่ใช่หน้าจอ** แต่คือ migration + backup ต้องวนทุก DB ทุกเวอร์ชัน
-  → ถ้าจะลงแรง ลงที่ **สคริปต์ fleet ที่วนไฟล์ env** ก่อน คุ้มกว่าทำ UI
+  → ✅ **ทำแล้ว (2026-08-17 · D57)**: `npm run db:push:all` วนทุก DB ในคำสั่งเดียว
+  (สำรองข้อมูลให้ด้วยถ้าใส่ `--backup=`) · เพิ่ม DB ก้อนใหม่ = เพิ่ม 1 บล็อกใน `supabase/targets.json`
 
 ### 🪤 กับดักที่ต้องรู้ก่อนแตะงานนี้ต่อ
 - **ตารางใหม่ทุกตัวของแพลตฟอร์มต้อง `enable rls` (ไม่มี policy) + `revoke all from anon, authenticated`**

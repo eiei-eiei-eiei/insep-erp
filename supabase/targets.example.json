@@ -1,0 +1,12 @@
+[
+  {
+    "name": "กิจการเจ้าของ (Vercel: insep-erp)",
+    "env": ".env.local.production-backup",
+    "dbUrl": "postgresql://postgres.vmhiwlxdyhatucioalzp:[YOUR-PASSWORD]@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres"
+  },
+  {
+    "name": "ลูกค้าทุกเจ้า (Vercel: proof-app)",
+    "env": ".env.local.testing-backup",
+    "dbUrl": "postgresql://postgres.tnuxrufpzeyuvwdmkojv:[YOUR-PASSWORD]@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres"
+  }
+]
