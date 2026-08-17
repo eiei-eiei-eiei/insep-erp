@@ -204,9 +204,19 @@ export function summarize(results: PingResult[]): { lines: string[]; failed: Pin
   return { lines, failed };
 }
 
-/** 1 บรรทัดสำหรับ log ไฟล์ — สั้น อ่านย้อนหลังรู้เรื่อง */
+/**
+ * 1 บรรทัดสำหรับ log ไฟล์ — สั้น อ่านย้อนหลังรู้เรื่อง
+ *
+ * ★ ใช้ **เวลาเครื่อง** ไม่ใช่ UTC (`toISOString`) — ไฟล์นี้มีไว้ให้คนอ่านตอบคำถาม
+ *   "วันนี้ปิงไปแล้วหรือยัง" · UTC ช้ากว่าไทย 7 ชม. → รอบที่ยิงหลังเที่ยงคืน
+ *   จะถูกจดเป็น**วันก่อนหน้า** ซึ่งตอบคำถามนั้นผิดเลย
+ *   (log ฝั่ง GitHub Actions ไม่ได้เขียนไฟล์นี้ จึงไม่มีปัญหาเรื่อง tz ของเครื่อง CI)
+ */
 export function logLine(now: Date, results: PingResult[]): string {
-  const stamp = now.toISOString().replace("T", " ").slice(0, 19);
+  const p = (n: number) => String(n).padStart(2, "0");
+  const stamp =
+    `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ` +
+    `${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`;
   const body = results.map((r) => `${r.name}=${r.ok > 0 ? `ok/${r.ms}ms` : "FAIL"}`).join(" · ");
   return `${stamp}  ${results.every((r) => r.ok > 0) ? "OK  " : "FAIL"}  ${body}`;
 }

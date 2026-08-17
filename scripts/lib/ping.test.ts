@@ -214,10 +214,17 @@ describe("summarize / logLine", () => {
   });
 
   it("log 1 บรรทัดบอกผลรวมและรายก้อน", () => {
-    const line = logLine(new Date("2026-08-17T13:30:05Z"), [ok, bad]);
-    expect(line).toContain("2026-08-17 13:30:05");
+    // ★ สร้าง Date จากค่าเวลา "ท้องถิ่น" เพื่อให้เทสไม่ผูกกับ timezone ของเครื่องที่รัน
+    const at = new Date(2026, 7, 17, 20, 30, 5);
+    const line = logLine(at, [ok, bad]);
+    expect(line).toContain("2026-08-17 20:30:05");
     expect(line).toContain("FAIL");
     expect(line).toContain("ลูกค้า=ok/120ms");
-    expect(logLine(new Date("2026-08-17T13:30:05Z"), [ok])).toContain("OK");
+    expect(logLine(at, [ok])).toContain("OK");
+  });
+
+  it("เวลาที่จดคือเวลาเครื่อง ไม่ใช่ UTC (รอบหลังเที่ยงคืนต้องไม่กลายเป็นวันก่อนหน้า)", () => {
+    const line = logLine(new Date(2026, 7, 17, 0, 5, 0), [ok]);
+    expect(line.startsWith("2026-08-17 00:05:00")).toBe(true);
   });
 });

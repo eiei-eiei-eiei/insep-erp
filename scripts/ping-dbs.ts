@@ -88,14 +88,23 @@ async function pingTarget(t: PingTarget, tries: number): Promise<PingResult> {
   return { name: t.name, ref, ok, tries, ms, detail };
 }
 
-/** เขียน log ต่อท้าย + ตัดบรรทัดเก่าทิ้ง (ไฟล์ต้องไม่โตไม่จำกัด) */
+/**
+ * เขียน log ต่อท้าย + ตัดบรรทัดเก่าทิ้ง (ไฟล์ต้องไม่โตไม่จำกัด)
+ *
+ * 🪤 ต้องขึ้นต้นไฟล์ด้วย **BOM** — ชื่อก้อนเป็นภาษาไทย และ PowerShell 5.1
+ *    (`Get-Content`) กับเอดิเตอร์เก่าบน Windows อ่าน UTF-8 ที่ไม่มี BOM เป็น
+ *    codepage 874 → ได้ "เธเธดเธ…" อ่านไม่ออก · ไฟล์นี้มีไว้ให้คนอ่าน ถ้าอ่านไม่ออกก็ไร้ค่า
+ */
 function writeLog(line: string) {
+  const BOM = "﻿";
   try {
     mkdirSync(path.dirname(LOG_FILE), { recursive: true });
-    appendFileSync(LOG_FILE, line + "\n", "utf8");
-    const lines = readFileSync(LOG_FILE, "utf8").split(/\r?\n/).filter(Boolean);
+    if (existsSync(LOG_FILE)) appendFileSync(LOG_FILE, line + "\n", "utf8");
+    else writeFileSync(LOG_FILE, BOM + line + "\n", "utf8");
+
+    const lines = readFileSync(LOG_FILE, "utf8").replace(/^﻿/, "").split(/\r?\n/).filter(Boolean);
     if (lines.length > LOG_KEEP) {
-      writeFileSync(LOG_FILE, lines.slice(-LOG_KEEP).join("\n") + "\n", "utf8");
+      writeFileSync(LOG_FILE, BOM + lines.slice(-LOG_KEEP).join("\n") + "\n", "utf8");
     }
   } catch {
     // log เขียนไม่ได้ต้องไม่ทำให้การปิงล้มเหลว — หน้าที่หลักคือปิง ไม่ใช่จด
