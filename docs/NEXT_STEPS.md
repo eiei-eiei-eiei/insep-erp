@@ -517,10 +517,42 @@ route `/platform` · requirement เต็ม `docs/ADMIN_APP_REQUIREMENTS.md` �
 | `LOGIN_EMAIL_DOMAIN` | ❌ **ห้ามตั้ง** | เปลี่ยน = บัญชีที่สร้างไว้แล้วล็อกอินไม่ได้ทั้งหมด (D56) |
 | `NEXT_PUBLIC_ROOT_DOMAIN` | ❌ ยังไม่ตั้ง | ตั้งเมื่อซื้อโดเมน + ผูก wildcard แล้วเท่านั้น |
 
+### 10.1.1 อยู่ Hobby ระหว่างพัฒนาได้ไหม (ตอบคำถามผู้ใช้ 2026-08-17 · ตรวจ docs Vercel วันเดียวกัน)
+
+**สร้าง project เพิ่มได้**: Hobby จำกัด **200 project/บัญชี** และ **25 project ต่อ 1 git repo**
+→ ผัง 3 project จาก repo เดียวไม่ชนเพดานเลย
+
+**เส้นแบ่งเชิงพาณิชย์ตามนิยามของ Vercel เอง**: *"any Deployment that is used for the purpose of
+financial gain of **anyone** involved in **any part of the production** of the project"*
+→ ตัวอย่างที่เขายกล้วนเป็นเว็บที่รับเงิน/โฆษณา แต่ประโยคครอบกว้างกว่านั้นมาก
+→ **วันที่ลูกค้ารายแรกจ่ายเงิน = เข้านิยามแบบไม่มีข้อโต้แย้ง ต้องอยู่ Pro ก่อนหน้านั้น**
+
+🚨 **ความเสี่ยงที่แท้จริงไม่ใช่ค่าปรับ แต่คือ "บัญชีเดียวโดนระงับ = ดับพร้อมกันทุก project"**
+`insep-erp` (ERP ที่ใช้เดินธุรกิจจริงทุกวัน) อยู่บัญชีเดียวกับ `proof-app`
+→ Vercel ระงับบัญชีเมื่อไหร่ **โรงกลั่นทำงานไม่ได้พร้อมกับลูกค้าล่มทั้งหมด**
+→ เกณฑ์ที่ควรใช้จึงเป็น **"อัปเป็น Pro ก่อนวันที่ลูกค้ารายแรกเริ่มใช้งานจริง"** ไม่ใช่ก่อนวันเก็บเงิน
+
+**ข้อจำกัด Hobby ที่กระทบแผนนี้จริง ๆ** (นอกเหนือจากเรื่องเชิงพาณิชย์):
+| เรื่อง | Hobby | ผลกับเรา |
+|---|---|---|
+| Deployment Protection scope | `Standard` เท่านั้น | production URL ของ `proof-admin` **ล็อกไม่ได้** |
+| Concurrent builds | 1 | push ครั้งเดียว 3 project ต่อคิวกัน — ช้า ไม่พัง |
+| Deployments/วัน | 100 | 3 project/push → push ได้ ~33 ครั้ง/วัน · พอ |
+| Runtime logs | **เก็บ 1 ชั่วโมง** (Pro 1 วัน) | ลูกค้าโทรแจ้งปัญหาเมื่อวาน = log หายไปแล้ว |
+| repo ใต้ GitHub organization | **ต่อไม่ได้เลย** | ถ้า repo อยู่ใต้ org ต้องอยู่ Pro ตั้งแต่วันแรก |
+| Email support | ไม่มี | |
+
 - **แอดมินต้องแยก project แม้ชี้ DB เดียวกับ `insep-app`** — ตั้ง flag บน project ลูกค้าเมื่อไหร่
   ลูกค้าเปิด `/platform` จะเจอหน้า login แทน 404 = รู้ว่ามีระบบคุมลูกค้าอยู่
-- **เปิด Vercel Deployment Protection (password) ที่ project แอดมิน** — ล็อกชั้นนอกที่ไม่กระทบลูกค้า
+- **เปิด Vercel Deployment Protection ที่ project แอดมิน** — ล็อกชั้นนอกที่ไม่กระทบลูกค้า
   และเป็นตัวชดเชยที่ตรงจุดที่สุดของการตัด MFA ทิ้ง (D52)
+  ⚠️ **แก้ข้อมูลผิดในเอกสารเดิม (ตรวจ docs Vercel 2026-08-17)**: ที่เคยเขียนว่าใช้ **Password
+  Protection** นั้น**ผิด** — ของนั้นเป็น Enterprise หรือ add-on ของ Pro ราคา **$150/เดือน**
+  → ตัวที่ถูกคือ **Vercel Authentication + scope "All Deployments"** (ให้เฉพาะคนที่ล็อกอิน
+  บัญชี Vercel ของทีมเราเข้าได้) · **แถมเหมาะกว่า password ด้วย** เพราะแอดมินมีคนเดียวคือเจ้าของทีม
+  🚨 scope `All Deployments` เป็นของ **Pro ขึ้นไป** — บน Hobby ได้แค่ `Standard Protection`
+  ซึ่ง**ไม่คุ้ม production URL** = URL หลักของ `proof-admin` เปิดสาธารณะ (เหลือด่าน login +
+  `platform_admins` ตามเดิม ยังไม่รั่ว แต่หายไป 1 ชั้น)
 - ค่า env ของ project ลูกค้า/แอดมิน เอาจาก `.env.local.testing-backup` (ชี้ `tnuxr…` อยู่แล้ว)
 - เข้าใช้จริง: เปิด URL ของ project แอดมิน → หน้า login → ล็อกอิน → **ระบบพาไป `/platform` เอง**
   (`admin` เป็น subdomain สงวน → ผูก `admin.<โดเมน>` ได้โดยไม่ชน slug ลูกค้า)
