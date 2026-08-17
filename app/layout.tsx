@@ -14,10 +14,12 @@ const notoThai = Noto_Sans_Thai({
 });
 
 export const metadata: Metadata = {
-  title: "Insep ERP",
-  description: "ระบบ ERP ภายในโรงกลั่นสุราคราฟต์ — ผลิต · ขาย · บัญชี · รายงานราชการ",
+  // ★ ชื่อสินค้าอยู่ที่ lib/shared/branding.ts (PRODUCT_NAME) — ที่นี่เขียนตรง ๆ เพราะ
+  //   metadata ของ Next ต้องเป็นค่าคงที่ตอน build · เปลี่ยนชื่อสินค้าเมื่อไหร่ต้องแก้ทั้งสองที่
+  title: "PROOF",
+  description: "ระบบจัดการโรงกลั่นสุราคราฟต์ — ผลิต · ขาย · บัญชี · รายงานราชการ",
   manifest: "/manifest.webmanifest",
-  appleWebApp: { capable: true, statusBarStyle: "default", title: "Insep ERP" },
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "PROOF" },
   icons: { icon: "/icon.svg", apple: "/apple-icon.png" }, // iOS โฮมสกรีนต้องเป็น PNG
 };
 

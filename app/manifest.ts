@@ -6,9 +6,9 @@ import type { MetadataRoute } from "next";
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Insep ERP — ผลิต · ขาย · บัญชี",
-    short_name: "Insep ERP",
-    description: "ระบบ ERP ภายในโรงกลั่นสุราคราฟต์ — ผลิต · ขาย · บัญชี · รายงานราชการ",
+    name: "PROOF — ผลิต · ขาย · บัญชี",
+    short_name: "PROOF",
+    description: "ระบบจัดการโรงกลั่นสุราคราฟต์ — ผลิต · ขาย · บัญชี · รายงานราชการ",
     start_url: "/",
     display: "standalone",
     orientation: "portrait-primary",

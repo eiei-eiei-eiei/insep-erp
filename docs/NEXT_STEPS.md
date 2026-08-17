@@ -500,8 +500,22 @@ route `/platform` · requirement เต็ม `docs/ADMIN_APP_REQUIREMENTS.md` �
 | project | ชี้ DB | `PLATFORM_ADMIN` | ใครเข้า |
 |---|---|---|---|
 | `insep-erp` (มีแล้ว) | `vmhiwlxdyhatucioalzp` | ไม่ตั้ง | เจ้าของ ใช้ทำงานจริง |
-| `insep-app` (ยังไม่สร้าง) | `tnuxrufpzeyuvwdmkojv` | ไม่ตั้ง → `/platform` = **404** | ลูกค้าทุกเจ้า |
-| `insep-admin` (ยังไม่สร้าง) | `tnuxrufpzeyuvwdmkojv` | **`=1`** | เจ้าของระบบคนเดียว |
+| `proof-app` (ยังไม่สร้าง) | `tnuxrufpzeyuvwdmkojv` | ไม่ตั้ง → `/platform` = **404** | ลูกค้าทุกเจ้า |
+| `proof-admin` (ยังไม่สร้าง) | `tnuxrufpzeyuvwdmkojv` | **`=1`** | เจ้าของระบบคนเดียว |
+
+> ชื่อสินค้า = **PROOF** (เคาะ 2026-08-17 · D56) — ชื่อ project กลายเป็น URL ฟรี `<ชื่อ>.vercel.app`
+> **ยังไม่ต้องซื้อโดเมน**: ไม่ตั้ง `NEXT_PUBLIC_ROOT_DOMAIN` = โหมดลิงก์เดียว ทุก tenant ใช้ URL เดียวกัน
+> (subdomain เป็นของแต่งหน้าล้วน ๆ ตั้งแต่ D48 — ไม่มีก็ล็อกอินได้ปกติ)
+
+**env ที่ต้องตั้งบน `proof-app`** (ก๊อปค่าจาก `.env.local.testing-backup`):
+| ตัวแปร | จำเป็น | เหตุผล |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` · `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | แอปเข้า DB ไม่ได้เลยถ้าไม่มี |
+| `SUPABASE_SERVICE_ROLE_KEY` | ✅ | จัดการผู้ใช้ · LINE · snapshot/restore พังทั้งหมดถ้าไม่มี |
+| `ANTHROPIC_API_KEY` · `SCAN_DAILY_LIMIT` | ไม่ | มีแค่ฟีเจอร์สแกนใบเสร็จ (ตั้งใจจะเลิกทำ) · ไม่ตั้ง = ปุ่มขึ้นข้อความบอกเอง ไม่พัง |
+| `PLATFORM_ADMIN` | ❌ **ห้ามตั้ง** | ตั้งเมื่อไหร่ ลูกค้าเปิด `/platform` เจอหน้า login แทน 404 = รู้ว่ามีระบบคุมลูกค้า |
+| `LOGIN_EMAIL_DOMAIN` | ❌ **ห้ามตั้ง** | เปลี่ยน = บัญชีที่สร้างไว้แล้วล็อกอินไม่ได้ทั้งหมด (D56) |
+| `NEXT_PUBLIC_ROOT_DOMAIN` | ❌ ยังไม่ตั้ง | ตั้งเมื่อซื้อโดเมน + ผูก wildcard แล้วเท่านั้น |
 
 - **แอดมินต้องแยก project แม้ชี้ DB เดียวกับ `insep-app`** — ตั้ง flag บน project ลูกค้าเมื่อไหร่
   ลูกค้าเปิด `/platform` จะเจอหน้า login แทน 404 = รู้ว่ามีระบบคุมลูกค้าอยู่

@@ -28,8 +28,13 @@ export type Branding = {
   defaultMode: ColorMode;
 };
 
+/**
+ * แบรนด์ที่ใช้เมื่อ tenant **ยังไม่ได้ตั้งชื่อของตัวเอง** (ลูกค้าใหม่ที่เพิ่งเปิดระบบ)
+ * → ต้องเป็นชื่อสินค้า ไม่ใช่ชื่อกิจการของใครคนใดคนหนึ่ง
+ * ★ กิจการที่ตั้ง `app_settings.brand_name` ไว้แล้วไม่ได้รับผลจากค่านี้เลย
+ */
 export const DEFAULT_BRANDING: Branding = {
-  name: "Insep ERP",
+  name: "PROOF",
   color: "steel",
   logoUrl: null,
   defaultMode: "light",
@@ -37,9 +42,9 @@ export const DEFAULT_BRANDING: Branding = {
 
 const COLOR_KEYS = new Set<string>(BRAND_COLORS.map((c) => c.key));
 
-/** ชื่อสินค้าที่ต่อท้าย "powered by" บนหน้า login (co-brand) — ยังไม่เคาะชื่อจริง
- *  เก็บไว้ที่เดียวเพื่อให้เปลี่ยนทีหลังจบในบรรทัดนี้บรรทัดเดียว */
-export const PRODUCT_NAME = "Insep ERP";
+/** ชื่อสินค้าที่ต่อท้าย "powered by" บนหน้า login (co-brand)
+ *  เก็บไว้ที่เดียวเพื่อให้เปลี่ยนจบในบรรทัดเดียว (เคาะชื่อ "PROOF" 2026-08-17) */
+export const PRODUCT_NAME = "PROOF";
 
 /**
  * คำโปรยใต้ชื่อบนหน้า login **ตอนไม่มี subdomain** (โหมดลิงก์เดียว)
@@ -49,7 +54,6 @@ export const PRODUCT_NAME = "Insep ERP";
  *   → ลูกค้าที่เปิดลิงก์เดโมมาเห็นแล้วงงว่าเข้าผิดที่รึเปล่า (ยังไม่ซื้อโดเมน จึงยังไม่มี
  *   subdomain ต่อลูกค้า — ทุกคนเห็นหน้านี้หน้าเดียวกันหมด)
  *
- * เคาะชื่อสินค้าจริงเมื่อไหร่ → แก้ที่นี่กับ PRODUCT_NAME จบ ไม่ต้องไล่หาในหน้าจอ
  */
 export const PRODUCT_TAGLINE = "ระบบจัดการโรงกลั่นสุราคราฟต์ — ผลิต · บัญชี · ขาย";
 
