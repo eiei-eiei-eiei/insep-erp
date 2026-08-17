@@ -353,6 +353,55 @@ _(ข้ามตามที่ผู้ใช้ตัดสินใจ — �
 
 ---
 
+## กัน DB แผนฟรีหลับ (D60 · migration 0038) · ทำครั้งเดียว
+
+> แผนฟรี pause โปรเจกต์ที่ไม่มีกิจกรรมใน **7 วัน** · โดนแล้วแอปล่มและ**ต้องกด Restore เองใน dashboard**
+> → ปิงวันละครั้งจาก 2 ชั้น: GitHub Actions (หลัก) + Task Scheduler ในเครื่อง (สำรอง)
+
+**ขั้นที่ 1 — ลงฟังก์ชัน `ping()` ให้ทุก DB**
+- [ ] `npm run db:push:all` (ดูก่อน — ต้องเห็น `0038_ping` ค้างอยู่ทุกก้อน)
+- [ ] `npm run db:push:all -- --apply`
+- [ ] `npm run db:ping:all` → ต้องขึ้น ✅ ทุกก้อน พร้อมเวลาใน DB
+
+**ขั้นที่ 2 — เปิดชั้นหลัก (GitHub Actions)**
+- [ ] `git add -A && git commit && git push` (workflow กับ `supabase/fleet.json` ต้องขึ้น git ก่อนถึงจะทำงาน)
+- [ ] GitHub → repo → แท็บ **Actions** → เลือก **keep Supabase awake** → ปุ่ม **Run workflow** →
+      รอ ~1 นาที ต้องขึ้นติ๊กเขียว (กดเข้าไปดู log ควรเห็น ✅ ทุกก้อน)
+- [ ] ตรวจว่าจะได้รับเมลเวลาพัง: GitHub → รูปโปรไฟล์ → Settings → **Notifications** →
+      หัวข้อ **Actions** → ติ๊ก **Send notifications for failed workflows only** (+ ใส่อีเมลที่อ่านจริง)
+- [ ] ตรวจว่าอีเมลของ **ทั้ง 2 แอคเคาท์ Supabase** (D58) เข้าเมลที่คุณอ่าน — Supabase ส่งเตือน
+      ล่วงหน้า ~1 สัปดาห์ก่อน pause ซึ่งเป็นตะแกรงชั้นสุดท้าย
+
+**ขั้นที่ 3 — เปิดชั้นสำรอง (Windows Task Scheduler)** · วางทั้งก้อนใน PowerShell
+- [ ] ```powershell
+      $act = New-ScheduledTaskAction -Execute "C:\Program Files\nodejs\npm.cmd" -Argument "run db:ping:all -- --notify" -WorkingDirectory "D:\insep-erp"
+      $trg = New-ScheduledTaskTrigger -Daily -At 20:30
+      $set = New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
+      Register-ScheduledTask -TaskName "PROOF - ping Supabase" -Action $act -Trigger $trg -Settings $set -Description "กัน Supabase แผนฟรีหลับ (ชั้นสำรองของ GitHub Actions) - D60"
+      ```
+- [ ] ทดสอบเดี๋ยวนั้น: `Start-ScheduledTask -TaskName "PROOF - ping Supabase"` แล้วเปิดดู `logs\ping.log`
+      → ต้องมีบรรทัดใหม่ขึ้นท้ายไฟล์ว่า `OK`
+- [ ] ลบทิ้งเมื่อไม่ใช้: `Unregister-ScheduledTask -TaskName "PROOF - ping Supabase" -Confirm:$false`
+
+> `StartWhenAvailable` = ถ้าเครื่องปิด/หลับตอน 20:30 มันจะ**ยิงชดเชยให้เองหลังเปิดเครื่อง** ·
+> `WakeToRun` (ปลุกเครื่องมายิง) ตั้งให้แล้วแต่ **อย่าพึ่งพา** — นโยบายพลังงาน/Modern Standby/แบต
+> ทำให้ไม่ชัวร์ · จะมีหน้าต่างดำแวบ ~2 วินาที และ**เด้งหน้าต่างเตือนเฉพาะตอนปิงไม่ผ่าน**
+
+**🪤 ทุกครั้งที่รับลูกค้าที่แยก DB (ทำ 4 ขั้นนี้ให้ครบ)**
+- [ ] เติมบล็อกใหม่ใน `supabase/targets.json`
+- [ ] `npm run db:push:all -- --apply` (DB ใหม่ต้องมี `ping()` ด้วย)
+- [ ] `npm run fleet:sync` แล้ว `git add supabase/fleet.json && git commit && git push`
+      ← **ลืมข้อนี้ = DB ลูกค้าหลับใน 7 วัน** · `db:push:all` จะขึ้น ⚠️ เตือนให้ถ้าลืม
+- [ ] สร้าง Vercel project + ตั้ง env (NEXT_STEPS 10.1) — ไม่เกี่ยวกับการปิง
+
+**🪤 ถ้าหยุดพัฒนายาว ๆ**: GitHub ปิด scheduled workflow เองเมื่อ repo ไม่มี commit **60 วัน**
+(มีเมลเตือนก่อน) → เข้าแท็บ Actions กด enable ใหม่ · ระหว่างนั้นชั้นสำรองในเครื่องยังทำงานอยู่
+
+> **ทางออกจริงคืออัป Supabase เป็น Pro** — โปรเจกต์แบบจ่ายเงินไม่ถูก pause เลย
+> วันนั้นลบ workflow + task ทิ้งได้ (ฟังก์ชัน `ping()` เก็บไว้ได้ ไม่มีผลข้างเคียง)
+
+---
+
 ## หมายเหตุถาวร
 - ข้อมูลทดสอบทั้งหมดใช้ marker `EID99` / `T-*` / "ทดสอบ" → ก่อน cutover จริงรัน `supabase/seed/cleanup_test.sql` ให้สะอาด
 - อย่าลืม rotate `ANTHROPIC_API_KEY` + secrets ที่เคยอยู่ในโค้ดเดิม (ถือว่า leaked แล้ว)

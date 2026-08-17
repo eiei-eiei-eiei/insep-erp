@@ -1,0 +1,15 @@
+{
+  "_readme": "ไฟล์นี้สร้างด้วย `npm run fleet:sync` — อย่าแก้มือ · รายชื่อ DB ที่ต้องปิงกันแผนฟรีหลับ (docs/DECISIONS.md D60) · เก็บแค่ค่าสาธารณะที่ติดไปกับ bundle ฝั่ง browser อยู่แล้ว 🚨 ห้ามใส่ service role key / รหัสผ่าน DB ลงไฟล์นี้เด็ดขาด (อยู่ใน git)",
+  "targets": [
+    {
+      "name": "กิจการเจ้าของ (Vercel: insep-erp)",
+      "url": "https://vmhiwlxdyhatucioalzp.supabase.co",
+      "anonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZtaGl3bHhkeWhhdHVjaW9hbHpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1MzUzNDgsImV4cCI6MjEwMDExMTM0OH0.i93J8W8MdeiazcvvBEJm4BD2WgVlLM6Gt-5DsISPozE"
+    },
+    {
+      "name": "ลูกค้าทุกเจ้า (Vercel: proof-app)",
+      "url": "https://tnuxrufpzeyuvwdmkojv.supabase.co",
+      "anonKey": "sb_publishable_w92LVzSAHdqOyjEFR3_s9A_oxljYW_G"
+    }
+  ]
+}

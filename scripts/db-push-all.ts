@@ -18,6 +18,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { argOf, hasFlag, readEnv, die } from "./lib/provision";
 import { checkTarget, maskDbUrl, parseTargets, refFromDbUrl, type DbTarget } from "./lib/db-targets";
+import { parseFleet, unpingedTargets } from "./lib/ping";
 
 /**
  * เรียก npx โดย **ไม่ผ่าน shell**
@@ -53,6 +54,35 @@ function backup(t: DbTarget, ref: string, dir: string): number {
   const out = `${dir.replace(/[/\\]+$/, "")}/${ref}`;
   console.log(`\n   📦 สำรองข้อมูลก่อน → ${out}`);
   return run("tsx", ["scripts/backup-tables.ts", `--env=${t.env}`, `--out=${out}`]);
+}
+
+/**
+ * เตือนเมื่อมี DB ที่เราลง migration ให้ แต่ **ไม่มีใครปิงกันหลับ** (D60)
+ *
+ * ★ ตั้งใจให้ฟ้องที่นี่ เพราะ "รับลูกค้าใหม่" คือจังหวะเดียวที่คนจะแตะ targets.json
+ *   → เป็นจุดที่ลืม `npm run fleet:sync` ได้ง่ายที่สุด และผลของการลืมคือ DB ลูกค้า
+ *   ที่จ่ายเงินแล้วหลับไปเองใน 7 วันโดยไม่มีอะไรฟ้อง
+ * ★ **เตือนแต่ไม่หยุด** — งานลง migration ไม่ควรถูกบล็อกด้วยเรื่องปิง
+ */
+function warnUnpinged(targets: DbTarget[]) {
+  const fleetFile = "supabase/fleet.json";
+  if (!existsSync(fleetFile)) {
+    console.log(`\n⚠️  ยังไม่มี ${fleetFile} — ไม่มีใครปิงกันแผนฟรีหลับเลย · รัน: npm run fleet:sync`);
+    return;
+  }
+
+  let missing: string[];
+  try {
+    missing = unpingedTargets(targets, parseFleet(JSON.parse(readFileSync(fleetFile, "utf8"))));
+  } catch (e) {
+    console.log(`\n⚠️  อ่าน ${fleetFile} ไม่ได้ (${e instanceof Error ? e.message : e}) · รัน: npm run fleet:sync`);
+    return;
+  }
+
+  if (!missing.length) return;
+  console.log(`\n⚠️  ${missing.length} ก้อนนี้ยังไม่อยู่ในรายชื่อปิง = แผนฟรีจะ pause ให้ใน 7 วัน:`);
+  for (const m of missing) console.log(`      • ${m}`);
+  console.log(`      แก้ด้วย:  npm run fleet:sync   แล้ว git add/commit/push`);
 }
 
 function main() {
@@ -93,6 +123,8 @@ function main() {
 
   const bad = rows.filter((r) => r.problems.length);
   if (bad.length) die(`มี ${bad.length} ก้อนตั้งค่าไม่ถูก — แก้ ${file} ให้ครบก่อน (ยังไม่แตะ DB เลย)`);
+
+  warnUnpinged(targets);
 
   if (!apply) {
     console.log(`\n👀 โหมดดูอย่างเดียว — จะแสดงว่าแต่ละก้อนค้าง migration อะไรบ้าง (ไม่แตะ DB)\n`);

@@ -608,6 +608,10 @@ financial gain of **anyone** involved in **any part of the production** of the p
 - ⚠️ **ตัวกินเวลาจริงของ tier นี้ไม่ใช่หน้าจอ** แต่คือ migration + backup ต้องวนทุก DB ทุกเวอร์ชัน
   → ✅ **ทำแล้ว (2026-08-17 · D57)**: `npm run db:push:all` วนทุก DB ในคำสั่งเดียว
   (สำรองข้อมูลให้ด้วยถ้าใส่ `--backup=`) · เพิ่ม DB ก้อนใหม่ = เพิ่ม 1 บล็อกใน `supabase/targets.json`
+- ⚠️ **ตัวกินเวลาที่ 2 ของ tier นี้: DB แผนฟรีหลับเองใน 7 วัน**
+  → ✅ **ทำแล้ว (2026-08-17 · D60)**: `npm run db:ping:all` ปิงทุกก้อน + GitHub Actions ยิงวันละครั้ง
+  · **รับลูกค้าใหม่ต้องทำ 3 คำสั่ง ไม่ใช่ 1**: เติม `targets.json` → `db:push:all -- --apply`
+  → **`npm run fleet:sync` แล้ว `git push`** (ลืมข้อท้าย = DB เขาหลับใน 7 วัน · `db:push:all` เตือนให้)
 
 ### 🪤 กับดักที่ต้องรู้ก่อนแตะงานนี้ต่อ
 - **ตารางใหม่ทุกตัวของแพลตฟอร์มต้อง `enable rls` (ไม่มี policy) + `revoke all from anon, authenticated`**

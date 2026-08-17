@@ -1,0 +1,41 @@
+# กันโปรเจกต์ Supabase แผนฟรี "หลับ" (project pausing) — docs/DECISIONS.md D60
+#
+# แผนฟรีจะ pause โปรเจกต์ที่ไม่มี user activity "พอ" ใน 7 วัน · เอกสาร Supabase บอกว่า
+# "a few user requests to the database each day" พอกันหลับ → ยิงวันละครั้ง ครั้งละ 3 request
+#
+# รายชื่อ DB อ่านจาก supabase/fleet.json ที่อยู่ใน repo (ค่าสาธารณะเท่านั้น ไม่มี secret)
+# → เพิ่มลูกค้าใหม่: npm run fleet:sync แล้ว git push · ไม่ต้องมาแก้ไฟล์นี้
+#
+# 🪤 GitHub ปิด scheduled workflow ให้เองถ้า repo ไม่มี commit 60 วัน (มีเมลเตือนก่อน)
+#    → ถ้าหยุดพัฒนายาว ๆ ต้องเข้ามากด enable ใหม่ · ชั้นสำรองคือ Task Scheduler ในเครื่อง
+#    (docs/GOLIVE_CHECKLIST.md หัวข้อ "กัน DB หลับ")
+name: keep Supabase awake
+
+on:
+  schedule:
+    # 01:17 UTC = 08:17 น. ไทย · เลี่ยงนาทีที่ 0 ที่คิวของ GitHub แน่นสุด (ยิ่งช้า/ยิ่งหลุดรอบ)
+    - cron: "17 1 * * *"
+  workflow_dispatch: # ปุ่มกดรันมือในแท็บ Actions — ใช้ตรวจครั้งแรก/ตอนสงสัย
+
+# ยิงซ้อนกันไม่มีประโยชน์ — รอบใหม่มาก็ยกเลิกรอบเก่าที่ยังค้าง
+concurrency:
+  group: keep-db-awake
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - run: npm ci
+
+      # พังก้อนใดก้อนหนึ่ง = job แดง = GitHub เมลหาเจ้าของ repo (นี่คือระบบแจ้งเตือนของงานนี้)
+      - name: ping ทุก DB
+        run: npx tsx scripts/ping-dbs.ts

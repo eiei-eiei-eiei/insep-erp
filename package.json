@@ -12,6 +12,8 @@
     "test:tenant": "vitest run --config vitest.tenant.config.ts",
     "db:push": "supabase db push",
     "db:push:all": "tsx scripts/db-push-all.ts",
+    "db:ping:all": "tsx scripts/ping-dbs.ts",
+    "fleet:sync": "tsx scripts/fleet-sync.ts",
     "upload:templates": "tsx scripts/upload-pdf-templates.ts",
     "seed:demo-tenant": "tsx scripts/seed-demo-tenant.ts",
     "provision:tenant": "tsx scripts/provision-tenant.ts",
