@@ -1,6 +1,6 @@
 "use server";
 
-import { getPeriodDetail } from "./data";
+import { getPeriodDetail, getPayrollReportSource } from "./data";
 
 /**
  * read wrapper สำหรับ client component (โหลดงวดตอนสลับงวด)
@@ -8,4 +8,9 @@ import { getPeriodDetail } from "./data";
  */
 export async function getPeriodDetailAction(periodId: string) {
   return getPeriodDetail(periodId);
+}
+
+/** ข้อมูลรายงานของปีหนึ่ง (แท็บรายงาน) */
+export async function getPayrollReportAction(year: number) {
+  return getPayrollReportSource(year);
 }

@@ -6,6 +6,7 @@ import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, useSaver, Empt
 import { calcPayrollLine } from "@/lib/payroll/calc";
 import { ratesOn } from "@/lib/payroll/sso";
 import { printSlips, type SlipData } from "@/lib/payroll/slip";
+import { legCoverage, legTotal, suggestLegDate } from "@/lib/payroll/legs";
 import type { PayrollLine } from "@/lib/payroll/types";
 import {
   createPeriodAction,
@@ -26,8 +27,6 @@ import type { PayrollConfig } from "./PayrollApp";
  *    กับยอดที่จ่ายจริงจะเพี้ยนกันทันทีที่แก้เกณฑ์ที่เดียว)
  */
 
-const POST_LABEL = { NET: "เงินเดือน", SSO: "ประกันสังคม", WHT: "ภาษีหัก ณ ที่จ่าย" } as const;
-type PostKind = keyof typeof POST_LABEL;
 
 export function PeriodTab({
   config,
@@ -99,6 +98,7 @@ export function PeriodTab({
         rates,
         config.settings,
         { workDaysStd: period.workDaysStd, monthOfYear: period.month, yearBE: String(period.year + 543) },
+        config.variables,
       );
     }
     return out;
@@ -128,17 +128,17 @@ export function PeriodTab({
     });
   }
 
-  function doPost(kind: PostKind) {
-    if (!postDate) { alert("เลือกวันที่ลงบัญชีก่อน"); return; }
-    run(() => postPayrollAction(periodId, kind, postDate), `ลงบัญชี${POST_LABEL[kind]}แล้ว`, () => {
+  function doPost(legCode: string, name: string, date: string) {
+    if (!date) { alert("เลือกวันที่ลงบัญชีก่อน"); return; }
+    run(() => postPayrollAction(periodId, legCode, date), `ลงบัญชี${name}แล้ว`, () => {
       load(periodId);
       router.refresh();
     });
   }
 
-  function doUnpost(kind: PostKind) {
-    if (!confirm(`ถอนการลงบัญชี${POST_LABEL[kind]}? รายการในบัญชีจะถูกเปลี่ยนเป็น "ยกเลิก" (ไม่ได้ลบทิ้ง)`)) return;
-    run(() => unpostPayrollAction(periodId, kind), "ถอนแล้ว", () => {
+  function doUnpost(legCode: string, name: string) {
+    if (!confirm(`ถอนการลงบัญชี${name}? รายการในบัญชีจะถูกเปลี่ยนเป็น "ยกเลิก" (ไม่ได้ลบทิ้ง)`)) return;
+    run(() => unpostPayrollAction(periodId, legCode), "ถอนแล้ว", () => {
       load(periodId);
       router.refresh();
     });
@@ -174,7 +174,22 @@ export function PeriodTab({
     printSlips(slips);
   }
 
-  const posted = (k: PostKind) => Boolean(period?.postState?.[k.toLowerCase()]);
+  const posted = (code: string) => Boolean(period?.postState?.[code]);
+
+  // ── ตัวเลขคุมกันลงรายจ่ายซ้ำ/ขาด ────────────────────────────────────────────
+  //    ขาที่ลูกค้าตั้งเองอาจยอดซ้อนกันได้ และไม่มีอะไรใน DB ฟ้อง → ต้องโชว์ให้เห็น
+  const legLines = items.map((it) => {
+    const l = preview[it.empId];
+    return {
+      gross: l?.gross ?? it.gross,
+      net: l?.net ?? it.net,
+      sso: l?.sso ?? it.sso,
+      ssoEmployer: it.ssoEmployer,
+      wht: l?.wht ?? it.wht,
+      items: l?.items ?? [],
+    };
+  });
+  const coverage = legCoverage(config.legs, legLines);
 
   return (
     <div className="space-y-4">
@@ -313,28 +328,63 @@ export function PeriodTab({
 
           <Card title="ลงบัญชี">
             <p className="mb-3 text-xs text-faint">
-              แยก 3 ขาโดยตั้งใจ: ลง<b>ยอดสุทธิ</b>ตอนจ่ายเงินเดือน แล้วลง<b>ยอดนำส่ง</b>ตอนไปจ่ายจริง —
-              รวมทั้งปีได้เท่ากับยอดเต็ม + สมทบนายจ้างพอดี ไม่นับซ้ำ
+              ขาลงบัญชีตั้งได้เองที่แท็บ &ldquo;ตั้งค่าการคำนวณ&rdquo; — ลงกี่ก้อนก็ได้
             </p>
-            <div className="mb-3 max-w-xs">
-              <Field label="วันที่ลงบัญชี">
+
+            {/* 🚨 ตัวเลขคุม: ขาที่ตั้งไว้ต้องครอบเงินที่บริษัทจ่ายจริงพอดี
+                เกิน = ลงรายจ่ายซ้ำ · ขาด = รายจ่ายตกหล่น · เตือนไม่บล็อก */}
+            <div className={`mb-3 rounded-lg px-3 py-2 text-sm ${coverage.ok ? "bg-ok-bg text-ok" : "bg-warn-bg text-warn"}`}>
+              ยอดรวมของขาที่ตั้งไว้ <b>{fmt(coverage.legsTotal)}</b> ·
+              ยอดที่ควรลงทั้งหมด (รวมเงินได้ + สมทบนายจ้าง) <b>{fmt(coverage.shouldBe)}</b>
+              {coverage.ok
+                ? " — ตรงกันพอดี"
+                : coverage.diff > 0
+                  ? ` — เกิน ${fmt(coverage.diff)} มีขาที่ยอดซ้อนกันอยู่ (จะลงรายจ่ายซ้ำ)`
+                  : ` — ขาด ${fmt(Math.abs(coverage.diff))} ยังมีส่วนที่ไม่ได้ลงบัญชี`}
+            </div>
+
+            {config.legs.length === 0 ? (
+              <Empty>— ยังไม่ได้ตั้งขาลงบัญชี (ไปที่แท็บตั้งค่าการคำนวณ) —</Empty>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="tbl">
+                  <thead>
+                    <tr className="text-left text-faint">
+                      <th>ขา</th><th className="num">ยอด</th><th>วันที่</th><th>สถานะ</th><th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {config.legs.filter((l) => l.active !== false).map((l) => {
+                      const amount = legTotal(l, legLines);
+                      const date = postDate || suggestLegDate(l, period);
+                      const on = posted(l.code);
+                      return (
+                        <tr key={l.code}>
+                          <td className="whitespace-nowrap">{l.name}
+                            <span className="ml-1 text-xs text-faint">{l.splitByEmployee ? "(แยกรายคน)" : ""}</span>
+                          </td>
+                          <td className="num">{fmt(amount)}</td>
+                          <td className="text-xs">{on ? (period.postState[l.code]?.date ?? "") : date}</td>
+                          <td>{on ? <span className="text-ok">ลงแล้ว</span> : <span className="text-faint">ยังไม่ลง</span>}</td>
+                          <td className="whitespace-nowrap">
+                            {on ? (
+                              <button onClick={() => doUnpost(l.code, l.name)} disabled={pending} className="text-xs text-crit hover:underline">ถอน</button>
+                            ) : (
+                              <button onClick={() => doPost(l.code, l.name, date)} disabled={pending} className="text-xs text-brand hover:underline">ลงบัญชี</button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="mt-3 max-w-xs">
+              <Field label="วันที่ลงบัญชี (เว้นไว้ = ใช้วันที่แนะนำของแต่ละขา)">
                 <TextInput type="date" value={postDate} onChange={(e) => setPostDate(e.target.value)} />
               </Field>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {(Object.keys(POST_LABEL) as PostKind[]).map((k) => (
-                <div key={k} className="flex items-center gap-1 rounded-lg border border-line px-3 py-2">
-                  <span className="text-sm">{POST_LABEL[k]}</span>
-                  {posted(k) ? (
-                    <>
-                      <span className="text-xs text-ok">ลงแล้ว</span>
-                      <button onClick={() => doUnpost(k)} disabled={pending} className="ml-2 text-xs text-crit hover:underline">ถอน</button>
-                    </>
-                  ) : (
-                    <button onClick={() => doPost(k)} disabled={pending} className="ml-2 text-xs text-brand hover:underline">ลงบัญชี</button>
-                  )}
-                </div>
-              ))}
             </div>
           </Card>
         </>

@@ -1,9 +1,12 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import type { ReportSource } from "@/lib/payroll/report";
 import type {
   Employee,
   PayComponent,
+  PayPostLeg,
   PayRates,
+  PayVariable,
   PayrollSettings,
 } from "@/lib/payroll/types";
 
@@ -59,25 +62,31 @@ export async function getPayrollConfig(): Promise<{
   settings: PayrollSettings;
   groups: string[];
   entityId: string;
-  accounts: { pay: string; sso: string; wht: string };
+  /** บัญชีเงินหลักที่ใช้จ่ายเงินเดือน (ขาที่ไม่ระบุบัญชีจะใช้ตัวนี้) */
+  payAccount: string;
+  /** รายชื่อบัญชีเงินที่มีอยู่จริง — ให้หน้าจอทำเป็นดร็อปดาวน์ ไม่ต้องพิมพ์เอง */
+  bankAccounts: string[];
   inputs: PayInput[];
   components: PayComponent[];
+  variables: PayVariable[];
+  legs: PayPostLeg[];
   rates: PayRates[];
 }> {
   const supabase = await createClient();
-  const [s, inputs, comps, rates] = await Promise.all([
+  const [s, inputs, comps, vars, legs, rates, accts] = await Promise.all([
     supabase.from("app_settings").select("kind, value, sort").in("kind", [
       "pay_group",
       "payroll_entity",
       "payroll_pay_account",
-      "payroll_sso_account",
-      "payroll_wht_account",
       "payroll_hours_per_day",
       "payroll_rounding",
     ]).order("sort"),
     supabase.from("pay_inputs").select("code, label, unit, sort, active").order("sort"),
     supabase.from("pay_components").select("*").order("sort"),
+    supabase.from("pay_variables").select("*").order("sort"),
+    supabase.from("pay_post_legs").select("*").order("sort"),
     supabase.from("pay_rates").select("*").order("effective_from", { ascending: false }),
+    supabase.from("bank_accounts").select("account_name").order("account_name"),
   ]);
 
   const rows = s.data ?? [];
@@ -92,13 +101,12 @@ export async function getPayrollConfig(): Promise<{
     },
     groups: list("pay_group"),
     entityId: one("payroll_entity"),
-    accounts: {
-      pay: one("payroll_pay_account"),
-      sso: one("payroll_sso_account"),
-      wht: one("payroll_wht_account"),
-    },
+    payAccount: one("payroll_pay_account"),
+    bankAccounts: (accts.data ?? []).map((a) => a.account_name as string),
     inputs: (inputs.data ?? []) as PayInput[],
     components: (comps.data ?? []).map(toComponent),
+    variables: (vars.data ?? []).map(toVariable),
+    legs: (legs.data ?? []).map(toLeg),
     rates: (rates.data ?? []).map(toRates),
   };
 }
@@ -155,7 +163,36 @@ function toComponent(r: any): PayComponent {
     ssoBase: r.sso_base,
     otBase: r.ot_base,
     prorateBase: r.prorate_base,
-    expenseCat: r.expense_cat ?? undefined,
+    variableCode: r.variable_code ?? undefined,
+    sort: r.sort,
+    active: r.active,
+  };
+}
+
+function toVariable(r: any): PayVariable {
+  return {
+    code: r.code,
+    name: r.name,
+    source: r.source,
+    constValue: Number(r.const_value),
+    inputKey: r.input_key ?? undefined,
+    divisors: r.divisors ?? [],
+    sort: r.sort,
+    active: r.active,
+  };
+}
+
+function toLeg(r: any): PayPostLeg {
+  return {
+    code: r.code,
+    name: r.name,
+    amountSource: r.amount_source,
+    componentCode: r.component_code ?? undefined,
+    splitByEmployee: r.split_by_employee,
+    category: r.category,
+    accountName: r.account_name ?? undefined,
+    contactName: r.contact_name ?? undefined,
+    suggestDay: r.suggest_day,
     sort: r.sort,
     active: r.active,
   };
@@ -225,4 +262,31 @@ function toItem(r: any): ItemRow {
     net: Number(r.net),
     txId: r.tx_id,
   };
+}
+
+/**
+ * ข้อมูลรายงานของปีหนึ่ง — อ่านจาก `computed` ที่แช่ไว้ตอนกดบันทึกเท่านั้น
+ * 🪤 ห้ามคำนวณสดจาก config ไม่งั้นรายงานของงวดเก่าจะขยับตามเกณฑ์ที่แก้ทีหลัง
+ */
+export async function getPayrollReportSource(year: number): Promise<ReportSource[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("payroll_items")
+    .select("period_id, emp_id, emp_name, group_code, computed, base_amount, gross, sso, sso_employer, wht, net")
+    .like("period_id", `PR-${year}-%`)
+    .order("period_id");
+
+  return (data ?? []).map((r: any) => ({
+    periodId: r.period_id,
+    empId: r.emp_id,
+    empName: r.emp_name,
+    groupCode: r.group_code,
+    baseAmount: Number(r.base_amount),
+    gross: Number(r.gross),
+    sso: Number(r.sso),
+    ssoEmployer: Number(r.sso_employer),
+    wht: Number(r.wht),
+    net: Number(r.net),
+    items: Array.isArray(r.computed?.items) ? r.computed.items : [],
+  }));
 }

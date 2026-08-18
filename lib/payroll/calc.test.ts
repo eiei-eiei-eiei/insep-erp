@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { calcPayrollLine, appliesTo, inputValue, tierAmount, roundMoney } from "./calc";
-import type { Employee, PayComponent, PayRates, PayrollSettings, PeriodContext } from "./types";
+import { calcPayrollLine, appliesTo, inputValue, tierAmount, roundMoney, resolveVariable } from "./calc";
+import type { Employee, PayComponent, PayRates, PayrollSettings, PayVariable, PeriodContext } from "./types";
 
 /**
  * ═══ ด่านพิสูจน์ของโมดูลเงินเดือน ═══
@@ -46,6 +46,28 @@ const RATES: PayRates = {
 const SETTINGS: PayrollSettings = { hoursPerDay: 9, rounding: "baht" };
 const CTX: PeriodContext = { workDaysStd: 30, monthOfYear: 5, yearBE: "2569" };
 
+// ── ตัวแปรกลางที่ "ลูกค้านิยามเอง" ────────────────────────────────────────────
+//    อัตราต่อชั่วโมง = ฐานเงินเดือน ÷ วันทำงานมาตรฐานของงวด ÷ ชั่วโมงต่อวัน
+//    ★ ของเดิมสูตรนี้ถูกฮาร์ดโค้ดไว้ในโค้ด — ตอนนี้เป็น config แล้ว
+const VARIABLES: PayVariable[] = [
+  {
+    code: "hourly_rate",
+    name: "อัตราต่อชั่วโมง",
+    source: "base_wage",
+    divisors: [{ kind: "work_days_std" }, { kind: "hours_per_day" }],
+  },
+  {
+    // ★ พนักงานรายวันต้องมีตัวแปรของตัวเอง — ฐานของเขาเป็น "ค่าแรงต่อวัน" อยู่แล้ว
+    //   จึงหารแค่ชั่วโมงต่อวัน ไม่หารจำนวนวันอีก
+    //   (ของเดิมโค้ดซ่อน special-case ตาม wageType ไว้ข้างใน = เกณฑ์ที่ลูกค้ามองไม่เห็น
+    //    ตอนนี้เห็นชัดว่าเป็นคนละสูตร และตั้งเองได้)
+    code: "hourly_rate_daily",
+    name: "อัตราต่อชั่วโมง (พนักงานรายวัน)",
+    source: "base_wage",
+    divisors: [{ kind: "hours_per_day" }],
+  },
+];
+
 // ── config ที่ "ลูกค้ากรอกเอง" เพื่อทำซ้ำเกณฑ์ข้างบน ───────────────────────────
 const COMPONENTS: PayComponent[] = [
   {
@@ -65,7 +87,8 @@ const COMPONENTS: PayComponent[] = [
     code: "ot_work_a",
     name: "ค่าล่วงเวลาวันทำงาน (กลุ่ม A)",
     kind: "earning",
-    method: "hourly_multiplier",
+    method: "variable",
+    variableCode: "hourly_rate",
     multiplier: 1.5,
     inputKeys: ["ot_work_h"],
     groupCodes: ["A"],
@@ -76,7 +99,8 @@ const COMPONENTS: PayComponent[] = [
     code: "ot_work_b",
     name: "ค่าล่วงเวลาวันทำงาน (กลุ่ม B)",
     kind: "earning",
-    method: "hourly_multiplier",
+    method: "variable",
+    variableCode: "hourly_rate",
     multiplier: 1.0,
     inputKeys: ["ot_work_h"],
     groupCodes: ["B"],
@@ -87,9 +111,24 @@ const COMPONENTS: PayComponent[] = [
     code: "ot_holiday",
     name: "ค่าล่วงเวลาวันหยุด",
     kind: "earning",
-    method: "hourly_multiplier",
+    method: "variable",
+    variableCode: "hourly_rate",
     multiplier: 2.0,
     inputKeys: ["ot_holiday_h"],
+    groupCodes: ["A", "B"],
+    taxable: true,
+    ssoBase: false,
+  },
+  {
+    // รายการเดียวกันแต่คิดจากตัวแปรของพนักงานรายวัน
+    code: "ot_holiday_daily",
+    name: "ค่าล่วงเวลาวันหยุด (รายวัน)",
+    kind: "earning",
+    method: "variable",
+    variableCode: "hourly_rate_daily",
+    multiplier: 2.0,
+    inputKeys: ["ot_holiday_h"],
+    groupCodes: ["C"],
     taxable: true,
     ssoBase: false,
   },
@@ -153,6 +192,7 @@ const run = (e: Employee, values: Record<string, number>, workDays: number, manu
     RATES,
     SETTINGS,
     CTX,
+    VARIABLES,
   );
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -171,8 +211,8 @@ describe("ทำซ้ำเกณฑ์ของบริษัทตัวอ�
     expect(line.baseAmount).toBe(15867);
   });
 
-  it("★ อัตราต่อชั่วโมงไม่รวมค่าตำแหน่ง — 15000/30/9 = 55.5556 (ไม่ใช่ 17000/30/9)", () => {
-    expect(line.hourlyRate).toBeCloseTo(55.5556, 4);
+  it("★ ค่าตัวแปรอัตราต่อชั่วโมงไม่รวมค่าตำแหน่ง — 15000/30/9 = 55.5556 (ไม่ใช่ 17000/30/9)", () => {
+    expect(line.variables.hourly_rate).toBeCloseTo(55.5556, 4);
   });
 
   it("OT วันทำงาน ×1.5 = 55.5556×1.5×10 → 833", () => {
@@ -239,15 +279,17 @@ describe("กลุ่ม B — ตัวคูณ OT ต่างกัน แ�
 });
 
 describe("wage_type ทั้ง 3 แบบ", () => {
-  it("รายวัน — ค่าแรง 400 × 22 วัน = 8,800 · อัตราต่อชั่วโมง = 400/9", () => {
+  it("รายวัน — ค่าแรง 400 × 22 วัน = 8,800 · ใช้ตัวแปรอัตราของกลุ่มรายวัน (400/9)", () => {
     const line = run(
       emp({ groupCode: "C", wageType: "daily", baseWage: 400 }),
       { ot_holiday_h: 4 },
       22,
     );
     expect(line.baseAmount).toBe(8800);
-    expect(line.hourlyRate).toBeCloseTo(44.4444, 4);
-    expect(amt(line, "ot_holiday")).toBe(356); // 44.4444×2×4 = 355.56
+    expect(line.variables.hourly_rate_daily).toBeCloseTo(44.4444, 4);
+    expect(amt(line, "ot_holiday_daily")).toBe(356); // 44.4444×2×4 = 355.56
+    // ★ ไม่ได้รายการของกลุ่มรายเดือน — ถ้าได้ อัตราจะเป็น 400/30/9 = 1.48 ซึ่งผิดมหันต์
+    expect(line.items.find((i) => i.code === "ot_holiday")).toBeUndefined();
     expect(line.sso).toBe(440);
   });
 
@@ -372,6 +414,66 @@ describe("helper", () => {
   it("roundMoney — baht ปัดจำนวนเต็ม · satang เก็บ 2 ตำแหน่ง", () => {
     expect(roundMoney(15866.667, "baht")).toBe(15867);
     expect(roundMoney(15866.667, "satang")).toBe(15866.67);
+  });
+});
+
+describe("resolveVariable — ตัวแปรกลางที่ลูกค้านิยามเอง", () => {
+  const ctx = {
+    baseWage: 15000,
+    proratedBase: 14000,
+    workDaysStd: 30,
+    workDaysActual: 28,
+    hoursPerDay: 9,
+    values: { ot_work_h: 10, rate_input: 75 },
+  };
+  const v = (o: Partial<PayVariable>): PayVariable =>
+    ({ code: "x", name: "x", source: "base_wage", ...o });
+
+  it("อัตราต่อชั่วโมง = ฐาน ÷ วันมาตรฐาน ÷ ชั่วโมงต่อวัน", () => {
+    expect(resolveVariable(v({ divisors: [{ kind: "work_days_std" }, { kind: "hours_per_day" }] }), ctx))
+      .toBeCloseTo(55.5556, 4);
+  });
+
+  it("★ เปลี่ยนวันมาตรฐานของงวด อัตราขยับเองโดยไม่ต้องแก้ตัวแปร", () => {
+    const varDef = v({ divisors: [{ kind: "work_days_std" }] });
+    expect(resolveVariable(varDef, ctx)).toBe(500); // 15000/30
+    expect(resolveVariable(varDef, { ...ctx, workDaysStd: 26 })).toBeCloseTo(576.923, 3);
+  });
+
+  it("หารด้วยวันมาทำงานจริงของคนนั้นได้ (ไม่ใช่วันมาตรฐาน)", () => {
+    expect(resolveVariable(v({ divisors: [{ kind: "work_days_actual" }] }), ctx))
+      .toBeCloseTo(535.714, 3); // 15000/28
+  });
+
+  it("ตัวตั้งเป็นค่าคงที่ / ค่าจากช่องกรอก / ค่าจ้างหลัง prorate", () => {
+    expect(resolveVariable(v({ source: "constant", constValue: 60 }), ctx)).toBe(60);
+    expect(resolveVariable(v({ source: "input", inputKey: "rate_input" }), ctx)).toBe(75);
+    expect(resolveVariable(v({ source: "prorated_base" }), ctx)).toBe(14000);
+  });
+
+  it("หารด้วยค่าคงที่ (โรงที่หาร 30 ตายตัวไม่สนวันจริงของเดือน)", () => {
+    expect(resolveVariable(v({ divisors: [{ kind: "constant", value: 30 }, { kind: "constant", value: 8 }] }), ctx))
+      .toBeCloseTo(62.5, 4); // 15000/30/8
+  });
+
+  it("🪤 ตัวหารเป็น 0 ต้องถูกข้าม ไม่ใช่ได้ Infinity/NaN", () => {
+    // เดือนที่ยังไม่กรอกชั่วโมงโอที → ตัวหารเป็น 0 เป็นเรื่องปกติ
+    const r = resolveVariable(v({ divisors: [{ kind: "input", inputKey: "ไม่มีช่องนี้" }] }), ctx);
+    expect(Number.isFinite(r)).toBe(true);
+    expect(r).toBe(15000);
+  });
+
+  it("ตัวแปรที่ปิดใช้งานไม่ถูกคำนวณเข้ามาใน payroll line", () => {
+    const line = calcPayrollLine(
+      emp({ groupCode: null, baseWage: 10000, wageType: "monthly" }),
+      { workDays: 30, values: {} },
+      [],
+      RATES,
+      SETTINGS,
+      CTX,
+      [v({ code: "off", active: false })],
+    );
+    expect(line.variables.off).toBeUndefined();
   });
 });
 

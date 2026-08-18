@@ -5,7 +5,14 @@ import { createClient } from "@/lib/supabase/server";
 import { mapDbError } from "@/lib/shared/dbError";
 import { calcPayrollLine } from "@/lib/payroll/calc";
 import { ssoEmployerContribution, ratesOn } from "@/lib/payroll/sso";
-import type { PayComponent, PayRates, PayrollSettings } from "@/lib/payroll/types";
+import { legAmount } from "@/lib/payroll/legs";
+import type {
+  PayComponent,
+  PayPostLeg,
+  PayRates,
+  PayVariable,
+  PayrollSettings,
+} from "@/lib/payroll/types";
 import { getPayrollConfig, getPeriodDetail, type EmployeeRow } from "./data";
 
 /**
@@ -82,7 +89,10 @@ export async function savePayComponentAction(c: PayComponent): Promise<SaveResul
   const code = c.code.trim();
   if (!/^[a-z0-9_]+$/.test(code)) return fail("รหัสรายการต้องเป็น a-z 0-9 _ เท่านั้น");
   if (!c.name.trim()) return fail("กรอกชื่อรายการที่จะขึ้นบนสลิป");
-  if (c.method === "hourly_multiplier" && !c.multiplier) return fail("ใส่ตัวคูณ (เช่น 1.5 / 2) ก่อน");
+  if (c.method === "variable") {
+    if (!c.variableCode) return fail("เลือกตัวแปรกลางที่จะใช้เป็นฐานก่อน");
+    if (!c.multiplier) return fail("ใส่ตัวคูณ (เช่น 1.5 / 2 · ไม่คูณอะไรใส่ 1)");
+  }
   if (c.method === "tier_table" && (c.tiers ?? []).length === 0) return fail("ใส่ขั้นบันไดอย่างน้อย 1 ขั้น");
 
   const { error } = await supabase.from("pay_components").upsert({
@@ -93,7 +103,7 @@ export async function savePayComponentAction(c: PayComponent): Promise<SaveResul
     group_codes: c.groupCodes ?? [],
     taxable: c.taxable ?? true, sso_base: c.ssoBase ?? false,
     ot_base: c.otBase ?? false, prorate_base: c.prorateBase ?? false,
-    expense_cat: c.expenseCat ?? null,
+    variable_code: c.variableCode ?? null,
     sort: c.sort ?? 0, active: c.active ?? true,
   });
   if (error) return fail(mapDbError(error));
@@ -128,6 +138,76 @@ export async function savePayRatesAction(r: PayRates): Promise<SaveResult> {
 export async function deletePayRatesAction(effectiveFrom: string): Promise<SaveResult> {
   const supabase = await createClient();
   const { error } = await supabase.from("pay_rates").delete().eq("effective_from", effectiveFrom);
+  if (error) return fail(mapDbError(error));
+  revalidatePath("/payroll");
+  return { ok: true };
+}
+
+// ── ตัวแปรกลาง ───────────────────────────────────────────────────────────────
+
+export async function savePayVariableAction(v: PayVariable): Promise<SaveResult> {
+  const supabase = await createClient();
+  const code = v.code.trim();
+  if (!/^[a-z0-9_]+$/.test(code)) return fail("รหัสตัวแปรต้องเป็น a-z 0-9 _ เท่านั้น");
+  if (!v.name.trim()) return fail("ตั้งชื่อตัวแปรที่คนอ่านรู้เรื่อง เช่น อัตราค่าล่วงเวลาต่อชั่วโมง");
+  if (v.source === "input" && !v.inputKey) return fail("เลือกช่องกรอกที่จะใช้เป็นตัวตั้ง");
+  for (const d of v.divisors ?? []) {
+    if (d.kind === "input" && !d.inputKey) return fail("ตัวหารที่เป็นช่องกรอก ต้องเลือกช่องด้วย");
+  }
+  const { error } = await supabase.from("pay_variables").upsert({
+    code, name: v.name.trim(), source: v.source,
+    const_value: v.constValue ?? 0, input_key: v.inputKey ?? null,
+    divisors: v.divisors ?? [],
+    sort: v.sort ?? 0, active: v.active ?? true,
+  });
+  if (error) return fail(mapDbError(error));
+  revalidatePath("/payroll");
+  return { ok: true };
+}
+
+export async function deletePayVariableAction(code: string): Promise<SaveResult> {
+  const supabase = await createClient();
+  // กันลบตัวแปรที่ยังมีรายการอ้างอยู่ — ลบแล้วรายการนั้นจะคิดได้ 0 เงียบ ๆ
+  const { data: used } = await supabase
+    .from("pay_components").select("name").eq("variable_code", code).limit(1);
+  if (used && used.length > 0) {
+    return fail(`ลบไม่ได้ — รายการ "${used[0].name}" ยังใช้ตัวแปรนี้อยู่`);
+  }
+  const { error } = await supabase.from("pay_variables").delete().eq("code", code);
+  if (error) return fail(mapDbError(error));
+  revalidatePath("/payroll");
+  return { ok: true };
+}
+
+// ── ขาลงบัญชี ────────────────────────────────────────────────────────────────
+
+export async function savePayPostLegAction(l: PayPostLeg): Promise<SaveResult> {
+  const supabase = await createClient();
+  const code = l.code.trim();
+  if (!/^[a-z0-9_]+$/.test(code)) return fail("รหัสขาต้องเป็น a-z 0-9 _ เท่านั้น");
+  if (!l.name.trim()) return fail("ตั้งชื่อขาที่จะขึ้นบนปุ่ม");
+  if (!l.category.trim()) return fail("กรอกหมวดรายจ่ายที่จะขึ้นบนรายการบัญชี");
+  if (l.amountSource === "component" && !l.componentCode) {
+    return fail("เลือกรายการที่จะเอายอดมาลงบัญชี");
+  }
+  const { error } = await supabase.from("pay_post_legs").upsert({
+    code, name: l.name.trim(), amount_source: l.amountSource,
+    component_code: l.componentCode ?? null,
+    split_by_employee: l.splitByEmployee ?? false,
+    category: l.category.trim(),
+    account_name: l.accountName?.trim() || null,
+    contact_name: l.contactName?.trim() || null,
+    suggest_day: l.suggestDay ?? 0,
+    sort: l.sort ?? 0, active: l.active ?? true,
+  });
+  if (error) return fail(mapDbError(error));
+  revalidatePath("/payroll");
+  return { ok: true };
+}
+
+export async function deletePayPostLegAction(code: string): Promise<SaveResult> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("pay_post_legs").delete().eq("code", code);
   if (error) return fail(mapDbError(error));
   revalidatePath("/payroll");
   return { ok: true };
@@ -259,7 +339,7 @@ export async function savePeriodLinesAction(periodId: string, lines: LineInput[]
   for (const ln of lines) {
     const r = empById.get(ln.empId);
     if (!r) continue;
-    const result = calcLine(r, ln, cfg.components, rates, cfg.settings, period.year, period.month, period.workDaysStd);
+    const result = calcLine(r, ln, cfg.components, cfg.variables, rates, cfg.settings, period.year, period.month, period.workDaysStd);
     const { error } = await supabase.from("payroll_items").update({
       inputs: { workDays: ln.workDays, values: ln.values, manual: ln.manual, whtOverride: ln.whtOverride },
       computed: result.line as unknown as Record<string, unknown>,
@@ -284,7 +364,7 @@ export async function savePeriodLinesAction(periodId: string, lines: LineInput[]
 
 export async function postPayrollAction(
   periodId: string,
-  kind: "NET" | "SSO" | "WHT",
+  legCode: string,
   date: string,
 ): Promise<SaveResult> {
   const supabase = await createClient();
@@ -292,43 +372,44 @@ export async function postPayrollAction(
   if (!period) return fail("ไม่พบงวด " + periodId);
   if (!date) return fail("เลือกวันที่ลงบัญชีก่อน");
 
-  const entityId = cfg.entityId || period.entityId;
+  const leg = cfg.legs.find((l) => l.code === legCode && l.active !== false);
+  if (!leg) return fail("ไม่พบขาลงบัญชีนี้ (อาจถูกลบหรือปิดไปแล้ว)");
+
+  const account = leg.accountName || cfg.payAccount;
+  if (!account) return fail("ยังไม่ได้ตั้งบัญชีเงินของขานี้ หรือบัญชีเงินหลัก (แท็บตั้งค่าการคำนวณ)");
+
   const monthLabel = `${String(period.month).padStart(2, "0")}/${period.year}`;
+  const lines = items.map((i) => ({ ...i, items: itemsOf(i) }));
+
+  const base = {
+    entityId: cfg.entityId || period.entityId,
+    accountName: account,
+    category: leg.category,
+    contactName: leg.contactName ?? "",
+  };
 
   let payload: Record<string, unknown>;
-  if (kind === "NET") {
-    if (!cfg.accounts.pay) return fail("ยังไม่ได้ตั้งบัญชีเงินที่ใช้จ่ายเงินเดือน (แท็บตั้งค่าการคำนวณ)");
+  if (leg.splitByEmployee) {
+    // 1 รายการต่อคน → ตรวจกับสลิปได้ทีละใบ
     payload = {
-      entityId,
-      accountName: cfg.accounts.pay,
-      category: "เงินเดือน",
-      lines: items.map((i) => ({
-        empId: i.empId,
-        contactName: i.empName,
-        description: `เงินเดือน ${monthLabel}`,
-        amount: i.net,
+      ...base,
+      lines: lines.map((l) => ({
+        empId: l.empId,
+        contactName: leg.contactName || l.empName,
+        description: `${leg.name} ${monthLabel} — ${l.empName}`,
+        amount: legAmount(leg, l),
       })),
     };
   } else {
-    const amount = kind === "SSO"
-      ? items.reduce((s, i) => s + i.sso + i.ssoEmployer, 0)
-      : items.reduce((s, i) => s + i.wht, 0);
-    const account = kind === "SSO" ? cfg.accounts.sso || cfg.accounts.pay : cfg.accounts.wht || cfg.accounts.pay;
-    if (!account) return fail("ยังไม่ได้ตั้งบัญชีเงินที่ใช้นำส่ง (แท็บตั้งค่าการคำนวณ)");
     payload = {
-      entityId,
-      accountName: account,
-      category: kind === "SSO" ? "ประกันสังคม" : "ภาษีหัก ณ ที่จ่าย",
-      contactName: kind === "SSO" ? "สำนักงานประกันสังคม" : "กรมสรรพากร",
-      description: kind === "SSO"
-        ? `นำส่งประกันสังคม ${monthLabel} (ลูกจ้าง+นายจ้าง)`
-        : `นำส่งภาษีหัก ณ ที่จ่าย (ภ.ง.ด.1) ${monthLabel}`,
-      amount,
+      ...base,
+      description: `${leg.name} ${monthLabel}`,
+      amount: lines.reduce((sum, l) => sum + legAmount(leg, l), 0),
     };
   }
 
   const { data, error } = await supabase.rpc("fn_post_payroll", {
-    p_period_id: periodId, p_kind: kind, p_date: date, p_payload: payload,
+    p_period_id: periodId, p_kind: leg.code, p_date: date, p_payload: payload,
   });
   if (error) return fail(mapDbError(error));
   const res = data as { ok: boolean; error?: string; duplicate?: boolean };
@@ -338,10 +419,9 @@ export async function postPayrollAction(
   revalidatePath("/accounting");
   return { ok: true, data: res };
 }
-
-export async function unpostPayrollAction(periodId: string, kind: "NET" | "SSO" | "WHT"): Promise<SaveResult> {
+export async function unpostPayrollAction(periodId: string, legCode: string): Promise<SaveResult> {
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("fn_unpost_payroll", { p_period_id: periodId, p_kind: kind });
+  const { data, error } = await supabase.rpc("fn_unpost_payroll", { p_period_id: periodId, p_kind: legCode });
   if (error) return fail(mapDbError(error));
   const res = data as { ok: boolean; error?: string };
   if (!res?.ok) return fail(res?.error ?? "ถอนการลงบัญชีไม่สำเร็จ");
@@ -357,6 +437,7 @@ function calcLine(
   r: any,
   ln: LineInput,
   components: PayComponent[],
+  variables: PayVariable[],
   rates: PayRates,
   settings: PayrollSettings,
   year: number,
@@ -376,8 +457,18 @@ function calcLine(
     rates,
     settings,
     { workDaysStd, monthOfYear: month, yearBE: String(year + 543) },
+    variables,
   );
   return { line, ssoEmployer: ssoEmployerContribution(line.ssoWageBase, rates, emp.ssoExempt) };
+}
+
+/**
+ * รายการที่แจกแจงไว้ของพนักงาน 1 คน — อ่านจาก `computed` ที่ **แช่ไว้ตอนกดบันทึก**
+ * ★ ห้ามคำนวณสดที่นี่ ไม่งั้นขาที่อ้างรายการจะได้ยอดคนละชุดกับที่บันทึกไว้
+ */
+function itemsOf(i: { computed: Record<string, unknown> }) {
+  const raw = (i.computed?.items ?? []) as { code: string; kind: "earning" | "deduction"; amount: number }[];
+  return Array.isArray(raw) ? raw : [];
 }
 
 /** วันสุดท้ายของเดือน (ISO) — ใช้เลือกชุดอัตราที่มีผล ณ งวดนั้น */

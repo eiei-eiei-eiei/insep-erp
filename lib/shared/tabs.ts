@@ -63,6 +63,7 @@ export const SALES_TABS: SubTab[] = [
 /** เงินเดือน — เปิดเฉพาะ role main (ทั้ง workspace) จึงไม่ต้องกรอง roles รายแท็บ */
 export const PAYROLL_TABS: SubTab[] = [
   { slug: "period", label: "งวดจ่าย" },
+  { slug: "report", label: "รายงาน" },
   { slug: "employees", label: "พนักงาน" },
   { slug: "config", label: "ตั้งค่าการคำนวณ" },
 ];

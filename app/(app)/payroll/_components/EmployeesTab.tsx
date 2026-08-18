@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, useSaver, Empty } from "@/lib/shared/ui";
 import { saveEmployeeAction } from "../actions";
@@ -29,13 +29,28 @@ export function EmployeesTab({ config, initial }: { config: PayrollConfig; initi
   const [edit, setEdit] = useState<Partial<EmployeeRow> | null>(null);
   const [q, setQ] = useState("");
 
-  const rows = initial.filter((e) => !q || e.name.toLowerCase().includes(q.toLowerCase()));
+  // 🪤 เก็บรายชื่อเป็น state แล้วอัปเดตทันทีหลังบันทึก
+  //    เดิมอ่านจาก prop ตรง ๆ + พึ่ง router.refresh() อย่างเดียว → คนที่เพิ่งเพิ่มไม่ขึ้นในลิสต์
+  //    (แท็บถูก mount ค้างไว้ด้วย CSS ตามแพตเทิร์นของทุก workspace → prop มาช้ากว่าที่ผู้ใช้คาด)
+  //    แพตเทิร์นเดียวกับการ์ดคู่ค้าในแท็บตั้งค่าของบัญชี
+  const [rowsAll, setRowsAll] = useState<EmployeeRow[]>(initial);
+  useEffect(() => { setRowsAll(initial); }, [initial]);
+
+  const rows = rowsAll.filter((e) => !q || e.name.toLowerCase().includes(q.toLowerCase()));
 
   function save() {
     if (!edit) return;
-    run(() => saveEmployeeAction(edit), "บันทึกพนักงานแล้ว", () => {
+    const draft = edit;
+    run(() => saveEmployeeAction(draft), "บันทึกพนักงานแล้ว", (data) => {
+      const empId = (data as { empId?: string } | undefined)?.empId ?? draft.empId ?? "";
+      const saved = { ...draft, empId } as EmployeeRow;
+      setRowsAll((prev) =>
+        prev.some((e) => e.empId === empId)
+          ? prev.map((e) => (e.empId === empId ? { ...e, ...saved } : e))
+          : [...prev, saved],
+      );
       setEdit(null);
-      router.refresh();
+      router.refresh();   // ให้ฝั่ง server ตามมาให้ตรงกัน (แท็บงวดจ่ายใช้ลิสต์เดียวกัน)
     });
   }
 
@@ -44,7 +59,7 @@ export function EmployeesTab({ config, initial }: { config: PayrollConfig; initi
 
   return (
     <div className="space-y-4">
-      <Card title={`พนักงาน (${initial.length})`}>
+      <Card title={`พนักงาน (${rowsAll.length})`}>
         <div className="mb-3 flex items-center gap-2">
           <TextInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นชื่อพนักงาน…" />
           <button

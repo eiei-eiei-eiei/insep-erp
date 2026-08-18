@@ -9,6 +9,8 @@ import type {
   PayrollSettings,
   PeriodContext,
   PeriodInputs,
+  PayVariable,
+  VarSource,
 } from "./types";
 
 /**
@@ -60,11 +62,55 @@ export function tierAmount(tiers: PayComponent["tiers"], value: number): number 
   return 0;
 }
 
+/** ค่าที่ตัวแปรกลางใช้เป็นตัวตั้ง/ตัวหารได้ */
+export type VarContext = {
+  baseWage: number;
+  proratedBase: number;
+  workDaysStd: number;
+  workDaysActual: number;
+  hoursPerDay: number;
+  values: Record<string, number>;
+};
+
+/** อ่านค่าของ 1 ช่อง (ตัวตั้งหรือตัวหาร) จากชุดปิด */
+function slotValue(
+  kind: VarSource,
+  ctx: VarContext,
+  opt: { constValue?: number; inputKey?: string },
+): number {
+  switch (kind) {
+    case "base_wage": return n(ctx.baseWage);
+    case "prorated_base": return n(ctx.proratedBase);
+    case "work_days_std": return n(ctx.workDaysStd);
+    case "work_days_actual": return n(ctx.workDaysActual);
+    case "hours_per_day": return n(ctx.hoursPerDay);
+    case "input": return n(ctx.values[opt.inputKey ?? ""]);
+    case "constant": return n(opt.constValue);
+    default: return 0;
+  }
+}
+
+/**
+ * ค่าของตัวแปรกลาง = ตัวตั้ง ÷ ตัวหารทีละชั้น
+ *
+ * 🪤 **ตัวหารที่เป็น 0 หรือหาค่าไม่ได้ ต้องถูกข้าม ไม่ใช่หารแล้วได้ Infinity**
+ *    เดือนที่ยังไม่กรอกชั่วโมงโอทีจะได้ตัวหาร 0 เป็นเรื่องปกติ —
+ *    ถ้าปล่อยให้เป็น Infinity ยอดทั้งงวดจะกลายเป็น NaN แล้วบันทึกลง DB เงียบ ๆ
+ */
+export function resolveVariable(v: PayVariable, ctx: VarContext): number {
+  let out = slotValue(v.source, ctx, { constValue: v.constValue, inputKey: v.inputKey });
+  for (const d of v.divisors ?? []) {
+    const div = slotValue(d.kind, ctx, { constValue: d.value, inputKey: d.inputKey });
+    if (div !== 0 && Number.isFinite(div)) out = out / div;
+  }
+  return Number.isFinite(out) ? out : 0;
+}
+
 /** ยอดของรายการ 1 ตัว (ยังไม่ปัด — ผู้เรียกเป็นคนปัด) */
 function componentAmount(
   c: PayComponent,
   inputs: PeriodInputs,
-  ctx: { wageBase: number; hourlyRate: number },
+  ctx: { wageBase: number; vars: Map<string, number> },
 ): number {
   switch (c.method) {
     case "fixed":
@@ -73,8 +119,14 @@ function componentAmount(
       return n(c.amount) * inputValue(c, inputs.values);
     case "percent_base":
       return (ctx.wageBase * n(c.rate)) / 100;
-    case "hourly_multiplier":
-      return ctx.hourlyRate * n(c.multiplier) * inputValue(c, inputs.values);
+    case "variable": {
+      // ค่าตัวแปรกลาง × ตัวคูณ × ค่าจากช่องกรอก
+      // ★ ไม่เลือกช่องกรอก = คูณ 1 (เช่นเบี้ยเหมาที่คิดจากอัตราต่อวันตรง ๆ)
+      const base = ctx.vars.get(c.variableCode ?? "") ?? 0;
+      const keys = c.inputKeys ?? [];
+      const units = keys.length === 0 ? 1 : inputValue(c, inputs.values);
+      return base * n(c.multiplier) * units;
+    }
     case "tier_table":
       return tierAmount(c.tiers, inputValue(c, inputs.values));
     case "manual":
@@ -88,6 +140,7 @@ function componentAmount(
  * คำนวณเงินเดือนของลูกจ้าง 1 คนในงวดหนึ่ง
  *
  * @param components รายการเพิ่ม/หักทั้งหมดของบริษัท (ฟังก์ชันกรองตามกลุ่มให้เอง)
+ * @param variables  ตัวแปรกลางที่ลูกค้านิยามไว้ — ไม่ส่งมา = รายการ method='variable' ได้ 0
  */
 export function calcPayrollLine(
   emp: Employee,
@@ -96,6 +149,7 @@ export function calcPayrollLine(
   rates: PayRates,
   settings: PayrollSettings,
   ctx: PeriodContext,
+  variables: PayVariable[] = [],
 ): PayrollLine {
   const R = (v: number) => roundMoney(v, settings.rounding);
   const mine = components.filter((c) => appliesTo(c, emp.groupCode));
@@ -107,9 +161,13 @@ export function calcPayrollLine(
 
   // ── ขั้น 1-3(ก): ฐานที่ใช้ prorate = ค่าจ้าง + รายการที่ติดธง prorateBase ────
   //    (ค่าตำแหน่งมักติดธงนี้ = ลดตามวันมาทำงานไปด้วย)
+  //    ★ ตอนนี้ยังไม่มีค่าตัวแปรกลาง — รายการที่ติด prorateBase จึงใช้ method ที่ไม่พึ่งตัวแปร
+  //      (fixed / per_unit / manual) · ถ้าติด prorateBase + method=variable จะได้ 0 ซึ่งถูกต้อง
+  //      เพราะตัวแปรส่วนใหญ่คิดจากค่าจ้างฐาน = อ้างวนกันเอง
+  const emptyVars = new Map<string, number>();
   const prorateExtras = earnings
     .filter((c) => c.prorateBase)
-    .reduce((s, c) => s + componentAmount(c, inputs, { wageBase: emp.baseWage, hourlyRate: 0 }), 0);
+    .reduce((s, c) => s + componentAmount(c, inputs, { wageBase: emp.baseWage, vars: emptyVars }), 0);
 
   const fullWage = n(emp.baseWage) + prorateExtras;
 
@@ -127,16 +185,27 @@ export function calcPayrollLine(
       baseAmount = R(fullWage);
   }
 
-  // ── ขั้น 3(ข): อัตราต่อชั่วโมงสำหรับ OT ──────────────────────────────────────
-  //    ฐาน OT = ค่าจ้าง + เฉพาะรายการที่ติดธง otBase (มักไม่รวมค่าตำแหน่ง)
+  // ── ขั้น 3(ข): คิดค่าตัวแปรกลางทั้งหมดก่อน แล้วรายการค่อยเอาไปคูณ ────────────
+  //    ฐานที่ตัวแปรใช้ = ค่าจ้าง + เฉพาะรายการที่ติดธง otBase (ค่าตำแหน่งมักไม่ติด)
+  //    ★ ลูกค้าเป็นคนนิยามสูตรของตัวแปรเอง — โค้ดไม่รู้จัก "อัตราต่อชั่วโมง" อีกแล้ว
   const otExtras = earnings
     .filter((c) => c.otBase)
-    .reduce((s, c) => s + componentAmount(c, inputs, { wageBase: emp.baseWage, hourlyRate: 0 }), 0);
-  const otWageBase = n(emp.baseWage) + otExtras;
-  const hourlyRate =
-    emp.wageType === "daily"
-      ? otWageBase / hoursPerDay
-      : otWageBase / workDaysStd / hoursPerDay;
+    .reduce((s, c) => s + componentAmount(c, inputs, { wageBase: emp.baseWage, vars: emptyVars }), 0);
+  const varWageBase = n(emp.baseWage) + otExtras;
+
+  const varCtx: VarContext = {
+    baseWage: varWageBase,
+    proratedBase: baseAmount,
+    workDaysStd,
+    workDaysActual: n(inputs.workDays),
+    hoursPerDay,
+    values: inputs.values,
+  };
+  const vars = new Map<string, number>(
+    (variables ?? [])
+      .filter((v) => v.active !== false)
+      .map((v) => [v.code, resolveVariable(v, varCtx)]),
+  );
 
   // ── ขั้น 2: รายการเพิ่ม ──────────────────────────────────────────────────────
   //    ★ รายการที่ติด prorateBase ถูกนับไปแล้วในค่าจ้างฐาน — ห้ามนับซ้ำที่นี่
@@ -146,7 +215,7 @@ export function calcPayrollLine(
       code: c.code,
       name: c.name,
       kind: "earning" as const,
-      amount: R(componentAmount(c, inputs, { wageBase: emp.baseWage, hourlyRate })),
+      amount: R(componentAmount(c, inputs, { wageBase: emp.baseWage, vars })),
     }))
     .filter((i) => i.amount !== 0);
 
@@ -181,7 +250,7 @@ export function calcPayrollLine(
       code: c.code,
       name: c.name,
       kind: "deduction" as const,
-      amount: R(componentAmount(c, inputs, { wageBase: emp.baseWage, hourlyRate })),
+      amount: R(componentAmount(c, inputs, { wageBase: emp.baseWage, vars })),
     }))
     .filter((i) => i.amount !== 0);
 
@@ -199,7 +268,8 @@ export function calcPayrollLine(
     gross,
     deductions,
     net,
-    hourlyRate,
+    // ค่าตัวแปรกลางที่คำนวณได้ในงวดนี้ — เก็บไว้ให้ตรวจย้อนหลังว่าอัตราที่ใช้คือเท่าไร
+    variables: Object.fromEntries(vars),
   };
 }
 

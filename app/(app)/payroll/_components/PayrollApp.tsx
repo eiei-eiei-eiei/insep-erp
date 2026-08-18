@@ -10,6 +10,7 @@ import type { getPayrollConfig } from "../data";
 import { PeriodTab } from "./PeriodTab";
 import { EmployeesTab } from "./EmployeesTab";
 import { ConfigTab } from "./ConfigTab";
+import { ReportTab } from "./ReportTab";
 
 export type PayrollConfig = Awaited<ReturnType<typeof getPayrollConfig>>;
 
@@ -36,8 +37,8 @@ export function PayrollApp({
   // ยังตั้งค่าไม่ครบ = คำนวณไม่ได้เลย → บอกให้ชัดตั้งแต่บนสุด แทนที่จะปล่อยให้ error ตอนกดบันทึก
   const missing: string[] = [];
   if (config.rates.length === 0) missing.push("ชุดอัตรา (ประกันสังคม/ภาษี)");
-  if (config.components.length === 0) missing.push("รายการเพิ่ม/หัก");
-  if (!config.accounts.pay) missing.push("บัญชีเงินที่ใช้จ่ายเงินเดือน");
+  if (config.legs.length === 0) missing.push("ขาลงบัญชี");
+  if (!config.payAccount) missing.push("บัญชีเงินหลักที่ใช้จ่ายเงินเดือน");
 
   return (
     <div>
@@ -69,6 +70,11 @@ export function PayrollApp({
       {visited.has("งวดจ่าย") && (
         <div className={show("งวดจ่าย")}>
           <PeriodTab config={config} employees={employees} periods={periods} active={tab === "งวดจ่าย"} />
+        </div>
+      )}
+      {visited.has("รายงาน") && (
+        <div className={show("รายงาน")}>
+          <ReportTab active={tab === "รายงาน"} />
         </div>
       )}
       {visited.has("พนักงาน") && (

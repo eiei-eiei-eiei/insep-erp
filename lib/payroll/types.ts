@@ -39,8 +39,8 @@ export type PayMethod =
   | "per_unit"
   /** rate% ของค่าจ้างฐาน (ค่าครองชีพ 5%) */
   | "percent_base"
-  /** อัตราต่อชั่วโมง × multiplier × จำนวนชั่วโมง (ค่าล่วงเวลา) */
-  | "hourly_multiplier"
+  /** ค่าตัวแปรกลาง × multiplier × ค่าจากช่องกรอก (ค่าล่วงเวลา ฯลฯ) */
+  | "variable"
   /** ตารางขั้นบันได: ค่าที่กรอก → เงิน (เบี้ยขยันตามวันขาด) */
   | "tier_table"
   /** กรอกยอดเองต่อคนต่องวด — ทางออกของเคสที่ชุดปิดไม่ครอบ */
@@ -60,10 +60,12 @@ export type PayComponent = {
   amount?: number;
   /** ใช้กับ percent_base — หน่วยเป็น % (5 = 5%) */
   rate?: number;
-  /** ใช้กับ hourly_multiplier (1.5 / 2 / 3) */
+  /** ใช้กับ variable (1.5 / 2 / 3) */
   multiplier?: number;
   /** ใช้กับ tier_table */
   tiers?: PayTier[];
+  /** ใช้กับ variable — อ้าง PayVariable.code */
+  variableCode?: string;
 
   /** ช่องกรอกที่ป้อนค่าให้รายการนี้ (อ้าง pay_inputs.code) */
   inputKeys?: string[];
@@ -88,8 +90,82 @@ export type PayComponent = {
   /** เข้าฐานที่เอาไป prorate ตามวันมาทำงาน */
   prorateBase?: boolean;
 
-  /** หมวดรายจ่ายที่ใช้ตอน post เข้าบัญชี */
-  expenseCat?: string;
+  sort?: number;
+  active?: boolean;
+};
+
+/**
+ * ค่าที่เอามาใช้เป็นตัวตั้ง/ตัวหารของตัวแปรกลางได้ — **ชุดปิด ใช้ชุดเดียวกันทุกช่อง**
+ * ★ `work_days_std` มาจาก "งวดนั้น" → เปลี่ยนได้ทุกเดือนโดยไม่ต้องแก้ตัวแปร
+ *   (เดือนหน้าตั้งวันมาตรฐานเป็น 26 อัตราต่อชั่วโมงก็ขยับเอง)
+ */
+export type VarSource =
+  | "base_wage"
+  | "prorated_base"
+  | "work_days_std"
+  | "work_days_actual"
+  | "hours_per_day"
+  | "input"
+  | "constant";
+
+/** 1 ชั้นของตัวหาร */
+export type VarDivisor = { kind: VarSource; value?: number; inputKey?: string };
+
+/**
+ * ตัวแปรกลาง — คำนวณชั้นแรกก่อนเอาไปคิดเป็นรายการเพิ่ม/หัก
+ *
+ * ทำไมต้องมี: อัตราค่าล่วงเวลาต่อชั่วโมงของแต่ละโรงคิดไม่เหมือนกัน
+ * (บางที่หารวันทำงานจริงของเดือน บางที่หาร 30 ตายตัว บางที่ใช้อัตราเหมา)
+ * ของเดิมฮาร์ดโค้ดสูตรไว้ในโค้ด = ลูกค้าตั้งเองไม่ได้
+ *
+ * 🚨 ยังไม่ใช่ภาษาสูตร: ตัวตั้ง ÷ ตัวหารไม่เกิน 2 ชั้น ทุกช่องเลือกจากชุดปิด
+ */
+export type PayVariable = {
+  code: string;
+  name: string;
+  source: VarSource;
+  constValue?: number;
+  inputKey?: string;
+  divisors?: VarDivisor[];
+  sort?: number;
+  active?: boolean;
+};
+
+/** ยอดที่ขาลงบัญชีหนึ่งจะลง — ชุดปิด */
+export type LegAmountSource =
+  | "net"
+  | "gross"
+  | "sso_employee"
+  | "sso_employer"
+  | "sso_total"
+  | "wht"
+  /** ยอดรวมของรายการเพิ่ม/หักตัวหนึ่ง (ดู componentCode) */
+  | "component";
+
+/**
+ * ขาลงบัญชี 1 ขา — ลูกค้าตั้งเองได้ กี่ขาก็ได้
+ *
+ * ของเดิมล็อกไว้ 3 ขาในโค้ด (net/สปส./ภาษี) แต่แต่ละเจ้าอยากแยกไม่เหมือนกัน
+ * และหมวดรายจ่ายที่ใช้ก็ไม่ได้อยู่ในรายการหมวดเดิมของเขา
+ *
+ * 🚨 ขาที่ตั้งเอง **ซ้อนกันได้** เช่นตั้งขา 'โอที' เพิ่มทั้งที่โอทีอยู่ในยอดสุทธิแล้ว
+ *    = ลงรายจ่ายซ้ำ และไม่มีอะไรใน DB ฟ้อง → หน้าจอต้องโชว์ตัวเลขคุมเสมอ
+ *    (ยอดรวมของขาที่ตั้งไว้ เทียบกับ รวมเงินได้ + เงินสมทบนายจ้าง)
+ */
+export type PayPostLeg = {
+  code: string;
+  name: string;
+  amountSource: LegAmountSource;
+  componentCode?: string;
+  /** true = 1 รายการต่อพนักงาน 1 คน · false = ลงเป็นก้อนเดียว */
+  splitByEmployee?: boolean;
+  /** หมวดรายจ่ายบนรายการบัญชี — พิมพ์เอง ไม่ผูกกับรายการหมวดเดิม */
+  category: string;
+  /** ว่าง = ใช้บัญชีเงินหลักที่ตั้งไว้ */
+  accountName?: string;
+  contactName?: string;
+  /** วันที่แนะนำ = สิ้นงวด + n วัน (0 = วันจ่ายเงินเดือนของงวด) */
+  suggestDay?: number;
   sort?: number;
   active?: boolean;
 };
@@ -205,6 +281,6 @@ export type PayrollLine = {
   deductions: number;
   /** ยอดจ่ายจริง */
   net: number;
-  /** อัตราต่อชั่วโมงที่ใช้คิด OT (เก็บไว้ตรวจย้อนหลัง) */
-  hourlyRate: number;
+  /** ค่าตัวแปรกลางที่คำนวณได้ในงวดนี้ (เก็บไว้ตรวจย้อนหลังว่าอัตราที่ใช้คือเท่าไร) */
+  variables: Record<string, number>;
 };
