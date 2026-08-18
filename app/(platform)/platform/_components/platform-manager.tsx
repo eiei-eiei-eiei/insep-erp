@@ -32,6 +32,7 @@ const MODULE_LABEL: Record<string, string> = {
   production: "ผลิต (+ ฟอร์ม ภส.)",
   accounting: "บัญชี",
   sales: "ขาย",
+  payroll: "เงินเดือน",
 };
 
 /** วันที่ไทยย่อ — ใช้ตัวเดียวกับทั้งระบบ (`lib/shared/format`) ไม่เขียนของตัวเอง */

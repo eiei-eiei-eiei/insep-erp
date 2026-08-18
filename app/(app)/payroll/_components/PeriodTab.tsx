@@ -1,0 +1,365 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, useSaver, Empty, fmt } from "@/lib/shared/ui";
+import { calcPayrollLine } from "@/lib/payroll/calc";
+import { ratesOn } from "@/lib/payroll/sso";
+import { printSlips, type SlipData } from "@/lib/payroll/slip";
+import type { PayrollLine } from "@/lib/payroll/types";
+import {
+  createPeriodAction,
+  savePeriodLinesAction,
+  postPayrollAction,
+  unpostPayrollAction,
+  type LineInput,
+} from "../actions";
+import { getPeriodDetailAction } from "../read-actions";
+import type { EmployeeRow, ItemRow, PeriodRow } from "../data";
+import type { PayrollConfig } from "./PayrollApp";
+
+/**
+ * แท็บงวดจ่าย
+ *
+ * 🪤 พรีวิวสดบนหน้าจอเรียก `calcPayrollLine` **ตัวเดียวกับที่ฝั่ง server ใช้ตอนบันทึก**
+ *    ห้ามเขียนสูตรซ้ำที่นี่เด็ดขาด (ระบบเดิมบน GAS เขียนซ้ำ 2 ที่ แล้วใบเบี้ยขยัน
+ *    กับยอดที่จ่ายจริงจะเพี้ยนกันทันทีที่แก้เกณฑ์ที่เดียว)
+ */
+
+const POST_LABEL = { NET: "เงินเดือน", SSO: "ประกันสังคม", WHT: "ภาษีหัก ณ ที่จ่าย" } as const;
+type PostKind = keyof typeof POST_LABEL;
+
+export function PeriodTab({
+  config,
+  employees,
+  periods,
+  active,
+}: {
+  config: PayrollConfig;
+  employees: EmployeeRow[];
+  periods: PeriodRow[];
+  active: boolean;
+}) {
+  const router = useRouter();
+  const { pending, msg, run } = useSaver();
+  const now = new Date();
+
+  const [periodId, setPeriodId] = useState(periods[0]?.periodId ?? "");
+  const [period, setPeriod] = useState<PeriodRow | null>(periods[0] ?? null);
+  const [items, setItems] = useState<ItemRow[]>([]);
+  const [draft, setDraft] = useState<Record<string, LineInput>>({});
+  const [loading, setLoading] = useState(false);
+
+  // ฟอร์มสร้างงวด
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [workDaysStd, setWorkDaysStd] = useState(30);
+  const [payDate, setPayDate] = useState("");
+  const [postDate, setPostDate] = useState("");
+
+  const load = useCallback((id: string) => {
+    if (!id) return;
+    setLoading(true);
+    getPeriodDetailAction(id).then((d) => {
+      setPeriod(d.period);
+      setItems(d.items);
+      setDraft(Object.fromEntries(d.items.map((i) => [i.empId, {
+        empId: i.empId,
+        workDays: i.inputs.workDays ?? d.period?.workDaysStd ?? 0,
+        values: i.inputs.values ?? {},
+        manual: i.inputs.manual ?? {},
+        whtOverride: i.inputs.whtOverride ?? null,
+      }])));
+      setLoading(false);
+    });
+  }, []);
+
+  useEffect(() => { if (active && periodId) load(periodId); }, [active, periodId, load]);
+
+  const locked = period != null && period.status !== "draft";
+
+  // ── พรีวิวสด ────────────────────────────────────────────────────────────────
+  const rates = useMemo(
+    () => (period ? ratesOn(config.rates, lastDayISO(period.year, period.month)) : null),
+    [period, config.rates],
+  );
+
+  const preview = useMemo(() => {
+    if (!period || !rates) return {} as Record<string, PayrollLine>;
+    const out: Record<string, PayrollLine> = {};
+    for (const it of items) {
+      const d = draft[it.empId];
+      if (!d) continue;
+      const emp = empOf(it, employees);
+      if (!emp) continue;
+      out[it.empId] = calcPayrollLine(
+        emp,
+        { workDays: d.workDays, values: d.values, manual: d.manual, whtOverride: d.whtOverride },
+        config.components,
+        rates,
+        config.settings,
+        { workDaysStd: period.workDaysStd, monthOfYear: period.month, yearBE: String(period.year + 543) },
+      );
+    }
+    return out;
+  }, [items, draft, period, rates, config, employees]);
+
+  const totals = useMemo(() => {
+    const v = Object.values(preview);
+    return {
+      gross: v.reduce((s, l) => s + l.gross, 0),
+      sso: v.reduce((s, l) => s + l.sso, 0),
+      wht: v.reduce((s, l) => s + l.wht, 0),
+      net: v.reduce((s, l) => s + l.net, 0),
+    };
+  }, [preview]);
+
+  // รายการ manual = คอลัมน์กรอกเองในตาราง
+  const manualComps = config.components.filter((c) => c.method === "manual" && c.active !== false);
+
+  function setVal(empId: string, key: string, v: number, bucket: "values" | "manual") {
+    setDraft((p) => ({ ...p, [empId]: { ...p[empId], [bucket]: { ...p[empId][bucket], [key]: v } } }));
+  }
+
+  function doSave() {
+    run(() => savePeriodLinesAction(periodId, Object.values(draft)), "คำนวณและบันทึกแล้ว", () => {
+      load(periodId);
+      router.refresh();
+    });
+  }
+
+  function doPost(kind: PostKind) {
+    if (!postDate) { alert("เลือกวันที่ลงบัญชีก่อน"); return; }
+    run(() => postPayrollAction(periodId, kind, postDate), `ลงบัญชี${POST_LABEL[kind]}แล้ว`, () => {
+      load(periodId);
+      router.refresh();
+    });
+  }
+
+  function doUnpost(kind: PostKind) {
+    if (!confirm(`ถอนการลงบัญชี${POST_LABEL[kind]}? รายการในบัญชีจะถูกเปลี่ยนเป็น "ยกเลิก" (ไม่ได้ลบทิ้ง)`)) return;
+    run(() => unpostPayrollAction(periodId, kind), "ถอนแล้ว", () => {
+      load(periodId);
+      router.refresh();
+    });
+  }
+
+  function doPrint() {
+    if (!period) return;
+    const slips: SlipData[] = items.map((it) => {
+      const l = preview[it.empId];
+      const d = draft[it.empId];
+      const emp = empOf(it, employees);
+      const baseLabel =
+        emp?.wageType === "monthly"
+          ? "เงินเดือน"
+          : `${emp?.wageType === "daily" ? "ค่าแรง" : "เงินเดือน"} (${d?.workDays ?? 0} วัน)`;
+      return {
+        companyName: config.entityId || "บริษัท",
+        periodLabel: `${String(period.month).padStart(2, "0")}/${period.year}`,
+        payDate: period.payDate ?? undefined,
+        empName: it.empName,
+        empId: it.empId,
+        groupLabel: it.groupCode ?? undefined,
+        baseLabel,
+        baseAmount: l?.baseAmount ?? it.baseAmount,
+        items: l?.items ?? [],
+        sso: l?.sso ?? it.sso,
+        wht: l?.wht ?? it.wht,
+        gross: l?.gross ?? it.gross,
+        net: l?.net ?? it.net,
+      };
+    });
+    if (slips.length === 0) { alert("งวดนี้ยังไม่มีพนักงาน"); return; }
+    printSlips(slips);
+  }
+
+  const posted = (k: PostKind) => Boolean(period?.postState?.[k.toLowerCase()]);
+
+  return (
+    <div className="space-y-4">
+      <Card title="เลือก / สร้างงวด">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-5">
+          <Field label="งวดที่มีอยู่">
+            <Select value={periodId} onChange={(e) => setPeriodId(e.target.value)}>
+              <option value="">— เลือกงวด —</option>
+              {periods.map((p) => (
+                <option key={p.periodId} value={p.periodId}>
+                  {p.periodId} ({p.status === "draft" ? "ร่าง" : p.status === "partial" ? "ลงบัญชีบางส่วน" : "ลงบัญชีครบ"})
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="ปี (ค.ศ.)"><NumBox value={year} onChange={(v) => setYear(v === "" ? now.getFullYear() : v)} /></Field>
+          <Field label="เดือน"><NumBox value={month} onChange={(v) => setMonth(v === "" ? 1 : v)} /></Field>
+          <Field label="วันทำงานมาตรฐาน"><NumBox value={workDaysStd} onChange={(v) => setWorkDaysStd(v === "" ? 0 : v)} /></Field>
+          <Field label="วันจ่ายเงินเดือน"><TextInput type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} /></Field>
+        </div>
+        <p className="mt-2 text-xs text-faint">
+          &ldquo;วันทำงานมาตรฐาน&rdquo; คือตัวหารของพนักงานแบบลดตามวันมาทำงาน — ตกลงกันภายในว่าจะใช้ 30 วัน
+          หรือจำนวนวันจริงของเดือนนั้น
+        </p>
+        <div className="mt-3">
+          <SaveButton
+            pending={pending}
+            onClick={() =>
+              run(() => createPeriodAction({ year, month, workDaysStd, payDate }), "สร้าง/อัปเดตงวดแล้ว", (d) => {
+                const id = (d as { periodId: string }).periodId;
+                setPeriodId(id);
+                load(id);
+                router.refresh();
+              })
+            }
+          >
+            สร้างงวด / เติมพนักงานที่ยังไม่มี
+          </SaveButton>
+        </div>
+        <Msg msg={msg} />
+      </Card>
+
+      {period && (
+        <>
+          {locked && (
+            <div className="rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">
+              งวดนี้ลงบัญชีไปแล้วบางส่วน — แก้ตัวเลขไม่ได้จนกว่าจะถอนการลงบัญชีให้ครบ
+              (ถ้าแก้ได้ ยอดที่ยื่นไปแล้วจะไม่ตรงกับที่บันทึก)
+            </div>
+          )}
+          {!rates && (
+            <div className="rounded-lg bg-crit-bg px-3 py-2 text-sm text-crit">
+              ยังไม่มีชุดอัตราที่มีผลถึงงวดนี้ — ไปตั้งที่แท็บ &ldquo;ตั้งค่าการคำนวณ&rdquo; ก่อน
+            </div>
+          )}
+
+          <Card title={`ตารางงวด ${period.periodId}`}>
+            {loading ? (
+              <p className="text-sm text-faint">กำลังโหลด…</p>
+            ) : items.length === 0 ? (
+              <Empty>— ยังไม่มีพนักงานในงวดนี้ (กด &ldquo;สร้างงวด / เติมพนักงาน&rdquo;) —</Empty>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="tbl">
+                  <thead>
+                    <tr className="text-left text-faint">
+                      <th>ชื่อ</th>
+                      <th className="num">วันทำงาน</th>
+                      {config.inputs.map((i) => <th key={i.code} className="num">{i.label}</th>)}
+                      {manualComps.map((c) => <th key={c.code} className="num">{c.name}</th>)}
+                      <th className="num">ภาษี (override)</th>
+                      <th className="num">รวมได้</th>
+                      <th className="num">ปกส.</th>
+                      <th className="num">ภาษี</th>
+                      <th className="num">สุทธิ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((it) => {
+                      const d = draft[it.empId];
+                      const l = preview[it.empId];
+                      if (!d) return null;
+                      return (
+                        <tr key={it.empId}>
+                          <td className="whitespace-nowrap">{it.empName}</td>
+                          <td className="num">
+                            <NumBox value={d.workDays} readOnly={locked}
+                              onChange={(v) => setDraft((p) => ({ ...p, [it.empId]: { ...p[it.empId], workDays: v === "" ? 0 : v } }))} />
+                          </td>
+                          {config.inputs.map((i) => (
+                            <td key={i.code} className="num">
+                              <NumBox value={d.values[i.code] ?? 0} blankZero readOnly={locked}
+                                onChange={(v) => setVal(it.empId, i.code, v === "" ? 0 : v, "values")} />
+                            </td>
+                          ))}
+                          {manualComps.map((c) => (
+                            <td key={c.code} className="num">
+                              <NumBox value={d.manual[c.code] ?? 0} blankZero readOnly={locked}
+                                onChange={(v) => setVal(it.empId, c.code, v === "" ? 0 : v, "manual")} />
+                            </td>
+                          ))}
+                          <td className="num">
+                            <NumBox value={d.whtOverride ?? ""} blankZero readOnly={locked}
+                              onChange={(v) => setDraft((p) => ({ ...p, [it.empId]: { ...p[it.empId], whtOverride: v === "" ? null : v } }))} />
+                          </td>
+                          <td className="num">{fmt(l?.gross ?? it.gross)}</td>
+                          <td className="num">{fmt(l?.sso ?? it.sso)}</td>
+                          <td className="num">{fmt(l?.wht ?? it.wht)}</td>
+                          <td className="num font-semibold">{fmt(l?.net ?? it.net)}</td>
+                        </tr>
+                      );
+                    })}
+                    <tr className="font-semibold">
+                      <td colSpan={2 + config.inputs.length + manualComps.length + 1}>รวมทั้งงวด</td>
+                      <td className="num">{fmt(totals.gross)}</td>
+                      <td className="num">{fmt(totals.sso)}</td>
+                      <td className="num">{fmt(totals.wht)}</td>
+                      <td className="num">{fmt(totals.net)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <SaveButton pending={pending} onClick={doSave} disabled={locked || !rates || items.length === 0}>
+                คำนวณ &amp; บันทึก
+              </SaveButton>
+              <button onClick={doPrint} disabled={items.length === 0}
+                className="rounded-lg border border-line px-4 py-2 text-sm text-muted hover:bg-raised disabled:opacity-50">
+                พิมพ์สลิปทั้งงวด
+              </button>
+              <span className="text-xs text-faint">ตัวเลขบนตารางคือผลคำนวณสด — กดบันทึกเพื่อแช่ค่าไว้ก่อนลงบัญชี</span>
+            </div>
+          </Card>
+
+          <Card title="ลงบัญชี">
+            <p className="mb-3 text-xs text-faint">
+              แยก 3 ขาโดยตั้งใจ: ลง<b>ยอดสุทธิ</b>ตอนจ่ายเงินเดือน แล้วลง<b>ยอดนำส่ง</b>ตอนไปจ่ายจริง —
+              รวมทั้งปีได้เท่ากับยอดเต็ม + สมทบนายจ้างพอดี ไม่นับซ้ำ
+            </p>
+            <div className="mb-3 max-w-xs">
+              <Field label="วันที่ลงบัญชี">
+                <TextInput type="date" value={postDate} onChange={(e) => setPostDate(e.target.value)} />
+              </Field>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(Object.keys(POST_LABEL) as PostKind[]).map((k) => (
+                <div key={k} className="flex items-center gap-1 rounded-lg border border-line px-3 py-2">
+                  <span className="text-sm">{POST_LABEL[k]}</span>
+                  {posted(k) ? (
+                    <>
+                      <span className="text-xs text-ok">ลงแล้ว</span>
+                      <button onClick={() => doUnpost(k)} disabled={pending} className="ml-2 text-xs text-crit hover:underline">ถอน</button>
+                    </>
+                  ) : (
+                    <button onClick={() => doPost(k)} disabled={pending} className="ml-2 text-xs text-brand hover:underline">ลงบัญชี</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** ประกอบ Employee ให้ engine — ใช้ master ปัจจุบัน + snapshot กลุ่มที่บันทึกไว้ตอนสร้างงวด */
+function empOf(it: ItemRow, employees: EmployeeRow[]) {
+  const e = employees.find((x) => x.empId === it.empId);
+  if (!e) return null;
+  return {
+    empId: e.empId,
+    name: e.name,
+    groupCode: it.groupCode ?? e.groupCode,
+    wageType: e.wageType,
+    baseWage: e.baseWage,
+    ssoExempt: e.ssoExempt,
+    whtMode: e.whtMode,
+    whtFixed: e.whtFixed,
+    taxAllowances: e.taxAllowances,
+  };
+}
+
+function lastDayISO(year: number, month: number): string {
+  return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+}

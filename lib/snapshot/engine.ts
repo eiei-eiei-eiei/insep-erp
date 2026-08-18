@@ -19,6 +19,9 @@ export const SNAPSHOT_ORDER = [
   "log_ferment_monitor", "log_dilute", "log_product",
   "transactions", "transaction_items", "wht_certificates", "tax_summaries",
   "sales_orders", "sales_order_items", "warehouse_stock", "stock_moves",
+  // เงินเดือน (0040) — employees/payroll_periods อ้าง entities · payroll_items อ้างทั้งสอง
+  "pay_inputs", "pay_components", "pay_rates",
+  "employees", "payroll_periods", "payroll_items",
   "integration_log", "edit_log", "report_runs", "counters",
 ] as const;
 

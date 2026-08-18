@@ -330,11 +330,24 @@ export function IconLock(p: IconProps) {
   );
 }
 
+/** เงินเดือน — คนสองคน (ทีมงาน) */
+export function IconPeople(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <circle cx="9" cy="8" r="3.2" />
+      <path d="M3.5 20c0-3 2.5-5 5.5-5s5.5 2 5.5 5" />
+      <path d="M16 5.4a3.2 3.2 0 0 1 0 5.2" />
+      <path d="M17.5 15.4c1.8.7 3 2.4 3 4.6" />
+    </Svg>
+  );
+}
+
 /** map จาก key ของ workspace → ไอคอน (ใช้ใน nav) */
 export const WORKSPACE_ICON: Record<string, (p: IconProps) => React.ReactElement> = {
   production: IconStill,
   sales: IconCart,
   accounting: IconLedger,
+  payroll: IconPeople,
   settings: IconSettings,
   data: IconDatabase,
 };

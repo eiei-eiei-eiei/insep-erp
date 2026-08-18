@@ -93,6 +93,7 @@ export const TENANT_TABLES = [
   "log_ferment_monitor", "log_dilute", "log_product", "stock_product",
   "transactions", "transaction_items", "tax_summaries", "wht_certificates",
   "sale_menu", "sales_orders", "sales_order_items", "warehouse_stock", "stock_moves",
+  "pay_inputs", "pay_components", "pay_rates", "employees", "payroll_periods", "payroll_items",
   "report_runs", "edit_log", "snapshots", "profiles",
 ] as const;
 

@@ -1,0 +1,228 @@
+import "server-only";
+import { createClient } from "@/lib/supabase/server";
+import type {
+  Employee,
+  PayComponent,
+  PayRates,
+  PayrollSettings,
+} from "@/lib/payroll/types";
+
+/**
+ * ข้อมูลของโมดูลเงินเดือน
+ *
+ * ★ ทุก query อาศัย RLS ของ 0040 กรองให้ (tenant + role main + entity scope)
+ *   ไม่ต้องใส่ .eq("tenant_id", …) เอง — และห้ามใส่ เพราะ my_tenant() เป็นแหล่งความจริงเดียว
+ */
+
+export type PayInput = { code: string; label: string; unit: string | null; sort: number; active: boolean };
+
+export type EmployeeRow = Employee & {
+  entityId: string;
+  nationalId: string | null;
+  ssoNo: string | null;
+  bankName: string | null;
+  bankAcct: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  active: boolean;
+};
+
+export type PeriodRow = {
+  periodId: string;
+  entityId: string;
+  year: number;
+  month: number;
+  workDaysStd: number;
+  payDate: string | null;
+  status: "draft" | "partial" | "posted";
+  postState: Record<string, { txIds?: string[]; date?: string }>;
+};
+
+export type ItemRow = {
+  empId: string;
+  empName: string;
+  groupCode: string | null;
+  inputs: { workDays?: number; values?: Record<string, number>; manual?: Record<string, number>; whtOverride?: number | null };
+  computed: Record<string, unknown>;
+  baseAmount: number;
+  gross: number;
+  sso: number;
+  ssoEmployer: number;
+  wht: number;
+  deductions: number;
+  net: number;
+  txId: string | null;
+};
+
+/** ค่าตั้งของโมดูล (app_settings) + กลุ่มพนักงาน */
+export async function getPayrollConfig(): Promise<{
+  settings: PayrollSettings;
+  groups: string[];
+  entityId: string;
+  accounts: { pay: string; sso: string; wht: string };
+  inputs: PayInput[];
+  components: PayComponent[];
+  rates: PayRates[];
+}> {
+  const supabase = await createClient();
+  const [s, inputs, comps, rates] = await Promise.all([
+    supabase.from("app_settings").select("kind, value, sort").in("kind", [
+      "pay_group",
+      "payroll_entity",
+      "payroll_pay_account",
+      "payroll_sso_account",
+      "payroll_wht_account",
+      "payroll_hours_per_day",
+      "payroll_rounding",
+    ]).order("sort"),
+    supabase.from("pay_inputs").select("code, label, unit, sort, active").order("sort"),
+    supabase.from("pay_components").select("*").order("sort"),
+    supabase.from("pay_rates").select("*").order("effective_from", { ascending: false }),
+  ]);
+
+  const rows = s.data ?? [];
+  const list = (k: string) => rows.filter((r) => r.kind === k).map((r) => r.value as string);
+  const one = (k: string) => list(k)[0] ?? "";
+
+  return {
+    settings: {
+      // วันละ 8 ชม. เป็นค่าตั้งต้นกลาง ๆ — โรงที่ใช้ 9 ชม. ตั้งเองในหน้าตั้งค่า
+      hoursPerDay: Number(one("payroll_hours_per_day")) || 8,
+      rounding: one("payroll_rounding") === "satang" ? "satang" : "baht",
+    },
+    groups: list("pay_group"),
+    entityId: one("payroll_entity"),
+    accounts: {
+      pay: one("payroll_pay_account"),
+      sso: one("payroll_sso_account"),
+      wht: one("payroll_wht_account"),
+    },
+    inputs: (inputs.data ?? []) as PayInput[],
+    components: (comps.data ?? []).map(toComponent),
+    rates: (rates.data ?? []).map(toRates),
+  };
+}
+
+export async function getEmployees(): Promise<EmployeeRow[]> {
+  const supabase = await createClient();
+  const { data } = await supabase.from("employees").select("*").order("emp_id");
+  return (data ?? []).map(toEmployee);
+}
+
+export async function getPeriods(): Promise<PeriodRow[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("payroll_periods")
+    .select("period_id, entity_id, year, month, work_days_std, pay_date, status, post_state")
+    .order("period_id", { ascending: false })
+    .limit(36);
+  return (data ?? []).map(toPeriod);
+}
+
+export async function getPeriodDetail(periodId: string): Promise<{ period: PeriodRow | null; items: ItemRow[] }> {
+  const supabase = await createClient();
+  const [p, it] = await Promise.all([
+    supabase
+      .from("payroll_periods")
+      .select("period_id, entity_id, year, month, work_days_std, pay_date, status, post_state")
+      .eq("period_id", periodId)
+      .maybeSingle(),
+    supabase.from("payroll_items").select("*").eq("period_id", periodId).order("emp_id"),
+  ]);
+  return {
+    period: p.data ? toPeriod(p.data) : null,
+    items: (it.data ?? []).map(toItem),
+  };
+}
+
+// ── mappers (snake_case ของ DB → camelCase ของ lib/payroll) ──────────────────
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+function toComponent(r: any): PayComponent {
+  return {
+    code: r.code,
+    name: r.name,
+    kind: r.kind,
+    method: r.method,
+    amount: Number(r.amount),
+    rate: Number(r.rate),
+    multiplier: Number(r.multiplier),
+    tiers: r.tiers ?? [],
+    inputKeys: r.input_keys ?? [],
+    inputAgg: r.input_agg,
+    groupCodes: r.group_codes ?? [],
+    taxable: r.taxable,
+    ssoBase: r.sso_base,
+    otBase: r.ot_base,
+    prorateBase: r.prorate_base,
+    expenseCat: r.expense_cat ?? undefined,
+    sort: r.sort,
+    active: r.active,
+  };
+}
+
+function toRates(r: any): PayRates {
+  return {
+    effectiveFrom: r.effective_from,
+    ssoRate: Number(r.sso_rate),
+    ssoWageMin: Number(r.sso_wage_min),
+    ssoWageMax: Number(r.sso_wage_max),
+    pitBrackets: r.pit_brackets ?? [],
+    personalAllowance: Number(r.personal_allowance),
+    expenseRate: Number(r.expense_rate),
+    expenseCap: Number(r.expense_cap),
+  };
+}
+
+function toEmployee(r: any): EmployeeRow {
+  return {
+    empId: r.emp_id,
+    entityId: r.entity_id,
+    name: r.name,
+    nationalId: r.national_id,
+    ssoNo: r.sso_no,
+    bankName: r.bank_name,
+    bankAcct: r.bank_acct,
+    startDate: r.start_date,
+    endDate: r.end_date,
+    groupCode: r.group_code,
+    wageType: r.wage_type,
+    baseWage: Number(r.base_wage),
+    ssoExempt: r.sso_exempt,
+    whtMode: r.wht_mode,
+    whtFixed: Number(r.wht_fixed),
+    taxAllowances: r.tax_allowances ?? {},
+    active: r.active,
+  };
+}
+
+function toPeriod(r: any): PeriodRow {
+  return {
+    periodId: r.period_id,
+    entityId: r.entity_id,
+    year: r.year,
+    month: r.month,
+    workDaysStd: Number(r.work_days_std),
+    payDate: r.pay_date,
+    status: r.status,
+    postState: r.post_state ?? {},
+  };
+}
+
+function toItem(r: any): ItemRow {
+  return {
+    empId: r.emp_id,
+    empName: r.emp_name,
+    groupCode: r.group_code,
+    inputs: r.inputs ?? {},
+    computed: r.computed ?? {},
+    baseAmount: Number(r.base_amount),
+    gross: Number(r.gross),
+    sso: Number(r.sso),
+    ssoEmployer: Number(r.sso_employer),
+    wht: Number(r.wht),
+    deductions: Number(r.deductions),
+    net: Number(r.net),
+    txId: r.tx_id,
+  };
+}

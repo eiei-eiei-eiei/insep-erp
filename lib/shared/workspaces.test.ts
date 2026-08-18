@@ -32,7 +32,7 @@ describe("workspacesFor — role × โมดูล", () => {
   });
 
   it("ไม่มี workspace รายงานราชการแล้ว — ฟอร์ม ภส. เป็นแท็บในผลิต (D62)", () => {
-    expect(keys(WORKSPACES)).toEqual(["accounting", "production", "sales"]);
+    expect(keys(WORKSPACES)).toEqual(["accounting", "payroll", "production", "sales"]);
     expect(keys(workspacesFor("main", ["accounting"]))).toEqual(["accounting"]);
   });
 
@@ -47,16 +47,33 @@ describe("workspacesFor — role × โมดูล", () => {
 
   it("ไม่ส่งโมดูลมา = เปิดหมด (พฤติกรรมเดิมก่อนมี 4.5 ต้องไม่พัง)", () => {
     expect(keys(workspacesFor("main"))).toEqual(keys(WORKSPACES));
+    // viewer ไม่เห็นเงินเดือนแม้เปิดโมดูลครบ — เงินเดือนรายคนเป็นข้อมูลอ่อนไหว
     expect(keys(workspacesFor("viewer"))).toEqual(["accounting", "production", "sales"]);
+  });
+});
+
+describe("เงินเดือน (โมดูลที่ 4) — เปิดเฉพาะ main", () => {
+  it("main ที่ซื้อโมดูลเงินเดือน เห็นเมนู", () => {
+    expect(keys(workspacesFor("main", ["payroll"]))).toEqual(["payroll"]);
+  });
+
+  it("★ role อื่นไม่เห็นเลย แม้ tenant จะซื้อโมดูลไว้ — เงินเดือนรายคนเป็นข้อมูลอ่อนไหวที่สุดในระบบ", () => {
+    for (const r of ["viewer", "sale", "warehouse"] as const) {
+      expect(keys(workspacesFor(r, ALL_MODULES)), r).not.toContain("payroll");
+    }
+  });
+
+  it("ไม่ได้ซื้อ = ไม่เห็น (เป็น add-on ที่ขายเพิ่ม ลูกค้าเดิมไม่ได้ฟรี)", () => {
+    expect(keys(workspacesFor("main", ["production", "accounting", "sales"]))).not.toContain("payroll");
   });
 });
 
 describe("workspacesWithLock — หน้าแรกโชว์ของที่ยังไม่ได้ซื้อเป็นสีเทา", () => {
   it("ไม่ตัดทิ้ง แต่ติดธง locked ให้ตัวที่ยังไม่ได้ซื้อ", () => {
     const ws = workspacesWithLock("main", ["production"]);
-    expect(ws).toHaveLength(3); // ครบทุกอัน ไม่หายไปไหน
+    expect(ws).toHaveLength(4); // ครบทุกอัน ไม่หายไปไหน
     const locked = ws.filter((w) => w.locked).map((w) => w.key).sort();
-    expect(locked).toEqual(["accounting", "sales"]);
+    expect(locked).toEqual(["accounting", "payroll", "sales"]);
   });
 
   it("ซื้อครบ = ไม่มีอันไหน locked", () => {

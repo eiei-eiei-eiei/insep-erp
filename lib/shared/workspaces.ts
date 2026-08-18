@@ -1,5 +1,5 @@
 /**
- * 3 พื้นที่ทำงาน (workspace) ตาม FLOW_REDESIGN sec 2 — ผลิต / ขาย / บัญชี
+ * 4 พื้นที่ทำงาน (workspace) — ผลิต / ขาย / บัญชี / เงินเดือน
  * role คุมว่าเห็น workspace ไหน (FLOW_REDESIGN sec 7 บรรทัดสุดท้าย)
  *
  * ★ เคยมี workspace ที่ 4 "รายงานราชการ" — ยุบแล้ว (D62): ฟอร์ม ภส. กลายเป็นแท็บ
@@ -8,7 +8,7 @@
 export type Role = "main" | "viewer" | "sale" | "warehouse";
 
 /** โมดูลที่ขายแยกกันได้ (tenants.modules_enabled) — 7 SKU ประกอบจาก 3 ตัวนี้ */
-export const MODULES = ["production", "accounting", "sales"] as const;
+export const MODULES = ["production", "accounting", "sales", "payroll"] as const;
 export type ModuleKey = (typeof MODULES)[number];
 
 /** ค่าเริ่มต้นเมื่ออ่านค่าจาก DB ไม่ได้ — เปิดหมด (ตรงกับ default ของคอลัมน์ใน 0025)
@@ -28,6 +28,8 @@ export type Workspace = {
 };
 
 export const WORKSPACES: Workspace[] = [
+  // ★ เงินเดือนเปิดให้ role main เท่านั้น — เงินเดือนรายคนเป็นข้อมูลอ่อนไหวที่สุดในระบบ
+  //   (viewer/sale/warehouse ไม่ควรเห็นแม้แต่ชื่อเมนู) · RLS ฝั่ง DB กันซ้ำอีกชั้นใน 0040
   {
     key: "production",
     label: "ผลิต",
@@ -51,6 +53,14 @@ export const WORKSPACES: Workspace[] = [
     icon: "📒",
     roles: ["main", "viewer"],
     module: "accounting",
+  },
+  {
+    key: "payroll",
+    label: "เงินเดือน",
+    href: "/payroll",
+    icon: "👥",
+    roles: ["main"],
+    module: "payroll",
   },
 ];
 

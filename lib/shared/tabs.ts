@@ -60,10 +60,18 @@ export const SALES_TABS: SubTab[] = [
   { slug: "manage", label: "จัดการข้อมูล", roles: ["main"] },
 ];
 
+/** เงินเดือน — เปิดเฉพาะ role main (ทั้ง workspace) จึงไม่ต้องกรอง roles รายแท็บ */
+export const PAYROLL_TABS: SubTab[] = [
+  { slug: "period", label: "งวดจ่าย" },
+  { slug: "employees", label: "พนักงาน" },
+  { slug: "config", label: "ตั้งค่าการคำนวณ" },
+];
+
 export const WORKSPACE_TABS: Record<string, SubTab[]> = {
   production: PRODUCTION_TABS,
   accounting: ACCOUNTING_TABS,
   sales: SALES_TABS,
+  payroll: PAYROLL_TABS,
 };
 
 /**
