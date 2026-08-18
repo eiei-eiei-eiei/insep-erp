@@ -30,7 +30,6 @@
 | Transaction_Items | `acc_transaction_items.csv` |
 | Tax_Summaries | `acc_tax_summaries.csv` |
 | pnd3-53 | `acc_pnd.csv` |
-| Scan_Log | `acc_scan_log.csv` |
 
 ## แอปขาย
 | ชีทเดิม | ตั้งชื่อไฟล์เป็น |

@@ -16,7 +16,6 @@ import {
   type AccountMeta,
 } from "@/lib/accounting/ledger";
 import { fetchAllRows } from "@/lib/shared/paginate";
-import { brandingFromSettings } from "@/lib/shared/branding";
 
 // คอลัมน์ transactions ที่ใช้ทุกรายงาน
 const TX_COLS =
@@ -107,16 +106,7 @@ export async function getBootstrap() {
     incomeCats: byKind("income_cat"),
     whtRates: byKind("wht_rate"),
     taxAccounts: taxAccounts.length ? taxAccounts : ["บัญชีบริษัท"],
-    branding: brandingFromSettings(s as { kind: string; value: string }[]),
-    // กิจการที่ใช้ออกเอกสารการค้า (D44) — ยังไม่ตั้ง → ใช้กิจการที่รับรายได้ขายเป็นค่าตั้งต้น
-    docEntityId: byKind("sales_doc_entity")[0] ?? byKind("sales_revenue_entity")[0] ?? "",
-    // แจ้งเตือน LINE ต่อกิจการ (0033) — role ที่ไม่ใช่ main จะได้ค่าว่างจาก RLS เอง
-    // ★ ไม่ส่งโทเคนเต็มกลับหน้าจอ — ส่งแค่ "ตั้งค่าแล้วหรือยัง" + 4 ตัวท้ายไว้ให้ยืนยันด้วยตา
-    line: {
-      hasToken: byKind("line_channel_token").length > 0,
-      tokenTail: (byKind("line_channel_token")[0] ?? "").slice(-4),
-      groupId: byKind("line_group_id")[0] ?? "",
-    },
+    // ★ แบรนด์ / กิจการบนเอกสาร / LINE ไม่อยู่ที่นี่แล้ว — ย้ายไป app/(app)/settings/settings-data.ts (D63)
   };
 }
 

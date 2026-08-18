@@ -8,15 +8,12 @@
 import { PDFDocument, rgb, type PDFPage } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 
-export type ExciseKind = "0701" | "0702_1" | "0702_2" | "0704";
+import type { ExciseKind } from "./keys";
 
-/** path ใน bucket pdf-templates (ตรงกับ scripts/upload-pdf-templates.ts) */
-export const EXCISE_TEMPLATE_KEY: Record<ExciseKind, string> = {
-  "0701": "excise/pso_07-01_1.pdf",
-  "0702_1": "excise/pso_07-02_1.pdf",
-  "0702_2": "excise/pso_07-02_12.pdf",
-  "0704": "excise/pso_07-04_1.pdf",
-};
+// ★ ExciseKind + EXCISE_TEMPLATE_KEY ย้ายไป ./keys แล้ว (component จะได้ import ค่าคงที่
+//   โดยไม่ลาก pdf-lib + fontkit เข้า bundle) — re-export ไว้ให้ผู้เรียกเดิมใช้ได้เหมือนเดิม
+export type { ExciseKind } from "./keys";
+export { EXCISE_TEMPLATE_KEY } from "./keys";
 // THSARABUN.TTF = เลขอารบิก (123) · ถ้าอยากได้เลขไทย (๑๒๓) เปลี่ยนเป็น fonts/THSARABUNIT9.TTF
 export { FONT_KEY } from "./keys";
 

@@ -21,7 +21,7 @@ import {
   deleteTaxSummaryAction,
   getReportRunsAction,
 } from "../actions";
-import { getPdfAssetUrl } from "../../reports/actions";
+import { getPdfAssetUrl } from "../../actions";
 import { ReportChecklist } from "../../_components/ReportChecklist";
 import { Field, Select, TextInput, fmt, todayISO, useSaver } from "./ui";
 

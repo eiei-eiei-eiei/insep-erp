@@ -73,7 +73,7 @@ export function IconLedger(p: IconProps) {
   );
 }
 
-/** รายงานราชการ — เอกสารมีตรา */
+/** เอกสารราชการ (ฟอร์ม ภส./สรรพากร) — เอกสารมีตรา */
 export function IconDoc(p: IconProps) {
   return (
     <Svg {...p}>
@@ -226,6 +226,14 @@ export function IconChevronRight(p: IconProps) {
   );
 }
 
+export function IconChevronDown(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="m5 9.5 7 7 7-7" />
+    </Svg>
+  );
+}
+
 export function IconLogout(p: IconProps) {
   return (
     <Svg {...p}>
@@ -327,7 +335,6 @@ export const WORKSPACE_ICON: Record<string, (p: IconProps) => React.ReactElement
   production: IconStill,
   sales: IconCart,
   accounting: IconLedger,
-  reports: IconDoc,
   settings: IconSettings,
   data: IconDatabase,
 };

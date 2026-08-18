@@ -47,7 +47,7 @@ export function UsersManager({
 
   return (
     <div>
-      <h1 className="mb-1 text-2xl font-bold text-ink">จัดการผู้ใช้</h1>
+      <h2 className="mb-1 text-xl font-bold text-ink">จัดการผู้ใช้</h2>
       <p className="mb-6 text-sm text-faint">
         สร้างบัญชีด้วย username (ไม่ต้องมีอีเมลจริง) · ให้สิทธิ์ · รีเซ็ตรหัสผ่าน · ลบ —
         เฉพาะเจ้าของกิจการ (main)

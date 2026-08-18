@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import type { Bootstrap } from "./types";
 import { nowMonth } from "./ui";
 import { EntryTab } from "./EntryTab";
@@ -14,21 +15,13 @@ import { InstallmentsTab } from "./InstallmentsTab";
 import { TaxDocsTab } from "./TaxDocsTab";
 import { SettingsTab } from "./SettingsTab";
 import { IconLedger } from "@/lib/shared/icons";
+import { ACCOUNTING_TABS, labelFromSlug, slugFromLabel } from "@/lib/shared/tabs";
+import { useTabUrl } from "../../_components/useTabUrl";
 
-const TABS = [
-  "บันทึก",
-  "แดชบอร์ด",
-  "บัญชี & เงินสด",
-  "ลูกหนี้-เจ้าหนี้",
-  "ค้นบิล",
-  "แบ่งงวด",
-  "ประวัติราคา",
-  "เช็คราคา",
-  "เอกสารสรรพากร",
-  "ตั้งค่า",
-] as const;
+// ★ ลำดับ/ชื่อแท็บมาจากทะเบียนกลาง lib/shared/tabs (แถบเมนูใช้ชุดเดียวกันทำดร็อปดาวน์)
+const TABS = ACCOUNTING_TABS.map((t) => t.label);
 
-type Tab = (typeof TABS)[number];
+type Tab = string;
 
 /** เลื่อนเดือน YYYY-MM ไป ±delta เดือน (ข้ามปีถูกต้อง) */
 function shiftMonth(m: string, delta: number): string {
@@ -38,7 +31,9 @@ function shiftMonth(m: string, delta: number): string {
 }
 
 export function AccountingApp({ boot }: { boot: Bootstrap }) {
-  const [tab, setTab] = useState<Tab>("บันทึก");
+  const sp = useSearchParams();
+  const [tab, setTab] = useState<Tab>(() => labelFromSlug("accounting", sp.get("tab")) ?? "บันทึก");
+  useTabUrl("accounting", tab, setTab, (l) => slugFromLabel("accounting", l));
   const [entityId, setEntityId] = useState(boot.entities[0]?.entity_id ?? "");
   const [month, setMonth] = useState(nowMonth());
   const readOnly = boot.role !== "main";
@@ -53,7 +48,7 @@ export function AccountingApp({ boot }: { boot: Bootstrap }) {
   const multiEntity = boot.entities.length > 1;
 
   // เก็บแท็บที่เคยเปิดไว้ (mount ครั้งเดียว แล้วคงไว้ ซ่อนด้วย CSS) → สลับแท็บลื่น ไม่ refetch ซ้ำ
-  const [visited, setVisited] = useState<Set<Tab>>(() => new Set<Tab>(["บันทึก"]));
+  const [visited, setVisited] = useState<Set<Tab>>(() => new Set<Tab>([tab]));
   useEffect(() => { setVisited((v) => (v.has(tab) ? v : new Set(v).add(tab))); }, [tab]);
   const show = (t: Tab) => (tab === t ? "" : "hidden");
 

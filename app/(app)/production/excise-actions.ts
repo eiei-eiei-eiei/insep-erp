@@ -2,16 +2,18 @@
 
 import { createClient } from "@/lib/supabase/server";
 import type { ExciseKind } from "@/lib/pdf/excise";
-import { reportData } from "./data";
+import { getExciseOptions, reportData } from "./excise-data";
 
-/** signed URL ของไฟล์ใน bucket pdf-templates (หมดอายุสั้น) — client fetch ไปทำ PDF */
-export async function getPdfAssetUrl(path: string): Promise<{ url: string | null; error?: string }> {
-  const supabase = await createClient();
-  const { data, error } = await supabase.storage
-    .from("pdf-templates")
-    .createSignedUrl(path, 120);
-  if (error) return { url: null, error: error.message };
-  return { url: data.signedUrl };
+/**
+ * server action ของแท็บ "รายงานสรรพสามิต" ในแอปผลิต
+ * (เดิมเป็น workspace แยก /reports — ยุบเข้ามาเป็นแท็บแล้ว ดู DECISIONS D62)
+ *
+ * ★ `getPdfAssetUrl` ไม่ได้อยู่ที่นี่ — ย้ายไป `app/(app)/actions.ts` เพราะฝั่งบัญชี (50ทวิ) ใช้ด้วย
+ */
+
+/** ตัวเลือกของแท็บ (กิจการ/วัตถุดิบ/สินค้า/ชื่อสุรา) — โหลดตอนเปิดแท็บ ไม่ใช่ตอนเปิดแอปผลิต */
+export async function getExciseOptionsAction() {
+  return getExciseOptions();
 }
 
 /** checklist "เดือนนี้สร้างรายงาน ภส. ครบยัง" (report_runs — FLOW sec 6) */

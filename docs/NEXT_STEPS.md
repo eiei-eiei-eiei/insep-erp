@@ -2,7 +2,9 @@
 
 > เขียน 2026-08-01 (D43) · อัปเดต 2026-08-02 (D44) · 2026-08-11 (D45 + สถาปัตยกรรม productization)
 > · 2026-08-12 (ย้าย DB จริงขึ้น 0032 · LINE ต่อ tenant · MFA ตกไป · 4.4+4.5)
-> **อัปเดตล่าสุด 2026-08-14 — 4.3 VAT branching เสร็จ (0036 · D55) · กิจการไม่จด VAT ใช้ได้จริงแล้ว**
+> **อัปเดตล่าสุด 2026-08-18 (D61-D65 · migration 0039)** — หน้าตั้งค่ากลาง `/settings` 5 แท็บ ·
+> เลขสรรพสามิตกรอกในแอปได้ · ยุบ workspace รายงานราชการเป็นแท็บในผลิต · ตัดสแกนใบเสร็จทิ้ง ·
+> แท็บผูก URL `?tab=` + ดร็อปดาวน์บนแถบเมนู · **ผู้ใช้ต้องรัน `npm run db:push:all -- --apply` ก่อน push**
 > **อ่านไฟล์นี้ก่อน** แล้วค่อยดู `CLAUDE.md` · `docs/DECISIONS.md` D46-D55 · `docs/DESIGN_SYSTEM.md`
 > **แอปจัดการหลังบ้าน**: `docs/ADMIN_APP_REQUIREMENTS.md` — **เฟส 1 เสร็จแล้ว** (ดูข้อ 10)
 > เฟส 2 (ตารางค่างวด) / เฟส 3 (เตือนอัตโนมัติ) ยังไม่เริ่ม
@@ -172,12 +174,13 @@ D48 ปิดทางที่ "เกิดโดยบังเอิญ" ไ
 > **env ที่ผูกกับ deployment ทุกตัวต้องไล่ดูว่าควรเป็นค่าต่อ tenant หรือไม่** ไม่ใช่แค่ LINE
 > และ**เทส 67 ตัวจับไม่ได้** เพราะดูแต่ข้อมูลใน DB ไม่ได้ดู side effect ที่ยิงออกนอกระบบ
 > (ตรวจแล้ว: `DEFAULT_ENTITY_ID`/`LIQUOR_ENTITY_ID` ใน `.env.example` **ไม่มีโค้ดไหนใช้แล้ว** = ซากเก่า ลบได้
-> · `ANTHROPIC_API_KEY`/`SCAN_DAILY_LIMIT` = โควตาต่อ deployment ซึ่งตั้งใจอยู่แล้ว แต่ผูกกับฟีเจอร์สแกนใบเสร็จที่จะตัดทิ้ง)
+> · `ANTHROPIC_API_KEY`/`SCAN_DAILY_LIMIT` **ตัดทิ้งไปพร้อมฟีเจอร์สแกนใบเสร็จแล้ว** — D61)
 
 ### 4.0.2 ที่ยังไม่ทำในก้อนนี้
 
 ~~4.3 (VAT branching)~~ ✅ · ~~4.4~~ ✅ · ~~4.5~~ ✅ — เหลือ:
-· 4.6 (โรงแช่ — ยังติดเทมเพลตฟอร์มสรรพสามิต) · ข้อ 3 (โลโก้บนเอกสาร) · ตัดฟีเจอร์สแกนใบเสร็จ
+· 4.6 (โรงแช่ — ยังติดเทมเพลตฟอร์มสรรพสามิต) · ข้อ 3 (โลโก้บนเอกสาร)
+> ~~ตัดฟีเจอร์สแกนใบเสร็จ~~ **ทำแล้ว 2026-08-18 (D61 · migration 0039)**
 
 > ✅ **4.3 + 4.4 + 4.5 เสร็จครบแล้ว** (0034 · 0036 · D53 · D55) — เดิม 4.3
 > ที่เป็นก้อนใหญ่สุดและเสี่ยงสุด เพราะแตะ `lib/sales/calc.ts` ซึ่งเป็นชั้นสูตร (กติกาเหล็ก)
@@ -239,7 +242,7 @@ edit_log, profiles, report_runs, snapshots) · ฝั่งผลิตกับ
 | `app/(app)/sales/data.ts` | 44 · 351 | `sale_menu` |
 | `app/(app)/sales/data.ts` | 45 · 262 | `stock_product` |
 | `app/(app)/sales/data.ts` | 46 · 264 · 367 | `warehouse_stock` |
-| `app/(app)/reports/data.ts` | 70 | `log_distill` |
+| `app/(app)/production/excise-data.ts` | ~70 | `log_distill` (เดิม `reports/data.ts` — ย้ายมาตอนยุบ workspace · D62) |
 
 > **วันนี้ยังไม่พัง** เพราะ 0026 backfill ทุกแถวฝั่งผลิต/ขายเป็นกิจการหลักตัวเดียว
 > และยังไม่มี UI ให้สร้างข้อมูลผลิต/ขายในกิจการที่ 2 → หนึ่งคีย์ยังคืนแถวเดียวเสมอ
@@ -266,7 +269,7 @@ edit_log, profiles, report_runs, snapshots) · ฝั่งผลิตกับ
 
 - **Module feature flags** — `modules_enabled` ต่อ tenant (ผลิต/บัญชี/ขาย = 7 SKU) gate ที่ nav + route/server-action + จุดเชื่อมข้ามโมดูล
 - **Provision script** สร้าง tenant ใหม่ + secrets registry + fleet cron (keep-alive + backup)
-- **ตัด/ลดฟีเจอร์สแกนใบเสร็จ AI** — memory `receipt-scan-thai-unreliable` (อ่านสลิปไทยไม่แม่นพอ ขายแล้วลูกค้าผิดหวัง)
+- ~~**ตัด/ลดฟีเจอร์สแกนใบเสร็จ AI**~~ → ✅ **ตัดทิ้งทั้งก้อนแล้ว (2026-08-18 · D61)** รวมตาราง `scan_log` และ env 2 ตัว
 - ⚠️ **จุดเสี่ยงอันดับ 1 ของ multi-tenant**: RLS พลาด = ลูกค้าเห็นข้อมูลกัน → ต้องมี **เทสอัตโนมัติต่อ policy** ก่อนรับลูกค้าจริง
 
 ### 4.7 ลูกค้าเข้าลิงก์ไหน — URL ไม่ใช่ตัวกำหนดสิทธิ์
@@ -360,7 +363,7 @@ UAT + shadow verification + cutover kit — ดู `docs/MIGRATION_PLAN.md` sec 
 - [~] `bank_accounts.opening_balance` = 0 ทุกบัญชี — **จงใจไม่ใส่ ไม่ใช่งานค้าง**
       เพราะใน `transactions` มีรายการนำเงินเข้าบัญชีตั้งแต่ต้นแล้ว → ใส่ยอดยกมาอีก = **นับซ้ำ**
       ⚠️ ห้ามเสนอให้เติมทีหลังเพราะเห็นเป็น 0
-- [x] `ANTHROPIC_API_KEY` — ตั้งแล้ว
+- [~] ~~`ANTHROPIC_API_KEY`~~ — **เลิกใช้ (D61)** ต้องลบออกจาก Vercel + revoke key
 - [x] `LINE_CHANNEL_TOKEN` / `LINE_GROUP_ID` — ตั้งแล้ว
 - [x] **GitHub auto-deploy เชื่อมแล้ว** — push `main` = deploy production เอง (เลิกใช้ `vercel --prod`)
 
@@ -534,7 +537,7 @@ route `/platform` · requirement เต็ม `docs/ADMIN_APP_REQUIREMENTS.md` �
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` · `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | แอปเข้า DB ไม่ได้เลยถ้าไม่มี |
 | `SUPABASE_SERVICE_ROLE_KEY` | ✅ | จัดการผู้ใช้ · LINE · snapshot/restore พังทั้งหมดถ้าไม่มี |
-| `ANTHROPIC_API_KEY` · `SCAN_DAILY_LIMIT` | ไม่ | มีแค่ฟีเจอร์สแกนใบเสร็จ (ตั้งใจจะเลิกทำ) · ไม่ตั้ง = ปุ่มขึ้นข้อความบอกเอง ไม่พัง |
+| ~~`ANTHROPIC_API_KEY` · `SCAN_DAILY_LIMIT`~~ | ❌ **ห้ามตั้ง** | ฟีเจอร์สแกนใบเสร็จถูกตัดทิ้งแล้ว (D61) — ไม่มีโค้ดไหนอ่านค่านี้อีก |
 | `PLATFORM_ADMIN` | ❌ **ห้ามตั้ง** | ตั้งเมื่อไหร่ ลูกค้าเปิด `/platform` เจอหน้า login แทน 404 = รู้ว่ามีระบบคุมลูกค้า |
 | `LOGIN_EMAIL_DOMAIN` | ❌ **ห้ามตั้ง** | เปลี่ยน = บัญชีที่สร้างไว้แล้วล็อกอินไม่ได้ทั้งหมด (D56) |
 | `NEXT_PUBLIC_ROOT_DOMAIN` | ❌ ยังไม่ตั้ง | ตั้งเมื่อซื้อโดเมน + ผูก wildcard แล้วเท่านั้น |

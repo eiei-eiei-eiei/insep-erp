@@ -16,7 +16,7 @@ const TABLES = [
   "log_ferment_monitor", "log_dilute", "log_product", "stock_product",
   "transactions", "transaction_items", "wht_certificates", "tax_summaries",
   "sales_orders", "sales_order_items", "warehouse_stock", "stock_moves",
-  "counters", "integration_log", "scan_log",
+  "counters", "integration_log",
 ];
 
 function toCsv(records: Record<string, unknown>[]): string {

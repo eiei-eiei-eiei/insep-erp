@@ -2,19 +2,13 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { UsersManager, type UserRow } from "./_components/users-manager";
 
+/** guard role main อยู่ที่ app/(app)/settings/layout.tsx แล้ว — ที่นี่ต้องการแค่ user.id */
 export default async function UsersPage() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-
-  const { data: me } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-  if (me?.role !== "main") redirect("/");
 
   const { data: users } = await supabase
     .from("profiles")

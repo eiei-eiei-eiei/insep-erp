@@ -1,4 +1,3 @@
-import type { Branding } from "@/lib/shared/branding";
 export type Entity = {
   entity_id: string;
   name: string;
@@ -34,9 +33,5 @@ export type Bootstrap = {
   incomeCats: string[];
   whtRates: string[];
   taxAccounts: string[];
-  branding: Branding;
-  /** กิจการที่ใช้ออกเอกสารการค้า (app_settings sales_doc_entity) */
-  docEntityId: string;
-  /** แจ้งเตือน LINE ต่อกิจการ (0033) — ★ ไม่มีโทเคนเต็ม มีแค่ 4 ตัวท้ายไว้ยืนยันด้วยตา */
-  line: { hasToken: boolean; tokenTail: string; groupId: string };
+  // ★ branding / docEntityId / line ย้ายไปหน้าตั้งค่ากลาง /settings แล้ว (D63)
 };

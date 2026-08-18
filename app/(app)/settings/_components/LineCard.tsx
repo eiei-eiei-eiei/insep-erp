@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveLineAction, clearLineAction } from "../actions";
-import { Card, Field, Msg, SaveButton, TextInput, useSaver } from "./ui";
+import { Card, Field, Msg, SaveButton, TextInput, useSaver } from "@/lib/shared/ui";
 
 /**
  * แจ้งเตือน LINE ของกิจการนี้ (0033)

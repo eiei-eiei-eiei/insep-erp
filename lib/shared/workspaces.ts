@@ -1,7 +1,9 @@
 /**
- * 4 พื้นที่ทำงาน (workspace) ตาม FLOW_REDESIGN sec 2
- * — แทนการแบ่ง "3 แอป" เดิม (ผลิต/ขาย/บัญชี) + เพิ่ม workspace รายงานราชการ (แก้ T7)
+ * 3 พื้นที่ทำงาน (workspace) ตาม FLOW_REDESIGN sec 2 — ผลิต / ขาย / บัญชี
  * role คุมว่าเห็น workspace ไหน (FLOW_REDESIGN sec 7 บรรทัดสุดท้าย)
+ *
+ * ★ เคยมี workspace ที่ 4 "รายงานราชการ" — ยุบแล้ว (D62): ฟอร์ม ภส. กลายเป็นแท็บ
+ *   "รายงานสรรพสามิต" ในผลิต · ภพ.30/ภงด./50ทวิ อยู่แท็บ "เอกสารสรรพากร" ในบัญชีตั้งแต่ D23#7
  */
 export type Role = "main" | "viewer" | "sale" | "warehouse";
 
@@ -49,16 +51,6 @@ export const WORKSPACES: Workspace[] = [
     icon: "📒",
     roles: ["main", "viewer"],
     module: "accounting",
-  },
-  {
-    // ★ รายงานราชการผูกกับโมดูล "ผลิต" — ฟอร์ม ภส. เป็นเอกสารของโรงกลั่น
-    //   (ภพ.30/ภงด./50ทวิ อยู่ในแท็บสรรพากรของโดเมนบัญชี ไม่ได้อยู่ที่นี่)
-    key: "reports",
-    label: "รายงานราชการ",
-    href: "/reports",
-    icon: "📄",
-    roles: ["main", "viewer"],
-    module: "production",
   },
 ];
 

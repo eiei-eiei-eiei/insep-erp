@@ -6,21 +6,19 @@ import {
   inVatFromExVat,
   reverseWht,
   splitInstallments,
-  round2,
 } from "@/lib/accounting/calc";
 // ตรรกะแถวรายการ/ยอดบิล ใช้ร่วมกับฟอร์มแก้บิล (BillsTab → EditBillModal)
 import { qn, emptyItem, makeItemHandlers, buildItemInputs, useBillAmounts, type BillItem } from "./billItems";
 import {
   saveTransactionAction,
   saveInstallmentsAction,
-  scanReceiptAction,
   addContactAction,
   getRecentBillsByContactAction,
   getItemHistoryAction,
 } from "../actions";
 import type { Bootstrap, Contact } from "./types";
 import { Card, Field, Msg, NumBox, NumInput, SaveButton, Select, TextInput, cleanTaxId13, fmt, todayISO, useSaver } from "./ui";
-import { IconEye, IconEyeOff, IconSearch, IconTrash } from "@/lib/shared/icons";
+import { IconEye, IconEyeOff, IconTrash } from "@/lib/shared/icons";
 
 type Item = BillItem;
 type Inst = { percent: number; dueDate: string };
@@ -53,7 +51,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   const [taxInvoiceDate, setTaxInvoiceDate] = useState("");
   const [discount, setDiscount] = useState(0);
   const [hasVat, setHasVat] = useState(false); // ออโต้ติ๊กเมื่อกรอกเลขใบกำกับ (ผู้ใช้ override เองได้)
-  // ★ ปิดช่องติ๊กอย่างเดียวไม่พอ — ค่า hasVat ค้างมาจาก draft/สแกนใบเสร็จได้
+  // ★ ปิดช่องติ๊กอย่างเดียวไม่พอ — ค่า hasVat ค้างมาจาก draft ที่บันทึกไว้ได้
   //   ทุกที่ที่คิดเงินต้องใช้ effHasVat ไม่ใช่ hasVat (4.3)
   const effHasVat = hasVat && entityIsVat;
   const [hasWht, setHasWht] = useState(false);
@@ -251,35 +249,6 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   // หลังบันทึก: ล้างเฉพาะรายการ/รายละเอียด/เลขใบกำกับ (คงคู่ค้า/หมวดหมู่ไว้กรอกบิลถัดไปเร็วขึ้น)
   function resetItems() { setItems([emptyItem()]); setDescription(""); setTaxInvoiceNo(""); setHasVat(false); setManualAmt(false); setOvAfterDisc(0); setOvVat(0); setOvWht(0); setDiscount(0); }
 
-  // ── สแกนใบเสร็จ ──
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [scanning, setScanning] = useState(false);
-  async function onScan(file: File) {
-    setScanning(true); setMsg(null);
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64 = (reader.result as string).split(",")[1];
-      const r = await scanReceiptAction(base64, file.type);
-      setScanning(false);
-      if (!r.ok) { setMsg({ ok: false, text: r.error ?? "สแกนไม่สำเร็จ" }); return; }
-      const d = r.data as { taxInvoiceNo?: string; taxInvoiceDate?: string; description?: string; hasVat?: boolean; priceType?: string; items?: { itemName?: string | null; quantity?: number; scannedPrice?: number }[] };
-      if (d.taxInvoiceNo) setTaxInvoiceNo(d.taxInvoiceNo);
-      if (d.taxInvoiceDate) { setTaxInvoiceDate(d.taxInvoiceDate); if (!txDate) setTxDate(d.taxInvoiceDate); }
-      if (d.description) setDescription(d.description);
-      if (typeof d.hasVat === "boolean") setHasVat(d.hasVat);
-      if (d.items?.length) {
-        const inclVat = d.priceType === "incl_vat";
-        setItems(d.items.map((it) => {
-          const price = Number(it.scannedPrice) || 0;
-          const ex = inclVat ? round2(price / 1.07) : price;
-          return { ...emptyItem(), itemName: it.itemName ?? "", quantity: Number(it.quantity) || 1, exVat: ex, inVat: inVatFromExVat(ex) };
-        }));
-      }
-      setMsg({ ok: true, text: "สแกนสำเร็จ — ตรวจทานตัวเลขก่อนบันทึก" });
-    };
-    reader.readAsDataURL(file);
-  }
-
   // ค่ารวมสำหรับดรอปดาวน์รายการสินค้า (ประวัติ + ที่กรอกในบิลปัจจุบัน)
   const itemCatOptions = useMemo(() => [...new Set([...itemHist.itemCategories, ...items.map((it) => it.itemCategory).filter(Boolean)])], [itemHist.itemCategories, items]);
   const itemJobOptions = useMemo(() => [...new Set([...itemHist.itemJobs, ...items.map((it) => it.itemJob).filter(Boolean)])], [itemHist.itemJobs, items]);
@@ -363,8 +332,6 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
         )}
 
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <button type="button" onClick={() => fileRef.current?.click()} disabled={scanning} className="inline-flex items-center gap-1.5 rounded-lg border border-brand-line bg-brand-soft px-3 py-2 text-sm font-medium text-brand transition hover:opacity-90 disabled:opacity-50">{scanning ? "กำลังสแกน…" : <><IconSearch size={15} />สแกนใบเสร็จด้วย AI</>}</button>
-          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onScan(f); e.target.value = ""; }} />
           <button type="button" onClick={() => setShowOpt((v) => !v)} className="text-xs text-faint hover:text-ink">{showOpt ? <><IconEyeOff size={14} className="mr-1 inline align-[-2px]" />ซ่อนคอลัมน์เสริม</> : <><IconEye size={14} className="mr-1 inline align-[-2px]" />แสดงคอลัมน์เสริม (หมวด/งาน/ส่วนลด)</>}</button>
           <button type="button" onClick={() => { if (confirm("ล้างฟอร์มทั้งหมด? (ข้อมูลที่กรอกค้างจะหาย)")) clearForm(); }} className="inline-flex items-center gap-1 text-xs text-faint transition hover:text-crit"><IconTrash size={14} />ล้างฟอร์ม</button>
           {isCost && <span className="text-xs text-warn">ต้นทุนสุรา — จะรับวัตถุดิบเข้าสต็อกผลิตอัตโนมัติ (ชื่อรายการต้องตรง master)</span>}

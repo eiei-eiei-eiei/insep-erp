@@ -28,12 +28,12 @@ describe("workspacesFor — role × โมดูล", () => {
   });
 
   it("★ main ที่ซื้อแค่โมดูลผลิต ต้องไม่เห็นเมนูบัญชี/ขาย", () => {
-    expect(keys(workspacesFor("main", ["production"]))).toEqual(["production", "reports"]);
+    expect(keys(workspacesFor("main", ["production"]))).toEqual(["production"]);
   });
 
-  it("รายงานราชการผูกกับโมดูลผลิต (ฟอร์ม ภส. เป็นเอกสารของโรงกลั่น)", () => {
+  it("ไม่มี workspace รายงานราชการแล้ว — ฟอร์ม ภส. เป็นแท็บในผลิต (D62)", () => {
+    expect(keys(WORKSPACES)).toEqual(["accounting", "production", "sales"]);
     expect(keys(workspacesFor("main", ["accounting"]))).toEqual(["accounting"]);
-    expect(keys(workspacesFor("main", ["production"]))).toContain("reports");
   });
 
   it("sale เห็นแค่ขาย และหายไปถ้าไม่ได้ซื้อโมดูลขาย", () => {
@@ -47,14 +47,14 @@ describe("workspacesFor — role × โมดูล", () => {
 
   it("ไม่ส่งโมดูลมา = เปิดหมด (พฤติกรรมเดิมก่อนมี 4.5 ต้องไม่พัง)", () => {
     expect(keys(workspacesFor("main"))).toEqual(keys(WORKSPACES));
-    expect(keys(workspacesFor("viewer"))).toEqual(["accounting", "production", "reports", "sales"]);
+    expect(keys(workspacesFor("viewer"))).toEqual(["accounting", "production", "sales"]);
   });
 });
 
 describe("workspacesWithLock — หน้าแรกโชว์ของที่ยังไม่ได้ซื้อเป็นสีเทา", () => {
   it("ไม่ตัดทิ้ง แต่ติดธง locked ให้ตัวที่ยังไม่ได้ซื้อ", () => {
     const ws = workspacesWithLock("main", ["production"]);
-    expect(ws).toHaveLength(4); // ครบทุกอัน ไม่หายไปไหน
+    expect(ws).toHaveLength(3); // ครบทุกอัน ไม่หายไปไหน
     const locked = ws.filter((w) => w.locked).map((w) => w.key).sort();
     expect(locked).toEqual(["accounting", "sales"]);
   });

@@ -40,7 +40,6 @@ delete from transactions     where entity_id = 'EID99';
 delete from bank_accounts    where account_name like '%ทดสอบ%';
 delete from app_settings     where value like '%ทดสอบ%';
 delete from contacts         where name like '%ทดสอบ%' or contact_id like 'T-C%';
-delete from scan_log         where error_message like '%ทดสอบ%';
 
 -- 4) master + กิจการทดสอบ
 delete from sale_menu   where product_id like 'T-%';

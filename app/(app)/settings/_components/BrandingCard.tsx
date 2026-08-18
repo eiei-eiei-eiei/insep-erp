@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveBrandingAction } from "../actions";
 import { BRAND_COLORS, type BrandColor, type ColorMode } from "@/lib/shared/branding";
-import { Card, Field, Msg, SaveButton, Select, TextInput, useSaver } from "./ui";
+import { Card, Field, Msg, SaveButton, Select, TextInput, useSaver } from "@/lib/shared/ui";
 
 /**
  * ตั้งค่าแบรนด์ของกิจการ (D43) — ชื่อ/สี/โลโก้/โหมดเริ่มต้น

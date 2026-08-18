@@ -19,7 +19,7 @@ const TABLES = [
   "materials", "containers", "products",
   "log_material", "log_ferment", "log_distill", "log_distill_run",
   "log_ferment_monitor", "log_dilute", "log_product", "stock_product",
-  "transactions", "transaction_items", "tax_summaries", "wht_certificates", "scan_log",
+  "transactions", "transaction_items", "tax_summaries", "wht_certificates",
   "sale_menu", "sales_orders", "sales_order_items", "warehouse_stock", "stock_moves",
   "report_runs", "edit_log", "snapshots", "profiles",
 ];

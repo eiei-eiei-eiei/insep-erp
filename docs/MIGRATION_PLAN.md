@@ -738,7 +738,7 @@ Server Action processOrderAction(quNo, action, payload):
 | A12 | **formatTaxId / formatBranch** | `Config.js` (2 แอป) | taxId: ตัด `'" ` + pad 0 หน้าให้ครบ 13 · branch: '-'/'สำนักงานใหญ่'/'00000' = HQ, ตัวเลข pad 5 หลัก — ใช้ในทุกรายงานภาษี รวมจุดเดียวใน `lib/shared` |
 | A13 | **เช็คราคา** | `PriceCheck.js` | tx type='เช็คราคา' ยอด 0 ทั้งหมด — **ต้องหลุดทุกรายงาน/ยอดเงิน** (เดิมหลุดเพราะ type ไม่ match; ระบบใหม่ต้อง test ยืนยัน) |
 | A14 | **Void (ลบบิล)** | `TxEdit.js` | soft-delete `status='ยกเลิก'` ทั้งกลุ่มงวด — ห้าม hard delete |
-| A15 | **สแกนใบเสร็จ AI** | `Scan.js` | Claude API (`claude-haiku-4-5`) + rate limit ต่อ user ต่อวัน (`SCAN_DAILY_LIMIT` default 100) + scan_log — ฝั่ง server action, ANTHROPIC_API_KEY เป็น env |
+| A15 | ~~**สแกนใบเสร็จ AI**~~ ❌ **ตัดทิ้งแล้ว (D61, 2026-08-18)** — อ่านสลิปไทยไม่แม่นพอ · โค้ด/ตาราง/env ลบหมด | `Scan.js` | Claude API (`claude-haiku-4-5`) + rate limit ต่อ user ต่อวัน (`SCAN_DAILY_LIMIT` default 100) + scan_log — ฝั่ง server action, ANTHROPIC_API_KEY เป็น env |
 | A16 | **Contact auto-create จาก webhook/ขาย** | `Api_doPost.js` | เทียบชื่อ normalize `trim().toLowerCase()` ก่อนสร้างใหม่ (unique index ใน schema ใหม่ enforce ให้) · default "ลูกค้าทั่วไป" ไม่สร้าง contact |
 
 ### 6.3 แอปขาย

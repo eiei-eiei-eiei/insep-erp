@@ -99,7 +99,7 @@ export function DataManager() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="mb-1 text-2xl font-bold text-ink">สำรอง/ย้อนข้อมูล (Snapshot)</h1>
+      <h2 className="mb-1 text-xl font-bold text-ink">สำรอง/ย้อนข้อมูล (Snapshot)</h2>
       <p className="mb-6 text-sm text-faint">
         จับสภาพข้อมูลทั้งระบบไว้ตอนคลีน → ทดลองใช้เต็มที่ → ย้อนกลับได้ทุกเมื่อ · เฉพาะเจ้าของกิจการ (main) และต้องยืนยันด้วยรหัสผ่าน
       </p>

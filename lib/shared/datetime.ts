@@ -2,7 +2,7 @@
  * lib/shared/datetime — ขอบเขตวัน "ตามเวลาไทย" ฝั่ง server
  *
  * เหตุผล: Vercel รัน server เป็น UTC → `new Date().setHours(0,0,0,0)` = เที่ยงคืน UTC
- * = 7 โมงเช้าไทย ทำให้ตัวนับรายวัน (เช่น โควตาสแกนใบเสร็จ) รีเซ็ตผิดเวลา
+ * = 7 โมงเช้าไทย ทำให้ตัวนับรายวัน (เช่น แจ้งเตือนค่างวดวันละครั้ง) รีเซ็ตผิดเวลา
  * ไทยเป็น UTC+7 คงที่ (ไม่มี DST) จึงบวก/ลบ 7 ชั่วโมงตรง ๆ ได้
  */
 
@@ -11,11 +11,4 @@ const BKK_OFFSET_MS = 7 * 60 * 60 * 1000;
 /** วันที่ (yyyy-MM-dd) ตามเวลาไทย ณ เวลาที่กำหนด */
 export function bangkokDateISO(now: Date = new Date()): string {
   return new Date(now.getTime() + BKK_OFFSET_MS).toISOString().slice(0, 10);
-}
-
-/** เที่ยงคืนของ "วันนี้ตามเวลาไทย" คืนเป็น Date ในระบบ UTC (ใช้เทียบกับ created_at ได้ตรง) */
-export function bangkokDayStartUTC(now: Date = new Date()): Date {
-  const bkk = new Date(now.getTime() + BKK_OFFSET_MS);
-  const startOfBkkDay = Date.UTC(bkk.getUTCFullYear(), bkk.getUTCMonth(), bkk.getUTCDate());
-  return new Date(startOfBkkDay - BKK_OFFSET_MS);
 }

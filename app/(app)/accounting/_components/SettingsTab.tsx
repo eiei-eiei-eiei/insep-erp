@@ -9,20 +9,25 @@ import {
   updateContactAction,
   deleteContactAction,
 } from "../actions";
+import Link from "next/link";
 import type { AccountRow, Bootstrap, Contact } from "./types";
 import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, cleanTaxId13, fmt, useSaver } from "./ui";
-import { BrandingCard } from "./BrandingCard";
-import { CompanyDocCard } from "./CompanyDocCard";
-import { LineCard } from "./LineCard";
 
+/**
+ * ตั้งค่าที่เป็น "ข้อมูลของโดเมนบัญชี" เท่านั้น
+ *
+ * ★ แบรนด์ / ข้อมูลกิจการบนเอกสาร / LINE **ย้ายออกไปหน้าตั้งค่ากลางแล้ว** (D63)
+ *   เพราะเป็นค่าของทั้งระบบ แต่แท็บนี้ถูก requireModule("accounting") กั้นอยู่
+ *   → ลูกค้าที่ซื้อแค่โมดูลผลิตเคยตั้งค่าพวกนั้นไม่ได้เลย
+ */
 export function SettingsTab({ boot }: { boot: Bootstrap }) {
   return (
     <div className="space-y-4">
-      <BrandingCard current={boot.branding} />
-      <CompanyDocCard entities={boot.entities} docEntityId={boot.docEntityId} />
-      {/* โทเคน LINE อ่านได้เฉพาะ main (policy app_settings_sel — 0033)
-          role อื่นเปิดมาจะเห็นการ์ดว่าง จึงซ่อนไปเลยให้ตรงกับสิทธิ์จริง */}
-      {boot.role === "main" && <LineCard current={boot.line} />}
+      <p className="rounded-lg bg-raised px-3 py-2 text-sm text-muted">
+        แบรนด์ · ข้อมูลกิจการบนเอกสาร · แจ้งเตือน LINE ย้ายไปที่เมนู{" "}
+        <Link href="/settings" className="font-medium text-brand hover:underline">ตั้งค่า</Link>{" "}
+        แล้ว (ใช้ได้ทุกแพ็กเกจ ไม่ต้องมีโมดูลบัญชี)
+      </p>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ChipList kind="expense_cat" title="หมวดหมู่รายจ่าย" initial={boot.expenseCats} />
         <ChipList kind="income_cat" title="หมวดหมู่รายรับ" initial={boot.incomeCats} />

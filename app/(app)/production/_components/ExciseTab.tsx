@@ -1,9 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PDFDocument } from "pdf-lib";
-import { fillExciseForm, EXCISE_TEMPLATE_KEY, FONT_KEY, type ExciseKind } from "@/lib/pdf/excise";
-import { getExciseReportData, getPdfAssetUrl, getExciseReportRunsAction, markExciseRunAction } from "../actions";
+// 🔴 ห้าม import pdf-lib / lib/pdf/excise แบบ static ที่นี่ — แท็บนี้อยู่ในแอปผลิตแล้ว
+//    static import = ทุกคนที่เปิดแอปผลิตต้องโหลด pdf-lib + fontkit ทั้งที่ส่วนใหญ่ไม่ได้ออกฟอร์ม
+//    (ตอนอยู่ /reports ต้นทุนนี้ถูกกักไว้หน้าเดียว) → โหลดตอนกดสร้าง PDF เท่านั้น
+import { EXCISE_TEMPLATE_KEY, FONT_KEY, type ExciseKind } from "@/lib/pdf/keys";
+import { getPdfAssetUrl } from "../../actions";
+import { getExciseOptionsAction, getExciseReportData, getExciseReportRunsAction, markExciseRunAction } from "../excise-actions";
 import { ReportChecklist } from "../../_components/ReportChecklist";
 
 // report_key ของ report_runs ↔ ฟอร์ม ภส. (FLOW sec 6 — "เดือนนี้สร้างครบยัง")
@@ -27,7 +30,7 @@ function nowMonth() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-async function mergePdfs(arrays: Uint8Array[]): Promise<Uint8Array> {
+async function mergePdfs(PDFDocument: typeof import("pdf-lib").PDFDocument, arrays: Uint8Array[]): Promise<Uint8Array> {
   if (arrays.length === 1) return arrays[0];
   const merged = await PDFDocument.create();
   for (const b of arrays) {
@@ -50,23 +53,46 @@ function download(bytes: Uint8Array, name: string) {
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
-export function ReportsApp({ options }: { options: Opt }) {
-  // default = กิจการที่มีเลขสรรพสามิต (ไม่งั้นหัวฟอร์มจะว่าง)
-  const [entityId, setEntityId] = useState(
-    options.entities.find((e) => e.excise_id)?.entity_id ??
-      options.entities[0]?.entity_id ??
-      "",
-  );
-  const selectedExcise = options.entities.find((e) => e.entity_id === entityId)?.excise_id;
+const EMPTY_OPT: Opt = { entities: [], materials: [], products: [], productNames: [] };
+
+/**
+ * แท็บ "รายงานสรรพสามิต" ของแอปผลิต — ออกฟอร์ม ภส.๐๗ ทั้ง 4 ตัว
+ * (เดิมเป็น workspace แยก /reports · ยุบเข้ามาเป็นแท็บแล้ว — DECISIONS D62)
+ *
+ * ★ โหลดตัวเลือกตอนเปิดแท็บครั้งแรกเท่านั้น (prop active) ไม่ใช่ตอนเปิดแอปผลิต —
+ *   คนส่วนใหญ่เข้าแอปผลิตมาลงหมัก/กลั่น ไม่ได้มาออกฟอร์มราชการทุกครั้ง
+ */
+export function ExciseTab({ active }: { active: boolean }) {
+  const [options, setOptions] = useState<Opt>(EMPTY_OPT);
+  const [loaded, setLoaded] = useState(false);
+  const [entityId, setEntityId] = useState("");
   const [month, setMonth] = useState(nowMonth());
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  // เลือกรายการต่อฟอร์ม (default เลือกทั้งหมด)
-  const [sel0701, setSel0701] = useState<string[]>(options.materials.map((m) => m.material_id));
-  const [sel0702_1, setSel0702_1] = useState<string[]>(options.productNames);
-  const [sel0702_2, setSel0702_2] = useState<string[]>(options.products.map((p) => p.product_id));
+  // เลือกรายการต่อฟอร์ม (default เลือกทั้งหมด — เติมให้ตอนตัวเลือกโหลดเสร็จ)
+  const [sel0701, setSel0701] = useState<string[]>([]);
+  const [sel0702_1, setSel0702_1] = useState<string[]>([]);
+  const [sel0702_2, setSel0702_2] = useState<string[]>([]);
   const [en, setEn] = useState({ "0701": true, "0702_1": true, "0702_2": true, "0704": true });
+
+  useEffect(() => {
+    if (!active || loaded) return;
+    let alive = true;
+    getExciseOptionsAction().then((o) => {
+      if (!alive) return;
+      setOptions(o);
+      // default = กิจการที่มีเลขสรรพสามิต (ไม่งั้นหัวฟอร์มจะว่าง)
+      setEntityId(o.entities.find((e) => e.excise_id)?.entity_id ?? o.entities[0]?.entity_id ?? "");
+      setSel0701(o.materials.map((m) => m.material_id));
+      setSel0702_1(o.productNames);
+      setSel0702_2(o.products.map((p) => p.product_id));
+      setLoaded(true);
+    });
+    return () => { alive = false; };
+  }, [active, loaded]);
+
+  const selectedExcise = options.entities.find((e) => e.entity_id === entityId)?.excise_id;
 
   const assetCache = useRef<Record<string, Uint8Array>>({});
 
@@ -98,6 +124,11 @@ export function ReportsApp({ options }: { options: Opt }) {
     setBusy(true);
     setMsg(null);
     try {
+      // โหลด pdf-lib + ตัวเติมฟอร์มตอนนี้เท่านั้น (ดูเหตุผลที่หัวไฟล์)
+      const [{ PDFDocument }, { fillExciseForm }] = await Promise.all([
+        import("pdf-lib"),
+        import("@/lib/pdf/excise"),
+      ]);
       const font = await fetchAsset(FONT_KEY);
       const jobs: { kind: ExciseKind; ids: string[]; file: string }[] = [];
       if (en["0701"]) jobs.push({ kind: "0701", ids: sel0701, file: "ภส07-01_วัตถุดิบ" });
@@ -116,7 +147,7 @@ export function ReportsApp({ options }: { options: Opt }) {
           const data = await getExciseReportData(j.kind, month, id, entityId);
           parts.push(await fillExciseForm(j.kind, data, tpl, font));
         }
-        const bytes = await mergePdfs(parts);
+        const bytes = await mergePdfs(PDFDocument, parts);
         download(bytes, `${j.file}_${month}.pdf`);
         await markExciseRunAction(RUN_KEY[j.kind], month, entityId); // ติ๊ก checklist (ไม่กระทบตัว PDF)
         count++;
@@ -138,6 +169,8 @@ export function ReportsApp({ options }: { options: Opt }) {
     () => options.materials.length + options.products.length,
     [options],
   );
+
+  if (!loaded) return <p className="text-sm text-faint">กำลังโหลด…</p>;
 
   return (
     <div>
@@ -168,7 +201,7 @@ export function ReportsApp({ options }: { options: Opt }) {
           <span className={`mt-1 block text-xs ${selectedExcise ? "text-faint" : "text-crit"}`}>
             {selectedExcise
               ? `เลขสรรพสามิต: ${selectedExcise}`
-              : "กิจการนี้ยังไม่มีเลขสรรพสามิต — หัวฟอร์มจะว่าง (ตั้งที่ entities.excise_id)"}
+              : "กิจการนี้ยังไม่มีเลขสรรพสามิต — หัวฟอร์มจะว่าง (กรอกที่ ตั้งค่า → กิจการ)"}
           </span>
         </label>
         <label className="text-sm">
@@ -194,7 +227,7 @@ export function ReportsApp({ options }: { options: Opt }) {
           month={month}
           items={EXCISE_CHECKLIST}
           runs={runs}
-          note="ติ๊กอัตโนมัติเมื่อกดสร้าง PDF ฟอร์มนั้น (แยกตามกิจการ) — เอกสารสรรพากร (ภพ.30/ภงด.) ดูที่ workspace บัญชี แท็บเอกสารสรรพากร"
+          note="ติ๊กอัตโนมัติเมื่อกดสร้าง PDF ฟอร์มนั้น (แยกตามกิจการ) — เอกสารสรรพากร (ภพ.30/ภงด./50ทวิ) อยู่ที่ บัญชี → แท็บเอกสารสรรพากร"
         />
       </div>
 

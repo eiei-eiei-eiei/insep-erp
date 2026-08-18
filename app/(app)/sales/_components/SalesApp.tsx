@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import type { SalesBoot, OrderRow } from "./types";
 import { QuotationTab } from "./QuotationTab";
 import { OrdersTab } from "./OrdersTab";
@@ -8,28 +9,24 @@ import { WarehouseTab } from "./WarehouseTab";
 import { SyncHistoryTab } from "./SyncHistoryTab";
 import { MenuTab } from "./MenuTab";
 import { IconCart } from "@/lib/shared/icons";
+import { tabsFor } from "@/lib/shared/tabs";
+import type { Role } from "@/lib/shared/workspaces";
+import { useTabUrl } from "../../_components/useTabUrl";
 
-type Tab = "create" | "orders" | "warehouse" | "sync" | "manage";
+type Tab = string;
 
-const ALL_TABS: { key: Tab; label: string }[] = [
-  { key: "create", label: "＋ สร้างใบเสนอราคา" },
-  { key: "orders", label: "จัดการออเดอร์" },
-  { key: "warehouse", label: "คลังจัดส่ง" },
-  { key: "sync", label: "ประวัติเชื่อมระบบ" },
-  { key: "manage", label: "จัดการข้อมูล" },
-];
-
-/** แท็บที่ role เห็น (main=ทั้งหมด, sale=ขาย, warehouse=คลัง, viewer=อ่านออเดอร์) */
-function tabsForRole(role: string): Tab[] {
-  if (role === "main") return ["create", "orders", "warehouse", "sync", "manage"];
-  if (role === "sale") return ["create", "orders", "sync"];
-  if (role === "warehouse") return ["warehouse"];
-  return ["orders"]; // viewer
-}
+// ★ แท็บ + สิทธิ์ตาม role ย้ายไปทะเบียนกลาง lib/shared/tabs แล้ว
+//   (แถบเมนูด้านบนต้องอ่านชุดเดียวกันไปทำดร็อปดาวน์ ไม่งั้นสองที่จะเพี้ยนกันวันใดวันหนึ่ง)
+//   ที่นี่ slug = key เดิม (create/orders/warehouse/sync/manage) จึงไม่ต้องแปลงชื่อ
 
 export function SalesApp({ boot }: { boot: SalesBoot }) {
-  const allowed = tabsForRole(boot.role);
-  const [tab, setTab] = useState<Tab>(allowed[0]);
+  const allowedTabs = tabsFor("sales", boot.role as Role);
+  const allowed = allowedTabs.map((t) => t.slug);
+  const sp = useSearchParams();
+  const urlTab = sp.get("tab");
+  const [tab, setTab] = useState<Tab>(() => (urlTab && allowed.includes(urlTab) ? urlTab : allowed[0]));
+  // slug = key อยู่แล้ว · แต่ยังต้องกันแท็บที่ role นี้ไม่มีสิทธิ์ ไม่ให้ยัดผ่าน URL
+  useTabUrl("sales", tab, (t) => { if (allowed.includes(t)) setTab(t); }, (k) => (allowed.includes(k) ? k : ""));
   const [editOrder, setEditOrder] = useState<OrderRow | null>(null);
   const canWrite = boot.role === "main" || boot.role === "sale";
 
@@ -58,11 +55,11 @@ export function SalesApp({ boot }: { boot: SalesBoot }) {
       )}
 
       <div className="mb-5 -mx-4 flex gap-1 overflow-x-auto border-b border-line px-4">
-        {ALL_TABS.filter((t) => allowed.includes(t.key)).map((t) => (
+        {allowedTabs.map((t) => (
           <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`shrink-0 whitespace-nowrap rounded-t-lg px-4 py-2 text-sm font-medium transition ${tab === t.key ? "border-b-2 border-warn-line text-warn" : "text-faint hover:text-ink"}`}
+            key={t.slug}
+            onClick={() => setTab(t.slug)}
+            className={`shrink-0 whitespace-nowrap rounded-t-lg px-4 py-2 text-sm font-medium transition ${tab === t.slug ? "border-b-2 border-warn-line text-warn" : "text-faint hover:text-ink"}`}
           >
             {t.label}
           </button>

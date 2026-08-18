@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import type { Container, Material, PendingBatch, Product, StockRow } from "./types";
 import { MaterialTab } from "./MaterialTab";
 import { FermentTab } from "./FermentTab";
@@ -12,21 +13,14 @@ import { StockTab } from "./StockTab";
 import { MasterTab } from "./MasterTab";
 import { HistoryTab } from "./HistoryTab";
 import { BoardTab } from "./BoardTab";
+import { ExciseTab } from "./ExciseTab";
 import { IconStill } from "@/lib/shared/icons";
+import { PRODUCTION_TABS, labelFromSlug, slugFromLabel } from "@/lib/shared/tabs";
+import { useTabUrl } from "../../_components/useTabUrl";
 
-const TABS = [
-  "กระดาน batch",
-  "วัตถุดิบ",
-  "ลงหมัก",
-  "ติดตามหมัก",
-  "กลั่น",
-  "ปรุง/ปรับดีกรี",
-  "บรรจุ/จ่าย",
-  "ประวัติ/เทียบ",
-  "สต็อก",
-  "จัดการข้อมูล",
-] as const;
-type Tab = (typeof TABS)[number];
+// ★ ลำดับ/ชื่อแท็บมาจากทะเบียนกลาง lib/shared/tabs — แถบเมนูด้านบนอ่านชุดเดียวกันไปทำดร็อปดาวน์
+const TABS = PRODUCTION_TABS.map((t) => t.label);
+type Tab = string;
 
 export function ProductionApp({
   materials,
@@ -41,10 +35,12 @@ export function ProductionApp({
   pending: PendingBatch[];
   stock: StockRow[];
 }) {
-  const [tab, setTab] = useState<Tab>("กระดาน batch");
+  const sp = useSearchParams();
+  const [tab, setTab] = useState<Tab>(() => labelFromSlug("production", sp.get("tab")) ?? "กระดาน batch");
+  useTabUrl("production", tab, setTab, (l) => slugFromLabel("production", l));
 
   // mount แท็บครั้งเดียวแล้วคงไว้ (ซ่อนด้วย CSS) → สลับแท็บลื่น + คงสถานะ (เช่น หม้อกลั่นที่เลือก/ค่าที่กรอกค้าง)
-  const [visited, setVisited] = useState<Set<Tab>>(() => new Set<Tab>(["กระดาน batch"]));
+  const [visited, setVisited] = useState<Set<Tab>>(() => new Set<Tab>([tab]));
   useEffect(() => { setVisited((v) => (v.has(tab) ? v : new Set(v).add(tab))); }, [tab]);
   const show = (t: Tab) => (tab === t ? "" : "hidden");
 
@@ -52,7 +48,7 @@ export function ProductionApp({
   const [batch, setBatch] = useState("");
   function openBatch(b: string, target: string) {
     setBatch(b);
-    if ((TABS as readonly string[]).includes(target)) setTab(target as Tab);
+    if (TABS.includes(target)) setTab(target);
   }
 
   return (
@@ -91,6 +87,7 @@ export function ProductionApp({
       {visited.has("บรรจุ/จ่าย") && <div className={show("บรรจุ/จ่าย")}><ProductTab products={products} /></div>}
       {visited.has("ประวัติ/เทียบ") && <div className={show("ประวัติ/เทียบ")}><HistoryTab products={products} /></div>}
       {visited.has("สต็อก") && <div className={show("สต็อก")}><StockTab stock={stock} /></div>}
+      {visited.has("รายงานสรรพสามิต") && <div className={show("รายงานสรรพสามิต")}><ExciseTab active={tab === "รายงานสรรพสามิต"} /></div>}
       {visited.has("จัดการข้อมูล") && (
         <div className={show("จัดการข้อมูล")}><MasterTab materials={materials} containers={containers} products={products} /></div>
       )}

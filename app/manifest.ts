@@ -8,7 +8,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "PROOF — ผลิต · ขาย · บัญชี",
     short_name: "PROOF",
-    description: "ระบบจัดการโรงกลั่นสุราคราฟต์ — ผลิต · ขาย · บัญชี · รายงานราชการ",
+    description: "ระบบจัดการโรงกลั่นสุราคราฟต์ — ผลิต · ขาย · บัญชี",
     start_url: "/",
     display: "standalone",
     orientation: "portrait-primary",

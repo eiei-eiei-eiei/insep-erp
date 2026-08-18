@@ -21,8 +21,8 @@ async function loadEntity(
   return { company: data?.name ?? "", exciseId: data?.excise_id ?? "" };
 }
 
-/** ตัวเลือกสำหรับหน้า /reports (รายการวัตถุดิบ/สินค้า/ชื่อสุรา + กิจการ) */
-export async function getReportOptions() {
+/** ตัวเลือกของแท็บรายงานสรรพสามิต (รายการวัตถุดิบ/สินค้า/ชื่อสุรา + กิจการ) */
+export async function getExciseOptions() {
   const supabase = await createClient();
   const [entities, materials, products] = await Promise.all([
     supabase.from("entities").select("entity_id, name, excise_id").order("entity_id"),
