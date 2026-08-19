@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, useSaver, Empty } from "@/lib/shared/ui";
+import { Card, Field, Msg, NumBox, SaveButton, Select, SuggestInput, TextInput, useSaver, Empty } from "@/lib/shared/ui";
 import type {
   LegAmountSource,
   PayComponent,
@@ -42,6 +42,14 @@ import {
 } from "../actions";
 import type { PayrollConfig } from "./PayrollApp";
 
+/**
+ * ถามยืนยันก่อนลบ — ใช้ตัวเดียวกันทุกจุดในหน้านี้ ข้อความจะได้สม่ำเสมอ
+ * ★ ของในหน้านี้ลบแล้วกู้ไม่ได้ และบางอย่างมีของอื่นอ้างอยู่ (รายการอ้างตัวแปร ·
+ *   ขาอ้างรายการ · งวดที่แช่ค่าไว้อ้างรหัสช่องกรอก) — ต้องถามก่อนเสมอ
+ */
+function askDelete(what: string, then: () => void) {
+  if (confirm(`ลบ${what}?\n\nลบแล้วกู้คืนไม่ได้`)) then();
+}
 /**
  * แท็บตั้งค่าการคำนวณ — ที่ที่ลูกค้า "อธิบายเกณฑ์ของโรงตัวเอง" ให้ระบบฟัง
  * ระบบไม่รู้จักเกณฑ์ของใครมาก่อน ทุกอย่างในหน้านี้คือข้อมูล ไม่ใช่โค้ด
@@ -196,7 +204,7 @@ function Groups({ config }: { config: PayrollConfig }) {
             {g}
             <button
               disabled={pending}
-              onClick={() => run(() => deletePayGroupAction(g), "ลบแล้ว", () => router.refresh())}
+              onClick={() => askDelete(`กลุ่ม "${g}"`, () => run(() => deletePayGroupAction(g), "ลบแล้ว", () => router.refresh()))}
               className="text-faint hover:text-crit"
             >✕</button>
           </span>
@@ -217,7 +225,6 @@ function Groups({ config }: { config: PayrollConfig }) {
 function Inputs({ config }: { config: PayrollConfig }) {
   const router = useRouter();
   const { pending, msg, run } = useSaver();
-  const [code, setCode] = useState("");
   const [label, setLabel] = useState("");
   const [unit, setUnit] = useState("");
 
@@ -251,7 +258,7 @@ function Inputs({ config }: { config: PayrollConfig }) {
         <table className="tbl">
           <thead>
             <tr className="text-left text-faint">
-              <th>ลำดับ</th><th>รหัส</th><th>ชื่อที่แสดง</th><th>หน่วย</th><th></th>
+              <th>ลำดับ</th><th>ชื่อที่แสดง</th><th>หน่วย</th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -273,13 +280,12 @@ function Inputs({ config }: { config: PayrollConfig }) {
                     className="px-1 text-muted hover:text-ink disabled:opacity-30"
                   >▼</button>
                 </td>
-                <td className="font-mono text-xs">{i.code}</td>
                 <td>{i.label}</td>
                 <td>{i.unit ?? "—"}</td>
                 <td>
                   <button
                     disabled={pending}
-                    onClick={() => run(() => deletePayInputAction(i.code), "ลบแล้ว", () => router.refresh())}
+                    onClick={() => askDelete(`ช่อง "${i.label}"`, () => run(() => deletePayInputAction(i.code), "ลบแล้ว", () => { setOrder(null); router.refresh(); }))}
                     className="text-crit hover:underline"
                   >ลบ</button>
                 </td>
@@ -289,17 +295,16 @@ function Inputs({ config }: { config: PayrollConfig }) {
         </table>
         {rows.length === 0 && <Empty />}
       </div>
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-4">
-        <Field label="รหัส (a-z 0-9 _)"><TextInput value={code} onChange={(e) => setCode(e.target.value)} placeholder="ot_work_h" /></Field>
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Field label="ชื่อที่แสดง"><TextInput value={label} onChange={(e) => setLabel(e.target.value)} placeholder="OT วันทำงาน" /></Field>
         <Field label="หน่วย"><TextInput value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="ชั่วโมง" /></Field>
         <div className="flex items-end">
           <SaveButton
             pending={pending}
             onClick={() => run(
-              () => savePayInputAction({ code, label, unit, sort: rows.length, active: true }),
+              () => savePayInputAction({ code: "", label, unit, sort: rows.length, active: true }),
               "เพิ่มช่องแล้ว",
-              () => { setCode(""); setLabel(""); setUnit(""); setOrder(null); router.refresh(); },
+              () => { setLabel(""); setUnit(""); setOrder(null); router.refresh(); },
             )}
           >เพิ่มช่อง</SaveButton>
         </div>
@@ -504,7 +509,7 @@ function Formulas({ config }: { config: PayrollConfig }) {
                   <button onClick={() => setEdit({ type: "var", v, isNew: false })} className="text-muted hover:underline">แก้</button>
                   <button
                     disabled={pending}
-                    onClick={() => run(() => deletePayVariableAction(v.code), "ลบแล้ว", () => router.refresh())}
+                    onClick={() => askDelete(`ตัวแปร "${v.name}"`, () => run(() => deletePayVariableAction(v.code), "ลบแล้ว", () => router.refresh()))}
                     className="ml-2 text-crit hover:underline"
                   >ลบ</button>
                 </td>
@@ -542,7 +547,7 @@ function Formulas({ config }: { config: PayrollConfig }) {
                   <button onClick={() => setEdit({ type: "comp", c, isNew: false })} className="text-muted hover:underline">แก้</button>
                   <button
                     disabled={pending}
-                    onClick={() => { if (confirm(`ลบรายการ "${c.name}"?`)) run(() => deletePayComponentAction(c.code), "ลบแล้ว", () => router.refresh()); }}
+                    onClick={() => askDelete(`รายการ "${c.name}"`, () => run(() => deletePayComponentAction(c.code), "ลบแล้ว", () => router.refresh()))}
                     className="ml-2 text-crit hover:underline"
                   >ลบ</button>
                 </td>
@@ -619,7 +624,8 @@ function VarForm({
   return (
     <>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label="รหัส (a-z 0-9 _)"><TextInput value={v.code} onChange={(e) => set("code", e.target.value)} placeholder="hourly_rate" /></Field>
+        {/* ★ ไม่มีช่องรหัสแล้ว — ระบบตั้งให้เอง (ผู้ใช้จำรหัสที่ตัวเองตั้งไม่ได้อยู่ดี)
+            🚨 ของที่บันทึกแล้วห้ามเปลี่ยนรหัส เพราะงวดที่แช่ค่าไว้อ้างรหัสนี้ */}
         <Field label="ชื่อที่คนอ่านรู้เรื่อง"><TextInput value={v.name} onChange={(e) => set("name", e.target.value)} placeholder="อัตราค่าล่วงเวลาต่อชั่วโมง" /></Field>
       </div>
 
@@ -710,7 +716,6 @@ function CompForm({
   return (
     <>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label="รหัส (a-z 0-9 _)"><TextInput value={c.code} onChange={(e) => set("code", e.target.value)} placeholder="ot15" /></Field>
         <Field label="ชื่อที่แสดงบนสลิป"><TextInput value={c.name} onChange={(e) => set("name", e.target.value)} placeholder="ค่าล่วงเวลา 1.5" /></Field>
         <Field label="ประเภท">
           <Select value={c.kind} onChange={(e) => set("kind", e.target.value as PayComponent["kind"])}>
@@ -896,7 +901,7 @@ function PostLegs({ config }: { config: PayrollConfig }) {
                   <button onClick={() => setEdit(l)} className="text-muted hover:underline">แก้</button>
                   <button
                     disabled={pending}
-                    onClick={() => { if (confirm(`ลบขา "${l.name}"?`)) run(() => deletePayPostLegAction(l.code), "ลบแล้ว", () => router.refresh()); }}
+                    onClick={() => askDelete(`ขา "${l.name}"`, () => run(() => deletePayPostLegAction(l.code), "ลบแล้ว", () => router.refresh()))}
                     className="ml-2 text-crit hover:underline"
                   >ลบ</button>
                 </td>
@@ -914,7 +919,6 @@ function PostLegs({ config }: { config: PayrollConfig }) {
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-card p-5" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-3 font-semibold text-ink">{edit.name || "ขาใหม่"}</h3>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label="รหัส (a-z 0-9 _)"><TextInput value={edit.code} onChange={(e) => set("code", e.target.value)} placeholder="net" /></Field>
               <Field label="ชื่อขา (ขึ้นบนปุ่ม)"><TextInput value={edit.name} onChange={(e) => set("name", e.target.value)} placeholder="จ่ายเงินเดือน" /></Field>
               <Field label="ยอดที่ลงบัญชี">
                 <Select value={edit.amountSource} onChange={(e) => set("amountSource", e.target.value as LegAmountSource)}>
@@ -931,8 +935,14 @@ function PostLegs({ config }: { config: PayrollConfig }) {
                   </Select>
                 </Field>
               )}
-              <Field label="หมวดรายจ่าย (พิมพ์เอง)">
-                <TextInput value={edit.category} onChange={(e) => set("category", e.target.value)} placeholder="เงินเดือน" />
+              <Field label="หมวดรายจ่าย (พิมพ์เองได้ · มีตัวเลือกที่เคยใช้ให้)">
+                <SuggestInput
+                  listId="leg-cat-list"
+                  value={edit.category}
+                  onChange={(v) => set("category", v)}
+                  options={config.expenseCategories}
+                  placeholder="เงินเดือน"
+                />
               </Field>
               <Field label="บัญชีเงิน (ไม่เลือก = ใช้บัญชีหลัก)">
                 <AccountSelect
@@ -943,7 +953,13 @@ function PostLegs({ config }: { config: PayrollConfig }) {
                 />
               </Field>
               <Field label="คู่ค้าบนรายการ (เว้นไว้ = ใช้ชื่อพนักงาน)">
-                <TextInput value={edit.contactName ?? ""} onChange={(e) => set("contactName", e.target.value)} placeholder="สำนักงานประกันสังคม" />
+                <SuggestInput
+                  listId="leg-contact-list"
+                  value={edit.contactName ?? ""}
+                  onChange={(v) => set("contactName", v)}
+                  options={config.contactNames}
+                  placeholder="สำนักงานประกันสังคม"
+                />
               </Field>
               <Field label="วันที่แนะนำ = สิ้นงวด + กี่วัน (0 = วันจ่ายเงินเดือน)">
                 <NumBox value={edit.suggestDay ?? 0} blankZero onChange={(v) => set("suggestDay", v === "" ? 0 : v)} />

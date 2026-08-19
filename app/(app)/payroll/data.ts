@@ -68,6 +68,10 @@ export async function getPayrollConfig(): Promise<{
   payAccount: string;
   /** รายชื่อบัญชีเงินที่มีอยู่จริง — ให้หน้าจอทำเป็นดร็อปดาวน์ ไม่ต้องพิมพ์เอง */
   bankAccounts: string[];
+  /** หมวดรายจ่ายที่เคยใช้จริง — เป็น **ข้อเสนอแนะ** เท่านั้น ยังพิมพ์หมวดใหม่ได้ */
+  expenseCategories: string[];
+  /** ชื่อคู่ค้าที่มีอยู่ — ข้อเสนอแนะสำหรับขาที่นำส่งให้หน่วยงาน (สปส./สรรพากร) */
+  contactNames: string[];
   inputs: PayInput[];
   components: PayComponent[];
   variables: PayVariable[];
@@ -75,7 +79,7 @@ export async function getPayrollConfig(): Promise<{
   rates: PayRates[];
 }> {
   const supabase = await createClient();
-  const [s, inputs, comps, vars, legs, rates, accts] = await Promise.all([
+  const [s, inputs, comps, vars, legs, rates, accts, cats, contacts] = await Promise.all([
     supabase.from("app_settings").select("kind, value, sort").in("kind", [
       "pay_group",
       "payroll_entity",
@@ -89,6 +93,10 @@ export async function getPayrollConfig(): Promise<{
     supabase.from("pay_post_legs").select("*").order("sort"),
     supabase.from("pay_rates").select("*").order("effective_from", { ascending: false }),
     supabase.from("bank_accounts").select("account_name").order("account_name"),
+    // ★ ข้อเสนอแนะเท่านั้น — ขาลงบัญชียัง "พิมพ์เองได้" ตามที่ตัดสินไว้ใน D67
+    //   (ที่นั่นเข้าใจว่าผู้ใช้ไม่อยากได้ดร็อปดาวน์เลย · จริง ๆ คืออยากได้ทั้งพิมพ์เองและมีตัวช่วย)
+    supabase.from("transactions").select("category").eq("type", "รายจ่าย").limit(2000),
+    supabase.from("contacts").select("name").order("name").limit(500),
   ]);
 
   const rows = s.data ?? [];
@@ -105,6 +113,12 @@ export async function getPayrollConfig(): Promise<{
     entityId: one("payroll_entity"),
     payAccount: one("payroll_pay_account"),
     bankAccounts: (accts.data ?? []).map((a) => a.account_name as string),
+    expenseCategories: uniqSorted([
+      ...(cats.data ?? []).map((r) => r.category as string | null),
+      // หมวดที่ตั้งไว้ในขาแล้วแต่ยังไม่เคยลงบัญชีจริง ต้องขึ้นเป็นตัวเลือกด้วย
+      ...(legs.data ?? []).map((r) => (r as { category?: string }).category ?? null),
+    ]),
+    contactNames: uniqSorted((contacts.data ?? []).map((c) => c.name as string | null)),
     inputs: (inputs.data ?? []) as PayInput[],
     components: (comps.data ?? []).map(toComponent),
     variables: (vars.data ?? []).map(toVariable),
@@ -143,6 +157,13 @@ export async function getPeriodDetail(periodId: string): Promise<{ period: Perio
     period: p.data ? toPeriod(p.data) : null,
     items: (it.data ?? []).map(toItem),
   };
+}
+
+/** รวมค่าซ้ำ ตัดค่าว่าง แล้วเรียงแบบไทย */
+function uniqSorted(list: (string | null | undefined)[]): string[] {
+  const set = new Set<string>();
+  for (const v of list) { const t = (v ?? "").trim(); if (t) set.add(t); }
+  return [...set].sort((a, b) => a.localeCompare(b, "th"));
 }
 
 // ── mappers (snake_case ของ DB → camelCase ของ lib/payroll) ──────────────────

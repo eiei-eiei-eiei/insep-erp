@@ -374,3 +374,40 @@ export function Badge({
     </span>
   );
 }
+
+/**
+ * ช่องพิมพ์อิสระ + รายการแนะนำ (datalist)
+ *
+ * ★ ต่างจาก `Combobox`: อันนี้ **พิมพ์ค่าใหม่ที่ไม่มีในรายการได้** — ใช้กับช่องที่ค่าที่ถูกต้อง
+ *   ไม่ได้จำกัดอยู่แค่ที่มีในระบบ (หมวดรายจ่าย/ชื่อคู่ค้าที่อาจยังไม่เคยมี)
+ *   แพตเทิร์นเดียวกับช่องหมวด/คู่ค้าในแท็บบันทึกของบัญชี
+ */
+export function SuggestInput({
+  value,
+  onChange,
+  options,
+  placeholder,
+  listId,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+  placeholder?: string;
+  /** ต้องไม่ซ้ำกันในหน้าเดียว — datalist ผูกด้วย id */
+  listId: string;
+}) {
+  return (
+    <>
+      <input
+        className={inputCls}
+        list={listId}
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      <datalist id={listId}>
+        {options.map((o) => <option key={o} value={o} />)}
+      </datalist>
+    </>
+  );
+}

@@ -65,9 +65,9 @@ export async function savePayInputAction(input: {
   code: string; label: string; unit: string; sort: number; active: boolean;
 }): Promise<SaveResult> {
   const supabase = await createClient();
-  const code = input.code.trim();
-  if (!/^[a-z0-9_]+$/.test(code)) return fail("รหัสช่องต้องเป็น a-z 0-9 _ เท่านั้น (ใช้เป็นคีย์ในข้อมูล)");
   if (!input.label.trim()) return fail("กรอกชื่อช่องที่จะให้แสดงบนหน้าจอ");
+  // ★ ของใหม่ไม่ต้องคิดรหัสเอง · ของเดิมใช้รหัสเดิมเสมอ (ข้อมูลที่แช่ไว้อ้างรหัสนี้)
+  const code = input.code.trim() || (await nextCode(supabase, "pay_inputs", "in"));
   const { error } = await supabase.from("pay_inputs").upsert({
     code, label: input.label.trim(), unit: input.unit.trim() || null,
     sort: input.sort, active: input.active,
@@ -87,9 +87,8 @@ export async function deletePayInputAction(code: string): Promise<SaveResult> {
 
 export async function savePayComponentAction(c: PayComponent): Promise<SaveResult> {
   const supabase = await createClient();
-  const code = c.code.trim();
-  if (!/^[a-z0-9_]+$/.test(code)) return fail("รหัสรายการต้องเป็น a-z 0-9 _ เท่านั้น");
   if (!c.name.trim()) return fail("กรอกชื่อรายการที่จะขึ้นบนสลิป");
+  const code = c.code.trim() || (await nextCode(supabase, "pay_components", "item"));
   if (c.method === "variable") {
     if (!c.variableCode) return fail("เลือกตัวแปรกลางที่จะใช้เป็นฐานก่อน");
     if (!c.multiplier) return fail("ใส่ตัวคูณ (เช่น 1.5 / 2 · ไม่คูณอะไรใส่ 1)");
@@ -148,9 +147,8 @@ export async function deletePayRatesAction(effectiveFrom: string): Promise<SaveR
 
 export async function savePayVariableAction(v: PayVariable): Promise<SaveResult> {
   const supabase = await createClient();
-  const code = v.code.trim();
-  if (!/^[a-z0-9_]+$/.test(code)) return fail("รหัสตัวแปรต้องเป็น a-z 0-9 _ เท่านั้น");
   if (!v.name.trim()) return fail("ตั้งชื่อตัวแปรที่คนอ่านรู้เรื่อง เช่น อัตราค่าล่วงเวลาต่อชั่วโมง");
+  const code = v.code.trim() || (await nextCode(supabase, "pay_variables", "var"));
   if (v.source === "input" && !v.inputKey) return fail("เลือกช่องกรอกที่จะใช้เป็นตัวตั้ง");
 
   // 🚨 ด่านจริงของ "ชุดปิด" อยู่ตรงนี้ — anon key เป็นค่าสาธารณะ ยิง PostgREST ตรงได้
@@ -194,9 +192,8 @@ export async function deletePayVariableAction(code: string): Promise<SaveResult>
 
 export async function savePayPostLegAction(l: PayPostLeg): Promise<SaveResult> {
   const supabase = await createClient();
-  const code = l.code.trim();
-  if (!/^[a-z0-9_]+$/.test(code)) return fail("รหัสขาต้องเป็น a-z 0-9 _ เท่านั้น");
   if (!l.name.trim()) return fail("ตั้งชื่อขาที่จะขึ้นบนปุ่ม");
+  const code = l.code.trim() || (await nextCode(supabase, "pay_post_legs", "leg"));
   if (!l.category.trim()) return fail("กรอกหมวดรายจ่ายที่จะขึ้นบนรายการบัญชี");
   if (l.amountSource === "component" && !l.componentCode) {
     return fail("เลือกรายการที่จะเอายอดมาลงบัญชี");
@@ -570,4 +567,27 @@ export async function reorderPayInputsAction(codes: string[]): Promise<SaveResul
   }
   revalidatePath("/payroll");
   return { ok: true };
+}
+
+/**
+ * รหัสถัดไปของตารางตั้งค่า — **ผู้ใช้ไม่ต้องคิดรหัสเอง** (D72)
+ *
+ * ทำไมยังต้องมีรหัส: มันคือคีย์ที่ของอื่นอ้างถึง —
+ * `pay_components.variable_code` · `pay_components.input_keys[]` · `pay_post_legs.component_code`
+ * และที่สำคัญกว่านั้นคือ **`payroll_items.inputs`/`computed` ที่แช่ไว้แล้วอ้างด้วยรหัสนี้**
+ * 🚨 จึงสร้างรหัสให้เฉพาะ**ของใหม่**เท่านั้น · ของที่บันทึกแล้วห้ามเปลี่ยนรหัสเด็ดขาด
+ *    (เปลี่ยนเมื่อไหร่ = งวดเก่าอ่านค่าที่แช่ไว้ไม่เจอ แล้วยอดกลายเป็น 0 เงียบ ๆ)
+ */
+async function nextCode(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  table: "pay_inputs" | "pay_variables" | "pay_components" | "pay_post_legs",
+  prefix: string,
+): Promise<string> {
+  const { data } = await supabase.from(table).select("code");
+  let max = 0;
+  for (const r of data ?? []) {
+    const m = /^([a-z_]+)(\d+)$/.exec(String((r as { code: string }).code ?? ""));
+    if (m && m[1] === prefix) max = Math.max(max, Number(m[2]));
+  }
+  return `${prefix}${max + 1}`;
 }
