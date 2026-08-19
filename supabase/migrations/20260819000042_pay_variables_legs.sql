@@ -71,11 +71,19 @@ from pay_components c
 where c.method = 'hourly_multiplier'
 on conflict (tenant_id, code) do nothing;
 
+-- 🪤 **ลำดับ 3 ขั้นนี้สลับกันไม่ได้** (เคยเขียนสลับแล้วพังของจริงมาแล้ว)
+--    ปลดกรอบ → ย้ายค่า → ใส่กรอบใหม่
+--    · ย้ายค่าก่อนปลดกรอบ = ชน CHECK เดิมที่ยังไม่รู้จัก 'variable'
+--    · ใส่กรอบใหม่ก่อนย้ายค่า = ชนแถวเดิมที่ยังเป็น 'hourly_multiplier'
+--      (ADD CONSTRAINT ตรวจแถวที่มีอยู่ทันทีถ้าไม่ใส่ NOT VALID)
+--    🚨 DB ที่ **ไม่มีแถว** method='hourly_multiplier' จะผ่านทั้งที่ลำดับผิด —
+--       บั๊กนี้จึงโผล่เฉพาะ DB ที่มีข้อมูลจริง (ก้อนเจ้าของผ่าน · ก้อนลูกค้าล้ม)
+alter table pay_components drop constraint if exists pay_components_method_check;
+
 update pay_components
    set method = 'variable', variable_code = 'hourly_rate'
  where method = 'hourly_multiplier';
 
-alter table pay_components drop constraint if exists pay_components_method_check;
 alter table pay_components add constraint pay_components_method_check
   check (method in ('fixed','per_unit','percent_base','variable','tier_table','manual'));
 
