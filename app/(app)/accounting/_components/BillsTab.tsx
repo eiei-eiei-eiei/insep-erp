@@ -5,7 +5,7 @@ import { searchBillsAction, getBillDetailAction, voidTransactionAction, updateTr
 import { entryCalc, itemTotal } from "@/lib/accounting/calc";
 import { qn, emptyItem, makeItemHandlers, buildItemInputs, useBillAmounts, type BillItem } from "./billItems";
 import type { Bootstrap } from "./types";
-import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, fmt, useSaver } from "./ui";
+import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, fmt, useSaver, EscToClose } from "./ui";
 
 type Bills = Awaited<ReturnType<typeof searchBillsAction>>;
 type Detail = Awaited<ReturnType<typeof getBillDetailAction>>;
@@ -249,7 +249,8 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-overlay/30 p-0 sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-overlay/30 p-0 sm:p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <EscToClose onClose={() => { onClose(); }} />
       <div className="min-h-dvh w-full rounded-none bg-card p-5 sm:my-8 sm:min-h-0 sm:max-w-3xl sm:rounded-lg" onClick={(e) => e.stopPropagation()}>
         <h3 className="mb-3 font-semibold text-ink">แก้ไขบิล {txId}</h3>
         {loading ? <p className="text-faint">กำลังโหลด…</p> : (

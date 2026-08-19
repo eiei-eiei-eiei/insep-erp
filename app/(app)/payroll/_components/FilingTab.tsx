@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Card, Field, Select, NumBox, TextInput, Empty, Stat, RowBtn, SaveButton, Msg, useSaver, fmt,
+  Card, Field, Select, NumBox, TextInput, Empty, Stat, RowBtn, SaveButton, Msg, useSaver, fmt, EscToClose,
 } from "@/lib/shared/ui";
 import {
   pnd1Rows, sso110Rows, pnd1kRows, wht50Totals, yearBEfromCE,
@@ -433,7 +433,8 @@ function Wht50View({
       </div>
 
       {target && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onClick={() => setTarget(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setTarget(null); }}>
+          <EscToClose onClose={() => { setTarget(null); }} />
           <div className="w-full max-w-md rounded-lg bg-card p-5" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-3 font-semibold text-ink">ออก 50 ทวิ — {target.name}</h3>
             <div className="space-y-3">

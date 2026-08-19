@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, useSaver, Empty } from "@/lib/shared/ui";
+import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, useSaver, Empty, EscToClose } from "@/lib/shared/ui";
 import { saveEmployeeAction } from "../actions";
 import type { EmployeeRow } from "../data";
 import type { PayrollConfig } from "./PayrollApp";
@@ -105,7 +105,8 @@ export function EmployeesTab({ config, initial }: { config: PayrollConfig; initi
       </Card>
 
       {edit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onClick={() => setEdit(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setEdit(null); }}>
+          <EscToClose onClose={() => { setEdit(null); }} />
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-card p-5" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-3 font-semibold text-ink">{edit.empId ? `แก้ไข ${edit.empId}` : "เพิ่มพนักงาน"}</h3>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

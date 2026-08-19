@@ -25,4 +25,5 @@ export {
   RowBtn,
   IconBtn,
   Badge,
+  EscToClose,
 } from "@/lib/shared/ui";

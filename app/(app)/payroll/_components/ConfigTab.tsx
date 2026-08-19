@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, Field, Msg, NumBox, SaveButton, Select, SuggestInput, TextInput, useSaver, Empty } from "@/lib/shared/ui";
+import { Card, Field, Msg, NumBox, SaveButton, Select, SuggestInput, TextInput, useSaver, Empty, EscToClose } from "@/lib/shared/ui";
 import type {
   LegAmountSource,
   PayComponent,
@@ -559,7 +559,8 @@ function Formulas({ config }: { config: PayrollConfig }) {
       </div>
 
       {edit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onClick={() => setEdit(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setEdit(null); }}>
+          <EscToClose onClose={() => { setEdit(null); }} />
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-card p-5" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-3 font-semibold text-ink">
               {edit.type === "var" ? (edit.v.name || "ตัวแปรใหม่") : (edit.c.name || "รายการใหม่")}
@@ -915,7 +916,8 @@ function PostLegs({ config }: { config: PayrollConfig }) {
       </div>
 
       {edit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onClick={() => setEdit(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setEdit(null); }}>
+          <EscToClose onClose={() => { setEdit(null); }} />
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-card p-5" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-3 font-semibold text-ink">{edit.name || "ขาใหม่"}</h3>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

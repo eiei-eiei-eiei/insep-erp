@@ -411,3 +411,21 @@ export function SuggestInput({
     </>
   );
 }
+
+/**
+ * กด Esc เพื่อปิดป๊อปอัพ — วางไว้**ในป๊อปอัพ** จะได้ผูก/ถอด listener ตามการเปิดปิดเอง
+ *
+ * 🚨 ใช้คู่กับพื้นหลังที่ปิดด้วย `onMouseDown` + เช็ค `e.target === e.currentTarget` เท่านั้น
+ *    **ห้ามใช้ `onClick` ปิดพื้นหลัง** — ลากคลุมข้อความในช่องกรอกแล้วปล่อยเมาส์นอกช่อง
+ *    เบราว์เซอร์จะยิง click ไปที่บรรพบุรุษร่วม (= พื้นหลัง) แล้วป๊อปอัพปิดเองกลางคัน
+ */
+export function EscToClose({ onClose }: { onClose: () => void }) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return null;
+}

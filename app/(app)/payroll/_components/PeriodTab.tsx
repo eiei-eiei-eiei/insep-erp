@@ -47,6 +47,9 @@ export function PeriodTab({
   const [period, setPeriod] = useState<PeriodRow | null>(periods[0] ?? null);
   const [items, setItems] = useState<ItemRow[]>([]);
   const [draft, setDraft] = useState<Record<string, LineInput>>({});
+  // 🪤 แถวที่ผู้ใช้ "แตะแล้ว" ในรอบนี้ — ใช้ตัดสินว่าจะโชว์ค่าที่แช่ไว้หรือค่าที่คิดสด
+  //    (ดูเหตุผลที่กล่อง shown ด้านล่าง)
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
 
   // ฟอร์มสร้างงวด
@@ -62,6 +65,7 @@ export function PeriodTab({
     getPeriodDetailAction(id).then((d) => {
       setPeriod(d.period);
       setItems(d.items);
+      setTouched({});
       setDraft(Object.fromEntries(d.items.map((i) => [i.empId, {
         empId: i.empId,
         workDays: i.inputs.workDays ?? d.period?.workDaysStd ?? 0,
@@ -83,7 +87,7 @@ export function PeriodTab({
     [period, config.rates],
   );
 
-  const preview = useMemo(() => {
+  const live = useMemo(() => {
     if (!period || !rates) return {} as Record<string, PayrollLine>;
     const out: Record<string, PayrollLine> = {};
     for (const it of items) {
@@ -104,21 +108,58 @@ export function PeriodTab({
     return out;
   }, [items, draft, period, rates, config, employees]);
 
+  /**
+   * ค่าที่ "เอาไปแสดง" — ไม่ใช่ค่าที่คิดสดเสมอไป
+   *
+   * 🚨 งวดที่บันทึกแล้วต้องโชว์ **ค่าที่แช่ไว้ตอนกดบันทึก** ไม่ใช่ค่าที่คิดใหม่จากเกณฑ์ปัจจุบัน
+   *    ไม่งั้นลบรายการเพิ่ม/หักทิ้ง 1 ตัวแล้วเปิดงวดเก่าดู จะเห็นยอดใหม่ทันที
+   *    ทั้งที่ยังไม่ได้กดบันทึก และไม่ตรงกับแท็บรายงาน/สลิป/บัญชีที่ลงไปแล้ว
+   *    (ตระกูลเดียวกับกติกา "ห้ามคำนวณสด" ใน D66 ข้อ 2 — รอบนี้หลุดมาที่หน้าจอ)
+   * ★ แถวที่ผู้ใช้แตะช่องกรอกแล้ว = กำลังจะบันทึกใหม่ → โชว์ค่าสดถึงจะถูก
+   */
+  const shown = useMemo(() => {
+    const out: Record<string, PayrollLine> = {};
+    for (const it of items) {
+      const stored = storedLine(it);
+      out[it.empId] = touched[it.empId] || !stored ? live[it.empId] : stored;
+    }
+    return out;
+  }, [items, live, touched]);
+
+  /** เกณฑ์ปัจจุบันให้ผลต่างจากที่แช่ไว้กี่คน (เฉพาะแถวที่ยังไม่ได้แตะ) */
+  const drifted = useMemo(
+    () =>
+      items.filter((it) => {
+        if (touched[it.empId]) return false;
+        const st = storedLine(it);
+        const lv = live[it.empId];
+        return st && lv && (round2(st.net) !== round2(lv.net) || round2(st.gross) !== round2(lv.gross));
+      }).length,
+    [items, live, touched],
+  );
+
   const totals = useMemo(() => {
-    const v = Object.values(preview);
+    const v = Object.values(shown);
     return {
       gross: v.reduce((s, l) => s + l.gross, 0),
       sso: v.reduce((s, l) => s + l.sso, 0),
       wht: v.reduce((s, l) => s + l.wht, 0),
       net: v.reduce((s, l) => s + l.net, 0),
     };
-  }, [preview]);
+  }, [shown]);
 
   // รายการ manual = คอลัมน์กรอกเองในตาราง
   const manualComps = config.components.filter((c) => c.method === "manual" && c.active !== false);
 
   function setVal(empId: string, key: string, v: number, bucket: "values" | "manual") {
+    setTouched((t) => ({ ...t, [empId]: true }));
     setDraft((p) => ({ ...p, [empId]: { ...p[empId], [bucket]: { ...p[empId][bucket], [key]: v } } }));
+  }
+
+  /** แก้ช่องอื่นของแถว (วันมาทำงาน / override ภาษี) — ต้องตั้งธง touched เหมือนกัน */
+  function setRow(empId: string, patch: Partial<LineInput>) {
+    setTouched((t) => ({ ...t, [empId]: true }));
+    setDraft((p) => ({ ...p, [empId]: { ...p[empId], ...patch } }));
   }
 
   function doSave() {
@@ -147,7 +188,7 @@ export function PeriodTab({
   function doPrint() {
     if (!period) return;
     const slips: SlipData[] = items.map((it) => {
-      const l = preview[it.empId];
+      const l = shown[it.empId];
       const d = draft[it.empId];
       const emp = empOf(it, employees);
       const baseLabel =
@@ -179,7 +220,7 @@ export function PeriodTab({
   // ── ตัวเลขคุมกันลงรายจ่ายซ้ำ/ขาด ────────────────────────────────────────────
   //    ขาที่ลูกค้าตั้งเองอาจยอดซ้อนกันได้ และไม่มีอะไรใน DB ฟ้อง → ต้องโชว์ให้เห็น
   const legLines = items.map((it) => {
-    const l = preview[it.empId];
+    const l = shown[it.empId];
     return {
       gross: l?.gross ?? it.gross,
       net: l?.net ?? it.net,
@@ -240,6 +281,14 @@ export function PeriodTab({
               (ถ้าแก้ได้ ยอดที่ยื่นไปแล้วจะไม่ตรงกับที่บันทึก)
             </div>
           )}
+          {drifted > 0 && (
+            <div className="rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">
+              ⚠ เกณฑ์การคำนวณเปลี่ยนไปจากตอนที่บันทึกงวดนี้ — มี <b>{drifted}</b> คนที่ยอดใหม่ไม่ตรงกับที่บันทึกไว้
+              <br />
+              ตัวเลขที่แสดงคือ<b>ค่าที่บันทึกไว้</b> (ตรงกับแท็บรายงานและบัญชีที่ลงไปแล้ว) ·
+              กด <b>คำนวณ &amp; บันทึก</b> เมื่อไหร่ ยอดจะถูกเขียนทับด้วยเกณฑ์ใหม่
+            </div>
+          )}
           {!rates && (
             <div className="rounded-lg bg-crit-bg px-3 py-2 text-sm text-crit">
               ยังไม่มีชุดอัตราที่มีผลถึงงวดนี้ — ไปตั้งที่แท็บ &ldquo;ตั้งค่าการคำนวณ&rdquo; ก่อน
@@ -270,14 +319,14 @@ export function PeriodTab({
                   <tbody>
                     {items.map((it) => {
                       const d = draft[it.empId];
-                      const l = preview[it.empId];
+                      const l = shown[it.empId];
                       if (!d) return null;
                       return (
                         <tr key={it.empId}>
                           <td className="whitespace-nowrap">{it.empName}</td>
                           <td className="num">
                             <NumBox value={d.workDays} readOnly={locked}
-                              onChange={(v) => setDraft((p) => ({ ...p, [it.empId]: { ...p[it.empId], workDays: v === "" ? 0 : v } }))} />
+                              onChange={(v) => setRow(it.empId, { workDays: v === "" ? 0 : v })} />
                           </td>
                           {config.inputs.map((i) => (
                             <td key={i.code} className="num">
@@ -293,7 +342,7 @@ export function PeriodTab({
                           ))}
                           <td className="num">
                             <NumBox value={d.whtOverride ?? ""} blankZero readOnly={locked}
-                              onChange={(v) => setDraft((p) => ({ ...p, [it.empId]: { ...p[it.empId], whtOverride: v === "" ? null : v } }))} />
+                              onChange={(v) => setRow(it.empId, { whtOverride: v === "" ? null : v })} />
                           </td>
                           <td className="num">{fmt(l?.gross ?? it.gross)}</td>
                           <td className="num">{fmt(l?.sso ?? it.sso)}</td>
@@ -412,4 +461,19 @@ function empOf(it: ItemRow, employees: EmployeeRow[]) {
 
 function lastDayISO(year: number, month: number): string {
   return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+}
+
+/**
+ * ผลคำนวณที่ **แช่ไว้แล้ว** ของแถวนี้ (จาก `payroll_items.computed`)
+ * คืน null ถ้ายังไม่เคยกดบันทึก — ผู้เรียกจะได้ fallback ไปใช้ค่าที่คิดสด
+ * ★ เช็ค `gross` เพราะงวดที่สร้างแล้วยังไม่บันทึกจะมี `computed` เป็น {} ว่าง
+ */
+function storedLine(it: ItemRow): PayrollLine | null {
+  const c = it.computed as unknown as PayrollLine | undefined;
+  if (!c || typeof c.gross !== "number") return null;
+  return c;
+}
+
+function round2(x: number): number {
+  return Math.round((Number(x) || 0) * 100) / 100;
 }

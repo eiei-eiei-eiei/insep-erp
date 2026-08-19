@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, useTransition } from "react";
+import { EscToClose } from "@/lib/shared/ui";
 import {
   listSnapshotsAction,
   createSnapshotAction,
@@ -174,7 +175,8 @@ export function DataManager() {
 
       {/* modal ยืนยันด้วยรหัสผ่าน */}
       {confirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40 p-4" onClick={() => !pending && setConfirm(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget && !pending) setConfirm(null); }}>
+          <EscToClose onClose={() => { if (!pending) setConfirm(null); }} />
           <div className="w-full max-w-md rounded-lg bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-1 text-lg font-bold text-ink">
               {confirm.kind === "restore" ? "ยืนยันย้อนข้อมูลกลับ" : confirm.kind === "delete" ? "ยืนยันลบ snapshot" : "ยืนยันจับ snapshot"}

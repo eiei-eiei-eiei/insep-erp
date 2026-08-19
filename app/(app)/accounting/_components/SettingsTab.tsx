@@ -11,7 +11,7 @@ import {
 } from "../actions";
 import Link from "next/link";
 import type { AccountRow, Bootstrap, Contact } from "./types";
-import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, cleanTaxId13, fmt, useSaver } from "./ui";
+import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, cleanTaxId13, fmt, useSaver, EscToClose } from "./ui";
 
 /**
  * ตั้งค่าที่เป็น "ข้อมูลของโดเมนบัญชี" เท่านั้น
@@ -172,7 +172,8 @@ function Contacts({ initial }: { initial: Contact[] }) {
       </div>
       <Msg msg={msg} />
       {edit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onClick={() => setEdit(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setEdit(null); }}>
+          <EscToClose onClose={() => { setEdit(null); }} />
           <div className="w-full max-w-md rounded-lg bg-card p-5" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-3 font-semibold text-ink">{edit.contact_id ? "แก้ไขคู่ค้า" : "เพิ่มคู่ค้า"}</h3>
             <div className="space-y-3">

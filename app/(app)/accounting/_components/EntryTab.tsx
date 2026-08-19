@@ -17,7 +17,7 @@ import {
   getItemHistoryAction,
 } from "../actions";
 import type { Bootstrap, Contact } from "./types";
-import { Card, Field, Msg, NumBox, NumInput, SaveButton, Select, TextInput, cleanTaxId13, fmt, todayISO, useSaver } from "./ui";
+import { Card, Field, Msg, NumBox, NumInput, SaveButton, Select, TextInput, cleanTaxId13, fmt, todayISO, useSaver, EscToClose } from "./ui";
 import { IconEye, IconEyeOff, IconTrash } from "@/lib/shared/icons";
 
 type Item = BillItem;
@@ -544,7 +544,8 @@ function ContactModal({ defaultName, onClose, onSaved }: { defaultName: string; 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <EscToClose onClose={() => { onClose(); }} />
       <div className="w-full max-w-md rounded-lg bg-card p-5" onClick={(e) => e.stopPropagation()}>
         <h3 className="mb-3 font-semibold text-ink">เพิ่มคู่ค้าใหม่</h3>
         <div className="space-y-3">

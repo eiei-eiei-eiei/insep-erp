@@ -86,6 +86,9 @@ export async function getPayrollConfig(): Promise<{
       "payroll_pay_account",
       "payroll_hours_per_day",
       "payroll_rounding",
+      // ★ รายการหมวดรายจ่ายชุดเดียวกับที่ฝั่งบัญชีใช้ทำดร็อปดาวน์ของตัวเอง
+      //   (หมวดที่ตั้งไว้แต่ยังไม่เคยลงบัญชีจริงจะไม่โผล่ถ้าดูแต่ transactions)
+      "expense_cat",
     ]).order("sort"),
     supabase.from("pay_inputs").select("code, label, unit, sort, active").order("sort"),
     supabase.from("pay_components").select("*").order("sort"),
@@ -114,6 +117,7 @@ export async function getPayrollConfig(): Promise<{
     payAccount: one("payroll_pay_account"),
     bankAccounts: (accts.data ?? []).map((a) => a.account_name as string),
     expenseCategories: uniqSorted([
+      ...list("expense_cat"),
       ...(cats.data ?? []).map((r) => r.category as string | null),
       // หมวดที่ตั้งไว้ในขาแล้วแต่ยังไม่เคยลงบัญชีจริง ต้องขึ้นเป็นตัวเลือกด้วย
       ...(legs.data ?? []).map((r) => (r as { category?: string }).category ?? null),
