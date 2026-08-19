@@ -178,7 +178,9 @@ function toVariable(r: any): PayVariable {
     source: r.source,
     constValue: Number(r.const_value),
     inputKey: r.input_key ?? undefined,
-    divisors: r.divisors ?? [],
+    // ★ คอลัมน์ถูกเปลี่ยนชื่อเป็น steps ใน 0044 — อ่าน divisors ต่อไว้กันกรณี DB ยังไม่ได้ลง migration
+    steps: r.steps ?? r.divisors ?? [],
+    rounding: r.rounding ?? "none",
     sort: r.sort,
     active: r.active,
   };

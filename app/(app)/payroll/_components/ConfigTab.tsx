@@ -9,13 +9,23 @@ import type {
   PayPostLeg,
   PayRates,
   PayVariable,
+  VarOp,
+  VarRounding,
   VarSource,
 } from "@/lib/payroll/types";
+import {
+  VAR_SOURCE_LABEL,
+  VAR_OP_LABEL,
+  VAR_ROUNDING_LABEL,
+  variableFormulaText,
+  variableWarnings,
+} from "@/lib/payroll/varText";
 import {
   addPayGroupAction,
   deletePayGroupAction,
   savePayInputAction,
   deletePayInputAction,
+  reorderPayInputsAction,
   savePayComponentAction,
   deletePayComponentAction,
   savePayVariableAction,
@@ -41,16 +51,6 @@ const METHOD_LABEL: Record<PayComponent["method"], string> = {
   manual: "กรอกยอดเองต่อคนต่องวด",
 };
 
-/** ป้ายของค่าที่ใช้เป็นตัวตั้ง/ตัวหารได้ — ต้องอ่านรู้เรื่องโดยไม่ต้องเปิดคู่มือ */
-const VAR_SOURCE_LABEL: Record<VarSource, string> = {
-  base_wage: "ฐานเงินเดือน / ค่าแรงของพนักงาน",
-  prorated_base: "ค่าจ้างฐานหลังคิดตามวันมาทำงานแล้ว",
-  work_days_std: "วันทำงานมาตรฐานของงวดนั้น",
-  work_days_actual: "วันมาทำงานจริงของคนนั้น",
-  hours_per_day: "ชั่วโมงทำงานต่อวัน",
-  input: "ค่าจากช่องที่กรอกต่อคนต่องวด",
-  constant: "ค่าคงที่",
-};
 
 const LEG_SOURCE_LABEL: Record<LegAmountSource, string> = {
   net: "ยอดจ่ายจริง (สุทธิ)",
@@ -217,18 +217,58 @@ function Inputs({ config }: { config: PayrollConfig }) {
   const [label, setLabel] = useState("");
   const [unit, setUnit] = useState("");
 
+  // 🪤 เก็บลำดับเป็น state ในเครื่องด้วย — แท็บถูก mount ค้างไว้ด้วย CSS ตามแพตเทิร์นของทุก
+  //    workspace ทำให้ prop จาก `router.refresh()` มาช้ากว่าที่ผู้ใช้คาด · กดแล้วแถวไม่ขยับ
+  //    = ผู้ใช้กดซ้ำ (บั๊กตัวเดียวกับรายชื่อพนักงานใน D67) · ยังเรียก refresh ต่อให้ server ตรงกัน
+  const [order, setOrder] = useState<string[] | null>(null);
+  const rows = order
+    ? (order.map((c) => config.inputs.find((i) => i.code === c)).filter(Boolean) as typeof config.inputs)
+    : config.inputs;
+
+  /** ย้ายช่องขึ้น/ลง 1 ตำแหน่ง แล้วเขียนลำดับใหม่ทั้งชุด */
+  function move(idx: number, dir: -1 | 1) {
+    const codes = rows.map((i) => i.code);
+    const to = idx + dir;
+    if (to < 0 || to >= codes.length) return;
+    [codes[idx], codes[to]] = [codes[to], codes[idx]];
+    setOrder(codes);
+    run(() => reorderPayInputsAction(codes), "ย้ายลำดับแล้ว", () => router.refresh());
+  }
+
   return (
     <Card title="ช่องที่ต้องกรอกต่อคนต่องวด">
       <p className="mb-2 text-xs text-faint">
         คอลัมน์ในตารางงวดจ่ายมาจากที่นี่ — เช่น ชั่วโมง OT · วันลาป่วย · จำนวนครั้งที่มาสาย
         (รหัสเป็นภาษาอังกฤษเพราะใช้เป็นคีย์ของข้อมูล ส่วนชื่อที่แสดงเป็นไทยได้)
+        <br />
+        ★ ปุ่ม ▲▼ ย้ายลำดับคอลัมน์ได้ — ช่องที่เพิ่มทีหลังไม่จำเป็นต้องอยู่ท้ายสุดตลอดไป
       </p>
       <div className="overflow-x-auto">
         <table className="tbl">
-          <thead><tr className="text-left text-faint"><th>รหัส</th><th>ชื่อที่แสดง</th><th>หน่วย</th><th></th></tr></thead>
+          <thead>
+            <tr className="text-left text-faint">
+              <th>ลำดับ</th><th>รหัส</th><th>ชื่อที่แสดง</th><th>หน่วย</th><th></th>
+            </tr>
+          </thead>
           <tbody>
-            {config.inputs.map((i) => (
+            {rows.map((i, idx) => (
               <tr key={i.code}>
+                {/* ★ ลำดับที่นี่ = ลำดับคอลัมน์ในตารางงวดจ่าย — ย้ายได้โดยไม่ต้องลบแล้วสร้างใหม่
+                    (ลบช่องที่มีข้อมูลกรอกไว้แล้ว = ค่าที่คีย์ไปหายทั้งงวด) */}
+                <td className="whitespace-nowrap">
+                  <button
+                    disabled={pending || idx === 0}
+                    onClick={() => move(idx, -1)}
+                    aria-label={`ย้าย ${i.label} ขึ้น`}
+                    className="px-1 text-muted hover:text-ink disabled:opacity-30"
+                  >▲</button>
+                  <button
+                    disabled={pending || idx === rows.length - 1}
+                    onClick={() => move(idx, 1)}
+                    aria-label={`ย้าย ${i.label} ลง`}
+                    className="px-1 text-muted hover:text-ink disabled:opacity-30"
+                  >▼</button>
+                </td>
                 <td className="font-mono text-xs">{i.code}</td>
                 <td>{i.label}</td>
                 <td>{i.unit ?? "—"}</td>
@@ -243,7 +283,7 @@ function Inputs({ config }: { config: PayrollConfig }) {
             ))}
           </tbody>
         </table>
-        {config.inputs.length === 0 && <Empty />}
+        {rows.length === 0 && <Empty />}
       </div>
       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-4">
         <Field label="รหัส (a-z 0-9 _)"><TextInput value={code} onChange={(e) => setCode(e.target.value)} placeholder="ot_work_h" /></Field>
@@ -253,9 +293,9 @@ function Inputs({ config }: { config: PayrollConfig }) {
           <SaveButton
             pending={pending}
             onClick={() => run(
-              () => savePayInputAction({ code, label, unit, sort: config.inputs.length, active: true }),
+              () => savePayInputAction({ code, label, unit, sort: rows.length, active: true }),
               "เพิ่มช่องแล้ว",
-              () => { setCode(""); setLabel(""); setUnit(""); router.refresh(); },
+              () => { setCode(""); setLabel(""); setUnit(""); setOrder(null); router.refresh(); },
             )}
           >เพิ่มช่อง</SaveButton>
         </div>
@@ -266,8 +306,16 @@ function Inputs({ config }: { config: PayrollConfig }) {
 }
 
 // ── ตัวแปรกลาง ───────────────────────────────────────────────────────────────
+/**
+ * จำนวนขั้นสูงสุดของสูตรตัวแปร
+ * ★ เดิม (D67) จำกัด 2 ชั้นตอนที่ยังหารได้อย่างเดียว · พอมี +/− เข้ามา 2 ขั้นแคบไป
+ *   เคสจริงที่ต้องใช้ 3: ((ฐาน + ค่าตำแหน่ง) ÷ วันมาตรฐาน) ÷ ชม./วัน
+ * 🚨 ยังต้องมีเพดานอยู่ — เพดานคือสิ่งที่ทำให้เส้นทางคำนวณ "นับได้จนครบ"
+ *   ซึ่งเป็นเหตุผลทั้งหมดที่ยอมให้มีตัวดำเนินการได้ (กติกาเหล็กข้อ 1)
+ */
+const MAX_VAR_STEPS = 3;
 function blankVariable(): PayVariable {
-  return { code: "", name: "", source: "base_wage", constValue: 0, divisors: [], sort: 0, active: true };
+  return { code: "", name: "", source: "base_wage", constValue: 0, steps: [], rounding: "none", sort: 0, active: true };
 }
 
 function Variables({ config }: { config: PayrollConfig }) {
@@ -304,14 +352,16 @@ function Variables({ config }: { config: PayrollConfig }) {
     </div>
   );
 
-  function setDivisor(idx: number, patch: Partial<{ kind: VarSource; value: number; inputKey: string }>) {
+  function setStep(idx: number, patch: Partial<{ op: VarOp; kind: VarSource; value: number; inputKey: string }>) {
     setEdit((p) => {
       if (!p) return p;
-      const d = [...(p.divisors ?? [])];
+      const d = [...(p.steps ?? [])];
       d[idx] = { ...d[idx], ...patch };
-      return { ...p, divisors: d };
+      return { ...p, steps: d };
     });
   }
+
+  const inputLabels = Object.fromEntries(config.inputs.map((i) => [i.code, i.label]));
 
   return (
     <Card title="ตัวแปรกลาง">
@@ -336,13 +386,8 @@ function Variables({ config }: { config: PayrollConfig }) {
             {config.variables.map((v) => (
               <tr key={v.code}>
                 <td>{v.name}{v.active === false && <span className="ml-1 text-xs text-faint">(ปิดอยู่)</span>}</td>
-                <td className="text-xs text-muted">
-                  {VAR_SOURCE_LABEL[v.source]}
-                  {v.source === "constant" ? ` (${v.constValue})` : ""}
-                  {(v.divisors ?? []).map((d, i) => (
-                    <span key={i}> ÷ {VAR_SOURCE_LABEL[d.kind]}{d.kind === "constant" ? ` (${d.value})` : ""}</span>
-                  ))}
-                </td>
+                {/* ★ ใช้ตัวเดียวกับที่หน้าแก้ไขโชว์ — วงเล็บบอกลำดับการคิดจริง ไม่ใช่กฎคณิตศาสตร์ */}
+                <td className="text-xs text-muted">{variableFormulaText(v, inputLabels)}</td>
                 <td className="whitespace-nowrap">
                   <button onClick={() => setEdit(v)} className="text-muted hover:underline">แก้</button>
                   <button
@@ -381,39 +426,76 @@ function Variables({ config }: { config: PayrollConfig }) {
             </div>
 
             <div className="mt-3 space-y-2">
-              <span className="block text-sm text-muted">หารด้วย (ไม่เกิน 2 ชั้น · เว้นไว้ = ไม่หาร)</span>
-              {[0, 1].map((idx) => {
-                const d = (edit.divisors ?? [])[idx];
+              <span className="block text-sm text-muted">
+                แล้วคิดต่อทีละขั้น (สูงสุด {MAX_VAR_STEPS} ขั้น · เว้นไว้ = ใช้ตัวตั้งตรง ๆ)
+              </span>
+              {Array.from({ length: MAX_VAR_STEPS }, (_, idx) => idx).map((idx) => {
+                const d = (edit.steps ?? [])[idx];
+                const prev = (edit.steps ?? [])[idx - 1];
+                // ขั้นถัดไปกดเพิ่มได้เฉพาะเมื่อขั้นก่อนหน้ามีแล้ว — กันรูโหว่กลางลิสต์
+                if (!d && idx > 0 && !prev) return null;
                 return (
                   <div key={idx} className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm text-faint">÷</span>
                     {d ? (
                       <>
+                        <Select
+                          value={d.op ?? "div"}
+                          onChange={(e) => setStep(idx, { op: e.target.value as VarOp })}
+                          className="w-auto"
+                        >
+                          {(Object.keys(VAR_OP_LABEL) as VarOp[]).map((o) => (
+                            <option key={o} value={o}>{VAR_OP_LABEL[o]}</option>
+                          ))}
+                        </Select>
                         <SlotPicker
                           kind={d.kind}
                           value={d.value}
                           inputKey={d.inputKey}
-                          onKind={(k) => setDivisor(idx, { kind: k })}
-                          onValue={(v) => setDivisor(idx, { value: v })}
-                          onInput={(k) => setDivisor(idx, { inputKey: k })}
+                          onKind={(k) => setStep(idx, { kind: k })}
+                          onValue={(v) => setStep(idx, { value: v })}
+                          onInput={(k) => setStep(idx, { inputKey: k })}
                         />
                         <button
-                          onClick={() => set("divisors", (edit.divisors ?? []).filter((_, i) => i !== idx))}
+                          onClick={() => set("steps", (edit.steps ?? []).filter((_, i) => i !== idx))}
                           className="text-xs text-crit hover:underline"
                         >เอาออก</button>
                       </>
                     ) : (
                       <button
-                        onClick={() => set("divisors", [...(edit.divisors ?? []), { kind: "work_days_std" }])}
+                        onClick={() => set("steps", [...(edit.steps ?? []), { op: "div", kind: "work_days_std" }])}
                         className="text-xs text-brand hover:underline"
-                      >+ เพิ่มตัวหาร</button>
+                      >+ เพิ่มขั้น</button>
                     )}
                   </div>
                 );
               })}
               <p className="text-xs text-faint">
-                🪤 ตัวหารที่ออกมาเป็น 0 (เช่นเดือนที่ยังไม่กรอกชั่วโมง) จะถูก<b>ข้าม</b> ไม่ทำให้ยอดพัง
+                🪤 <b>หาร</b>ด้วย 0 (เช่นเดือนที่ยังไม่กรอกชั่วโมง) จะถูก<b>ข้าม</b> ไม่ทำให้ยอดพัง ·
+                แต่ <b>คูณ</b>ด้วย 0 ได้ 0 ตามจริง (ไม่ข้าม)
               </p>
+            </div>
+
+            <div className="mt-3">
+              <Field label="ความละเอียดของค่าที่ได้">
+                <Select
+                  value={edit.rounding ?? "none"}
+                  onChange={(e) => set("rounding", e.target.value as VarRounding)}
+                >
+                  {(Object.keys(VAR_ROUNDING_LABEL) as VarRounding[]).map((r) => (
+                    <option key={r} value={r}>{VAR_ROUNDING_LABEL[r]}</option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+
+            {/* 🚨 บรรทัดนี้คือด่านกันเข้าใจผิดเรื่องลำดับการคิด — ห้ามเอาออก
+                ระบบคิดซ้ายไปขวาทีละขั้น แต่คนอ่านด้วยกฎคณิตศาสตร์ (คูณ/หารก่อน) */}
+            <div className="mt-3 rounded-lg bg-raised px-3 py-2">
+              <div className="text-[10px] font-medium uppercase tracking-widest text-muted">สูตรที่จะถูกใช้จริง</div>
+              <div className="mt-1 text-sm font-medium text-ink">{variableFormulaText(edit, inputLabels)}</div>
+              {variableWarnings(edit).map((w, i) => (
+                <p key={i} className="mt-1 text-xs text-warn">⚠ {w}</p>
+              ))}
             </div>
 
             <label className="mt-3 flex items-center gap-2 text-sm">

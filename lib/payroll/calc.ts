@@ -90,20 +90,44 @@ function slotValue(
   }
 }
 
+/** ปัดค่าของตัวแปรกลาง — ไม่ระบุ = ไม่ปัด (พฤติกรรมเดิมก่อน D70 · ห้ามเปลี่ยนค่าปริยาย) */
+export function applyVarRounding(x: number, r: PayVariable["rounding"]): number {
+  if (!Number.isFinite(x)) return 0;
+  if (r === "int") return Math.round(x);
+  if (r === "dec2") return Math.round(x * 100) / 100;
+  return x;
+}
+
 /**
- * ค่าของตัวแปรกลาง = ตัวตั้ง ÷ ตัวหารทีละชั้น
+ * ค่าของตัวแปรกลาง = ตัวตั้ง แล้วคิดทีละขั้น **เรียงซ้ายไปขวา ไม่มีลำดับความสำคัญ**
  *
- * 🪤 **ตัวหารที่เป็น 0 หรือหาค่าไม่ได้ ต้องถูกข้าม ไม่ใช่หารแล้วได้ Infinity**
+ * 🚨 `ฐาน − A ÷ B` ที่นี่ = `((ฐาน − A) ÷ B)` ไม่ใช่ `ฐาน − (A ÷ B)` แบบกฎคณิตศาสตร์ —
+ *    ไม่มี parser ไม่มีวงเล็บ ตั้งใจให้เส้นทางคำนวณนับได้จนครบ (กติกาเหล็กข้อ 1)
+ *    → หน้าจอต้องโชว์วงเล็บตามลำดับที่คิดจริง ไม่งั้นลูกค้าอ่านผิดแล้วตั้งเกณฑ์ผิด
+ *
+ * 🪤 **หารด้วย 0 หรือค่าที่หาไม่ได้ = ข้ามขั้นนั้น ไม่ใช่ได้ Infinity**
  *    เดือนที่ยังไม่กรอกชั่วโมงโอทีจะได้ตัวหาร 0 เป็นเรื่องปกติ —
- *    ถ้าปล่อยให้เป็น Infinity ยอดทั้งงวดจะกลายเป็น NaN แล้วบันทึกลง DB เงียบ ๆ
+ *    ปล่อยเป็น Infinity แล้วยอดทั้งงวดกลายเป็น NaN แล้วบันทึกลง DB เงียบ ๆ
+ * 🪤 แต่ **คูณด้วย 0 ไม่ข้าม** — ผลคือ 0 ซึ่งนิยามชัดเจนและถูกต้อง
+ *    (ข้ามแล้วจะได้ค่าตั้งต้นกลับมา = ยอดพองขึ้นเงียบ ๆ ซึ่งอันตรายกว่ามาก)
  */
 export function resolveVariable(v: PayVariable, ctx: VarContext): number {
   let out = slotValue(v.source, ctx, { constValue: v.constValue, inputKey: v.inputKey });
-  for (const d of v.divisors ?? []) {
-    const div = slotValue(d.kind, ctx, { constValue: d.value, inputKey: d.inputKey });
-    if (div !== 0 && Number.isFinite(div)) out = out / div;
+  // ★ `divisors` = ชื่อเดิมสมัยที่หารได้อย่างเดียว — อ่านต่อไว้โดยตั้งใจ 2 เหตุผล:
+  //   1. golden test ชุดก่อน D70 เขียนด้วยชื่อนี้ → ผ่านได้**โดยไม่ต้องแก้ไฟล์เทส**
+  //      = หลักฐานว่าการเพิ่มตัวดำเนินการไม่ได้ขยับผลลัพธ์ของเส้นทางเดิมเลย
+  //   2. กันข้อมูล jsonb ที่เขียนไว้ก่อนเปลี่ยนชื่อคอลัมน์
+  for (const s of v.steps ?? v.divisors ?? []) {
+    const val = slotValue(s.kind, ctx, { constValue: s.value, inputKey: s.inputKey });
+    if (!Number.isFinite(val)) continue;
+    switch (s.op ?? "div") {
+      case "add": out = out + val; break;
+      case "sub": out = out - val; break;
+      case "mul": out = out * val; break;
+      default: if (val !== 0) out = out / val; break;
+    }
   }
-  return Number.isFinite(out) ? out : 0;
+  return applyVarRounding(out, v.rounding);
 }
 
 /** ยอดของรายการ 1 ตัว (ยังไม่ปัด — ผู้เรียกเป็นคนปัด) */

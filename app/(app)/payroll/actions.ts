@@ -152,13 +152,23 @@ export async function savePayVariableAction(v: PayVariable): Promise<SaveResult>
   if (!/^[a-z0-9_]+$/.test(code)) return fail("รหัสตัวแปรต้องเป็น a-z 0-9 _ เท่านั้น");
   if (!v.name.trim()) return fail("ตั้งชื่อตัวแปรที่คนอ่านรู้เรื่อง เช่น อัตราค่าล่วงเวลาต่อชั่วโมง");
   if (v.source === "input" && !v.inputKey) return fail("เลือกช่องกรอกที่จะใช้เป็นตัวตั้ง");
-  for (const d of v.divisors ?? []) {
-    if (d.kind === "input" && !d.inputKey) return fail("ตัวหารที่เป็นช่องกรอก ต้องเลือกช่องด้วย");
+
+  // 🚨 ด่านจริงของ "ชุดปิด" อยู่ตรงนี้ — anon key เป็นค่าสาธารณะ ยิง PostgREST ตรงได้
+  //    ปล่อย op แปลก ๆ เข้าไปแล้วโค้ดจะตีความเป็น div เงียบ ๆ = ตัวเลขผิดโดยไม่มีใครรู้
+  const steps = v.steps ?? v.divisors ?? [];
+  for (const st of steps) {
+    if (st.op && !VAR_OPS.includes(st.op)) return fail("ตัวดำเนินการต้องเป็น บวก/ลบ/คูณ/หาร เท่านั้น");
+    if (st.kind === "input" && !st.inputKey) return fail("ขั้นที่เลือกช่องกรอก ต้องระบุว่าช่องไหนด้วย");
   }
+  if (v.rounding && !VAR_ROUNDINGS.includes(v.rounding)) return fail("ค่าความละเอียดไม่ถูกต้อง");
+
   const { error } = await supabase.from("pay_variables").upsert({
     code, name: v.name.trim(), source: v.source,
     const_value: v.constValue ?? 0, input_key: v.inputKey ?? null,
-    divisors: v.divisors ?? [],
+    // ★ เขียน op ลงไปเสมอ (ไม่ปล่อยว่างให้ไปพึ่งค่าปริยาย) — ข้อมูลที่อ่านแล้วเข้าใจได้เอง
+    //   ปลอดภัยกว่าตอนมีคนมาไล่ดูใน DB ภายหลัง
+    steps: steps.map((st) => ({ ...st, op: st.op ?? "div" })),
+    rounding: v.rounding ?? "none",
     sort: v.sort ?? 0, active: v.active ?? true,
   });
   if (error) return fail(mapDbError(error));
@@ -536,4 +546,28 @@ export async function issueEmp50TawiAction(input: {
   if (!res.ok) return fail(res.error ?? "ออกเอกสารไม่สำเร็จ");
   revalidatePath("/payroll");
   return { ok: true, data: res };
+}
+
+/** ชุดปิดที่ยอมรับ — ต้องตรงกับ `VarOp` / `VarRounding` ใน types.ts เป๊ะ */
+const VAR_OPS: string[] = ["add", "sub", "mul", "div"];
+const VAR_ROUNDINGS: string[] = ["none", "int", "dec2"];
+
+/**
+ * สลับลำดับคอลัมน์ "ช่องที่ต้องกรอกต่อคนต่องวด"
+ *
+ * ทำไมต้องมี: ตารางงวดจ่ายเรียงคอลัมน์ตาม `sort` ซึ่งเดิมได้ค่ามาจาก "ลำดับที่เพิ่ม"
+ * → ช่องที่เพิ่มทีหลังไปอยู่ท้ายสุดเสมอ ทั้งที่อาจเป็นช่องที่ต้องกรอกทุกงวด
+ *
+ * ★ เขียนใหม่ทั้งชุดตามลำดับที่ส่งมา (ไม่ใช่สลับทีละคู่) — ลำดับที่เห็นบนจอ
+ *   คือลำดับที่บันทึก ไม่มีทางเหลื่อมกัน แม้ค่า sort เดิมจะซ้ำ/ข้ามเลข
+ */
+export async function reorderPayInputsAction(codes: string[]): Promise<SaveResult> {
+  const supabase = await createClient();
+  if (codes.length === 0) return { ok: true };
+  for (let i = 0; i < codes.length; i++) {
+    const { error } = await supabase.from("pay_inputs").update({ sort: i }).eq("code", codes[i]);
+    if (error) return fail(mapDbError(error));
+  }
+  revalidatePath("/payroll");
+  return { ok: true };
 }
