@@ -8,8 +8,10 @@ import type {
   PayComponent,
   PayPostLeg,
   PayRates,
+  PayTier,
   PayVariable,
   VarOp,
+  VarStep,
   VarRounding,
   VarSource,
 } from "@/lib/payroll/types";
@@ -19,6 +21,9 @@ import {
   VAR_ROUNDING_LABEL,
   variableFormulaText,
   variableWarnings,
+  componentFormulaText,
+  componentWarnings,
+  sortTiers,
 } from "@/lib/payroll/varText";
 import {
   addPayGroupAction,
@@ -117,8 +122,7 @@ export function ConfigTab({ config }: { config: PayrollConfig }) {
       <BasicSettings config={config} />
       <Groups config={config} />
       <Inputs config={config} />
-      <Variables config={config} />
-      <Components config={config} />
+      <Formulas config={config} />
       <PostLegs config={config} />
       <Rates config={config} />
     </div>
@@ -305,7 +309,7 @@ function Inputs({ config }: { config: PayrollConfig }) {
   );
 }
 
-// ── ตัวแปรกลาง ───────────────────────────────────────────────────────────────
+// ── สูตรและรายการคำนวณ (ตัวแปร + รายการเพิ่ม/หัก รวมกล่องเดียว · D71) ────────
 /**
  * จำนวนขั้นสูงสุดของสูตรตัวแปร
  * ★ เดิม (D67) จำกัด 2 ชั้นตอนที่ยังหารได้อย่างเดียว · พอมี +/− เข้ามา 2 ขั้นแคบไป
@@ -314,26 +318,44 @@ function Inputs({ config }: { config: PayrollConfig }) {
  *   ซึ่งเป็นเหตุผลทั้งหมดที่ยอมให้มีตัวดำเนินการได้ (กติกาเหล็กข้อ 1)
  */
 const MAX_VAR_STEPS = 3;
+
 function blankVariable(): PayVariable {
   return { code: "", name: "", source: "base_wage", constValue: 0, steps: [], rounding: "none", sort: 0, active: true };
 }
 
-function Variables({ config }: { config: PayrollConfig }) {
-  const router = useRouter();
-  const { pending, msg, run } = useSaver();
-  const [edit, setEdit] = useState<PayVariable | null>(null);
-  const set = <K extends keyof PayVariable>(k: K, v: PayVariable[K]) =>
-    setEdit((p) => (p ? { ...p, [k]: v } : p));
+function blankComponent(): PayComponent {
+  return {
+    code: "", name: "", kind: "earning", method: "fixed",
+    // 🪤 ตัวคูณเริ่มต้นเคยเป็น 0 → เลือกวิธีคิด "ตัวแปรกลาง" แล้วไม่แตะตัวคูณ
+    //    = ยอดเป็น 0 ทุกงวดโดยไม่มีอะไรฟ้อง · เริ่มที่ 1 แล้วให้คนที่อยากคูณเป็นคนแก้
+    amount: 0, rate: 0, multiplier: 1, tiers: [],
+    inputKeys: [], inputAgg: "sum", groupCodes: [],
+    taxable: true, ssoBase: false, otBase: false, prorateBase: false,
+    sort: 0, active: true,
+  };
+}
 
-  const inputOpts = config.inputs.map((i) => ({ value: i.code, label: i.label }));
-
-  /** ช่องเลือก "ค่าที่ใช้" 1 ช่อง (ใช้ทั้งตัวตั้งและตัวหาร) */
-  const SlotPicker = ({
-    kind, value, inputKey, onKind, onValue, onInput,
-  }: {
-    kind: VarSource; value?: number; inputKey?: string;
-    onKind: (k: VarSource) => void; onValue: (v: number) => void; onInput: (k: string) => void;
-  }) => (
+/**
+ * ช่องเลือก "ค่าที่ใช้" 1 ช่อง (ตัวตั้งหรือขั้นของตัวแปร)
+ *
+ * 🚨 **ต้องประกาศไว้นอกคอมโพเนนต์เท่านั้น** — เดิมประกาศเป็น arrow function ข้างใน
+ *    `Variables` ทำให้ทุกครั้งที่ setState React เห็นเป็น **component type ตัวใหม่**
+ *    → unmount + mount ใหม่ทั้งกิ่ง → **`<input>` ถูกทำลายและโฟกัสหลุดทุกตัวอักษรที่พิมพ์**
+ *    อาการที่ผู้ใช้เจอ: พิมพ์ตัวเลขได้ทีละตัวแล้วต้องคลิกกลับเข้าช่องใหม่ ใส่ทศนิยมไม่ได้
+ *    (พิสูจน์ในเบราว์เซอร์แล้วว่าโหนด input เปลี่ยนตัวจริงหลังพิมพ์ 1 ครั้ง)
+ */
+function SlotPicker({
+  kind, value, inputKey, inputOpts, onKind, onValue, onInput,
+}: {
+  kind: VarSource;
+  value?: number;
+  inputKey?: string;
+  inputOpts: { value: string; label: string }[];
+  onKind: (k: VarSource) => void;
+  onValue: (v: number) => void;
+  onInput: (k: string) => void;
+}) {
+  return (
     <div className="flex flex-wrap gap-2">
       <Select value={kind} onChange={(e) => onKind(e.target.value as VarSource)}>
         {(Object.keys(VAR_SOURCE_LABEL) as VarSource[]).map((k) => (
@@ -341,7 +363,7 @@ function Variables({ config }: { config: PayrollConfig }) {
         ))}
       </Select>
       {kind === "constant" && (
-        <NumBox value={value ?? 0} onChange={(v) => onValue(v === "" ? 0 : v)} />
+        <NumBox value={value ?? 0} blankZero onChange={(v) => onValue(v === "" ? 0 : v)} />
       )}
       {kind === "input" && (
         <Select value={inputKey ?? ""} onChange={(e) => onInput(e.target.value)}>
@@ -351,45 +373,135 @@ function Variables({ config }: { config: PayrollConfig }) {
       )}
     </div>
   );
+}
 
-  function setStep(idx: number, patch: Partial<{ op: VarOp; kind: VarSource; value: number; inputKey: string }>) {
+/**
+ * ตารางขั้นบันได — **แถวละขั้น ไม่มีการ parse สตริง**
+ *
+ * 🚨 ของเดิมเป็นช่องข้อความช่องเดียวที่แปลงกลับไปกลับมาทุกคีย์
+ *    (`"1=500, 2=300"` ↔ array) → พิมพ์คอมมาปุ๊บขั้นที่ยังไม่เสร็จโดน filter ทิ้งทันที
+ *    ผลจริงที่วัดได้: พิมพ์ `1=500, 2=300` ออกมาเป็น `1=5002300`
+ *    → ห้ามกลับไปใช้ช่องข้อความช่องเดียวอีก
+ */
+function TierEditor({
+  tiers, onChange,
+}: {
+  tiers: PayTier[];
+  onChange: (t: PayTier[]) => void;
+}) {
+  const rows = tiers ?? [];
+  const patch = (i: number, p: Partial<PayTier>) =>
+    onChange(rows.map((t, idx) => (idx === i ? { ...t, ...p } : t)));
+
+  return (
+    <div className="space-y-2">
+      {rows.length === 0 && <p className="text-xs text-faint">— ยังไม่มีขั้น กด &ldquo;เพิ่มเงื่อนไข&rdquo; —</p>}
+      {rows.map((t, i) => (
+        <div key={i} className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-muted">ถ้าค่าที่กรอก ≤</span>
+          <div className="w-28">
+            <NumBox value={t.upTo} blankZero onChange={(v) => patch(i, { upTo: v === "" ? 0 : v })} />
+          </div>
+          <span className="text-sm text-muted">→ ได้</span>
+          <div className="w-32">
+            <NumBox value={t.amount} blankZero onChange={(v) => patch(i, { amount: v === "" ? 0 : v })} />
+          </div>
+          <span className="text-sm text-faint">บาท</span>
+          <button
+            onClick={() => onChange(rows.filter((_, idx) => idx !== i))}
+            className="text-xs text-crit hover:underline"
+          >ลบ</button>
+        </div>
+      ))}
+      <button
+        onClick={() => onChange([...rows, { upTo: 0, amount: 0 }])}
+        className="text-xs text-brand hover:underline"
+      >+ เพิ่มเงื่อนไข</button>
+      <p className="text-xs text-faint">
+        ★ ระบบใช้ขั้น<b>แรก</b>ที่ค่าที่กรอก ≤ ขอบบน · เกินทุกขั้น = 0 ·
+        เรียงจากน้อยไปมากให้อัตโนมัติตอนบันทึก
+      </p>
+    </div>
+  );
+}
+
+type EditTarget =
+  | { type: "var"; v: PayVariable; isNew: boolean }
+  | { type: "comp"; c: PayComponent; isNew: boolean };
+
+function Formulas({ config }: { config: PayrollConfig }) {
+  const router = useRouter();
+  const { pending, msg, run } = useSaver();
+  const [edit, setEdit] = useState<EditTarget | null>(null);
+
+  const inputOpts = config.inputs.map((i) => ({ value: i.code, label: i.label }));
+  const inputLabels = Object.fromEntries(config.inputs.map((i) => [i.code, i.label]));
+  const variableNames = Object.fromEntries(config.variables.map((v) => [v.code, v.name]));
+
+  const setVar = <K extends keyof PayVariable>(k: K, val: PayVariable[K]) =>
+    setEdit((p) => (p && p.type === "var" ? { ...p, v: { ...p.v, [k]: val } } : p));
+  const setComp = <K extends keyof PayComponent>(k: K, val: PayComponent[K]) =>
+    setEdit((p) => (p && p.type === "comp" ? { ...p, c: { ...p.c, [k]: val } } : p));
+
+  function setStep(idx: number, patch: Partial<VarStep>) {
     setEdit((p) => {
-      if (!p) return p;
-      const d = [...(p.steps ?? [])];
+      if (!p || p.type !== "var") return p;
+      const d = [...(p.v.steps ?? [])];
       d[idx] = { ...d[idx], ...patch };
-      return { ...p, steps: d };
+      return { ...p, v: { ...p.v, steps: d } };
     });
   }
 
-  const inputLabels = Object.fromEntries(config.inputs.map((i) => [i.code, i.label]));
+  const usesInputs =
+    edit?.type === "comp" && !["fixed", "manual", "percent_base"].includes(edit.c.method);
+
+  function save() {
+    if (!edit) return;
+    if (edit.type === "var") {
+      run(() => savePayVariableAction(edit.v), "บันทึกแล้ว", () => { setEdit(null); router.refresh(); });
+    } else {
+      // 🚨 เรียงขั้นบันไดก่อนบันทึกเสมอ — tierAmount() คืนขั้นแรกที่เข้าเงื่อนไข
+      const c = { ...edit.c, tiers: sortTiers(edit.c.tiers) };
+      run(() => savePayComponentAction(c), "บันทึกแล้ว", () => { setEdit(null); router.refresh(); });
+    }
+  }
 
   return (
-    <Card title="ตัวแปรกลาง">
+    <Card title="สูตรและรายการคำนวณ">
       <div className="mb-3 flex items-start justify-between gap-3">
         <p className="text-xs text-faint">
-          ค่าที่คำนวณ<b>ชั้นแรก</b> แล้วให้รายการเพิ่ม/หักเอาไปคูณต่อ — เช่น
-          <b> อัตราค่าล่วงเวลาต่อชั่วโมง = ฐานเงินเดือน ÷ วันทำงานมาตรฐานของงวด ÷ ชั่วโมงต่อวัน</b>
+          ที่นี่มี 2 อย่าง — <b>ตัวแปร</b> คือค่ากลางที่คำนวณไว้ให้เอาไปใช้ต่อ (เช่นอัตราต่อชั่วโมง)
+          และ <b>รายการเพิ่ม/หัก</b> คือเงินที่ขึ้นบนสลิปจริง
           <br />
-          ★ ค่าที่เปลี่ยนทุกเดือน (วันทำงานมาตรฐาน · วันมาทำงานจริง · ช่องที่กรอกต่องวด) เลือกได้ตรง ๆ
-          ตัวแปรจะขยับตามเองโดยไม่ต้องแก้อะไร
+          🚨 <b>ตัวแปรถูกคิดก่อนรายการเสมอ</b> → รายการอ้างตัวแปรได้ แต่<b>ตัวแปรอ้างรายการไม่ได้</b>
         </p>
-        <button onClick={() => setEdit(blankVariable())} className="shrink-0 rounded-lg bg-brand px-4 py-2 text-sm text-on-brand">
-          + เพิ่มตัวแปร
-        </button>
+        <div className="flex shrink-0 gap-2">
+          <button
+            onClick={() => setEdit({ type: "var", v: blankVariable(), isNew: true })}
+            className="rounded-lg border border-brand-line px-3 py-2 text-sm text-brand"
+          >+ ตัวแปร</button>
+          <button
+            onClick={() => setEdit({ type: "comp", c: blankComponent(), isNew: true })}
+            className="rounded-lg bg-brand px-4 py-2 text-sm text-on-brand"
+          >+ รายการเพิ่ม/หัก</button>
+        </div>
       </div>
       <Msg msg={msg} />
 
+      {/* ── ตัวแปร (คิดก่อน) ── */}
+      <div className="mb-1 mt-2 text-[10px] font-medium uppercase tracking-widest text-muted">
+        ตัวแปร — คิดก่อน
+      </div>
       <div className="overflow-x-auto">
         <table className="tbl">
-          <thead><tr className="text-left text-faint"><th>ชื่อ</th><th>สูตร</th><th></th></tr></thead>
+          <thead><tr className="text-left text-faint"><th>ชื่อ</th><th>สูตรที่ใช้จริง</th><th></th></tr></thead>
           <tbody>
             {config.variables.map((v) => (
               <tr key={v.code}>
                 <td>{v.name}{v.active === false && <span className="ml-1 text-xs text-faint">(ปิดอยู่)</span>}</td>
-                {/* ★ ใช้ตัวเดียวกับที่หน้าแก้ไขโชว์ — วงเล็บบอกลำดับการคิดจริง ไม่ใช่กฎคณิตศาสตร์ */}
                 <td className="text-xs text-muted">{variableFormulaText(v, inputLabels)}</td>
                 <td className="whitespace-nowrap">
-                  <button onClick={() => setEdit(v)} className="text-muted hover:underline">แก้</button>
+                  <button onClick={() => setEdit({ type: "var", v, isNew: false })} className="text-muted hover:underline">แก้</button>
                   <button
                     disabled={pending}
                     onClick={() => run(() => deletePayVariableAction(v.code), "ลบแล้ว", () => router.refresh())}
@@ -403,154 +515,15 @@ function Variables({ config }: { config: PayrollConfig }) {
         {config.variables.length === 0 && <Empty>— ยังไม่มีตัวแปร (ต้องมีก่อนถ้าจะคิดค่าล่วงเวลา) —</Empty>}
       </div>
 
-      {edit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onClick={() => setEdit(null)}>
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-card p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-3 font-semibold text-ink">{edit.name || "ตัวแปรใหม่"}</h3>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label="รหัส (a-z 0-9 _)"><TextInput value={edit.code} onChange={(e) => set("code", e.target.value)} placeholder="hourly_rate" /></Field>
-              <Field label="ชื่อที่คนอ่านรู้เรื่อง"><TextInput value={edit.name} onChange={(e) => set("name", e.target.value)} placeholder="อัตราค่าล่วงเวลาต่อชั่วโมง" /></Field>
-            </div>
-
-            <div className="mt-3">
-              <Field label="ตัวตั้ง">
-                <SlotPicker
-                  kind={edit.source}
-                  value={edit.constValue}
-                  inputKey={edit.inputKey}
-                  onKind={(k) => set("source", k)}
-                  onValue={(v) => set("constValue", v)}
-                  onInput={(k) => set("inputKey", k)}
-                />
-              </Field>
-            </div>
-
-            <div className="mt-3 space-y-2">
-              <span className="block text-sm text-muted">
-                แล้วคิดต่อทีละขั้น (สูงสุด {MAX_VAR_STEPS} ขั้น · เว้นไว้ = ใช้ตัวตั้งตรง ๆ)
-              </span>
-              {Array.from({ length: MAX_VAR_STEPS }, (_, idx) => idx).map((idx) => {
-                const d = (edit.steps ?? [])[idx];
-                const prev = (edit.steps ?? [])[idx - 1];
-                // ขั้นถัดไปกดเพิ่มได้เฉพาะเมื่อขั้นก่อนหน้ามีแล้ว — กันรูโหว่กลางลิสต์
-                if (!d && idx > 0 && !prev) return null;
-                return (
-                  <div key={idx} className="flex flex-wrap items-center gap-2">
-                    {d ? (
-                      <>
-                        <Select
-                          value={d.op ?? "div"}
-                          onChange={(e) => setStep(idx, { op: e.target.value as VarOp })}
-                          className="w-auto"
-                        >
-                          {(Object.keys(VAR_OP_LABEL) as VarOp[]).map((o) => (
-                            <option key={o} value={o}>{VAR_OP_LABEL[o]}</option>
-                          ))}
-                        </Select>
-                        <SlotPicker
-                          kind={d.kind}
-                          value={d.value}
-                          inputKey={d.inputKey}
-                          onKind={(k) => setStep(idx, { kind: k })}
-                          onValue={(v) => setStep(idx, { value: v })}
-                          onInput={(k) => setStep(idx, { inputKey: k })}
-                        />
-                        <button
-                          onClick={() => set("steps", (edit.steps ?? []).filter((_, i) => i !== idx))}
-                          className="text-xs text-crit hover:underline"
-                        >เอาออก</button>
-                      </>
-                    ) : (
-                      <button
-                        onClick={() => set("steps", [...(edit.steps ?? []), { op: "div", kind: "work_days_std" }])}
-                        className="text-xs text-brand hover:underline"
-                      >+ เพิ่มขั้น</button>
-                    )}
-                  </div>
-                );
-              })}
-              <p className="text-xs text-faint">
-                🪤 <b>หาร</b>ด้วย 0 (เช่นเดือนที่ยังไม่กรอกชั่วโมง) จะถูก<b>ข้าม</b> ไม่ทำให้ยอดพัง ·
-                แต่ <b>คูณ</b>ด้วย 0 ได้ 0 ตามจริง (ไม่ข้าม)
-              </p>
-            </div>
-
-            <div className="mt-3">
-              <Field label="ความละเอียดของค่าที่ได้">
-                <Select
-                  value={edit.rounding ?? "none"}
-                  onChange={(e) => set("rounding", e.target.value as VarRounding)}
-                >
-                  {(Object.keys(VAR_ROUNDING_LABEL) as VarRounding[]).map((r) => (
-                    <option key={r} value={r}>{VAR_ROUNDING_LABEL[r]}</option>
-                  ))}
-                </Select>
-              </Field>
-            </div>
-
-            {/* 🚨 บรรทัดนี้คือด่านกันเข้าใจผิดเรื่องลำดับการคิด — ห้ามเอาออก
-                ระบบคิดซ้ายไปขวาทีละขั้น แต่คนอ่านด้วยกฎคณิตศาสตร์ (คูณ/หารก่อน) */}
-            <div className="mt-3 rounded-lg bg-raised px-3 py-2">
-              <div className="text-[10px] font-medium uppercase tracking-widest text-muted">สูตรที่จะถูกใช้จริง</div>
-              <div className="mt-1 text-sm font-medium text-ink">{variableFormulaText(edit, inputLabels)}</div>
-              {variableWarnings(edit).map((w, i) => (
-                <p key={i} className="mt-1 text-xs text-warn">⚠ {w}</p>
-              ))}
-            </div>
-
-            <label className="mt-3 flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={edit.active !== false} onChange={(e) => set("active", e.target.checked)} />
-              เปิดใช้งาน
-            </label>
-
-            <div className="mt-4 flex justify-end gap-2">
-              <button onClick={() => setEdit(null)} className="rounded-lg border border-line px-4 py-2 text-sm">ยกเลิก</button>
-              <SaveButton pending={pending} onClick={() => run(() => savePayVariableAction(edit), "บันทึกแล้ว", () => { setEdit(null); router.refresh(); })}>
-                บันทึก
-              </SaveButton>
-            </div>
-          </div>
-        </div>
-      )}
-    </Card>
-  );
-}
-
-// ── รายการเพิ่ม/หัก ──────────────────────────────────────────────────────────
-function blankComponent(): PayComponent {
-  return {
-    code: "", name: "", kind: "earning", method: "fixed",
-    amount: 0, rate: 0, multiplier: 0, tiers: [],
-    inputKeys: [], inputAgg: "sum", groupCodes: [],
-    taxable: true, ssoBase: false, otBase: false, prorateBase: false,
-    sort: 0, active: true,
-  };
-}
-
-function Components({ config }: { config: PayrollConfig }) {
-  const router = useRouter();
-  const { pending, msg, run } = useSaver();
-  const [edit, setEdit] = useState<PayComponent | null>(null);
-  const set = <K extends keyof PayComponent>(k: K, v: PayComponent[K]) =>
-    setEdit((p) => (p ? { ...p, [k]: v } : p));
-
-  const usesInputs = edit && !["fixed", "manual", "percent_base"].includes(edit.method);
-
-  return (
-    <Card title="รายการเพิ่ม / หัก">
-      <div className="mb-3 flex items-center justify-between">
-        <p className="text-xs text-faint">ทุกอย่างที่ไม่ใช่ค่าจ้างฐาน ประกันสังคม และภาษี อยู่ที่นี่หมด</p>
-        <button onClick={() => setEdit(blankComponent())} className="shrink-0 rounded-lg bg-brand px-4 py-2 text-sm text-on-brand">
-          + เพิ่มรายการ
-        </button>
+      {/* ── รายการเพิ่ม/หัก (คิดทีหลัง) ── */}
+      <div className="mb-1 mt-5 text-[10px] font-medium uppercase tracking-widest text-muted">
+        รายการเพิ่ม / หัก — คิดทีหลัง
       </div>
-      <Msg msg={msg} />
-
       <div className="overflow-x-auto">
         <table className="tbl">
           <thead>
             <tr className="text-left text-faint">
-              <th>ชื่อ</th><th>ประเภท</th><th>วิธีคิด</th><th>กลุ่ม</th>
+              <th>ชื่อ</th><th>ประเภท</th><th>สูตรที่ใช้จริง</th><th>กลุ่ม</th>
               <th>ภาษี</th><th>ปกส.</th><th>ฐานตัวแปร</th><th>prorate</th><th></th>
             </tr>
           </thead>
@@ -559,14 +532,14 @@ function Components({ config }: { config: PayrollConfig }) {
               <tr key={c.code}>
                 <td>{c.name}{c.active === false && <span className="ml-1 text-xs text-faint">(ปิดอยู่)</span>}</td>
                 <td>{c.kind === "earning" ? "เพิ่ม" : "หัก"}</td>
-                <td className="text-xs">{METHOD_LABEL[c.method]}</td>
+                <td className="text-xs text-muted">{componentFormulaText(c, { inputLabels, variableNames })}</td>
                 <td className="text-xs">{(c.groupCodes ?? []).join(", ") || "ทุกกลุ่ม"}</td>
                 <td>{c.taxable ? "✓" : "—"}</td>
                 <td>{c.ssoBase ? "✓" : "—"}</td>
                 <td>{c.otBase ? "✓" : "—"}</td>
                 <td>{c.prorateBase ? "✓" : "—"}</td>
                 <td className="whitespace-nowrap">
-                  <button onClick={() => setEdit(c)} className="text-muted hover:underline">แก้</button>
+                  <button onClick={() => setEdit({ type: "comp", c, isNew: false })} className="text-muted hover:underline">แก้</button>
                   <button
                     disabled={pending}
                     onClick={() => { if (confirm(`ลบรายการ "${c.name}"?`)) run(() => deletePayComponentAction(c.code), "ลบแล้ว", () => router.refresh()); }}
@@ -577,148 +550,294 @@ function Components({ config }: { config: PayrollConfig }) {
             ))}
           </tbody>
         </table>
-        {config.components.length === 0 && <Empty />}
+        {config.components.length === 0 && <Empty>— ยังไม่มีรายการ —</Empty>}
       </div>
 
       {edit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onClick={() => setEdit(null)}>
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-card p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-3 font-semibold text-ink">{edit.name || "รายการใหม่"}</h3>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label="รหัส (a-z 0-9 _)"><TextInput value={edit.code} onChange={(e) => set("code", e.target.value)} /></Field>
-              <Field label="ชื่อที่ขึ้นบนสลิป"><TextInput value={edit.name} onChange={(e) => set("name", e.target.value)} /></Field>
-              <Field label="ประเภท">
-                <Select value={edit.kind} onChange={(e) => set("kind", e.target.value as PayComponent["kind"])}>
-                  <option value="earning">รายการเพิ่ม</option>
-                  <option value="deduction">รายการหัก</option>
-                </Select>
-              </Field>
-              <Field label="วิธีคิด">
-                <Select value={edit.method} onChange={(e) => set("method", e.target.value as PayComponent["method"])}>
-                  {Object.entries(METHOD_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </Select>
-              </Field>
+            <h3 className="mb-3 font-semibold text-ink">
+              {edit.type === "var" ? (edit.v.name || "ตัวแปรใหม่") : (edit.c.name || "รายการใหม่")}
+            </h3>
 
-              {(edit.method === "fixed" || edit.method === "per_unit") && (
-                <Field label={edit.method === "fixed" ? "จำนวนเงินต่องวด" : "จำนวนเงินต่อหน่วย"}>
-                  <NumBox value={edit.amount ?? 0} blankZero onChange={(v) => set("amount", v === "" ? 0 : v)} />
-                </Field>
-              )}
-              {edit.method === "percent_base" && (
-                <Field label="เปอร์เซ็นต์ของค่าจ้างฐาน">
-                  <NumBox value={edit.rate ?? 0} blankZero onChange={(v) => set("rate", v === "" ? 0 : v)} />
-                </Field>
-              )}
-              {edit.method === "variable" && (
-                <>
-                  <Field label="ตัวแปรกลางที่ใช้เป็นฐาน">
-                    <Select value={edit.variableCode ?? ""} onChange={(e) => set("variableCode", e.target.value)}>
-                      <option value="">— เลือกตัวแปร —</option>
-                      {config.variables.map((v) => <option key={v.code} value={v.code}>{v.name}</option>)}
-                    </Select>
-                  </Field>
-                  <Field label="ตัวคูณ (เช่น 1.5 / 2 / 3 · ไม่คูณอะไรใส่ 1)">
-                    <NumBox value={edit.multiplier ?? 0} blankZero onChange={(v) => set("multiplier", v === "" ? 0 : v)} />
-                  </Field>
-                </>
-              )}
-            </div>
-
-            {edit.method === "variable" && (
-              <p className="mt-2 rounded-lg bg-raised px-3 py-2 text-xs text-muted">
-                ยอด = <b>ค่าตัวแปร × ตัวคูณ × ค่าจากช่องกรอก</b> ·
-                ไม่ติ๊กช่องกรอกเลย = คูณ 1 (ใช้กับเบี้ยเหมาที่คิดจากอัตราตรง ๆ)
-              </p>
-            )}
-
-            {edit.method === "tier_table" && (
-              <div className="mt-3">
-                <Field label="ขั้นบันได — ค่าที่กรอก ≤ ขอบบน จะได้เงินตามขั้นนั้น (เกินทุกขั้น = 0)">
-                  <TextInput
-                    value={(edit.tiers ?? []).map((t) => `${t.upTo}=${t.amount}`).join(", ")}
-                    onChange={(e) =>
-                      set("tiers", e.target.value.split(",").map((s) => {
-                        const [a, b] = s.split("=");
-                        return { upTo: Number(a?.trim()) || 0, amount: Number(b?.trim()) || 0 };
-                      }).filter((t) => t.upTo > 0))
-                    }
-                    placeholder="1=500, 1.5=400, 2=300, 2.5=100"
+            {/* สลับชนิดได้เฉพาะตอนสร้างใหม่ — ของที่บันทึกแล้วอยู่คนละตาราง ย้ายข้ามไม่ได้ */}
+            {edit.isNew && (
+              <div className="mb-3 flex flex-wrap gap-4 rounded-lg border border-line px-3 py-2">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio" checked={edit.type === "var"}
+                    onChange={() => setEdit({ type: "var", v: blankVariable(), isNew: true })}
                   />
-                </Field>
+                  ตัวแปร (ค่ากลางที่เอาไปใช้ต่อ)
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio" checked={edit.type === "comp"}
+                    onChange={() => setEdit({ type: "comp", c: blankComponent(), isNew: true })}
+                  />
+                  รายการเพิ่ม/หัก (ขึ้นบนสลิป)
+                </label>
               </div>
             )}
 
-            {usesInputs && (
-              <div className="mt-3 space-y-2">
-                <span className="block text-sm text-muted">ใช้ค่าจากช่องกรอก (ติ๊กได้หลายช่อง)</span>
-                <CheckList
-                  options={config.inputs.map((i) => ({ value: i.code, label: i.label }))}
-                  value={edit.inputKeys ?? []}
-                  onChange={(v) => set("inputKeys", v)}
-                  empty="— ยังไม่มีช่องกรอก (สร้างในการ์ดด้านบน) —"
-                />
-                {(edit.inputKeys ?? []).length > 1 && (
-                  <Field label="รวมค่าจากหลายช่องยังไง">
-                    <Select value={edit.inputAgg ?? "sum"} onChange={(e) => set("inputAgg", e.target.value as "sum" | "avg")}>
-                      <option value="sum">บวกกัน</option>
-                      <option value="avg">เฉลี่ย</option>
-                    </Select>
-                  </Field>
-                )}
-              </div>
-            )}
-
-            <div className="mt-3 space-y-2">
-              <span className="block text-sm text-muted">ให้เฉพาะกลุ่ม (ไม่ติ๊กเลย = ทุกคน)</span>
-              <CheckList
-                options={config.groups.map((g) => ({ value: g, label: g }))}
-                value={edit.groupCodes ?? []}
-                onChange={(v) => set("groupCodes", v)}
-                empty="— ยังไม่มีกลุ่มพนักงาน (รายการนี้จะให้ทุกคน) —"
+            {edit.type === "var" ? (
+              <VarForm
+                v={edit.v} inputOpts={inputOpts} inputLabels={inputLabels}
+                set={setVar} setStep={setStep}
               />
-            </div>
+            ) : (
+              <CompForm
+                c={edit.c} config={config} usesInputs={!!usesInputs}
+                inputLabels={inputLabels} variableNames={variableNames} set={setComp}
+              />
+            )}
 
-            <div className="mt-4 rounded-lg bg-raised p-3">
-              <p className="mb-2 text-xs text-muted">
-                <b>รายการนี้เข้าฐานไหนบ้าง</b> — 🚨 ฐานภาษีกับฐานประกันสังคม<b>ไม่เท่ากัน</b>:
-                ค่าล่วงเวลาและโบนัสเข้าฐานภาษี แต่ไม่ใช่ &ldquo;ค่าจ้าง&rdquo; ตาม พ.ร.บ.ประกันสังคม
-                ติดผิด = ตัวเลขที่ยื่นผิดตั้งแต่เดือนแรกโดยไม่มีอะไรฟ้อง
-              </p>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={edit.taxable ?? false} onChange={(e) => set("taxable", e.target.checked)} />
-                  เข้าฐานภาษีเงินได้
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={edit.ssoBase ?? false} onChange={(e) => set("ssoBase", e.target.checked)} />
-                  เข้าฐานประกันสังคม
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={edit.otBase ?? false} onChange={(e) => set("otBase", e.target.checked)} />
-                  รวมเข้าฐานที่ตัวแปรกลางใช้คิด
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={edit.prorateBase ?? false} onChange={(e) => set("prorateBase", e.target.checked)} />
-                  รวมกับค่าจ้างฐานแล้วลดตามวันมาทำงาน
-                </label>
-              </div>
-            </div>
-
-            <label className="mt-3 flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={edit.active !== false} onChange={(e) => set("active", e.target.checked)} />
-              เปิดใช้งาน
-            </label>
-
-            <div className="mt-4 flex justify-end gap-2">
+            {/* 🚨 ข้อความผลลัพธ์ต้องอยู่**ในป๊อปอัพ** — ของเดิมอยู่บนการ์ดซึ่งถูกป๊อปอัพบังจนมองไม่เห็น */}
+            <div className="mt-4"><Msg msg={msg} /></div>
+            <div className="flex justify-end gap-2">
               <button onClick={() => setEdit(null)} className="rounded-lg border border-line px-4 py-2 text-sm">ยกเลิก</button>
-              <SaveButton pending={pending} onClick={() => run(() => savePayComponentAction(edit), "บันทึกแล้ว", () => { setEdit(null); router.refresh(); })}>
-                บันทึก
-              </SaveButton>
+              <SaveButton pending={pending} onClick={save}>บันทึก</SaveButton>
             </div>
           </div>
         </div>
       )}
     </Card>
+  );
+}
+
+/** ฟอร์มของ "ตัวแปร" */
+function VarForm({
+  v, inputOpts, inputLabels, set, setStep,
+}: {
+  v: PayVariable;
+  inputOpts: { value: string; label: string }[];
+  inputLabels: Record<string, string>;
+  set: <K extends keyof PayVariable>(k: K, val: PayVariable[K]) => void;
+  setStep: (idx: number, patch: Partial<VarStep>) => void;
+}) {
+  const steps = v.steps ?? [];
+  return (
+    <>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field label="รหัส (a-z 0-9 _)"><TextInput value={v.code} onChange={(e) => set("code", e.target.value)} placeholder="hourly_rate" /></Field>
+        <Field label="ชื่อที่คนอ่านรู้เรื่อง"><TextInput value={v.name} onChange={(e) => set("name", e.target.value)} placeholder="อัตราค่าล่วงเวลาต่อชั่วโมง" /></Field>
+      </div>
+
+      <div className="mt-3">
+        <Field label="ตัวตั้ง">
+          <SlotPicker
+            kind={v.source} value={v.constValue} inputKey={v.inputKey} inputOpts={inputOpts}
+            onKind={(k) => set("source", k)}
+            onValue={(x) => set("constValue", x)}
+            onInput={(k) => set("inputKey", k)}
+          />
+        </Field>
+      </div>
+
+      <div className="mt-3 space-y-2">
+        <span className="block text-sm text-muted">
+          แล้วคิดต่อทีละขั้น (สูงสุด {MAX_VAR_STEPS} ขั้น · เว้นไว้ = ใช้ตัวตั้งตรง ๆ)
+        </span>
+        {Array.from({ length: MAX_VAR_STEPS }, (_, i) => i).map((idx) => {
+          const d = steps[idx];
+          if (!d && idx > 0 && !steps[idx - 1]) return null;
+          return (
+            <div key={idx} className="flex flex-wrap items-center gap-2">
+              {d ? (
+                <>
+                  <Select value={d.op ?? "div"} onChange={(e) => setStep(idx, { op: e.target.value as VarOp })}>
+                    {(Object.keys(VAR_OP_LABEL) as VarOp[]).map((o) => (
+                      <option key={o} value={o}>{VAR_OP_LABEL[o]}</option>
+                    ))}
+                  </Select>
+                  <SlotPicker
+                    kind={d.kind} value={d.value} inputKey={d.inputKey} inputOpts={inputOpts}
+                    onKind={(k) => setStep(idx, { kind: k })}
+                    onValue={(x) => setStep(idx, { value: x })}
+                    onInput={(k) => setStep(idx, { inputKey: k })}
+                  />
+                  <button
+                    onClick={() => set("steps", steps.filter((_, i) => i !== idx))}
+                    className="text-xs text-crit hover:underline"
+                  >เอาออก</button>
+                </>
+              ) : (
+                <button
+                  onClick={() => set("steps", [...steps, { op: "div", kind: "work_days_std" }])}
+                  className="text-xs text-brand hover:underline"
+                >+ เพิ่มขั้น</button>
+              )}
+            </div>
+          );
+        })}
+        <p className="text-xs text-faint">
+          🪤 <b>หาร</b>ด้วย 0 (เช่นเดือนที่ยังไม่กรอกชั่วโมง) จะถูก<b>ข้าม</b> ไม่ทำให้ยอดพัง ·
+          แต่ <b>คูณ</b>ด้วย 0 ได้ 0 ตามจริง (ไม่ข้าม)
+        </p>
+      </div>
+
+      <div className="mt-3">
+        <Field label="ความละเอียดของค่าที่ได้">
+          <Select value={v.rounding ?? "none"} onChange={(e) => set("rounding", e.target.value as VarRounding)}>
+            {(Object.keys(VAR_ROUNDING_LABEL) as VarRounding[]).map((r) => (
+              <option key={r} value={r}>{VAR_ROUNDING_LABEL[r]}</option>
+            ))}
+          </Select>
+        </Field>
+      </div>
+
+      <FormulaBox text={variableFormulaText(v, inputLabels)} warnings={variableWarnings(v)} />
+
+      <label className="mt-3 flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={v.active !== false} onChange={(e) => set("active", e.target.checked)} />
+        เปิดใช้งาน
+      </label>
+    </>
+  );
+}
+
+/** ฟอร์มของ "รายการเพิ่ม/หัก" */
+function CompForm({
+  c, config, usesInputs, inputLabels, variableNames, set,
+}: {
+  c: PayComponent;
+  config: PayrollConfig;
+  usesInputs: boolean;
+  inputLabels: Record<string, string>;
+  variableNames: Record<string, string>;
+  set: <K extends keyof PayComponent>(k: K, val: PayComponent[K]) => void;
+}) {
+  return (
+    <>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field label="รหัส (a-z 0-9 _)"><TextInput value={c.code} onChange={(e) => set("code", e.target.value)} placeholder="ot15" /></Field>
+        <Field label="ชื่อที่แสดงบนสลิป"><TextInput value={c.name} onChange={(e) => set("name", e.target.value)} placeholder="ค่าล่วงเวลา 1.5" /></Field>
+        <Field label="ประเภท">
+          <Select value={c.kind} onChange={(e) => set("kind", e.target.value as PayComponent["kind"])}>
+            <option value="earning">เพิ่ม (บวกเข้าเงินได้)</option>
+            <option value="deduction">หัก (ลบออกจากยอดจ่าย)</option>
+          </Select>
+        </Field>
+        <Field label="วิธีคิด">
+          <Select value={c.method} onChange={(e) => set("method", e.target.value as PayComponent["method"])}>
+            {(Object.keys(METHOD_LABEL) as PayComponent["method"][]).map((m) => (
+              <option key={m} value={m}>{METHOD_LABEL[m]}</option>
+            ))}
+          </Select>
+        </Field>
+
+        {(c.method === "fixed" || c.method === "per_unit") && (
+          <Field label={c.method === "fixed" ? "จำนวนเงินต่องวด" : "จำนวนเงินต่อหน่วย"}>
+            <NumBox value={c.amount ?? 0} blankZero onChange={(v) => set("amount", v === "" ? 0 : v)} />
+          </Field>
+        )}
+        {c.method === "percent_base" && (
+          <Field label="เปอร์เซ็นต์ของค่าจ้างฐาน">
+            <NumBox value={c.rate ?? 0} blankZero onChange={(v) => set("rate", v === "" ? 0 : v)} />
+          </Field>
+        )}
+        {c.method === "variable" && (
+          <>
+            <Field label="ตัวแปรที่ใช้เป็นฐาน">
+              <Select value={c.variableCode ?? ""} onChange={(e) => set("variableCode", e.target.value)}>
+                <option value="">— เลือกตัวแปร —</option>
+                {config.variables.map((v) => <option key={v.code} value={v.code}>{v.name}</option>)}
+              </Select>
+            </Field>
+            <Field label="ตัวคูณ (ใช้ค่าตัวแปรตรง ๆ ให้ใส่ 1)">
+              <NumBox value={c.multiplier ?? 0} blankZero onChange={(v) => set("multiplier", v === "" ? 0 : v)} />
+            </Field>
+          </>
+        )}
+      </div>
+
+      {c.method === "tier_table" && (
+        <div className="mt-3">
+          <Field label="ขั้นบันได — ตั้งกี่เงื่อนไขก็ได้">
+            <TierEditor tiers={c.tiers ?? []} onChange={(t) => set("tiers", t)} />
+          </Field>
+        </div>
+      )}
+
+      {usesInputs && (
+        <div className="mt-3 space-y-2">
+          <span className="block text-sm text-muted">ใช้ค่าจากช่องกรอก (ติ๊กได้หลายช่อง)</span>
+          <CheckList
+            options={config.inputs.map((i) => ({ value: i.code, label: i.label }))}
+            value={c.inputKeys ?? []}
+            onChange={(v) => set("inputKeys", v)}
+            empty="— ยังไม่มีช่องกรอก (สร้างในการ์ดด้านบน) —"
+          />
+          {(c.inputKeys ?? []).length > 1 && (
+            <Field label="รวมค่าจากหลายช่องยังไง">
+              <Select value={c.inputAgg ?? "sum"} onChange={(e) => set("inputAgg", e.target.value as "sum" | "avg")}>
+                <option value="sum">บวกกัน</option>
+                <option value="avg">เฉลี่ย</option>
+              </Select>
+            </Field>
+          )}
+        </div>
+      )}
+
+      <div className="mt-3 space-y-2">
+        <span className="block text-sm text-muted">ให้เฉพาะกลุ่ม (ไม่ติ๊กเลย = ทุกคน)</span>
+        <CheckList
+          options={config.groups.map((g) => ({ value: g, label: g }))}
+          value={c.groupCodes ?? []}
+          onChange={(v) => set("groupCodes", v)}
+          empty="— ยังไม่มีกลุ่มพนักงาน (รายการนี้จะให้ทุกคน) —"
+        />
+      </div>
+
+      <FormulaBox
+        text={componentFormulaText(c, { inputLabels, variableNames })}
+        warnings={componentWarnings(c)}
+      />
+
+      <div className="mt-3 rounded-lg bg-raised p-3">
+        <p className="mb-2 text-xs text-muted">
+          <b>รายการนี้เข้าฐานไหนบ้าง</b> — 🚨 ฐานภาษีกับฐานประกันสังคม<b>ไม่เท่ากัน</b>:
+          ค่าล่วงเวลาและโบนัสเข้าฐานภาษี แต่ไม่ใช่ &ldquo;ค่าจ้าง&rdquo; ตาม พ.ร.บ.ประกันสังคม
+          ติดผิด = ตัวเลขที่ยื่นผิดตั้งแต่เดือนแรกโดยไม่มีอะไรฟ้อง
+        </p>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={c.taxable ?? false} onChange={(e) => set("taxable", e.target.checked)} />
+            เข้าฐานภาษีเงินได้
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={c.ssoBase ?? false} onChange={(e) => set("ssoBase", e.target.checked)} />
+            เข้าฐานประกันสังคม
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={c.otBase ?? false} onChange={(e) => set("otBase", e.target.checked)} />
+            รวมเข้าฐานที่ตัวแปรใช้คิด
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={c.prorateBase ?? false} onChange={(e) => set("prorateBase", e.target.checked)} />
+            รวมกับค่าจ้างฐานแล้วลดตามวันมาทำงาน
+          </label>
+        </div>
+      </div>
+
+      <label className="mt-3 flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={c.active !== false} onChange={(e) => set("active", e.target.checked)} />
+        เปิดใช้งาน
+      </label>
+    </>
+  );
+}
+
+/** กล่อง "สูตรที่จะถูกใช้จริง" — ด่านกันตั้งเกณฑ์ผิดโดยไม่รู้ตัว (ห้ามเอาออก) */
+function FormulaBox({ text, warnings }: { text: string; warnings: string[] }) {
+  return (
+    <div className="mt-3 rounded-lg bg-raised px-3 py-2">
+      <div className="text-[10px] font-medium uppercase tracking-widest text-muted">สูตรที่จะถูกใช้จริง</div>
+      <div className="mt-1 text-sm font-medium text-ink">{text}</div>
+      {warnings.map((w, i) => (
+        <p key={i} className="mt-1 text-xs text-warn">⚠ {w}</p>
+      ))}
+    </div>
   );
 }
 
@@ -840,7 +959,9 @@ function PostLegs({ config }: { config: PayrollConfig }) {
               เปิดใช้งาน
             </label>
 
-            <div className="mt-4 flex justify-end gap-2">
+            {/* 🚨 ข้อความผลลัพธ์ต้องอยู่ในป๊อปอัพ — ตัวบนการ์ดถูกป๊อปอัพบังจนมองไม่เห็น */}
+            <div className="mt-4"><Msg msg={msg} /></div>
+            <div className="flex justify-end gap-2">
               <button onClick={() => setEdit(null)} className="rounded-lg border border-line px-4 py-2 text-sm">ยกเลิก</button>
               <SaveButton pending={pending} onClick={() => run(() => savePayPostLegAction(edit), "บันทึกแล้ว", () => { setEdit(null); router.refresh(); })}>
                 บันทึก

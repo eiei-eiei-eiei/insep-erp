@@ -8,7 +8,7 @@
  *    **ใส่วงเล็บให้ครบทุกขั้นเสมอ** คือสิ่งเดียวที่กันความเข้าใจผิดนี้ได้
  *    (ตั้งเกณฑ์ผิดแบบนี้ไม่มีอะไร error — ได้แค่ตัวเลขที่ผิดทุกงวด)
  */
-import type { PayVariable, VarOp, VarRounding, VarSource } from "./types";
+import type { PayComponent, PayVariable, VarOp, VarRounding, VarSource } from "./types";
 
 /** ป้ายของค่าที่ใช้เป็นตัวตั้ง/ตัวดำเนินการได้ — ต้องอ่านรู้เรื่องโดยไม่ต้องเปิดคู่มือ */
 export const VAR_SOURCE_LABEL: Record<VarSource, string> = {
@@ -120,4 +120,96 @@ export function variableWarnings(
     );
   }
   return out;
+}
+
+// ── รายการเพิ่ม/หัก ──────────────────────────────────────────────────────────
+/**
+ * สูตรของ "รายการเพิ่ม/หัก" ในรูปที่คนอ่านรู้เรื่อง — เหตุผลเดียวกับ `variableFormulaText`:
+ * ลูกค้าต้องเห็นว่าที่ตั้งไว้จะกลายเป็นการคำนวณแบบไหน **ก่อน**จะเอาไปใช้จ่ายเงินจริง
+ */
+export function componentFormulaText(
+  c: Pick<PayComponent, "method" | "amount" | "rate" | "multiplier" | "tiers" | "variableCode" | "inputKeys" | "inputAgg">,
+  opt?: { inputLabels?: Record<string, string>; variableNames?: Record<string, string> },
+): string {
+  const units = inputsText(c.inputKeys, c.inputAgg, opt?.inputLabels);
+
+  switch (c.method) {
+    case "fixed":
+      return `${num(c.amount)} บาท/งวด`;
+    case "per_unit":
+      return `${num(c.amount)} × ${units || "(ยังไม่เลือกช่องกรอก)"}`;
+    case "percent_base":
+      return `${num(c.rate)}% ของค่าจ้างฐาน`;
+    case "variable": {
+      const v = c.variableCode
+        ? opt?.variableNames?.[c.variableCode] ?? c.variableCode
+        : "(ยังไม่เลือกตัวแปร)";
+      // ★ ไม่เลือกช่องกรอกเลย = คูณ 1 — เขียนให้เห็น ไม่ใช่ให้เดา
+      return `${v} × ${num(c.multiplier)}${units ? ` × ${units}` : " (ไม่คูณหน่วย)"}`;
+    }
+    case "tier_table":
+      return `ตามขั้น: ${tierListText(c.tiers)} · จากค่า ${units || "(ยังไม่เลือกช่องกรอก)"}`;
+    case "manual":
+      return "กรอกยอดเองต่อคนต่องวด";
+    default:
+      return "—";
+  }
+}
+
+/** ขั้นบันไดในบรรทัดเดียว — เรียงตามลำดับที่ **จะถูกใช้จริง** */
+export function tierListText(tiers: PayComponent["tiers"]): string {
+  const t = tiers ?? [];
+  if (t.length === 0) return "(ยังไม่ได้ตั้งขั้น)";
+  return t.map((x) => `≤${num(x.upTo)} → ${num(x.amount)}`).join(" · ") + " · เกินทุกขั้น → 0";
+}
+
+/**
+ * 🚨 ขั้นบันไดต้องเรียงจากน้อยไปมาก — `tierAmount()` คืน**ขั้นแรก**ที่ค่า ≤ ขอบบน
+ *    เรียงผิดแล้วได้เงินผิดขั้นโดยไม่มีอะไรฟ้อง → เรียงให้ตอนบันทึกเสมอ
+ */
+export function sortTiers(tiers: PayComponent["tiers"]): PayComponent["tiers"] {
+  return [...(tiers ?? [])].sort((a, b) => Number(a.upTo) - Number(b.upTo));
+}
+
+export function componentWarnings(
+  c: Pick<PayComponent, "method" | "multiplier" | "tiers" | "variableCode" | "inputKeys">,
+): string[] {
+  const out: string[] = [];
+  const keys = c.inputKeys ?? [];
+
+  if (c.method === "variable") {
+    if (!c.variableCode) out.push("ยังไม่ได้เลือกตัวแปรกลางที่จะใช้เป็นฐาน");
+    // 🪤 ตัวคูณ 0 = ยอดเป็น 0 ทุกงวดโดยไม่มีอะไรฟ้อง (ค่าเริ่มต้นเดิมเคยเป็น 0)
+    if (!Number(c.multiplier)) out.push("ตัวคูณเป็น 0 — ยอดของรายการนี้จะเป็น 0 ทุกงวด (ไม่คูณอะไรให้ใส่ 1)");
+  }
+  if ((c.method === "per_unit" || c.method === "tier_table") && keys.length === 0) {
+    out.push("วิธีคิดนี้ต้องอ้างช่องกรอกอย่างน้อย 1 ช่อง");
+  }
+  if (c.method === "tier_table") {
+    const t = c.tiers ?? [];
+    if (t.length === 0) out.push("ยังไม่ได้ตั้งขั้นบันไดสักขั้น — ยอดจะเป็น 0 ทุกงวด");
+    const sorted = sortTiers(t) ?? [];
+    if (t.some((x, i) => x.upTo !== sorted[i]?.upTo)) {
+      out.push("ขั้นบันไดยังไม่ได้เรียงจากน้อยไปมาก — ระบบจะเรียงให้ตอนบันทึก");
+    }
+  }
+  return out;
+}
+
+/** ชื่อช่องกรอกที่รายการนี้ใช้ + วิธีรวมค่าเมื่อมีหลายช่อง */
+function inputsText(
+  keys: string[] | undefined,
+  agg: "sum" | "avg" | undefined,
+  labels?: Record<string, string>,
+): string {
+  const k = keys ?? [];
+  if (k.length === 0) return "";
+  const names = k.map((x) => labels?.[x] ?? x);
+  if (names.length === 1) return `(${names[0]})`;
+  return `(${names.join(agg === "avg" ? " เฉลี่ยกับ " : " + ")})`;
+}
+
+function num(v: unknown): string {
+  const n = Number(v);
+  return Number.isFinite(n) ? String(n) : "0";
 }
