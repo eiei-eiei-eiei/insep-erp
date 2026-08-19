@@ -50,8 +50,14 @@ export function Nav({
             <span className="text-[15px] font-bold tracking-tight">{branding.name}</span>
           </Link>
 
-          {/* ลิงก์ workspace — เดสก์ท็อปเท่านั้น (มือถือใช้ bottom-tab ด้านล่าง) */}
-          <nav className="hidden flex-1 gap-1 overflow-x-auto md:flex">
+          {/* ลิงก์ workspace — เดสก์ท็อปเท่านั้น (มือถือใช้ bottom-tab ด้านล่าง)
+              🪤 **ห้ามใส่ `overflow-x-auto` (หรือ overflow ค่าอื่นที่ไม่ใช่ visible) กลับเข้ามาที่นี่**
+                 ตาม CSS Overflow 3: ตั้งแกนหนึ่งเป็น auto แล้วอีกแกนที่เป็น visible จะกลายเป็น auto
+                 ตามไปด้วย → กล่องนี้เป็น scroll container → ดร็อปดาวน์ของ NavItem ที่วางด้วย
+                 `absolute top-full` **ถูกตัดหายทั้งอัน** เพราะโผล่ต่ำกว่าความสูงของแถบเมนู
+                 (อาการที่ผู้ใช้เห็น: กดลูกศรแล้วไม่มีอะไรขึ้นเลย — build/lint/test ผ่านหมด จับไม่ได้)
+                 เมนูเยอะจนล้นบรรทัดให้ **ตกบรรทัด** (flex-wrap) ไม่ใช่เลื่อนแนวนอน */}
+          <nav className="hidden flex-1 flex-wrap gap-1 md:flex">
             {items.map((w) => (
               <NavItem
                 key={w.key}
