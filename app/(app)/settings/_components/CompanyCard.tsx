@@ -125,6 +125,17 @@ export function CompanyCard({
                 : "พิมพ์ขีดคั่นได้ตามใบจริง — ระบบแยกลงช่อง 13-1-3 (17 ตัวเลข) ให้เอง"}
             </span>
           </Field>
+          <Field label="เลขที่บัญชีนายจ้าง ประกันสังคม (ขึ้นหัว สปส.1-10)">
+            <TextInput
+              value={form.ssoEmployerNo}
+              onChange={set("ssoEmployerNo")}
+              placeholder="10 หลักตามที่ สปส. ออกให้"
+            />
+            <span className="mt-1 block text-xs text-faint">
+              ไม่กรอก = ใช้เลขประจำตัวผู้เสียภาษีแทน (เหมือนที่เคยทำมา) —
+              แต่เลขนี้เป็นคนละตัวกัน ถ้ามีใบของ สปส. อยู่ ควรกรอกให้ตรง
+            </span>
+          </Field>
           <div className="sm:col-span-2">
             <Field label="ช่องทางการโอนเงิน (ขึ้นบรรทัดใหม่ได้ · ไม่ใส่ = ไม่ขึ้นกล่องนี้บนเอกสาร)">
               <TextArea
@@ -192,6 +203,7 @@ type FormState = {
   phone: string;
   bankLine: string;
   exciseId: string;
+  ssoEmployerNo: string;
 };
 
 function toForm(e: SettingsEntity | undefined): FormState {
@@ -204,5 +216,6 @@ function toForm(e: SettingsEntity | undefined): FormState {
     phone: e?.phone ?? "",
     bankLine: e?.bank_line ?? "",
     exciseId: e?.excise_id ?? "",
+    ssoEmployerNo: e?.sso_employer_no ?? "",
   };
 }

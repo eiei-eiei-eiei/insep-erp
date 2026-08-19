@@ -1,6 +1,8 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import type { ReportSource } from "@/lib/payroll/report";
+import type { FilingItem, FilingEmployee } from "@/lib/payroll/filings";
+import type { FilingEntity } from "@/lib/payroll/filingHtml";
 import type {
   Employee,
   PayComponent,
@@ -290,3 +292,137 @@ export async function getPayrollReportSource(year: number): Promise<ReportSource
     items: Array.isArray(r.computed?.items) ? r.computed.items : [],
   }));
 }
+
+// ── เอกสารยื่นราชการ (D69) ───────────────────────────────────────────────────
+/**
+ * 🚨 ดึงเฉพาะค่าที่ **แช่ไว้แล้ว** — ห้ามดึง pay_components/pay_rates มาคำนวณสด
+ *    (ดูเหตุผลในหัว `lib/payroll/filings.ts`) · สังเกตว่าไม่มี query ไปตาราง config เลย
+ */
+export type FilingData = {
+  entity: FilingEntity;
+  items: FilingItem[];
+  emps: FilingEmployee[];
+};
+
+/** ข้อมูลกิจการที่ออกเอกสาร — งวด/ปีอ้าง entity_id ของตัวเอง */
+async function filingEntity(entityId: string | null): Promise<FilingEntity> {
+  const supabase = await createClient();
+  let q = supabase.from("entities").select("entity_id, name, tax_id, branch, address, sso_employer_no");
+  q = entityId ? q.eq("entity_id", entityId) : q.eq("is_default", true);
+  const { data } = await q.maybeSingle();
+  return {
+    entityId: data?.entity_id ?? "",
+    name: data?.name ?? "",
+    taxId: data?.tax_id ?? null,
+    branch: data?.branch ?? null,
+    address: data?.address ?? null,
+    ssoEmployerNo: data?.sso_employer_no ?? null,
+  };
+}
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function toFilingItem(r: any): FilingItem {
+  const c = (r.computed ?? {}) as Record<string, unknown>;
+  return {
+    periodId: r.period_id,
+    empId: r.emp_id,
+    empName: r.emp_name,
+    gross: Number(r.gross),
+    // ★ อ่านจาก computed ที่แช่ไว้ · งวดเก่าไม่มี → undefined แล้วให้ taxBaseOf fallback
+    taxableIncome: c.taxableIncome == null ? null : Number(c.taxableIncome),
+    ssoWageBase: c.ssoWageBase == null ? null : Number(c.ssoWageBase),
+    sso: Number(r.sso),
+    ssoEmployer: Number(r.sso_employer),
+    wht: Number(r.wht),
+  };
+}
+
+function toFilingEmployee(r: any): FilingEmployee {
+  return {
+    empId: r.emp_id,
+    name: r.name,
+    nationalId: r.national_id,
+    ssoNo: r.sso_no,
+    address: r.address,
+    ssoExempt: r.sso_exempt,
+  };
+}
+
+/** เอกสารรายเดือน (ภงด.1 · สปส.1-10) */
+export async function getFilingPeriod(
+  periodId: string,
+): Promise<FilingData & { period: PeriodRow | null }> {
+  const supabase = await createClient();
+  const [p, it, em] = await Promise.all([
+    supabase
+      .from("payroll_periods")
+      .select("period_id, entity_id, year, month, work_days_std, pay_date, status, post_state")
+      .eq("period_id", periodId)
+      .maybeSingle(),
+    supabase
+      .from("payroll_items")
+      .select("period_id, emp_id, emp_name, computed, gross, sso, sso_employer, wht")
+      .eq("period_id", periodId)
+      .order("emp_id"),
+    supabase.from("employees").select("emp_id, name, national_id, sso_no, address, sso_exempt"),
+  ]);
+
+  const period = p.data ? toPeriod(p.data) : null;
+  return {
+    period,
+    entity: await filingEntity(period?.entityId ?? null),
+    items: (it.data ?? []).map(toFilingItem),
+    emps: (em.data ?? []).map(toFilingEmployee),
+  };
+}
+
+/** เอกสารรายปี (ภงด.1ก · 50ทวิ) — `year` เป็น ค.ศ. ตาม period_id */
+export async function getFilingYear(year: number): Promise<FilingData & { certs: EmpCertRow[] }> {
+  const supabase = await createClient();
+  const [it, em, ct] = await Promise.all([
+    supabase
+      .from("payroll_items")
+      .select("period_id, emp_id, emp_name, computed, gross, sso, sso_employer, wht")
+      .like("period_id", `PR-${year}-%`)
+      .order("emp_id"),
+    supabase.from("employees").select("emp_id, name, national_id, sso_no, address, sso_exempt"),
+    supabase
+      .from("wht_certificates")
+      .select("doc_no, issue_date, emp_id, tax_year, base_amount, wht_amount")
+      .eq("tax_year", year + 543)
+      .not("emp_id", "is", null),
+  ]);
+
+  // 🪤 กิจการต้องมาจาก **งวดของปีนั้นจริง ๆ** ไม่ใช่กิจการปริยายของ tenant —
+  //    โรงที่รันเงินเดือนใต้กิจการที่ 2 จะได้หัวเอกสาร/เลข 50ทวิ ผิดกิจการทันที
+  const { data: per } = await supabase
+    .from("payroll_periods")
+    .select("entity_id")
+    .like("period_id", `PR-${year}-%`)
+    .limit(1)
+    .maybeSingle();
+
+  return {
+    entity: await filingEntity(per?.entity_id ?? null),
+    items: (it.data ?? []).map(toFilingItem),
+    emps: (em.data ?? []).map(toFilingEmployee),
+    certs: (ct.data ?? []).map((r: any) => ({
+      docNo: r.doc_no,
+      issueDate: r.issue_date,
+      empId: r.emp_id,
+      taxYear: r.tax_year,
+      baseAmount: Number(r.base_amount),
+      whtAmount: Number(r.wht_amount),
+    })),
+  };
+}
+
+/** ใบ 50ทวิ ของพนักงานที่ออกไปแล้ว */
+export type EmpCertRow = {
+  docNo: string;
+  issueDate: string;
+  empId: string;
+  taxYear: number;
+  baseAmount: number;
+  whtAmount: number;
+};

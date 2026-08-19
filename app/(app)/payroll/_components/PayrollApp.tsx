@@ -11,6 +11,7 @@ import { PeriodTab } from "./PeriodTab";
 import { EmployeesTab } from "./EmployeesTab";
 import { ConfigTab } from "./ConfigTab";
 import { ReportTab } from "./ReportTab";
+import { FilingTab } from "./FilingTab";
 
 export type PayrollConfig = Awaited<ReturnType<typeof getPayrollConfig>>;
 
@@ -75,6 +76,11 @@ export function PayrollApp({
       {visited.has("รายงาน") && (
         <div className={show("รายงาน")}>
           <ReportTab active={tab === "รายงาน"} />
+        </div>
+      )}
+      {visited.has("เอกสารยื่น") && (
+        <div className={show("เอกสารยื่น")}>
+          <FilingTab periods={periods} active={tab === "เอกสารยื่น"} />
         </div>
       )}
       {visited.has("พนักงาน") && (

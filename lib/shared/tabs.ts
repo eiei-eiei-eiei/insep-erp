@@ -64,6 +64,7 @@ export const SALES_TABS: SubTab[] = [
 export const PAYROLL_TABS: SubTab[] = [
   { slug: "period", label: "งวดจ่าย" },
   { slug: "report", label: "รายงาน" },
+  { slug: "filing", label: "เอกสารยื่น" },
   { slug: "employees", label: "พนักงาน" },
   { slug: "config", label: "ตั้งค่าการคำนวณ" },
 ];

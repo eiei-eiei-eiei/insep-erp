@@ -15,6 +15,7 @@ export type SettingsEntity = {
   entity_id: string;
   name: string;
   excise_id: string | null;
+  sso_employer_no: string | null;
   is_vat: boolean;
   name_eng: string | null;
   tax_id: string | null;
@@ -33,7 +34,7 @@ export async function getCompanySettings(): Promise<{
   const [entities, settings] = await Promise.all([
     supabase
       .from("entities")
-      .select("entity_id, name, excise_id, is_vat, name_eng, tax_id, branch, address, phone, bank_line")
+      .select("entity_id, name, excise_id, sso_employer_no, is_vat, name_eng, tax_id, branch, address, phone, bank_line")
       .order("entity_id"),
     supabase.from("app_settings").select("kind, value").in("kind", ["sales_doc_entity", "sales_revenue_entity"]),
   ]);

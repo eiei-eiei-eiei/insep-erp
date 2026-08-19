@@ -62,6 +62,7 @@ export async function saveEntityInfoAction(input: {
   phone: string;
   bankLine: string;
   exciseId: string;
+  ssoEmployerNo: string;
 }): Promise<SaveResult> {
   const supabase = await createClient();
   const entityId = input.entityId.trim();
@@ -79,6 +80,7 @@ export async function saveEntityInfoAction(input: {
       phone: input.phone.trim() || null,
       bank_line: input.bankLine.trim() || null,
       excise_id: input.exciseId.trim() || null,
+      sso_employer_no: input.ssoEmployerNo.trim() || null,
     })
     .eq("entity_id", entityId);
   if (error) return fail(mapDbError(error));
@@ -87,6 +89,7 @@ export async function saveEntityInfoAction(input: {
   revalidatePath("/accounting");
   revalidatePath("/sales");
   revalidatePath("/production");
+  revalidatePath("/payroll");
   return { ok: true };
 }
 

@@ -6,6 +6,7 @@ import { mapDbError } from "@/lib/shared/dbError";
 import { calcPayrollLine } from "@/lib/payroll/calc";
 import { ssoEmployerContribution, ratesOn } from "@/lib/payroll/sso";
 import { legAmount } from "@/lib/payroll/legs";
+import { nextWhtDocNo } from "@/lib/accounting/wht";
 import type {
   PayComponent,
   PayPostLeg,
@@ -475,4 +476,64 @@ function itemsOf(i: { computed: Record<string, unknown> }) {
 function lastDayISO(year: number, month: number): string {
   const d = new Date(Date.UTC(year, month, 0));
   return d.toISOString().slice(0, 10);
+}
+
+// ── 50 ทวิ ของพนักงาน (D69) ─────────────────────────────────────────────────
+
+/**
+ * เลขที่ 50ทวิ ใบถัดไป
+ * 🚨 **ชุดเดียวกับใบของคู่ค้าฝั่งบัญชี ต่อ entity** (ระบบเดิมก็ใช้ชีต pnd3-53 ร่วมกัน)
+ *    แยกชุดเมื่อไหร่ = เลขซ้ำกันข้ามชุดในกิจการเดียว ซึ่งกรมสรรพากรไล่ไม่ได้
+ */
+export async function nextEmpWhtDocNoAction(entityId: string): Promise<string> {
+  const supabase = await createClient();
+  const { data } = await supabase.from("wht_certificates").select("doc_no").eq("entity_id", entityId);
+  return nextWhtDocNo((data ?? []).map((c) => c.doc_no as string));
+}
+
+/**
+ * ออก 50ทวิ ให้พนักงาน 1 คนสำหรับทั้งปี
+ *
+ * ★ ออกให้ได้แม้ภาษีเป็น 0 — ม.50 ทวิ ไม่ได้ยกเว้นกรณีไม่มีภาษี และลูกจ้างต้องใช้
+ *   ใบนี้ไปยื่น ภงด.91 ของตัวเอง
+ * ★ ไม่ส่ง `p_tx_ids` — ใบของพนักงานไม่ผูกกับ transaction ใบใดใบหนึ่ง (ขา NET ลงเป็นรายเดือน)
+ *   ถ้าส่งไป RPC จะไปเขียน `payment_date` ทับรายการบัญชี ซึ่งไม่ใช่ความหมายของใบนี้
+ */
+export async function issueEmp50TawiAction(input: {
+  docNo: string;
+  entityId: string;
+  empId: string;
+  empName: string;
+  address?: string;
+  taxYearBE: number;
+  income: number;
+  whtAmount: number;
+  issueDate?: string;
+}): Promise<SaveResult> {
+  if (!input.docNo.trim()) return fail("ยังไม่ได้ระบุเลขที่เอกสาร");
+  if (!input.empId) return fail("ยังไม่ได้เลือกพนักงาน");
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("fn_issue_wht", {
+    p_doc_no: input.docNo.trim(),
+    p_tx_ids: [],
+    p_issue_date: input.issueDate ?? null,
+    p_contact_name: input.empName,
+    p_address: input.address ?? "",
+    p_wht_amount: input.whtAmount,
+    p_pnd_type: "ภ.ง.ด.1ก",
+    p_income_type: "เงินเดือน",
+    p_income_seq: 1, // มาตรา 40(1) เงินเดือน ค่าจ้าง
+    p_base_amount: input.income,
+    p_payment_date: null,
+    p_entity_id: input.entityId,
+    p_contact_id: null, // ★ ลูกจ้างไม่ได้อยู่ใน contacts โดยตั้งใจ (D66)
+    p_emp_id: input.empId,
+    p_tax_year: input.taxYearBE,
+  });
+  if (error) return fail(mapDbError(error));
+  const res = data as { ok: boolean; error?: string; doc_no?: string };
+  if (!res.ok) return fail(res.error ?? "ออกเอกสารไม่สำเร็จ");
+  revalidatePath("/payroll");
+  return { ok: true, data: res };
 }
