@@ -16,6 +16,7 @@ import type {
 } from "@/lib/payroll/types";
 import { getPayrollConfig, getPeriodDetail, getEmployees, type EmployeeRow } from "./data";
 import { employeeForCalc } from "@/lib/payroll/periodView";
+import { isEmployedInPeriod } from "@/lib/payroll/employment";
 
 /**
  * server action ของโมดูลเงินเดือน
@@ -297,12 +298,22 @@ export async function createPeriodAction(input: {
   }
 
   // เติมบรรทัดของคนที่ยังไม่มีในงวดนี้
+  // 🚨 กรองด้วย **ช่วงเวลาที่เป็นลูกจ้างจริง** ไม่ใช่ธง active อย่างเดียว —
+  //    คนที่ลาออกกลางเดือนยังต้องได้เงินงวดนั้น (ดูเหตุผลเต็มใน lib/payroll/employment)
   const [{ data: emps }, { data: rows }] = await Promise.all([
-    supabase.from("employees").select("emp_id, name, group_code").eq("active", true),
+    supabase.from("employees").select("emp_id, name, group_code, start_date, end_date, active"),
     supabase.from("payroll_items").select("emp_id").eq("period_id", periodId),
   ]);
   const have = new Set((rows ?? []).map((r) => r.emp_id as string));
-  const toAdd = (emps ?? []).filter((e) => !have.has(e.emp_id as string));
+  const toAdd = (emps ?? []).filter(
+    (e) =>
+      !have.has(e.emp_id as string) &&
+      isEmployedInPeriod(
+        { startDate: e.start_date as string | null, endDate: e.end_date as string | null, active: e.active as boolean },
+        input.year,
+        input.month,
+      ),
+  );
   if (toAdd.length > 0) {
     const { error } = await supabase.from("payroll_items").insert(
       toAdd.map((e) => ({
@@ -586,4 +597,28 @@ async function nextCode(
     if (m && m[1] === prefix) max = Math.max(max, Number(m[2]));
   }
   return `${prefix}${max + 1}`;
+}
+
+/**
+ * เอาพนักงาน 1 คนออกจากงวด (เฉพาะงวดร่าง)
+ *
+ * ทำไมต้องมี: ตัวกรองตอน "เติมพนักงาน" แก้เฉพาะ**การเติมครั้งใหม่** —
+ * แถวที่ถูกเติมไปแล้วก่อนที่จะติ๊ก "ยังทำงานอยู่" ออก / ก่อนใส่วันพ้นสภาพ **ยังค้างอยู่ในงวด**
+ * ★ กติกาของโปรเจกต์: ทุกจุดที่บันทึกข้อมูลได้ต้องลบจากแอปได้ (FLOW_REDESIGN sec 10)
+ *
+ * 🚨 งวดที่ลงบัญชีไปแล้วห้ามลบ — ยอดที่ลงบัญชี/ยื่นไปแล้วจะไม่ตรงกับงวดทันที
+ */
+export async function removePeriodLineAction(periodId: string, empId: string): Promise<SaveResult> {
+  const supabase = await createClient();
+  const { data: period } = await supabase
+    .from("payroll_periods").select("status").eq("period_id", periodId).maybeSingle();
+  if (!period) return fail("ไม่พบงวด " + periodId);
+  if (period.status !== "draft") {
+    return fail("งวดนี้ลงบัญชีไปแล้ว — ต้องถอนการลงบัญชีให้ครบก่อนถึงจะเอาคนออกจากงวดได้");
+  }
+  const { error } = await supabase
+    .from("payroll_items").delete().eq("period_id", periodId).eq("emp_id", empId);
+  if (error) return fail(mapDbError(error));
+  revalidatePath("/payroll");
+  return { ok: true };
 }

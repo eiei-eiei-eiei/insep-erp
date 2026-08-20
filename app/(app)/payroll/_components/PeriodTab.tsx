@@ -8,12 +8,14 @@ import { ratesOn } from "@/lib/payroll/sso";
 import { printSlips, type SlipData } from "@/lib/payroll/slip";
 import { legCoverage, legTotal, suggestLegDate } from "@/lib/payroll/legs";
 import { shownLine, differsFromStored, employeeForCalc } from "@/lib/payroll/periodView";
+import { notInPeriodReason } from "@/lib/payroll/employment";
 import type { PayrollLine } from "@/lib/payroll/types";
 import {
   createPeriodAction,
   savePeriodLinesAction,
   postPayrollAction,
   unpostPayrollAction,
+  removePeriodLineAction,
   type LineInput,
 } from "../actions";
 import { getPeriodDetailAction } from "../read-actions";
@@ -325,6 +327,7 @@ export function PeriodTab({
                       <th className="num">ปกส.</th>
                       <th className="num">ภาษี</th>
                       <th className="num">สุทธิ</th>
+                      <th></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -334,7 +337,16 @@ export function PeriodTab({
                       if (!d) return null;
                       return (
                         <tr key={it.empId}>
-                          <td className="whitespace-nowrap">{nameOf(it, employees)}</td>
+                          <td className="whitespace-nowrap">
+                            {nameOf(it, employees)}
+                            {/* ★ แถวที่ถูกเติมไปก่อนหน้าแล้วตอนนี้ไม่เข้าเงื่อนไขแล้ว — ต้องเห็นว่าทำไม
+                                ไม่ใช่หายไปเองเงียบ ๆ (ผู้ใช้ต้องตัดสินใจลบเอง) */}
+                            {outOfPeriod(it, employees, period) && (
+                              <div className="text-xs font-normal text-warn">
+                                ⚠ {outOfPeriod(it, employees, period)}
+                              </div>
+                            )}
+                          </td>
                           <td className="num">
                             <NumBox value={d.workDays} readOnly={locked}
                               onChange={(v) => setRow(it.empId, { workDays: v === "" ? 0 : v })} />
@@ -366,6 +378,21 @@ export function PeriodTab({
                               <div className="font-normal text-xs text-warn">
                                 บันทึกไว้ {fmt(storedDiff[it.empId].net)}
                               </div>
+                            )}
+                          </td>
+                          <td className="whitespace-nowrap">
+                            {!locked && (
+                              <button
+                                disabled={pending}
+                                onClick={() => {
+                                  if (confirm(`เอา ${nameOf(it, employees)} ออกจากงวดนี้?
+
+ค่าที่กรอกไว้ของคนนี้ในงวดจะหายไปด้วย`)) {
+                                    run(() => removePeriodLineAction(periodId, it.empId), "เอาออกจากงวดแล้ว", () => load(periodId));
+                                  }
+                                }}
+                                className="text-xs text-crit hover:underline"
+                              >เอาออก</button>
                             )}
                           </td>
                         </tr>
@@ -483,6 +510,18 @@ function nameOf(it: ItemRow, employees: EmployeeRow[]): string {
 function empOf(it: ItemRow, employees: EmployeeRow[]) {
   const e = employees.find((x) => x.empId === it.empId);
   return e ? employeeForCalc(e) : null;
+}
+
+/** เหตุผลว่าแถวนี้ไม่เข้าเงื่อนไขของงวดแล้ว (null = ปกติ) */
+function outOfPeriod(it: ItemRow, employees: EmployeeRow[], period: PeriodRow | null): string | null {
+  if (!period) return null;
+  const e = employees.find((x) => x.empId === it.empId);
+  if (!e) return "ไม่พบในทะเบียนพนักงานแล้ว";
+  return notInPeriodReason(
+    { startDate: e.startDate, endDate: e.endDate, active: e.active },
+    period.year,
+    period.month,
+  );
 }
 
 function lastDayISO(year: number, month: number): string {
