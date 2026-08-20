@@ -9,6 +9,7 @@ import type {
   PayPostLeg,
   PayRates,
   PayTier,
+  PitBracket,
   PayVariable,
   VarOp,
   VarStep,
@@ -38,6 +39,7 @@ import {
   savePayPostLegAction,
   deletePayPostLegAction,
   savePayRatesAction,
+  deletePayRatesAction,
   savePayrollSettingAction,
 } from "../actions";
 import type { PayrollConfig } from "./PayrollApp";
@@ -996,19 +998,26 @@ function PostLegs({ config }: { config: PayrollConfig }) {
 function Rates({ config }: { config: PayrollConfig }) {
   const router = useRouter();
   const { pending, msg, run } = useSaver();
-  const [form, setForm] = useState<PayRates>(() =>
-    config.rates[0] ?? {
-      effectiveFrom: "",
-      ssoRate: 5, ssoWageMin: 1650, ssoWageMax: 15000,
-      pitBrackets: [
-        { upTo: 150000, rate: 0 }, { upTo: 300000, rate: 0.05 }, { upTo: 500000, rate: 0.1 },
-        { upTo: 750000, rate: 0.15 }, { upTo: 1000000, rate: 0.2 }, { upTo: 2000000, rate: 0.25 },
-        { upTo: 5000000, rate: 0.3 }, { upTo: 1e15, rate: 0.35 },
-      ],
-      personalAllowance: 60000, expenseRate: 50, expenseCap: 100000,
-    },
-  );
+  // 🪤 เดิมเปิดมาพร้อมข้อมูล **ชุดล่าสุด รวมวันที่เริ่มมีผล** → กด "บันทึกชุดอัตรา"
+  //    จะ upsert ทับชุดนั้นทั้งที่ผู้ใช้คิดว่ากำลังเพิ่มชุดใหม่ (คีย์ของตารางคือ effective_from)
+  //    → เริ่มที่ชุดเปล่าเสมอ · จะแก้ของเดิมต้องกดปุ่ม "แก้" ในตารางให้ชัดเจน
+  const [form, setForm] = useState<PayRates>(blankRates);
   const set = <K extends keyof PayRates>(k: K, v: PayRates[K]) => setForm((p) => ({ ...p, [k]: v }));
+
+  // ★ วันที่ของชุดที่กำลังแก้อยู่ — null = กำลังเพิ่มชุดใหม่
+  //   (คีย์ของตารางคือ effective_from → แก้วันที่ = สร้างชุดใหม่ ไม่ใช่แก้ชุดเดิม)
+  const [editing, setEditing] = useState<string | null>(null);
+  const today = new Date().toISOString().slice(0, 10);
+
+  function startEdit(r: PayRates) {
+    setForm(r);
+    setEditing(r.effectiveFrom);
+  }
+
+  function startNew() {
+    setForm(blankRates());
+    setEditing(null);
+  }
 
   return (
     <Card title="ชุดอัตราตามกฎหมาย (มีวันเริ่มมีผล)">
@@ -1022,18 +1031,50 @@ function Rates({ config }: { config: PayrollConfig }) {
       {config.rates.length > 0 && (
         <div className="mb-3 overflow-x-auto">
           <table className="tbl">
-            <thead><tr className="text-left text-faint"><th>เริ่มมีผล</th><th className="num">อัตรา ปกส.</th><th className="num">เพดานฐาน</th><th className="num">ลดหย่อนส่วนตัว</th></tr></thead>
+            <thead><tr className="text-left text-faint"><th>เริ่มมีผล</th><th className="num">อัตรา ปกส.</th><th className="num">เพดานฐาน</th><th className="num">ลดหย่อนส่วนตัว</th><th className="num">ขั้นภาษี</th><th></th></tr></thead>
             <tbody>
               {config.rates.map((r) => (
-                <tr key={r.effectiveFrom}>
+                <tr key={r.effectiveFrom} className={editing === r.effectiveFrom ? "bg-brand-soft" : undefined}>
                   <td>{r.effectiveFrom}</td>
                   <td className="num">{r.ssoRate}%</td>
                   <td className="num">{r.ssoWageMax.toLocaleString()}</td>
                   <td className="num">{r.personalAllowance.toLocaleString()}</td>
+                  <td className="num">{(r.pitBrackets ?? []).length} ขั้น</td>
+                  <td className="whitespace-nowrap">
+                    <button onClick={() => startEdit(r)} className="text-muted hover:underline">แก้</button>
+                    <button
+                      disabled={pending}
+                      onClick={() => askDelete(
+                        `ชุดอัตราที่เริ่มมีผล ${r.effectiveFrom}`,
+                        () => run(() => deletePayRatesAction(r.effectiveFrom), "ลบแล้ว", () => { startNew(); router.refresh(); }),
+                      )}
+                      className="ml-2 text-crit hover:underline"
+                    >ลบ</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="text-sm font-medium text-ink">
+          {editing ? `กำลังแก้ชุดที่เริ่มมีผล ${editing}` : "เพิ่มชุดอัตราใหม่"}
+        </span>
+        {editing && (
+          <button onClick={startNew} className="text-xs text-brand hover:underline">
+            + เพิ่มชุดใหม่แทน
+          </button>
+        )}
+      </div>
+
+      {editing && editing <= today && (
+        <div className="mb-3 rounded-lg bg-warn-bg px-3 py-2 text-xs text-warn">
+          ⚠ ชุดนี้มีผลไปแล้ว — งวดที่<b>บันทึกไว้แล้วจะไม่ขยับ</b> (แช่อัตราที่ใช้ตอนนั้นไว้ใน
+          <code> rates_snapshot </code>) แต่ถ้ากด <b>คำนวณ &amp; บันทึก</b> งวดเก่าใหม่อีกครั้ง
+          จะได้อัตราที่แก้นี้แทน · แก้เพื่อ<b>ซ่อมค่าที่กรอกผิด</b>ได้ ·
+          ถ้าเป็น<b>อัตราใหม่ตามกฎกระทรวง</b> ให้กด &ldquo;เพิ่มชุดใหม่แทน&rdquo; แล้วใส่วันที่เริ่มมีผลจริง
         </div>
       )}
 
@@ -1062,24 +1103,90 @@ function Rates({ config }: { config: PayrollConfig }) {
       </div>
 
       <div className="mt-3">
-        <Field label="ขั้นบันไดภาษี — รูปแบบ ขอบบน=อัตรา (อัตราเป็นทศนิยม เช่น 0.05 = 5%)">
-          <TextInput
-            value={form.pitBrackets.map((b) => `${b.upTo}=${b.rate}`).join(", ")}
-            onChange={(e) =>
-              set("pitBrackets", e.target.value.split(",").map((s) => {
-                const [a, b] = s.split("=");
-                return { upTo: Number(a?.trim()) || 0, rate: Number(b?.trim()) || 0 };
-              }).filter((b) => b.upTo > 0))
-            }
-          />
+        <Field label="ขั้นบันไดภาษีเงินได้บุคคลธรรมดา">
+          <BracketEditor brackets={form.pitBrackets ?? []} onChange={(b) => set("pitBrackets", b)} />
         </Field>
       </div>
 
-      <div className="mt-3">
-        <SaveButton pending={pending} onClick={() => run(() => savePayRatesAction(form), "บันทึกชุดอัตราแล้ว", () => router.refresh())}>
-          บันทึกชุดอัตรา
+      <div className="mt-3 flex flex-wrap gap-2">
+        <SaveButton
+          pending={pending}
+          onClick={() => run(
+            () => savePayRatesAction(form),
+            editing ? "แก้ชุดอัตราแล้ว" : "เพิ่มชุดอัตราแล้ว",
+            () => { setEditing(form.effectiveFrom); router.refresh(); },
+          )}
+        >
+          {editing ? "บันทึกการแก้ไข" : "เพิ่มชุดอัตรา"}
         </SaveButton>
+        {editing && (
+          <button onClick={startNew} className="rounded-lg border border-line px-4 py-2 text-sm text-muted">
+            เลิกแก้
+          </button>
+        )}
       </div>
     </Card>
+  );
+}
+
+/** ชุดอัตราเปล่าสำหรับ "เพิ่มชุดใหม่" — ค่าตั้งต้นเป็นของที่ใช้กันทั่วไป แต่ **ต้องตรวจกับประกาศจริง** */
+function blankRates(): PayRates {
+  return {
+    effectiveFrom: "",
+    ssoRate: 5, ssoWageMin: 1650, ssoWageMax: 15000,
+    pitBrackets: [
+      { upTo: 150000, rate: 0 }, { upTo: 300000, rate: 0.05 }, { upTo: 500000, rate: 0.1 },
+      { upTo: 750000, rate: 0.15 }, { upTo: 1000000, rate: 0.2 }, { upTo: 2000000, rate: 0.25 },
+      { upTo: 5000000, rate: 0.3 }, { upTo: 1e15, rate: 0.35 },
+    ],
+    personalAllowance: 60000, expenseRate: 50, expenseCap: 100000,
+  };
+}
+
+/**
+ * ขั้นบันไดภาษี — **แถวละขั้น ไม่มีการ parse สตริง**
+ *
+ * 🚨 ของเดิมเป็นช่องข้อความช่องเดียวที่แปลง `"150000=0, 300000=0.05"` ↔ array ทุกคีย์
+ *    บั๊กเดียวกับขั้นบันไดเบี้ยขยันเป๊ะ (พิมพ์คอมมาแล้วขั้นที่ยังไม่เสร็จโดน filter ทิ้ง)
+ *    — ที่ผ่านมาไม่มีใครเจอเพราะยังไม่มีปุ่มแก้ให้กด
+ * ★ โชว์ `= X%` ข้างช่องอัตรา เพราะค่าที่เก็บเป็นทศนิยม (0.05) ซึ่งอ่านผิดเป็น 0.05% ได้ง่าย
+ *   — เป็นการ **แสดงผลอย่างเดียว ไม่แปลงค่าที่เก็บ** (แปลงเมื่อไหร่คือความเสี่ยงกับเลขภาษี)
+ */
+function BracketEditor({
+  brackets,
+  onChange,
+}: {
+  brackets: PitBracket[];
+  onChange: (b: PitBracket[]) => void;
+}) {
+  const rows = brackets ?? [];
+  const patch = (i: number, p: Partial<PitBracket>) =>
+    onChange(rows.map((b, idx) => (idx === i ? { ...b, ...p } : b)));
+
+  return (
+    <div className="space-y-2">
+      {rows.length === 0 && <p className="text-xs text-faint">— ยังไม่มีขั้น กด &ldquo;เพิ่มขั้น&rdquo; —</p>}
+      {rows.map((b, i) => (
+        <div key={i} className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-muted">เงินได้สุทธิถึง</span>
+          <div className="w-40"><NumBox value={b.upTo} onChange={(v) => patch(i, { upTo: v === "" ? 0 : v })} /></div>
+          <span className="text-sm text-muted">อัตรา</span>
+          <div className="w-24"><NumBox value={b.rate} onChange={(v) => patch(i, { rate: v === "" ? 0 : v })} /></div>
+          <span className="w-14 text-sm text-faint">= {Math.round(Number(b.rate) * 10000) / 100}%</span>
+          <button
+            onClick={() => onChange(rows.filter((_, idx) => idx !== i))}
+            className="text-xs text-crit hover:underline"
+          >ลบ</button>
+        </div>
+      ))}
+      <button
+        onClick={() => onChange([...rows, { upTo: 0, rate: 0 }])}
+        className="text-xs text-brand hover:underline"
+      >+ เพิ่มขั้น</button>
+      <p className="text-xs text-faint">
+        ★ อัตราใส่เป็น<b>ทศนิยม</b> (0.05 = 5%) · ขั้นบนสุดใส่ตัวเลขใหญ่ ๆ เพื่อครอบส่วนที่เหลือ
+        (ค่าตั้งต้นใช้ 1e15) · เรียงจากน้อยไปมาก
+      </p>
+    </div>
   );
 }
