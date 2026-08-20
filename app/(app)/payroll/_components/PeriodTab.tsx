@@ -7,6 +7,7 @@ import { calcPayrollLine } from "@/lib/payroll/calc";
 import { ratesOn } from "@/lib/payroll/sso";
 import { printSlips, type SlipData } from "@/lib/payroll/slip";
 import { legCoverage, legTotal, suggestLegDate } from "@/lib/payroll/legs";
+import { shownLine, differsFromStored } from "@/lib/payroll/periodView";
 import type { PayrollLine } from "@/lib/payroll/types";
 import {
   createPeriodAction,
@@ -47,9 +48,6 @@ export function PeriodTab({
   const [period, setPeriod] = useState<PeriodRow | null>(periods[0] ?? null);
   const [items, setItems] = useState<ItemRow[]>([]);
   const [draft, setDraft] = useState<Record<string, LineInput>>({});
-  // 🪤 แถวที่ผู้ใช้ "แตะแล้ว" ในรอบนี้ — ใช้ตัดสินว่าจะโชว์ค่าที่แช่ไว้หรือค่าที่คิดสด
-  //    (ดูเหตุผลที่กล่อง shown ด้านล่าง)
-  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
 
   // ฟอร์มสร้างงวด
@@ -65,7 +63,6 @@ export function PeriodTab({
     getPeriodDetailAction(id).then((d) => {
       setPeriod(d.period);
       setItems(d.items);
-      setTouched({});
       setDraft(Object.fromEntries(d.items.map((i) => [i.empId, {
         empId: i.empId,
         workDays: i.inputs.workDays ?? d.period?.workDaysStd ?? 0,
@@ -109,34 +106,39 @@ export function PeriodTab({
   }, [items, draft, period, rates, config, employees]);
 
   /**
-   * ค่าที่ "เอาไปแสดง" — ไม่ใช่ค่าที่คิดสดเสมอไป
+   * ค่าที่ "เอาไปแสดง" — ตัดสินจาก **สถานะของงวด** ไม่ใช่ว่าเคยบันทึกไว้หรือยัง
    *
-   * 🚨 งวดที่บันทึกแล้วต้องโชว์ **ค่าที่แช่ไว้ตอนกดบันทึก** ไม่ใช่ค่าที่คิดใหม่จากเกณฑ์ปัจจุบัน
-   *    ไม่งั้นลบรายการเพิ่ม/หักทิ้ง 1 ตัวแล้วเปิดงวดเก่าดู จะเห็นยอดใหม่ทันที
-   *    ทั้งที่ยังไม่ได้กดบันทึก และไม่ตรงกับแท็บรายงาน/สลิป/บัญชีที่ลงไปแล้ว
-   *    (ตระกูลเดียวกับกติกา "ห้ามคำนวณสด" ใน D66 ข้อ 2 — รอบนี้หลุดมาที่หน้าจอ)
-   * ★ แถวที่ผู้ใช้แตะช่องกรอกแล้ว = กำลังจะบันทึกใหม่ → โชว์ค่าสดถึงจะถูก
+   * | งวด | แสดง | เพราะ |
+   * |---|---|---|
+   * | ลงบัญชีแล้ว (`locked`) | **ค่าที่แช่ไว้** | เป็นบันทึกทางประวัติศาสตร์ — ต้องตรงกับที่ยื่น/ลงบัญชีไปแล้ว และแก้อะไรไม่ได้อยู่แล้ว |
+   * | ร่าง | **ค่าที่คิดสด** | ยังทำงานอยู่ · แก้เงินเดือน/ชนิดค่าจ้างของพนักงานแล้วต้องเห็นผลทันที |
+   *
+   * 🪤 D73 เคยให้ "ร่างที่เคยบันทึกแล้ว" โชว์ค่าที่แช่ไว้ด้วย → ผู้ใช้แก้ฐานเงินเดือนในทะเบียน
+   *    พนักงานแล้วเปิดงวดร่างมาดู เห็นยอดเดิม เลยเข้าใจว่า **"คำนวณผิด"**
+   *    → ตัวเลขที่ต่างจากที่บันทึกไว้ต้อง **แสดงคู่กัน** (คอลัมน์สุทธิมีบรรทัด "บันทึกไว้ …")
+   *      ไม่ใช่เลือกโชว์อันใดอันหนึ่งแล้วให้เดาเอง
    */
   const shown = useMemo(() => {
     const out: Record<string, PayrollLine> = {};
     for (const it of items) {
       const stored = storedLine(it);
-      out[it.empId] = touched[it.empId] || !stored ? live[it.empId] : stored;
+      const v = shownLine(locked, stored, live[it.empId]);
+      if (v) out[it.empId] = v;
     }
     return out;
-  }, [items, live, touched]);
+  }, [items, live, locked]);
 
-  /** เกณฑ์ปัจจุบันให้ผลต่างจากที่แช่ไว้กี่คน (เฉพาะแถวที่ยังไม่ได้แตะ) */
-  const drifted = useMemo(
-    () =>
-      items.filter((it) => {
-        if (touched[it.empId]) return false;
-        const st = storedLine(it);
-        const lv = live[it.empId];
-        return st && lv && (round2(st.net) !== round2(lv.net) || round2(st.gross) !== round2(lv.gross));
-      }).length,
-    [items, live, touched],
-  );
+  /** ค่าที่บันทึกไว้ของแถวที่ **ต่างจากที่กำลังแสดง** — เอาไปโชว์คู่กันให้เห็นทั้งสองอัน */
+  const storedDiff = useMemo(() => {
+    const out: Record<string, PayrollLine> = {};
+    for (const it of items) {
+      const st = storedLine(it);
+      if (st && differsFromStored(st, shown[it.empId])) out[it.empId] = st;
+    }
+    return out;
+  }, [items, shown]);
+
+  const drifted = Object.keys(storedDiff).length;
 
   const totals = useMemo(() => {
     const v = Object.values(shown);
@@ -152,13 +154,11 @@ export function PeriodTab({
   const manualComps = config.components.filter((c) => c.method === "manual" && c.active !== false);
 
   function setVal(empId: string, key: string, v: number, bucket: "values" | "manual") {
-    setTouched((t) => ({ ...t, [empId]: true }));
     setDraft((p) => ({ ...p, [empId]: { ...p[empId], [bucket]: { ...p[empId][bucket], [key]: v } } }));
   }
 
-  /** แก้ช่องอื่นของแถว (วันมาทำงาน / override ภาษี) — ต้องตั้งธง touched เหมือนกัน */
+  /** แก้ช่องอื่นของแถว (วันมาทำงาน / override ภาษี) */
   function setRow(empId: string, patch: Partial<LineInput>) {
-    setTouched((t) => ({ ...t, [empId]: true }));
     setDraft((p) => ({ ...p, [empId]: { ...p[empId], ...patch } }));
   }
 
@@ -199,7 +199,7 @@ export function PeriodTab({
         companyName: config.entityId || "บริษัท",
         periodLabel: `${String(period.month).padStart(2, "0")}/${period.year}`,
         payDate: period.payDate ?? undefined,
-        empName: it.empName,
+        empName: nameOf(it, employees),
         empId: it.empId,
         groupLabel: it.groupCode ?? undefined,
         baseLabel,
@@ -283,10 +283,21 @@ export function PeriodTab({
           )}
           {drifted > 0 && (
             <div className="rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">
-              ⚠ เกณฑ์การคำนวณเปลี่ยนไปจากตอนที่บันทึกงวดนี้ — มี <b>{drifted}</b> คนที่ยอดใหม่ไม่ตรงกับที่บันทึกไว้
+              ⚠ มี <b>{drifted}</b> คนที่ยอด<b>ยังไม่ตรงกับที่บันทึกไว้</b> —
+              เกิดจากแก้เกณฑ์การคำนวณ หรือแก้ข้อมูลในทะเบียนพนักงาน (เงินเดือน / ชนิดค่าจ้าง) หลังบันทึกงวดนี้
               <br />
-              ตัวเลขที่แสดงคือ<b>ค่าที่บันทึกไว้</b> (ตรงกับแท็บรายงานและบัญชีที่ลงไปแล้ว) ·
-              กด <b>คำนวณ &amp; บันทึก</b> เมื่อไหร่ ยอดจะถูกเขียนทับด้วยเกณฑ์ใหม่
+              {locked ? (
+                <>
+                  งวดนี้ลงบัญชีไปแล้ว → ตัวเลขที่แสดงคือ<b>ค่าที่บันทึกไว้</b> (ตรงกับที่ยื่น/ลงบัญชี) ·
+                  ถ้าต้องแก้จริงต้องถอนการลงบัญชีก่อน
+                </>
+              ) : (
+                <>
+                  ตัวเลขที่แสดงคือ<b>ยอดที่คำนวณใหม่แล้ว</b> แต่<b>ยังไม่ได้บันทึก</b> —
+                  แท็บรายงานและบัญชียังเป็นยอดเดิม (ดูบรรทัด &ldquo;บันทึกไว้ …&rdquo; ในคอลัมน์สุทธิ) ·
+                  กด <b>คำนวณ &amp; บันทึก</b> เพื่อให้ตรงกัน
+                </>
+              )}
             </div>
           )}
           {!rates && (
@@ -323,7 +334,7 @@ export function PeriodTab({
                       if (!d) return null;
                       return (
                         <tr key={it.empId}>
-                          <td className="whitespace-nowrap">{it.empName}</td>
+                          <td className="whitespace-nowrap">{nameOf(it, employees)}</td>
                           <td className="num">
                             <NumBox value={d.workDays} readOnly={locked}
                               onChange={(v) => setRow(it.empId, { workDays: v === "" ? 0 : v })} />
@@ -347,7 +358,16 @@ export function PeriodTab({
                           <td className="num">{fmt(l?.gross ?? it.gross)}</td>
                           <td className="num">{fmt(l?.sso ?? it.sso)}</td>
                           <td className="num">{fmt(l?.wht ?? it.wht)}</td>
-                          <td className="num font-semibold">{fmt(l?.net ?? it.net)}</td>
+                          <td className="num font-semibold">
+                            {fmt(l?.net ?? it.net)}
+                            {/* ★ ต่างจากที่บันทึกไว้ = โชว์ทั้งสองอัน ไม่ให้ต้องเดาว่าเลขไหนคือเลขไหน
+                                (ที่บันทึกไว้ = ตัวที่รายงาน/บัญชีใช้อยู่ตอนนี้) */}
+                            {storedDiff[it.empId] && (
+                              <div className="font-normal text-xs text-warn">
+                                บันทึกไว้ {fmt(storedDiff[it.empId].net)}
+                              </div>
+                            )}
+                          </td>
                         </tr>
                       );
                     })}
@@ -442,6 +462,19 @@ export function PeriodTab({
   );
 }
 
+/**
+ * ชื่อที่เอาไปแสดง — **ชื่อปัจจุบันจากทะเบียนพนักงานเสมอ**
+ *
+ * 🪤 `payroll_items.emp_name` เป็น snapshot ตอนสร้างแถว → แก้ชื่อในทะเบียนแล้วงวดเดิม
+ *    ยังเป็นชื่อเก่า (ผู้ใช้แจ้ง) · snapshot มีไว้กันชื่อหายตอนลบพนักงานออกจากทะเบียน
+ *    จึงใช้เป็น **fallback** ไม่ใช่ตัวหลัก
+ * ★ กติกาที่ใช้ทั้งโมดูล: **ชื่อ = ค่าปัจจุบัน · ตัวเงิน = ค่าที่แช่ไว้**
+ *   (ชื่อสะกดผิดต้องแก้ให้ถูกทุกที่ · แต่ยอดเงินที่ยื่นไปแล้วห้ามขยับ)
+ */
+function nameOf(it: ItemRow, employees: EmployeeRow[]): string {
+  return employees.find((x) => x.empId === it.empId)?.name || it.empName;
+}
+
 /** ประกอบ Employee ให้ engine — ใช้ master ปัจจุบัน + snapshot กลุ่มที่บันทึกไว้ตอนสร้างงวด */
 function empOf(it: ItemRow, employees: EmployeeRow[]) {
   const e = employees.find((x) => x.empId === it.empId);
@@ -474,6 +507,3 @@ function storedLine(it: ItemRow): PayrollLine | null {
   return c;
 }
 
-function round2(x: number): number {
-  return Math.round((Number(x) || 0) * 100) / 100;
-}
