@@ -14,7 +14,8 @@ import type {
   PayVariable,
   PayrollSettings,
 } from "@/lib/payroll/types";
-import { getPayrollConfig, getPeriodDetail, type EmployeeRow } from "./data";
+import { getPayrollConfig, getPeriodDetail, getEmployees, type EmployeeRow } from "./data";
+import { employeeForCalc } from "@/lib/payroll/periodView";
 
 /**
  * server action ของโมดูลเงินเดือน
@@ -341,8 +342,8 @@ export async function savePeriodLinesAction(periodId: string, lines: LineInput[]
   const rates = ratesOn(cfg.rates, periodEnd);
   if (!rates) return fail(`ยังไม่มีชุดอัตราที่มีผลถึงวันที่ ${periodEnd} — ไปตั้งที่แท็บตั้งค่าการคำนวณก่อน`);
 
-  const { data: empRows } = await supabase.from("employees").select("*");
-  const empById = new Map((empRows ?? []).map((r) => [r.emp_id as string, r]));
+  // ★ ใช้ตัวอ่านเดียวกับที่หน้าจอใช้ (mapper เดียวกัน) → ประกอบ Employee ได้เหมือนกันเป๊ะ
+  const empById = new Map((await getEmployees()).map((e) => [e.empId, e]));
 
   for (const ln of lines) {
     const r = empById.get(ln.empId);
@@ -439,10 +440,9 @@ export async function unpostPayrollAction(periodId: string, legCode: string): Pr
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 function calcLine(
-  r: any,
+  r: EmployeeRow,
   ln: LineInput,
   components: PayComponent[],
   variables: PayVariable[],
@@ -452,12 +452,8 @@ function calcLine(
   month: number,
   workDaysStd: number,
 ) {
-  const emp = {
-    empId: r.emp_id, name: r.name, groupCode: r.group_code,
-    wageType: r.wage_type, baseWage: Number(r.base_wage),
-    ssoExempt: r.sso_exempt, whtMode: r.wht_mode, whtFixed: Number(r.wht_fixed),
-    taxAllowances: r.tax_allowances ?? {},
-  };
+  // 🚨 ประกอบด้วยตัวเดียวกับฝั่งพรีวิว — ห้ามเขียนซ้ำที่นี่อีก (ดูเหตุผลใน employeeForCalc)
+  const emp = employeeForCalc(r);
   const line = calcPayrollLine(
     emp,
     { workDays: ln.workDays, values: ln.values, manual: ln.manual, whtOverride: ln.whtOverride },

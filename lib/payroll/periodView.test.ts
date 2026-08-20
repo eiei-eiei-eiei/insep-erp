@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { shownLine, differsFromStored, round2 } from "./periodView";
+import { shownLine, differsFromStored, round2, employeeForCalc } from "./periodView";
 import type { PayrollLine } from "./types";
 
 const L = (net: number, gross = net): PayrollLine =>
@@ -53,5 +53,48 @@ describe("differsFromStored — ต้องโชว์คู่กันไห
 describe("round2", () => {
   it("ค่าที่ไม่ใช่ตัวเลขกลายเป็น 0 (ไม่ปล่อย NaN ไปเทียบ)", () => {
     expect(round2(Number.NaN)).toBe(0);
+  });
+});
+
+describe("employeeForCalc — ตัวประกอบเดียวของทั้งพรีวิวและตอนบันทึก", () => {
+  const master = {
+    empId: "EMP-0001", name: "อำนวย", groupCode: "หัวหน้าช่าง",
+    wageType: "monthly" as const, baseWage: 51980,
+    ssoExempt: false, whtMode: "fixed" as const, whtFixed: 1585,
+    taxAllowances: { "2569": { personal: 60000 } },
+  };
+
+  it("ใช้ค่าจากทะเบียนปัจจุบันครบทุกช่อง", () => {
+    expect(employeeForCalc(master)).toEqual({
+      empId: "EMP-0001", name: "อำนวย", groupCode: "หัวหน้าช่าง",
+      wageType: "monthly", baseWage: 51980,
+      ssoExempt: false, whtMode: "fixed", whtFixed: 1585,
+      taxAllowances: { "2569": { personal: 60000 } },
+    });
+  });
+
+  it("🚨 กลุ่มมาจากทะเบียนปัจจุบัน — ห้ามมีทางให้ส่งกลุ่มที่แช่ไว้ในแถวงวดเข้ามา", () => {
+    // ถ้าวันหนึ่งมีคนเติมพารามิเตอร์ "กลุ่มที่แช่ไว้" กลับเข้ามา เทสนี้จะยังผ่าน
+    // แต่ signature จะเปลี่ยน — เทสนี้จึงคู่กับคอมเมนต์ในฟังก์ชัน (อ่านก่อนแก้)
+    expect(employeeForCalc({ ...master, groupCode: "ช่าง" }).groupCode).toBe("ช่าง");
+  });
+
+  it("ค่าที่ไม่ได้กรอกกลายเป็นค่าปลอดภัย ไม่ใช่ undefined หลุดเข้าสูตร", () => {
+    const e = employeeForCalc({
+      empId: "E", name: "n", wageType: "monthly", baseWage: 1, whtMode: "none",
+    });
+    expect(e.groupCode).toBeNull();
+    expect(e.whtFixed).toBe(0);
+    expect(e.taxAllowances).toEqual({});
+  });
+
+  it("baseWage/whtFixed ที่มาเป็นสตริงถูกแปลงเป็นตัวเลข (ค่าจาก DB numeric)", () => {
+    const e = employeeForCalc({
+      empId: "E", name: "n", wageType: "monthly",
+      baseWage: "51980" as unknown as number, whtMode: "fixed",
+      whtFixed: "1585" as unknown as number,
+    });
+    expect(e.baseWage).toBe(51980);
+    expect(e.whtFixed).toBe(1585);
   });
 });

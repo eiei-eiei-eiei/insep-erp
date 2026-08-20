@@ -7,7 +7,7 @@ import { calcPayrollLine } from "@/lib/payroll/calc";
 import { ratesOn } from "@/lib/payroll/sso";
 import { printSlips, type SlipData } from "@/lib/payroll/slip";
 import { legCoverage, legTotal, suggestLegDate } from "@/lib/payroll/legs";
-import { shownLine, differsFromStored } from "@/lib/payroll/periodView";
+import { shownLine, differsFromStored, employeeForCalc } from "@/lib/payroll/periodView";
 import type { PayrollLine } from "@/lib/payroll/types";
 import {
   createPeriodAction,
@@ -475,21 +475,14 @@ function nameOf(it: ItemRow, employees: EmployeeRow[]): string {
   return employees.find((x) => x.empId === it.empId)?.name || it.empName;
 }
 
-/** ประกอบ Employee ให้ engine — ใช้ master ปัจจุบัน + snapshot กลุ่มที่บันทึกไว้ตอนสร้างงวด */
+/**
+ * ประกอบ Employee ให้ engine — **ใช้ตัวประกอบตัวเดียวกับฝั่งบันทึก** (`employeeForCalc`)
+ * 🚨 เดิมที่นี่ใช้ `it.groupCode ?? e.groupCode` (กลุ่มที่แช่ไว้ในแถวงวด) ส่วนฝั่ง server
+ *    ใช้กลุ่มปัจจุบัน → ย้ายพนักงานข้ามกลุ่มแล้ว **ยอดบนจอกับยอดที่บันทึกจริงคนละตัว**
+ */
 function empOf(it: ItemRow, employees: EmployeeRow[]) {
   const e = employees.find((x) => x.empId === it.empId);
-  if (!e) return null;
-  return {
-    empId: e.empId,
-    name: e.name,
-    groupCode: it.groupCode ?? e.groupCode,
-    wageType: e.wageType,
-    baseWage: e.baseWage,
-    ssoExempt: e.ssoExempt,
-    whtMode: e.whtMode,
-    whtFixed: e.whtFixed,
-    taxAllowances: e.taxAllowances,
-  };
+  return e ? employeeForCalc(e) : null;
 }
 
 function lastDayISO(year: number, month: number): string {
