@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { searchBillsAction, getBillDetailAction, voidTransactionAction, updateTransactionAction } from "../actions";
+import { searchBillsAction, getBillDetailAction, voidTransactionAction, updateTransactionAction, getItemHistoryAction } from "../actions";
 import { entryCalc, itemTotal } from "@/lib/accounting/calc";
 import { qn, emptyItem, makeItemHandlers, buildItemInputs, useBillAmounts, type BillItem } from "./billItems";
 import type { Bootstrap } from "./types";
@@ -134,10 +134,10 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
           </div>
           {detail.items.length > 0 && (
             <table className="tbl mt-3">
-              <thead><tr className="text-left text-faint"><th>รายการ</th><th>หมวด</th><th className="num">จำนวน</th><th className="num">ราคา(ex)</th><th className="num">รวม</th></tr></thead>
+              <thead><tr className="text-left text-faint"><th>รายการ</th><th>หมวด</th><th>งาน</th><th className="num">จำนวน</th><th className="num">ราคา(ex)</th><th className="num">รวม</th></tr></thead>
               <tbody>
                 {detail.items.map((it) => (
-                  <tr key={it.item_id as string}><td>{it.item_name as string}</td><td>{(it.item_category as string) ?? ""}</td><td className="num">{fmt(it.quantity as number)}</td><td className="num">{fmt(it.ex_vat as number)}</td><td className="num">{fmt(it.total_price as number)}</td></tr>
+                  <tr key={it.item_id as string}><td>{it.item_name as string}</td><td>{(it.item_category as string) ?? ""}</td><td>{(it.item_job as string) ?? ""}</td><td className="num">{fmt(it.quantity as number)}</td><td className="num">{fmt(it.ex_vat as number)}</td><td className="num">{fmt(it.total_price as number)}</td></tr>
                 ))}
               </tbody>
             </table>
@@ -179,6 +179,9 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
   const [hasWht, setHasWht] = useState(false);
   const [whtRate, setWhtRate] = useState(0);
   const [items, setItems] = useState<BillItem[]>([]);
+  const [itemHist, setItemHist] = useState<{ itemNames: string[]; itemCategories: string[]; itemJobs: string[] }>({ itemNames: [], itemCategories: [], itemJobs: [] });
+  const [bulkCat, setBulkCat] = useState("");
+  const [bulkJob, setBulkJob] = useState("");
   const amt = useBillAmounts({ items, discount, hasVat, hasWht, whtRate });
   const { calc, manualAmt, effAfterDisc, effVat, effWht, effNet, unlockAmounts, lockAmounts } = amt;
   // setter ล่าสุดสำหรับใช้ใน effect โหลดบิล (ไม่ต้องใส่ทุกตัวใน deps)
@@ -225,7 +228,17 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
     return () => { alive = false; };
   }, [txId, setMsg]);
 
+  // ประวัติหมวดหมู่/งานของรายการ → เติมดรอปดาวน์ช่วยกรอก (entId รู้ค่าหลังโหลดบิลเสร็จ)
+  useEffect(() => {
+    if (!entId) return;
+    let alive = true;
+    getItemHistoryAction(entId).then((h) => { if (alive) setItemHist(h); });
+    return () => { alive = false; };
+  }, [entId]);
+
   const cats = type === "รายรับ" ? boot.incomeCats : boot.expenseCats;
+  const itemCatOptions = useMemo(() => [...new Set([...itemHist.itemCategories, ...items.map((it) => it.itemCategory).filter(Boolean)])], [itemHist.itemCategories, items]);
+  const itemJobOptions = useMemo(() => [...new Set([...itemHist.itemJobs, ...items.map((it) => it.itemJob).filter(Boolean)])], [itemHist.itemJobs, items]);
   const accountOptions = boot.accounts.filter((a) => { const ids = a.entity_ids ?? []; return ids.length === 0 || ids.includes(entId); });
   const norm = (s: string) => s.trim().toLowerCase();
   const nameMatches = boot.contacts.filter((c) => norm(c.name) === norm(contactName));
@@ -234,7 +247,9 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
   const resolvedContactId = nameMatches.length === 1 ? nameMatches[0].contact_id : multiBranch ? effBranchId : (contactId || undefined);
 
   const { setItem, onExVat, onInVat, onQty, onDiscPct, onDiscBaht, removeItem } = makeItemHandlers(items, setItems);
-  function addItem() { setItems((p) => [...p, emptyItem()]); }
+  // แถวใหม่ก๊อปหมวด/งานจากแถวสุดท้าย (บิลเดียวกันมักเป็นงานเดียวกัน) — เหมือน EntryTab
+  function addItem() { const last = items[items.length - 1]; setItems((p) => [...p, emptyItem(last?.itemCategory ?? "", last?.itemJob ?? "")]); }
+  function fillAll(patch: Partial<BillItem>) { setItems((p) => p.map((it) => ({ ...it, ...patch }))); }
 
   function save() {
     if (!category) { setMsg({ ok: false, text: "เลือกหมวดหมู่" }); return; }
@@ -251,7 +266,7 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-overlay/30 p-0 sm:p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <EscToClose onClose={() => { onClose(); }} />
-      <div className="min-h-dvh w-full rounded-none bg-card p-5 sm:my-8 sm:min-h-0 sm:max-w-3xl sm:rounded-lg" onClick={(e) => e.stopPropagation()}>
+      <div className="min-h-dvh w-full rounded-none bg-card p-5 sm:my-8 sm:min-h-0 sm:max-w-5xl sm:rounded-lg" onClick={(e) => e.stopPropagation()}>
         <h3 className="mb-3 font-semibold text-ink">แก้ไขบิล {txId}</h3>
         {loading ? <p className="text-faint">กำลังโหลด…</p> : (
           <>
@@ -279,11 +294,13 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
 
             <div className="mt-3 overflow-x-auto">
               <table className="tbl">
-                <thead><tr className="text-left text-faint"><th>ชื่อรายการ</th><th className="w-16">จำนวน</th><th className="w-28">รวม VAT</th><th className="w-28">ไม่รวม VAT</th><th className="w-16">ลด %</th><th className="w-24">ลด บาท</th><th className="w-28 num">รวม</th><th className="w-8"></th></tr></thead>
+                <thead><tr className="text-left text-faint"><th>ชื่อรายการ</th><th className="w-28">หมวดหมู่</th><th className="w-24">งาน</th><th className="w-16">จำนวน</th><th className="w-28">รวม VAT</th><th className="w-28">ไม่รวม VAT</th><th className="w-16">ลด %</th><th className="w-24">ลด บาท</th><th className="w-28 num">รวม</th><th className="w-8"></th></tr></thead>
                 <tbody>
                   {items.map((it, i) => (
                     <tr key={i}>
                       <td><TextInput value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })} placeholder="ชื่อสินค้า/บริการ" /></td>
+                      <td><TextInput list="edit-item-cats" value={it.itemCategory} onChange={(e) => setItem(i, { itemCategory: e.target.value })} placeholder="หมวดหมู่" /></td>
+                      <td><TextInput list="edit-item-jobs" value={it.itemJob} onChange={(e) => setItem(i, { itemJob: e.target.value })} placeholder="งาน" /></td>
                       <td><NumBox value={it.quantity} onChange={(v) => onQty(i, v)} /></td>
                       <td><NumBox value={it.inVat} blankZero onChange={(v) => onInVat(i, v === "" ? 0 : v)} /></td>
                       <td><NumBox value={it.exVat} blankZero onChange={(v) => onExVat(i, v === "" ? 0 : v)} /></td>
@@ -296,7 +313,20 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
                 </tbody>
               </table>
             </div>
-            <button type="button" onClick={addItem} className="mt-2 text-sm text-muted hover:text-ink">+ เพิ่มรายการ</button>
+            {/* id ต้องไม่ซ้ำกับ EntryTab (hist-item-*) — แท็บบัญชี mount ค้างพร้อมกัน id ซ้ำ = ผูก list ผิดตัวเงียบ ๆ */}
+            <datalist id="edit-item-cats">{itemCatOptions.map((v) => (<option key={v} value={v} />))}</datalist>
+            <datalist id="edit-item-jobs">{itemJobOptions.map((v) => (<option key={v} value={v} />))}</datalist>
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+              <button type="button" onClick={addItem} className="text-sm text-muted hover:text-ink">+ เพิ่มรายการ</button>
+              {/* ทั้งบิลมักเป็นงานเดียวกัน — เติมทีเดียวแทนไล่พิมพ์ทีละแถว (ปุ่มปิดเมื่อช่องว่าง กันล้างค่าเดิมทั้งบิล) */}
+              <div className="flex flex-wrap items-center gap-1.5 text-xs text-faint">
+                <span>เติมทุกแถว:</span>
+                <div className="w-32"><TextInput list="edit-item-cats" value={bulkCat} onChange={(e) => setBulkCat(e.target.value)} placeholder="หมวดหมู่" className="py-1 text-sm" /></div>
+                <button type="button" onClick={() => fillAll({ itemCategory: bulkCat.trim() })} disabled={!bulkCat.trim()} className="rounded border border-line px-2 py-1 text-muted hover:bg-raised disabled:opacity-40">เติม</button>
+                <div className="w-32"><TextInput list="edit-item-jobs" value={bulkJob} onChange={(e) => setBulkJob(e.target.value)} placeholder="งาน" className="py-1 text-sm" /></div>
+                <button type="button" onClick={() => fillAll({ itemJob: bulkJob.trim() })} disabled={!bulkJob.trim()} className="rounded border border-line px-2 py-1 text-muted hover:bg-raised disabled:opacity-40">เติม</button>
+              </div>
+            </div>
 
             <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
               <Field label="ส่วนลดบิล"><NumBox value={discount} blankZero onChange={(v) => setDiscount(v === "" ? 0 : v)} /></Field>
