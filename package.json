@@ -20,6 +20,7 @@
     "provision:add-entity": "tsx scripts/add-entity.ts",
     "platform:grant-admin": "tsx scripts/grant-platform-admin.ts",
     "backup:tables": "tsx scripts/backup-tables.ts",
+    "restore:tenant": "tsx scripts/restore-tenant.ts",
     "migrate:split": "tsx migration/split-xlsx.ts",
     "migrate:import": "tsx migration/import-csv.ts",
     "migrate:reconcile": "tsx migration/reconcile.ts",

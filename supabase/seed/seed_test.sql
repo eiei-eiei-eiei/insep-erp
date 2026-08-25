@@ -31,10 +31,14 @@ insert into containers (container_id, container_type, capacity_l) values
   ('T-CON01', 'ถังหมักทดสอบ', 200)
 on conflict (container_id) do nothing;
 
+-- D78: ประเภทสุราเป็นตัวเลือก "ฟอร์มบัญชีผลิต" ให้ระบบแล้ว (กลั่น/แช่ คนละใบ)
+--   สถานการณ์ของไฟล์นี้เดินเส้นทาง **กลั่น** ทั้งคู่ (หมัก→กลั่น→ปรุง→บรรจุ) → ต้องเป็น 'สุรากลั่น'
+--   ชุดทดสอบเส้นทางสุราแช่อยู่ที่ seed_fermented.sql (สินค้า T-PROD03)
 insert into products (product_id, name, degree, bottle_size_l, liquor_type, liquor_kind) values
-  ('T-PROD01', 'สาโททดสอบ', 40, 0.75, 'สุราแช่', 'สาโท'),
+  ('T-PROD01', 'สาโททดสอบ', 40, 0.75, 'สุรากลั่น', 'สาโท'),
   ('T-PROD02', 'ยินทดสอบ', 40, 0.70, 'สุรากลั่น', 'สุราขาว')
-on conflict (product_id) do nothing;
+on conflict (product_id) do update
+  set liquor_type = excluded.liquor_type;
 
 -- ── scenario เดือน 2026-07 (สาโททดสอบ) ────────────────────────────────────────────
 -- วัตถุดิบ: ยกมา ก.ค. + รับ + เบิกหมัก + เสียหาย

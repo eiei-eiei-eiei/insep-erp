@@ -1,4 +1,5 @@
 import "server-only";
+import { forwardCatsOf, FORWARD_CAT_KIND } from "@/lib/accounting/forwardCats";
 import { createClient } from "@/lib/supabase/server";
 import {
   taxReport,
@@ -95,6 +96,9 @@ export async function getBootstrap() {
   const s = settings.data ?? [];
   const byKind = (k: string) => s.filter((x) => x.kind === k).map((x) => x.value as string);
   const taxAccounts = byKind("tax_account");
+  // D80: หมวดที่จุดชนวนรับวัตถุดิบเข้าสต็อกผลิต — ตั้งเองได้ ไม่ตั้ง = ค่าปริยายในโค้ด
+  const forwardCatsSet = byKind(FORWARD_CAT_KIND);          // ที่ลูกค้าตั้งเองจริง ๆ (อาจว่าง)
+  const forwardCats = forwardCatsOf(forwardCatsSet);        // ที่มีผลจริง (ว่าง = ค่าปริยาย)
 
   return {
     role,
@@ -106,6 +110,8 @@ export async function getBootstrap() {
     incomeCats: byKind("income_cat"),
     whtRates: byKind("wht_rate"),
     taxAccounts: taxAccounts.length ? taxAccounts : ["บัญชีบริษัท"],
+    forwardCats,
+    forwardCatsSet,
     // ★ แบรนด์ / กิจการบนเอกสาร / LINE ไม่อยู่ที่นี่แล้ว — ย้ายไป app/(app)/settings/settings-data.ts (D63)
   };
 }

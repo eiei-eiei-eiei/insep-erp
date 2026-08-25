@@ -16,6 +16,8 @@ import {
   getRecentDilutes,
   getRecentProducts,
   getRecentFerments,
+  getRecentDraws,
+  getRemainingFermentedVol,
 } from "./data";
 
 export type SaveResult = { ok: boolean; error?: string; data?: unknown };
@@ -402,6 +404,82 @@ export async function recomputeStockAction(): Promise<SaveResult> {
   const supabase = await db();
   const { error } = await supabase.rpc("recompute_stock_product");
   if (error) return fail(error.message);
+  revalidatePath("/production");
+  return { ok: true };
+}
+
+// ── D78 สุราแช่: รินน้ำสุราออกจากถังหมัก (+ ปรุงให้พร้อมบรรจุ) ────────────────────────
+export async function getRecentDrawsAction() { return getRecentDraws(); }
+export async function getRemainingFermentedVolAction(productName: string): Promise<number> {
+  return getRemainingFermentedVol(productName);
+}
+
+/** ผ่าน RPC เพราะต้องแปลง unique_violation เป็นข้อความไทย (1 batch = 1 แถว เหมือน closeBatchAction) */
+export async function saveDrawAction(input: {
+  date: string;
+  productName: string;
+  batch: string;
+  vol: number;
+  abv: number;
+  adjustDate?: string | null;
+  water?: number | null;
+  finalVol?: number | null;
+  finalAbv?: number | null;
+  note?: string | null;
+}): Promise<SaveResult> {
+  const supabase = await db();
+  const { data, error } = await supabase.rpc("fn_draw_fermented", {
+    p_date: input.date,
+    p_product_name: input.productName,
+    p_batch: input.batch,
+    p_vol: input.vol,
+    p_abv: input.abv,
+    p_adjust_date: input.adjustDate || null,
+    p_water: input.water ?? null,
+    p_final_vol: input.finalVol ?? null,
+    p_final_abv: input.finalAbv ?? null,
+    p_note: input.note || null,
+  });
+  if (error) return fail(mapDbError(error));
+  const res = data as { ok: boolean; error?: string };
+  if (!res.ok) return fail(res.error ?? "บันทึกการรินน้ำสุราไม่สำเร็จ");
+  revalidatePath("/production");
+  return { ok: true, data };
+}
+
+export async function updateDrawLogAction(id: number, patch: {
+  date: string; productName: string; batch: string;
+  vol: number | null; abv: number | null;
+  adjustDate?: string | null; water: number | null;
+  finalVol: number | null; finalAbv: number | null; note?: string;
+}): Promise<SaveResult> {
+  const supabase = await db();
+  const { error } = await supabase.from("log_ferment_draw").update({
+    draw_date: patch.date,
+    product_name: patch.productName,
+    batch: patch.batch,
+    vol: patch.vol,
+    abv: patch.abv,
+    adjust_date: patch.adjustDate || null,
+    water: patch.water,
+    final_vol: patch.finalVol,
+    final_abv: patch.finalAbv,
+    note: patch.note || null,
+  }).eq("id", id);
+  // 23505 = ชน unique(batch) — ข้อความกลางว่า "ชื่อ/เลขที่ซ้ำ" ไม่บอกว่าซ้ำเรื่องอะไร
+  // ที่นี่รู้อยู่แล้วว่าซ้ำคือ "ครั้งที่หมัก" → บอกให้ตรงเรื่อง (เหมือน fn_draw_fermented)
+  if (error?.code === "23505") {
+    return fail(`ครั้งที่หมัก "${patch.batch}" รินไปแล้ว (1 batch = 1 แถว ตามกฎ ภส.)`);
+  }
+  if (error) return fail(mapDbError(error));
+  revalidatePath("/production");
+  return { ok: true };
+}
+
+export async function deleteDrawLogAction(id: number): Promise<SaveResult> {
+  const supabase = await db();
+  const { error } = await supabase.from("log_ferment_draw").delete().eq("id", id);
+  if (error) return fail(mapDbError(error));
   revalidatePath("/production");
   return { ok: true };
 }

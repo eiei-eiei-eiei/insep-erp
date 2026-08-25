@@ -27,11 +27,13 @@ type RunRow = {
   abv20: number | null;
   cum_vol: number | null;
   vapor_temp: number | null;
+  /** D80 — น้ำหมักที่เข้าหม้อ (มีเฉพาะแถว "เริ่มกลั่น") · ฐานของ Yield */
+  ferm_charge: number | null;
   note: string | null;
 };
 
 export function DistillTab({
-  pending: batches,
+  pending: allBatches,
   batch,
   onBatchChange,
 }: {
@@ -39,6 +41,15 @@ export function DistillTab({
   batch: string;              // batch ร่วมของ workspace (เลือกครั้งเดียวใช้ทุกแท็บ)
   onBatchChange: (b: string) => void;
 }) {
+  /**
+   * D80 — batch ของ **สุราแช่** ต้องไม่โผล่ที่นี่
+   *
+   * 🚨 ของเดิมเสนอให้เลือกได้ทั้งหมด และปิด batch ได้จริง → ได้แถวใน `log_distill`
+   *    ของสินค้าสุราแช่ = ยอดไปโผล่ในฟอร์ม **บัญชีผลิตสุรากลั่น** ผิดใบ โดยไม่มีอะไรเตือน
+   *    (ฝั่งแท็บ "รินน้ำสุราแช่" กรองถูกอยู่แล้วตั้งแต่ D78 — ขาดแค่ด้านนี้)
+   * ★ กรองที่นี่ ไม่ใช่ที่ getPendingBatches — ฟังก์ชันนั้นใช้ร่วมกับแท็บติดตามหมักด้วย
+   */
+  const batches = allBatches.filter((b) => !b.fermented);
   const { pending, msg, run, setMsg } = useSaver();
   const setBatch = onBatchChange;
   const [readings, setReadings] = useState<RunRow[]>([]);
@@ -52,6 +63,8 @@ export function DistillTab({
   const [cumVol, setCumVol] = useState("");
   const [vaporTemp, setVaporTemp] = useState("");
   const [note, setNote] = useState("");
+  // D80 — น้ำหมักที่เข้าหม้อ (ferm_charge) · ฐานของ Yield ในหน้าประวัติ/เทียบ
+  const [fermCharge, setFermCharge] = useState("");
 
   // close batch
   const [closeDate, setCloseDate] = useState(todayISO());
@@ -104,10 +117,15 @@ export function DistillTab({
     if (!batch) return;
     run(
       async () => {
-        const res = await startDistillRunAction({ batch, productName });
+        const res = await startDistillRunAction({
+          batch,
+          productName,
+          fermCharge: fermCharge ? parseFloat(fermCharge) : null,
+        });
         if (res.ok) {
           const d = res.data as { runId: string; potNo: number };
           setActiveRun(d);
+          setFermCharge("");
           await loadReadings(batch);
         }
         return res;
@@ -188,6 +206,19 @@ export function DistillTab({
               ))}
             </Select>
           </Field>
+          {/*
+            D80 — ช่องนี้เคย "ไม่มีอยู่จริง" สำหรับผู้ใช้: คอลัมน์ `log_distill_run.ferm_charge` มี ·
+            `startDistillRunAction` รับพารามิเตอร์ `fermCharge` และเขียนลงแถว "เริ่มกลั่น" อยู่แล้ว ·
+            สูตร Yield อ่านค่านี้ · golden test มี — **แต่หน้าจอไม่เคยส่งค่านี้เลยสักครั้ง**
+            → คอลัมน์ Yield ในหน้า ประวัติ/เทียบ ขึ้น "—" ตลอดกาลสำหรับทุกคน (ตระกูล D74/D77)
+            ★ อยู่คู่ปุ่มเริ่มหม้อ เพราะแถว "เริ่มกลั่น" ถูกสร้างตอนกดปุ่มนี้ (ไม่ใช่จากฟอร์มบันทึกค่า)
+              และเป็นจังหวะที่ผู้ใช้รู้ปริมาณน้ำหมักที่เทเข้าหม้อพอดี
+          */}
+          {batch && (
+            <Field label="น้ำหมักที่เข้าหม้อ (ล.) — ไม่บังคับ">
+              <NumInput value={fermCharge} onChange={(e) => setFermCharge(e.target.value)} />
+            </Field>
+          )}
           {batch && (
             <div className="flex items-end">
               <SaveButton pending={pending} onClick={startPot}>
@@ -201,6 +232,12 @@ export function DistillTab({
             </div>
           )}
         </div>
+        {batch && (
+          <p className="mt-2 text-xs text-faint">
+            กรอก <b>น้ำหมักที่เข้าหม้อ</b> ก่อนกดเริ่มหม้อ เพื่อให้หน้า <b>ประวัติ/เทียบ</b> คำนวณ Yield ให้ได้
+            (ไม่กรอกก็กลั่นได้ตามปกติ — แค่ช่อง Yield จะว่าง)
+          </p>
+        )}
       </Card>
 
       {batch && activeRun && (
@@ -267,6 +304,7 @@ export function DistillTab({
                     <th>อุณหภูมิ</th>
                     <th>ดีกรี@20</th>
                     <th>สะสม</th>
+                    <th>น้ำหมักเข้าหม้อ</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -279,6 +317,7 @@ export function DistillTab({
                       <td>{r.temp_spirit ?? "—"}</td>
                       <td>{r.abv20 ?? "—"}</td>
                       <td>{r.cum_vol ?? "—"}</td>
+                      <td>{r.ferm_charge ?? "—"}</td>
                       <td><button onClick={() => delReading(r)} className="text-crit hover:text-crit" title="ลบค่านี้"><IconTrash size={16} /></button></td>
                     </tr>
                   ))}

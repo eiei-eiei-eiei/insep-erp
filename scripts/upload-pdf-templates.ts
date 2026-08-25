@@ -44,6 +44,7 @@ const MAPPING: Item[] = [
   { src: "THSARABUNIT๙.TTF", dest: "fonts/THSARABUNIT9.TTF" }, // เลขไทย (สำรอง)
   { src: "ภส_07-01ทับ1.pdf", dest: "excise/pso_07-01_1.pdf" },
   { src: "ภส_07-02ทับ1.pdf", dest: "excise/pso_07-02_1.pdf" },
+  { src: "ภส_07-02ทับ11.pdf", dest: "excise/pso_07-02_1_chae.pdf" }, // สุราแช่ (D78)
   { src: "ภส_07-02ทับ12.pdf", dest: "excise/pso_07-02_12.pdf" },
   { src: "ภส_07-04ทับ1.pdf", dest: "excise/pso_07-04_1.pdf" },
   { src: "approve_wh3_081156.pdf", dest: "wht/wh3_template.pdf", confirm: true },

@@ -355,6 +355,26 @@ describe("ชั้น 3 — positive control (กันเทสผ่านเ
     ).not.toBeNull();
   });
 
+  it("★ D78 กติกาเหล็กเดียวกันกับสุราแช่: รินครั้งที่หมักซ้ำในกิจการเดียวกันต้องถูกบล็อก", async () => {
+    const { error } = await asA.from("log_ferment_draw").insert({
+      tenant_id: A.tenantId, entity_id: A.entityId,
+      draw_date: "2026-02-01", product_name: "สุราทดสอบ", batch: A.batch, vol: 10, abv: 12,
+    });
+    expect(
+      error,
+      "รินครั้งที่หมักซ้ำต้อง insert ไม่ผ่าน — ฟอร์ม ภส. จะหักน้ำหมักซ้ำ",
+    ).not.toBeNull();
+  });
+
+  it("★ D78 RPC fn_draw_fermented ก็ต้องบล็อกซ้ำ และคืนข้อความไทย (ไม่ใช่ error ดิบ)", async () => {
+    const { data, error } = await asA.rpc("fn_draw_fermented", {
+      p_date: "2026-02-02", p_product_name: "สุราทดสอบ", p_batch: A.batch, p_vol: 10, p_abv: 12,
+    });
+    expect(error).toBeNull();
+    expect((data as { ok: boolean }).ok).toBe(false);
+    expect((data as { error: string }).error).toContain("รินไปแล้ว");
+  });
+
   it("เลขรันเอกสารของ A กับ B ไม่กินกัน", async () => {
     const first = await asA.rpc("fn_next_sales_doc", { p_prefix: "QU" });
     expect(first.error).toBeNull();

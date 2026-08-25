@@ -90,12 +90,12 @@ export const TENANT_TABLES = [
   "entities", "bank_accounts", "app_settings", "contacts", "counters", "integration_log",
   "materials", "containers", "products",
   "log_material", "log_ferment", "log_distill", "log_distill_run",
-  "log_ferment_monitor", "log_dilute", "log_product", "stock_product",
+  "log_ferment_monitor", "log_dilute", "log_ferment_draw", "log_product", "stock_product",
   "transactions", "transaction_items", "tax_summaries", "wht_certificates",
   "sale_menu", "sales_orders", "sales_order_items", "warehouse_stock", "stock_moves",
   "pay_inputs", "pay_components", "pay_rates", "pay_variables", "pay_post_legs",
   "employees", "payroll_periods", "payroll_items",
-  "report_runs", "edit_log", "snapshots", "profiles",
+  "report_runs", "edit_log", "profiles",
 ] as const;
 
 const must = (label: string, error: { message: string } | null) => {
@@ -217,6 +217,11 @@ export async function seedTenant(
   })).error);
   must("log_distill", (await db.from("log_distill").insert({
     ...base, distill_date: "2026-01-01", product_name: "สุราทดสอบ", batch, vol: 100, abv: 40,
+  })).error);
+  // D78 สุราแช่: batch เดียวกันข้าม tenant ต้องรินได้ทั้งคู่ (unique เป็น tenant+entity+batch)
+  //   ใช้ batchOwn เพื่อไม่ชนกับ batch ที่ log_distill ใช้อยู่ในเส้นทางกลั่นของ tenant เดียวกัน
+  must("log_ferment_draw", (await db.from("log_ferment_draw").insert({
+    ...base, draw_date: "2026-01-02", product_name: "สุราทดสอบ", batch, vol: 80, abv: 12,
   })).error);
   must("log_product", (await db.from("log_product").insert({
     ...base, doc_date: "2026-01-01", trans_type: "รับ", product_id: productId, amount: 50,

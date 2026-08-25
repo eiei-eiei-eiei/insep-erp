@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { Container, Material, PendingBatch, Product, StockRow } from "./types";
 import { MaterialTab } from "./MaterialTab";
@@ -8,6 +8,7 @@ import { FermentTab } from "./FermentTab";
 import { MonitorTab } from "./MonitorTab";
 import { DistillTab } from "./DistillTab";
 import { DiluteTab } from "./DiluteTab";
+import { DrawTab } from "./DrawTab";
 import { ProductTab } from "./ProductTab";
 import { StockTab } from "./StockTab";
 import { MasterTab } from "./MasterTab";
@@ -15,11 +16,11 @@ import { HistoryTab } from "./HistoryTab";
 import { BoardTab } from "./BoardTab";
 import { ExciseTab } from "./ExciseTab";
 import { IconStill } from "@/lib/shared/icons";
-import { PRODUCTION_TABS, labelFromSlug, slugFromLabel } from "@/lib/shared/tabs";
+import { tabsFor, labelFromSlug, slugFromLabel } from "@/lib/shared/tabs";
+import { processesOf } from "@/lib/production/calc";
 import { useTabUrl } from "../../_components/useTabUrl";
 
 // ★ ลำดับ/ชื่อแท็บมาจากทะเบียนกลาง lib/shared/tabs — แถบเมนูด้านบนอ่านชุดเดียวกันไปทำดร็อปดาวน์
-const TABS = PRODUCTION_TABS.map((t) => t.label);
 type Tab = string;
 
 export function ProductionApp({
@@ -36,6 +37,12 @@ export function ProductionApp({
   stock: StockRow[];
 }) {
   const sp = useSearchParams();
+  // D78: ซ่อนแท็บของเส้นทางที่โรงนี้ไม่ได้ทำ — ตัดสินจาก **ประเภทสุราของสินค้าจริง**
+  //   (ยังไม่มีสินค้า = เห็นครบ · แถบเมนูด้านบนกรองด้วยชุดเดียวกันจาก layout)
+  const TABS = useMemo(
+    () => tabsFor("production", "main", processesOf(products.map((p) => p.liquor_type))).map((t) => t.label),
+    [products],
+  );
   const [tab, setTab] = useState<Tab>(() => labelFromSlug("production", sp.get("tab")) ?? "กระดาน batch");
   useTabUrl("production", tab, setTab, (l) => slugFromLabel("production", l));
 
@@ -84,6 +91,9 @@ export function ProductionApp({
       {visited.has("ติดตามหมัก") && <div className={show("ติดตามหมัก")}><MonitorTab pending={pending} batch={batch} onBatchChange={setBatch} /></div>}
       {visited.has("กลั่น") && <div className={show("กลั่น")}><DistillTab pending={pending} batch={batch} onBatchChange={setBatch} /></div>}
       {visited.has("ปรุง/ปรับดีกรี") && <div className={show("ปรุง/ปรับดีกรี")}><DiluteTab products={products} /></div>}
+      {visited.has("รินน้ำสุราแช่") && (
+        <div className={show("รินน้ำสุราแช่")}><DrawTab products={products} pending={pending} batch={batch} onBatchChange={setBatch} /></div>
+      )}
       {visited.has("บรรจุ/จ่าย") && <div className={show("บรรจุ/จ่าย")}><ProductTab products={products} /></div>}
       {visited.has("ประวัติ/เทียบ") && <div className={show("ประวัติ/เทียบ")}><HistoryTab products={products} /></div>}
       {visited.has("สต็อก") && <div className={show("สต็อก")}><StockTab stock={stock} /></div>}

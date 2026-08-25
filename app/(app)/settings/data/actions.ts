@@ -1,10 +1,9 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createRawClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { takeSnapshot, restoreSnapshot, previewRestore } from "@/lib/snapshot/engine";
+import { buildEnvelope, EXPORT_TABLES, type ExportTenant } from "@/lib/export/tenantExport";
 
 export type Res<T = unknown> = { ok: boolean; error?: string; data?: T };
 
@@ -43,65 +42,58 @@ async function verifyPassword(email: string, password: string) {
   if (error) throw new Error("รหัสผ่านไม่ถูกต้อง");
 }
 
-/** รายการ snapshot (ไม่โหลด payload) */
-export async function listSnapshotsAction(): Promise<Res> {
-  try {
-    const me = await requireMainUser();
-    const admin = createAdminClient();
-    const { data, error } = await admin
-      .from("snapshots")
-      .select("id, name, created_at, created_by, is_auto, row_counts")
-      .eq("tenant_id", me.tenantId)
-      .order("created_at", { ascending: false });
-    if (error) throw new Error(error.message);
-    return { ok: true, data };
-  } catch (e) { return { ok: false, error: msg(e) }; }
-}
+/** limit ปริยายของ PostgREST — ต้องวนหน้า ไม่งั้นตารางใหญ่ขาดเงียบ ๆ (เหมือน scripts/backup-tables.ts) */
+const PAGE = 1000;
 
-/** จับ snapshot สภาพปัจจุบัน (ต้องกรอกรหัส) */
-export async function createSnapshotAction(name: string, password: string): Promise<Res> {
-  try {
-    const me = await requireMainUser();
-    await verifyPassword(me.email, password);
-    const clean = (name || "").trim() || `snapshot ${new Date().toLocaleString("th-TH")}`;
-    const data = await takeSnapshot({ name: clean, createdBy: me.username, tenantId: me.tenantId });
-    return { ok: true, data };
-  } catch (e) { return { ok: false, error: msg(e) }; }
-}
+export type ExportResult = {
+  fileJson: string;
+  counts: Record<string, number>;
+  slug: string;
+  name: string;
+};
 
-/** preview ผลกระทบก่อน restore (ไม่ต้องรหัส — อ่านอย่างเดียว) */
-export async function previewRestoreAction(id: number): Promise<Res> {
-  try {
-    const me = await requireMainUser();
-    return { ok: true, data: await previewRestore(id, me.tenantId) };
-  } catch (e) { return { ok: false, error: msg(e) }; }
-}
-
-/** ย้อนข้อมูลกลับ (ต้องกรอกรหัส) — auto-snapshot สภาพปัจจุบันก่อนเสมอ */
-export async function restoreSnapshotAction(id: number, password: string): Promise<Res> {
-  try {
-    const me = await requireMainUser();
-    await verifyPassword(me.email, password);
-    await takeSnapshot({
-      name: `[auto] ก่อนย้อนกลับ #${id} · ${new Date().toLocaleString("th-TH")}`,
-      createdBy: me.username,
-      tenantId: me.tenantId,
-      isAuto: true,
-    });
-    await restoreSnapshot(id, me.tenantId);
-    revalidatePath("/", "layout");
-    return { ok: true };
-  } catch (e) { return { ok: false, error: msg(e) }; }
-}
-
-/** ลบ snapshot (ต้องกรอกรหัส) */
-export async function deleteSnapshotAction(id: number, password: string): Promise<Res> {
+/**
+ * ดาวน์โหลดข้อมูลของกิจการตัวเองทั้งก้อน (D82)
+ *
+ * 🚨 service role = bypass RLS → **ต้อง `.eq("tenant_id", …)` ทุกตาราง ห้ามลืมแม้แต่บรรทัดเดียว**
+ *    ลืม 1 จุด = ลูกค้าเจ้าหนึ่งได้ข้อมูลของทุกเจ้าติดไปในไฟล์ที่ดาวน์โหลด
+ *
+ * 🪤 ต้องวน `.range()` — PostgREST คืนแค่ 1000 แถวแรกโดยไม่แจ้ง error
+ *    ไฟล์สำรองที่ขาดแถวคือไฟล์ที่ **ดูเหมือนใช้ได้** จนถึงวันที่ต้องใช้จริง
+ */
+export async function exportTenantDataAction(password: string): Promise<Res<ExportResult>> {
   try {
     const me = await requireMainUser();
     await verifyPassword(me.email, password);
     const admin = createAdminClient();
-    const { error } = await admin.from("snapshots").delete().eq("id", id).eq("tenant_id", me.tenantId);
-    if (error) throw new Error(error.message);
-    return { ok: true };
+
+    const { data: t, error: tErr } = await admin
+      .from("tenants").select("id, slug, name").eq("id", me.tenantId).single();
+    if (tErr || !t) throw new Error("ไม่พบข้อมูลกิจการ");
+    const tenant: ExportTenant = { id: t.id as string, slug: t.slug as string, name: t.name as string };
+
+    const tables: Record<string, Record<string, unknown>[]> = {};
+    for (const table of EXPORT_TABLES) {
+      const rows: Record<string, unknown>[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await admin
+          .from(table).select("*").eq("tenant_id", me.tenantId).range(from, from + PAGE - 1);
+        if (error) throw new Error(`ดึงข้อมูล ${table}: ${error.message}`);
+        rows.push(...((data ?? []) as Record<string, unknown>[]));
+        if (!data || data.length < PAGE) break;
+      }
+      tables[table] = rows;
+    }
+
+    const envelope = buildEnvelope({ tenant, exportedBy: me.username, tables });
+    return {
+      ok: true,
+      data: {
+        fileJson: JSON.stringify(envelope, null, 1),
+        counts: envelope.counts,
+        slug: tenant.slug,
+        name: tenant.name,
+      },
+    };
   } catch (e) { return { ok: false, error: msg(e) }; }
 }

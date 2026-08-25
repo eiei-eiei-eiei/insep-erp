@@ -6,7 +6,7 @@ import {
   Card, Field, Select, NumBox, TextInput, Empty, Stat, RowBtn, SaveButton, Msg, useSaver, fmt, EscToClose,
 } from "@/lib/shared/ui";
 import {
-  pnd1Rows, sso110Rows, pnd1kRows, wht50Totals, yearBEfromCE,
+  pnd1Rows, sso110Rows, pnd1kRows, wht50Totals, yearBEfromCE, empDisplayName, countsForFiling,
   type FilingItem, type FilingEmployee,
 } from "@/lib/payroll/filings";
 import {
@@ -42,15 +42,24 @@ export function FilingTab({ periods, active }: { periods: PeriodRow[]; active: b
   const [doc, setDoc] = useState<Doc>("pnd1");
   const monthly = doc === "pnd1" || doc === "sso110";
 
-  const [periodId, setPeriodId] = useState(periods[0]?.periodId ?? "");
-  const [year, setYear] = useState(periods[0]?.year ?? new Date().getFullYear());
+  // 🚨 งวดร่างต้องเลือกไม่ได้ตั้งแต่แรก — เอกสารยื่นนับเฉพาะงวดที่ลงบัญชีแล้ว (D81)
+  //    `periods` มี status ติดมาจาก getPeriods() อยู่แล้ว ไม่ต้อง query เพิ่ม
+  const filedPeriods = periods.filter((p) => countsForFiling(p.status));
+
+  const [periodId, setPeriodId] = useState(filedPeriods[0]?.periodId ?? "");
+  const [year, setYear] = useState(filedPeriods[0]?.year ?? new Date().getFullYear());
 
   const [entity, setEntity] = useState<FilingEntity>(EMPTY_ENTITY);
   const [items, setItems] = useState<FilingItem[]>([]);
   const [emps, setEmps] = useState<FilingEmployee[]>([]);
   const [certs, setCerts] = useState<EmpCertRow[]>([]);
   const [period, setPeriod] = useState<PeriodRow | null>(null);
+  const [draftPeriodIds, setDraftPeriodIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  /** ข้อมูลที่ถืออยู่ตอนนี้เป็นของอะไร — เซ็ตพร้อมข้อมูลเสมอ (ดู `ready` ข้างล่าง) */
+  const [loadedKey, setLoadedKey] = useState("");
+
+  const key = monthly ? `p:${periodId}` : `y:${year}`;
 
   const load = useCallback(() => {
     if (monthly && !periodId) return;
@@ -59,22 +68,37 @@ export function FilingTab({ periods, active }: { periods: PeriodRow[]; active: b
       ? getFilingPeriodAction(periodId).then((d) => {
           setPeriod(d.period);
           setCerts([]);
+          setDraftPeriodIds([]);
           return d;
         })
       : getFilingYearAction(year).then((d) => {
           setPeriod(null);
           setCerts(d.certs);
+          setDraftPeriodIds(d.draftPeriodIds);
           return d;
         });
     p.then((d) => {
       setEntity(d.entity);
       setItems(d.items);
       setEmps(d.emps);
+      setLoadedKey(monthly ? `p:${periodId}` : `y:${year}`);
       setLoading(false);
     });
   }, [monthly, periodId, year]);
 
   useEffect(() => { if (active) load(); }, [active, load]);
+
+  /**
+   * 🚨 ห้าม render เอกสารด้วยข้อมูลของเอกสารคนละชนิด
+   *
+   * `setLoading(true)` อยู่ใน `load()` ซึ่งถูกเรียกจาก useEffect = **หลัง** render ที่ `doc`
+   * เปลี่ยนไปแล้ว → เฟรมนั้น doc เป็นรายเดือนแต่ `items` ยังเป็นชุดทั้งปี ทำให้ใบแนบ
+   * ภ.ง.ด.1 ของเดือนเดียวขึ้นยอด**ทั้งปี** ชั่วขณะ (React ฟ้อง duplicate key มาตลอด)
+   * → กดปุ่มคัดลอก/พิมพ์จังหวะนั้น = ได้เอกสารยื่นที่ยอดผิด
+   *
+   * 🪤 กันทั้งคลาสด้วยการผูก "ข้อมูล" กับ "ข้อมูลนี้เป็นของอะไร" ไว้ด้วยกัน — เช็ค `loading` อย่างเดียวไม่พอ
+   */
+  const ready = !loading && loadedKey === key;
 
   const monthLabel = period ? thaiMonthYear(period.month, yearBEfromCE(period.year)) : "";
   const yearBE = yearBEfromCE(year);
@@ -93,8 +117,8 @@ export function FilingTab({ periods, active }: { periods: PeriodRow[]; active: b
           {monthly ? (
             <Field label="งวด">
               <Select value={periodId} onChange={(e) => setPeriodId(e.target.value)}>
-                {periods.length === 0 && <option value="">— ยังไม่มีงวด —</option>}
-                {periods.map((p) => (
+                {filedPeriods.length === 0 && <option value="">— ยังไม่มีงวดที่ลงบัญชีแล้ว —</option>}
+                {filedPeriods.map((p) => (
                   <option key={p.periodId} value={p.periodId}>
                     {thaiMonthYear(p.month, yearBEfromCE(p.year))}
                   </option>
@@ -108,27 +132,35 @@ export function FilingTab({ periods, active }: { periods: PeriodRow[]; active: b
           )}
         </div>
         <p className="mt-2 text-xs text-faint">
-          ตัวเลขมาจากงวดที่ <b>กดคำนวณ &amp; บันทึกแล้ว</b> เท่านั้น — งวดร่างยังไม่นับ
+          นับเฉพาะงวดที่ <b>ลงบัญชีแล้ว</b> (ครบทุกขาหรือบางขาก็ได้) —
+          งวดร่างที่ยังไม่ลงบัญชีสักขา<b>ไม่นับ</b> และเลือกที่นี่ไม่ได้ ·
+          ต้องไปลงบัญชีที่แท็บ <b>งวดจ่าย</b> ก่อน
           {!monthly && <> · ปี {year} = พ.ศ. {yearBE}</>}
         </p>
       </Card>
 
       {loading && <p className="text-sm text-faint">กำลังโหลด…</p>}
 
-      {!loading && items.length === 0 && (
-        <Empty>— ไม่มีงวดที่บันทึกไว้{monthly ? "ในงวดนี้" : ` ในปี ${year}`} —</Empty>
+      {!loading && !monthly && <DraftNote periodIds={draftPeriodIds} />}
+
+      {ready && items.length === 0 && (
+        <Empty>
+          {filedPeriods.length === 0
+            ? "— ยังไม่มีงวดที่ลงบัญชีแล้ว จึงยังออกเอกสารยื่นไม่ได้ —"
+            : `— ไม่มีงวดที่ลงบัญชีแล้ว${monthly ? "ในงวดนี้" : ` ในปี ${year}`} —`}
+        </Empty>
       )}
 
-      {!loading && items.length > 0 && doc === "pnd1" && (
+      {ready && items.length > 0 && doc === "pnd1" && (
         <Pnd1View entity={entity} items={items} emps={emps} monthLabel={monthLabel} />
       )}
-      {!loading && items.length > 0 && doc === "sso110" && (
+      {ready && items.length > 0 && doc === "sso110" && (
         <Sso110View entity={entity} items={items} emps={emps} monthLabel={monthLabel} />
       )}
-      {!loading && items.length > 0 && doc === "pnd1k" && (
+      {ready && items.length > 0 && doc === "pnd1k" && (
         <Pnd1kView entity={entity} items={items} emps={emps} yearBE={yearBE} />
       )}
-      {!loading && items.length > 0 && doc === "wht50" && (
+      {ready && items.length > 0 && doc === "wht50" && (
         <Wht50View
           entity={entity} items={items} emps={emps} yearBE={yearBE}
           certs={certs} onIssued={load}
@@ -169,6 +201,31 @@ function FallbackNote({ show }: { show: boolean }) {
       ⚠ งวดนี้บันทึกไว้ก่อนระบบแยก &ldquo;ฐานภาษี&rdquo; ออกจาก &ldquo;รวมเงินได้&rdquo; —
       ช่องเงินได้จึงใช้<b>ยอดรวมเงินได้</b>แทน · ถ้ามีรายการที่ไม่ติดธงภาษี
       ให้กด <b>คำนวณ &amp; บันทึก</b> งวดนั้นใหม่เพื่อให้ตัวเลขตรง
+    </div>
+  );
+}
+
+/**
+ * ป้ายบอกว่ายอดทั้งปี **ข้ามงวดไหนไปบ้าง** (D81)
+ *
+ * 🚨 ห้ามข้ามงวดเงียบ ๆ — ผู้ใช้เห็นยอดปีในแท็บ *รายงาน* (นับทุกงวดที่บันทึกไว้)
+ *    ไม่ตรงกับแท็บนี้ (นับเฉพาะที่ลงบัญชีแล้ว) แล้วไล่หาสาเหตุไม่เจอ
+ *    บทเรียน D75: ต่างกันได้ แต่ต้องบอกให้ชัดว่าอันไหนคืออันไหน
+ */
+function DraftNote({ periodIds }: { periodIds: string[] }) {
+  if (periodIds.length === 0) return null;
+  const months = periodIds
+    .map((id) => {
+      const m = /^PR-(\d{4})-(\d{2})$/.exec(id);
+      return m ? thaiMonthYear(Number(m[2]), yearBEfromCE(Number(m[1]))) : id;
+    })
+    .join(" · ");
+  return (
+    <div className="rounded-lg bg-warn-bg px-3 py-2 text-xs text-warn">
+      ⚠ ยอดทั้งปีนี้<b>ไม่รวม {periodIds.length} งวดที่ยังเป็นงวดร่าง</b> — {months}
+      <br />
+      งวดร่าง = ยังไม่ได้ลงบัญชีสักขา จึงยังไม่นับเป็นเงินได้ที่จ่ายจริง ·
+      ถ้าจ่ายไปแล้วให้ไป<b>ลงบัญชีที่แท็บ งวดจ่าย</b> แล้วยอดจะรวมให้เอง
     </div>
   );
 }
@@ -404,9 +461,14 @@ function Wht50View({
           <tbody>
             {empIds.map((empId) => {
               const t = wht50Totals(items, empId);
-              const e = emps.find((x) => x.empId === empId);
-              const name = items.find((i) => i.empId === empId)?.empName || e?.name || empId;
               const cert = certOf(empId);
+              // ชื่อปัจจุบันเสมอ · snapshot เป็น fallback ตอนพนักงานถูกลบ (D80)
+              // 🪤 ใบที่ **ออกไปแล้ว** ต้องคงชื่อที่พิมพ์ลงกระดาษไปแล้ว — ใบนั้นอยู่ในมือพนักงานจริง
+              //    พิมพ์ซ้ำต้องได้ข้อความเดิมเป๊ะ ไม่งั้นเอกสาร 2 ใบเลขเดียวกันชื่อไม่ตรงกัน
+              const name =
+                cert?.empName ||
+                empDisplayName(emps, empId, items.find((i) => i.empId === empId)?.empName) ||
+                empId;
               return (
                 <tr key={empId}>
                   <td className="tnum">{empId}</td>

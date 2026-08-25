@@ -109,6 +109,45 @@ export async function saveDocEntityAction(entityId: string): Promise<SaveResult>
 }
 
 /**
+ * กิจการ + บัญชีเงินที่ **รับรายได้จากการขาย** (D80)
+ *
+ * 🚨 ก่อนหน้านี้ค่าคู่นี้ (`sales_revenue_entity` / `sales_revenue_account`) **ไม่มีที่ไหนเขียนเลย
+ *    สักจุดในทั้งระบบ** — ตั้งได้ทางเดียวคือยิง SQL เอง · ผลคือลูกค้าใหม่กด "รับมัดจำ & ส่งคลัง"
+ *    แล้วตัน ปิดการขายใบแรกไม่ได้เลย และข้อความ error ยังชี้ให้ไปเปิดไฟล์เอกสารแทนหน้าตั้งค่า
+ *    (ตระกูล D74/D77: ฟีเจอร์ที่ไม่มีทางเข้าถึง = บั๊กที่ยังไม่ถูกนับ)
+ *
+ * 🪤 **แยกจาก `saveDocEntityAction` โดยตั้งใจ** ด้วยเหตุผลเดียวกับ D63 —
+ *    "กิจการที่ออกเอกสาร" กับ "กิจการที่รับเงิน" เป็นคนละเรื่องและตั้งต่างกันได้
+ *    รวมเป็นดร็อปดาวน์เดียวเมื่อไหร่ = แก้อันหนึ่งแล้วอีกอันย้ายตามเงียบ ๆ
+ *
+ * ★ ชื่อบัญชีต้องตรงกับ `bank_accounts.account_name` เป๊ะ (ฝั่งขายเอาไปเขียนลง
+ *   `transactions.account_name` ตรง ๆ) → หน้าจอให้เลือกจากดร็อปดาวน์ ไม่ให้พิมพ์เอง
+ */
+export async function saveSalesRevenueAction(input: {
+  entityId: string;
+  accountName: string;
+}): Promise<SaveResult> {
+  const supabase = await createClient();
+  const entityId = input.entityId.trim();
+  const accountName = input.accountName.trim();
+  if (!entityId) return fail("เลือกกิจการที่รับรายได้ก่อน");
+  if (!accountName) return fail("เลือกบัญชีที่เงินเข้าก่อน");
+
+  for (const [kind, value] of [
+    ["sales_revenue_entity", entityId],
+    ["sales_revenue_account", accountName],
+  ] as [string, string][]) {
+    await supabase.from("app_settings").delete().eq("kind", kind);
+    const { error } = await supabase.from("app_settings").insert({ kind, value });
+    if (error) return fail(mapDbError(error));
+  }
+
+  revalidatePath("/settings/company");
+  revalidatePath("/sales");
+  return { ok: true };
+}
+
+/**
  * แจ้งเตือน LINE ต่อกิจการ (0033) — ของเดิมอ่านจาก env ของ Vercel
  * → ลูกค้าทุกเจ้าใน deployment เดียวกันยิงเข้ากลุ่มเดียวกันหมด (เห็นออเดอร์กัน)
  *

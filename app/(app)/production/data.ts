@@ -4,6 +4,8 @@ import {
   pendingBatches,
   nextBatchNumber,
   remainingDistillVol,
+  remainingFermentedVol,
+  isFermented,
 } from "@/lib/production/calc";
 
 /** master data โดเมนผลิต (materials/containers/products) */
@@ -24,20 +26,39 @@ export async function getProductionMasters() {
 /** P11: batch ที่หมักแล้วยังไม่กลั่น (ใช้หน้ากลั่น/monitor) */
 export async function getPendingBatches() {
   const supabase = await createClient();
-  const [ferment, distill] = await Promise.all([
+  const [ferment, distill, draw] = await Promise.all([
     supabase
       .from("log_ferment")
       .select("batch, product_name, material_amounts, ferment_date")
       .order("id"),
     supabase.from("log_distill").select("batch"),
+    // D78: สุราแช่ไม่มีการกลั่น — batch จบเมื่อรินน้ำสุราออกจากถัง
+    //      ★ ไม่รวมตัวนี้ = batch ของสุราแช่ที่รินแล้วจะค้างอยู่ในรายการ "รอกลั่น" ตลอดกาล
+    supabase.from("log_ferment_draw").select("batch"),
   ]);
   const ferments = (ferment.data ?? []).map((f) => ({
     batch: f.batch as string,
     productName: f.product_name as string,
     materialAmounts: f.material_amounts as string | null,
   }));
-  const distilled = (distill.data ?? []).map((d) => d.batch as string);
-  return pendingBatches(ferments, distilled);
+  const done = [
+    ...(distill.data ?? []).map((d) => d.batch as string),
+    ...(draw.data ?? []).map((d) => d.batch as string),
+  ];
+
+  // D80: ติดธง "batch นี้เป็นสุราแช่ไหม" ให้แท็บกลั่นกรองออก
+  // 🪤 **ห้ามกรองในนี้ตรง ๆ** — ฟังก์ชันนี้ใช้ร่วมกับแท็บ **ติดตามหมัก** ด้วย
+  //    และ batch สุราแช่ก็ต้องวัด pH/Brix ได้เหมือนกัน (วิธีเดียวกับ getBatchBoard)
+  const { data: prods } = await supabase.from("products").select("name, liquor_type");
+  const fermentedNames = new Set(
+    (prods ?? []).filter((p) => isFermented(p.liquor_type as string | null)).map((p) => String(p.name)),
+  );
+  // 🪤 liquor_type ว่าง = **ไม่ถือว่าแช่** → ยังโชว์ในแท็บกลั่น (กติกา D78: ห้าม default เป็นกลั่น
+  //    ก็จริง แต่การ "ซ่อน" ก็เป็นการเดาเหมือนกัน — ปล่อยให้แถบเตือนในแท็บรายงานจัดการ)
+  return pendingBatches(ferments, done).map((b) => ({
+    ...b,
+    fermented: fermentedNames.has(b.productName),
+  }));
 }
 
 /** P12: เลข batch ถัดไปของวันที่ (ปี พ.ศ.) */
@@ -59,6 +80,43 @@ export async function getRemainingDistillVol(productName: string) {
     (distill.data ?? []).map((d) => d.vol as number),
     (dilute.data ?? []).map((d) => d.start_vol as number),
   );
+}
+
+/** D78: ปริมาณน้ำสุราแช่คงเหลือรอบรรจุ ต่อชื่อสุรา (คู่แฝดของ getRemainingDistillVol) */
+export async function getRemainingFermentedVol(productName: string) {
+  if (!productName) return 0;
+  const supabase = await createClient();
+  const [draw, prods] = await Promise.all([
+    supabase.from("log_ferment_draw").select("vol, final_vol").eq("product_name", productName),
+    supabase.from("products").select("product_id, name, bottle_size_l").eq("name", productName),
+  ]);
+  const ids = (prods.data ?? []).map((p) => String(p.product_id));
+  const sizeById = new Map((prods.data ?? []).map((p) => [String(p.product_id), Number(p.bottle_size_l) || 0]));
+  let packed: number[] = [];
+  if (ids.length > 0) {
+    const { data } = await supabase
+      .from("log_product")
+      .select("product_id, amount, trans_type")
+      .in("product_id", ids)
+      .eq("trans_type", "รับ");
+    packed = (data ?? []).map((r) => (Number(r.amount) || 0) * (sizeById.get(String(r.product_id)) ?? 0));
+  }
+  return remainingFermentedVol(
+    (draw.data ?? []).map((d) => ({ vol: d.vol as number, final_vol: d.final_vol as number | null })),
+    packed,
+  );
+}
+
+/** D78: รายการรินน้ำสุราแช่ล่าสุด (แก้/ลบได้จากแอป — FLOW_REDESIGN sec 10) */
+export async function getRecentDraws() {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("log_ferment_draw")
+    .select("id, draw_date, product_name, batch, vol, abv, adjust_date, water, final_vol, final_abv, note")
+    .order("draw_date", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(30);
+  return data ?? [];
 }
 
 /** สต็อกขวดคงเหลือ (stock_product join ชื่อสินค้า) */
@@ -158,7 +216,11 @@ export type BatchCard = {
   pots: number;                  // จำนวนหม้อที่เริ่มกลั่นแล้ว
   activePot: number | null;      // หม้อที่ยังไม่ "จบหม้อ" (ค้างอยู่)
   closed: { date: string; vol: number; abv: number } | null; // ปิด batch แล้ว (log_distill)
-  stage: "ลงหมัก" | "ติดตามหมัก" | "กำลังกลั่น" | "ปิด batch แล้ว";
+  /** D78: batch นี้เป็นสุราแช่ไหม (ตัดสินจาก products.liquor_type ของชื่อสุรา) */
+  fermented: boolean;
+  /** D78: รินน้ำสุราแช่ออกจากถังแล้ว (log_ferment_draw) — vol/abv = ยอดหลังปรุง */
+  drawn: { date: string; vol: number; abv: number } | null;
+  stage: "ลงหมัก" | "ติดตามหมัก" | "กำลังกลั่น" | "ปิด batch แล้ว" | "รินน้ำสุราแล้ว";
 };
 
 export async function getBatchBoard(): Promise<BatchCard[]> {
@@ -184,6 +246,7 @@ export async function getBatchBoard(): Promise<BatchCard[]> {
         tanks: Number(r.container_qty) || 0,
         fermVol: mainAmt,
         monitorCount: 0, lastMeasure: null, pots: 0, activePot: null, closed: null,
+        fermented: false, drawn: null,
         stage: "ลงหมัก",
       });
     } else {
@@ -195,11 +258,20 @@ export async function getBatchBoard(): Promise<BatchCard[]> {
   const batches = [...byBatch.keys()];
   if (batches.length === 0) return [];
 
-  const [monitors, runs, distills] = await Promise.all([
+  const [monitors, runs, distills, draws, prods] = await Promise.all([
     supabase.from("log_ferment_monitor").select("batch, measure_date, measure_time, ph, brix, temp").in("batch", batches),
     supabase.from("log_distill_run").select("batch, pot_no, phase").in("batch", batches),
     supabase.from("log_distill").select("batch, distill_date, vol, abv").in("batch", batches),
+    supabase.from("log_ferment_draw").select("batch, draw_date, vol, abv, final_vol, final_abv").in("batch", batches),
+    supabase.from("products").select("name, liquor_type"),
   ]);
+
+  // D78: ประเภทสุราต่อ "ชื่อสุรา" (products หลายแถวชื่อเดียวกันได้ — ถือว่าแช่ถ้ามีแถวใดเป็นแช่
+  //      ★ แถวชื่อเดียวกันประเภทไม่ตรงกันเป็นข้อมูลผิด แท็บรายงานสรรพสามิตจะเตือนให้แก้)
+  const fermentedNames = new Set(
+    (prods.data ?? []).filter((p) => isFermented(p.liquor_type as string | null)).map((p) => String(p.name)),
+  );
+  for (const c of byBatch.values()) c.fermented = fermentedNames.has(c.productName);
 
   const lastKey = new Map<string, string>(); // batch → คีย์เรียง "วันที่ เวลา" ของค่าวัดล่าสุด
   for (const m of monitors.data ?? []) {
@@ -239,8 +311,19 @@ export async function getBatchBoard(): Promise<BatchCard[]> {
     c.closed = { date: String(d.distill_date).slice(0, 10), vol: Number(d.vol) || 0, abv: Number(d.abv) || 0 };
   }
 
+  for (const d of draws.data ?? []) {
+    const c = byBatch.get(d.batch as string);
+    if (!c) continue;
+    const vol = d.final_vol == null ? Number(d.vol) || 0 : Number(d.final_vol) || 0;
+    const abv = d.final_abv == null ? Number(d.abv) || 0 : Number(d.final_abv) || 0;
+    c.drawn = { date: String(d.draw_date).slice(0, 10), vol, abv };
+  }
+
   for (const c of byBatch.values()) {
-    c.stage = c.closed ? "ปิด batch แล้ว" : c.pots > 0 ? "กำลังกลั่น" : c.monitorCount > 0 ? "ติดตามหมัก" : "ลงหมัก";
+    // D78: เส้นทางสุราแช่ไม่มีขั้นกลั่น — จบที่ "รินน้ำสุราแล้ว" (ไม่งั้นการ์ดจะค้าง "ลงหมัก" ตลอดกาล)
+    c.stage = c.drawn
+      ? "รินน้ำสุราแล้ว"
+      : c.closed ? "ปิด batch แล้ว" : c.pots > 0 ? "กำลังกลั่น" : c.monitorCount > 0 ? "ติดตามหมัก" : "ลงหมัก";
     c.fermVol = Math.round(c.fermVol * 100) / 100;
   }
   return [...byBatch.values()].sort((a, b) => (a.fermentDate < b.fermentDate ? 1 : a.fermentDate > b.fermentDate ? -1 : b.batch.localeCompare(a.batch)));

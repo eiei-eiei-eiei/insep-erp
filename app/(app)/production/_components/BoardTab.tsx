@@ -11,6 +11,7 @@ const STAGE_STYLE: Record<BatchCard["stage"], string> = {
   "ติดตามหมัก": "bg-brand-soft text-brand",
   "กำลังกลั่น": "bg-warn-bg text-warn",
   "ปิด batch แล้ว": "bg-ok-bg text-ok",
+  "รินน้ำสุราแล้ว": "bg-ok-bg text-ok",
 };
 
 /** ขั้นถัดไปที่ควรทำ → ปุ่มกระโดดไปแท็บที่ถูกต้อง (พร้อมเลือก batch ให้เลย) */
@@ -19,6 +20,8 @@ const NEXT_STEP: Record<BatchCard["stage"], { label: string; tab: string }> = {
   "ติดตามหมัก": { label: "บันทึกค่าติดตามหมัก", tab: "ติดตามหมัก" },
   "กำลังกลั่น": { label: "ไปหน้ากลั่น (ต่อจากเดิม)", tab: "กลั่น" },
   "ปิด batch แล้ว": { label: "ดูประวัติ/เทียบ", tab: "ประวัติ/เทียบ" },
+  // D78 สุราแช่: รินแล้วขั้นถัดไปคือบรรจุ (ไม่มีขั้นกลั่น/ปรุงแยก)
+  "รินน้ำสุราแล้ว": { label: "ไปบรรจุ/จ่าย", tab: "บรรจุ/จ่าย" },
 };
 
 export function BoardTab({
@@ -39,7 +42,7 @@ export function BoardTab({
   useEffect(() => { if (active) load(); }, [active, load]);
 
   const filtered = rows
-    .filter((r) => (showClosed ? true : r.stage !== "ปิด batch แล้ว"))
+    .filter((r) => (showClosed ? true : r.stage !== "ปิด batch แล้ว" && r.stage !== "รินน้ำสุราแล้ว"))
     .filter((r) => (!q ? true : (r.batch + " " + r.productName).toLowerCase().includes(q.toLowerCase())));
 
   return (
@@ -48,7 +51,7 @@ export function BoardTab({
         <TextInput placeholder="batch / ชื่อสุรา" value={q} onChange={(e) => setQ(e.target.value)} className="w-56" />
         <label className="flex items-center gap-2 text-sm text-muted">
           <input type="checkbox" checked={showClosed} onChange={(e) => setShowClosed(e.target.checked)} />
-          แสดง batch ที่ปิดแล้วด้วย
+          แสดง batch ที่จบแล้วด้วย (ปิด batch / รินน้ำสุราแล้ว)
         </label>
         <button onClick={load} className="min-h-[44px] rounded border border-line px-3 text-sm text-muted hover:bg-raised sm:min-h-0 sm:py-1.5"><IconRefresh size={15} className="mr-1 inline align-[-2px]" />รีโหลด</button>
         <span className="ml-auto text-xs text-faint">{filtered.length} batch</span>
@@ -84,11 +87,19 @@ export function BoardTab({
                       </span>
                     )}
                   </div>
-                  <div>
-                    <IconFlame size={13} className="mr-1 inline align-[-2px]" />กลั่น {b.pots > 0 ? `${b.pots} หม้อ` : "ยังไม่เริ่ม"}
-                    {b.activePot !== null && <span className="font-medium text-warn"> · หม้อที่ {b.activePot} ยังไม่จบ</span>}
-                  </div>
+                  {/* D78: สุราแช่ไม่มีขั้นกลั่น — แสดงบรรทัด "ริน" แทน ไม่งั้นการ์ดจะขึ้น "กลั่น ยังไม่เริ่ม" ตลอดกาล */}
+                  {b.fermented ? (
+                    <div>
+                      <IconFlame size={13} className="mr-1 inline align-[-2px]" />รินน้ำสุราแช่ {b.drawn ? "แล้ว" : "ยังไม่ริน"}
+                    </div>
+                  ) : (
+                    <div>
+                      <IconFlame size={13} className="mr-1 inline align-[-2px]" />กลั่น {b.pots > 0 ? `${b.pots} หม้อ` : "ยังไม่เริ่ม"}
+                      {b.activePot !== null && <span className="font-medium text-warn"> · หม้อที่ {b.activePot} ยังไม่จบ</span>}
+                    </div>
+                  )}
                   {b.closed && <div className="text-ok"><IconCheck size={13} className="mr-1 inline align-[-2px]" />ปิด batch {b.closed.date} · {b.closed.vol} ล. @ {b.closed.abv}°</div>}
+                  {b.drawn && <div className="text-ok"><IconCheck size={13} className="mr-1 inline align-[-2px]" />รินน้ำสุรา {b.drawn.date} · {b.drawn.vol} ล. @ {b.drawn.abv}°</div>}
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-1.5">
@@ -98,12 +109,12 @@ export function BoardTab({
                   >
                     {next.label}
                   </button>
-                  {!b.closed && b.stage !== "ลงหมัก" && (
+                  {!b.closed && !b.drawn && b.stage !== "ลงหมัก" && (
                     <button
-                      onClick={() => onOpen(b.batch, b.stage === "กำลังกลั่น" ? "ติดตามหมัก" : "กลั่น")}
+                      onClick={() => onOpen(b.batch, b.fermented ? "รินน้ำสุราแช่" : b.stage === "กำลังกลั่น" ? "ติดตามหมัก" : "กลั่น")}
                       className="min-h-[44px] rounded-lg border border-line px-3 text-sm text-muted hover:bg-raised sm:min-h-0 sm:py-2"
                     >
-                      {b.stage === "กำลังกลั่น" ? "ค่าหมัก" : "ไปกลั่น"}
+                      {b.fermented ? "ไปรินน้ำสุรา" : b.stage === "กำลังกลั่น" ? "ค่าหมัก" : "ไปกลั่น"}
                     </button>
                   )}
                 </div>

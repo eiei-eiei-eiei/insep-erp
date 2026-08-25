@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { saveEntityInfoAction, saveDocEntityAction } from "../actions";
+import { saveEntityInfoAction, saveDocEntityAction, saveSalesRevenueAction } from "../actions";
 import type { SettingsEntity } from "../settings-data";
 import { Card, Field, Msg, SaveButton, Select, TextArea, TextInput, useSaver } from "@/lib/shared/ui";
 import { companyFromEntity } from "@/lib/sales/company";
@@ -26,19 +26,29 @@ import { companyHeaderPreviewHtml } from "../../sales/_components/print";
 export function CompanyCard({
   entities,
   docEntityId,
+  revenueEntityId,
+  revenueAccountName,
+  accounts,
 }: {
   entities: SettingsEntity[];
   docEntityId: string;
+  revenueEntityId: string;
+  revenueAccountName: string;
+  accounts: string[];
 }) {
   const router = useRouter();
   const { pending, msg, run } = useSaver();
   const doc = useSaver();
+  const rev = useSaver();
 
   const multiEntity = entities.length > 1;
   const initialId = docEntityId || entities[0]?.entity_id || "";
   const [entityId, setEntityId] = useState(initialId);
   const [form, setForm] = useState(() => toForm(entities.find((e) => e.entity_id === initialId)));
   const [docId, setDocId] = useState(docEntityId);
+  // กิจการเดียว = เลือกให้เลยไม่ต้องถาม (หลักเดียวกับที่ซ่อนดร็อปดาวน์กิจการทั้งแอป — D53)
+  const [revId, setRevId] = useState(revenueEntityId || (multiEntity ? "" : entities[0]?.entity_id ?? ""));
+  const [revAcc, setRevAcc] = useState(revenueAccountName);
 
   const preview = useMemo(
     () =>
@@ -71,6 +81,13 @@ export function CompanyCard({
   }
   function saveDoc() {
     doc.run(() => saveDocEntityAction(docId), "ตั้งกิจการที่ออกเอกสารแล้ว", () => router.refresh());
+  }
+  function saveRev() {
+    rev.run(
+      () => saveSalesRevenueAction({ entityId: revId, accountName: revAcc }),
+      "ตั้งกิจการ/บัญชีที่รับรายได้แล้ว",
+      () => router.refresh(),
+    );
   }
 
   return (
@@ -190,6 +207,48 @@ export function CompanyCard({
           </div>
         </Card>
       )}
+
+      {/*
+        🚨 การ์ดนี้คือสิ่งที่ทำให้ "ปิดการขายใบแรก" เป็นไปได้ (D80)
+        ถ้ายังไม่ตั้ง ปุ่มรับเงินในแอปขายจะตันทั้งหมด — เดิมตั้งได้ทางเดียวคือยิง SQL
+        ★ แยกจากการ์ด "กิจการที่ออกเอกสารการค้า" โดยตั้งใจ (คนละเรื่อง ตั้งต่างกันได้)
+      */}
+      <Card title="กิจการและบัญชีที่รับรายได้จากการขาย">
+        <p className="mb-3 text-xs text-faint">
+          เวลารับเงินจากออเดอร์ ระบบจะลงบิลรายรับเข้ากิจการนี้และบัญชีนี้
+          — <b>ไม่ตั้งค่า = กดรับเงินในแอปขายไม่ได้</b>
+          {multiEntity && <> · แยกจาก &ldquo;กิจการที่ออกเอกสารการค้า&rdquo; ด้านบน ตั้งต่างกันได้</>}
+        </p>
+        <Msg msg={rev.msg} />
+        {accounts.length === 0 && (
+          <p className="mb-3 rounded-lg border border-warn-line bg-warn-bg px-3 py-2 text-xs text-warn">
+            ยังไม่มีบัญชีเงินในระบบ — เพิ่มก่อนที่ <b>บัญชี → ตั้งค่า → บัญชีเงิน</b>
+          </p>
+        )}
+        <div className="flex flex-wrap items-end gap-3">
+          <Field label="กิจการที่รับรายได้">
+            <Select value={revId} onChange={(e) => setRevId(e.target.value)}>
+              <option value="">— เลือกกิจการ —</option>
+              {entities.map((en) => (
+                <option key={en.entity_id} value={en.entity_id}>
+                  {en.entity_id} — {en.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="บัญชีที่เงินเข้า">
+            <Select value={revAcc} onChange={(e) => setRevAcc(e.target.value)}>
+              <option value="">— เลือกบัญชี —</option>
+              {accounts.map((a) => (
+                <option key={a} value={a}>{a}</option>
+              ))}
+            </Select>
+          </Field>
+          <SaveButton pending={rev.pending} onClick={saveRev} disabled={!revId || !revAcc}>
+            บันทึกกิจการ/บัญชีรับรายได้
+          </SaveButton>
+        </div>
+      </Card>
     </div>
   );
 }

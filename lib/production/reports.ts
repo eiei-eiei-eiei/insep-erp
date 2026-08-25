@@ -5,6 +5,8 @@
  * ⚠️ aggregate ตาม "ชื่อสุรา" · running balance ไหลข้าม ส่า→กลั่น→ปรุง→บรรจุ (P5)
  *   filter เดือน/ปีด้วย y/m/d ตรง ๆ (กัน timezone) · golden test = reports.test.ts
  */
+import { drawnAbv, drawnVol } from "./calc";
+
 
 // ── input types (ชื่อคอลัมน์ตาม DB ใหม่) ────────────────────────────────────────
 export type MaterialMaster = { material_id: string; name: string; unit: string | null };
@@ -29,7 +31,11 @@ export type LogFerment = {
   batch: string;
   container_qty: number | string | null;
   material_amounts: string | null;
+  /** D78: ใช้เฉพาะฟอร์มสุราแช่ (ช่องท้ายกระดาษ "ขนาดบรรจุของภาชนะหมัก") — optional ไม่กระทบฟอร์มกลั่น */
+  container_id?: string | null;
 };
+
+export type ContainerMaster = { container_id: string; capacity_l: number | string | null };
 export type LogDistill = {
   distill_date: string;
   product_name: string;
@@ -74,6 +80,14 @@ const before = (r: YMD, y: number, m: number) => r.y < y || (r.y === y && r.m < 
 const upto = (r: YMD, y: number, m: number) => r.y === y && r.m <= m;
 const inMonth = (r: YMD, y: number, m: number) => r.y === y && r.m === m;
 const num = (v: unknown) => parseFloat(String(v)) || 0;
+
+/** 'YYYY-MM-DD' → 'dd/mm/yy' (ปี พ.ศ. 2 หลัก) — ใช้กับวันที่ที่อาจอยู่คนละเดือนกับรายงาน (D78) */
+export function fmtIsoDMY(iso: string): string {
+  const p = String(iso).slice(0, 10).split("-");
+  if (p.length !== 3) return String(iso);
+  const yy = ((parseInt(p[0], 10) || 0) + 543) % 100;
+  return p[2] + "/" + p[1] + "/" + String(yy).padStart(2, "0");
+}
 
 /** dd/mm/yy (ปี พ.ศ. 2 หลัก) เช่น day=5,'2026-06' → '05/06/69' */
 export function fmtDateDMY(day: number, monthStr: string): string {
@@ -453,5 +467,199 @@ export function summaryReport(
     company: entity.company, exciseId: entity.exciseId,
     monthThai: getThaiMonthYear(monthStr),
     liquorType, liquorKind, materials: materialsOut, products: productsOut,
+  };
+}
+
+// ── D78: ภส.๐๗-๐๒/๑(๑) **ฉบับสุราแช่** (fermentedReport) ─────────────────────────────
+//  🚨 ฟังก์ชันนี้เป็นของใหม่ทั้งก้อน **ห้ามแก้ productionReport ข้างบนแม้แต่บรรทัดเดียว**
+//     golden test เดิม (reports.test.ts + __golden__/reports.json) ต้องผ่านโดยไม่แก้ไฟล์เทส
+//     = หลักฐานว่าเส้นทางสุรากลั่นไม่ขยับ (เทคนิคเดียวกับ D55/D69/D70)
+//
+//  ต่างจากฟอร์มกลั่น: ไม่มีการกลั่น ไม่มีขั้นปรุงแยก → running balance เหลือ **2 ยอด**
+//     น้ำหมักคงเหลือ = ยกมา + Σ น้ำหมักที่หมักได้ − Σ น้ำหมักของ batch ที่รินแล้ว (หักทั้งก้อน · D78 ข้อ 3)
+//     สุราแช่คงเหลือ = ยกมา + Σ น้ำสุราแช่ที่รินได้ (หลังปรุง) − Σ ปริมาณที่บรรจุ
+export type LogFermentDraw = {
+  draw_date: string;
+  product_name: string;
+  batch: string;
+  vol: number | string;
+  abv: number | string;
+  adjust_date?: string | null;
+  water?: number | string | null;
+  final_vol?: number | string | null;
+  final_abv?: number | string | null;
+  note?: string | null;
+};
+
+export function fermentedReport(
+  monthStr: string,
+  productId: string,
+  entity: Entity,
+  products: ProductMaster[],
+  fermLog: LogFerment[],
+  drawLog: LogFermentDraw[],
+  packLog: LogProduct[],
+  containers: ContainerMaster[] = [],
+) {
+  const { year: targetYear, month: targetMonth } = parseMonth(monthStr);
+  const dim = daysIn(targetYear, targetMonth);
+
+  // เลือกสินค้าเป้าหมายด้วยตรรกะเดียวกับ productionReport (รับได้ทั้ง product_id และชื่อสุรา)
+  const targetProduct = products.find((p) => String(p.product_id) === String(productId));
+  let productName = "", targetProductIds: string[] = [], degree: number | string = "", liquorType = "";
+  if (targetProduct) {
+    productName = targetProduct.name;
+    targetProductIds = [String(productId)];
+    degree = targetProduct.degree || "";
+    liquorType = targetProduct.liquor_type || "";
+  } else {
+    productName = productId;
+    targetProductIds = products.filter((p) => p.name === productName).map((p) => String(p.product_id));
+    const anyP = products.find((p) => p.name === productName);
+    if (anyP) { degree = anyP.degree || ""; liquorType = anyP.liquor_type || ""; }
+  }
+
+  let bfMash = 0, bfWine = 0;
+  let monthFermMash = 0, monthWine = 0, monthPackVol = 0;
+  let yearFermMash = 0, yearWine = 0, yearPackVol = 0;
+
+  type Daily = {
+    fermBatch: string[]; fermQty: number; fermMash: number;
+    drawBatch: string[]; drawMash: number; drawVol: number; drawAbv: number[]; drawNote: string[];
+    packVol: number; packSize: number[]; packQty: number;
+  };
+  const daily: Record<number, Daily> = {};
+  for (let i = 1; i <= 31; i++) daily[i] = {
+    fermBatch: [], fermQty: 0, fermMash: 0,
+    drawBatch: [], drawMash: 0, drawVol: 0, drawAbv: [], drawNote: [],
+    packVol: 0, packSize: [], packQty: 0,
+  };
+
+  // ★ ค่าแรกของ material_amounts = วัตถุดิบหลัก = ปริมาณน้ำหมัก (ล.) — ตรรกะเดิมเป๊ะ (P4)
+  //   FermentTab เติมค่าแถวแรกให้เป็น ปริมาณต่อถัง(ล.) × จำนวนถัง อยู่แล้ว
+  const batchInfo: Record<string, { qty: number; volPerTank: number; totalSaa: number }> = {};
+  for (const row of fermLog) {
+    if (row.product_name === productName) {
+      const batch = String(row.batch);
+      const qty = num(row.container_qty);
+      const totalSaa = parseFloat(String(row.material_amounts ?? "").split(",")[0]) || 0;
+      batchInfo[batch] = { qty, volPerTank: qty > 0 ? totalSaa / qty : 0, totalSaa };
+    }
+  }
+
+  for (const row of fermLog) {
+    if (row.product_name !== productName) continue;
+    const r = ymd(row.ferment_date); if (!r) continue;
+    const batch = String(row.batch);
+    const qty = num(row.container_qty);
+    const totalSaa = batchInfo[batch] ? batchInfo[batch].totalSaa : 0;
+    if (before(r, targetYear, targetMonth)) bfMash += totalSaa;
+    if (upto(r, targetYear, targetMonth)) yearFermMash += totalSaa;
+    if (inMonth(r, targetYear, targetMonth)) {
+      const day = r.d;
+      monthFermMash += totalSaa;
+      if (batch && !daily[day].fermBatch.includes(batch)) daily[day].fermBatch.push(batch);
+      daily[day].fermQty += qty;
+      daily[day].fermMash += totalSaa;
+    }
+  }
+
+  for (const row of drawLog) {
+    if (row.product_name !== productName) continue;
+    const r = ymd(row.draw_date); if (!r) continue;
+    const batch = String(row.batch);
+    const mashUsed = batchInfo[batch] ? batchInfo[batch].totalSaa : 0;
+    const wine = drawnVol(row);   // 🔴 ยอดหลังปรุง — จุดเดียวที่ตัดสิน (ดู calc.drawnVol)
+    const abv = drawnAbv(row);
+    if (before(r, targetYear, targetMonth)) { bfMash -= mashUsed; bfWine += wine; }
+    if (upto(r, targetYear, targetMonth)) yearWine += wine;
+    if (inMonth(r, targetYear, targetMonth)) {
+      const day = r.d;
+      monthWine += wine;
+      if (batch && !daily[day].drawBatch.includes(batch)) daily[day].drawBatch.push(batch);
+      daily[day].drawMash += mashUsed;
+      daily[day].drawVol += wine;
+      if (abv > 0) daily[day].drawAbv.push(abv);
+      // หมายเหตุอัตโนมัติเมื่อมีการปรุง — รูปแบบเดียวกับ diluNote ของฟอร์มกลั่น
+      //   ★ ข้อความสั้นโดยตั้งใจ: ช่องหมายเหตุกว้าง 64 จุด — ยาวกว่านี้ตัวอักษรจะล้นออกนอกกระดาษ
+      //     (ตัวเติมฟอร์มมีตัวคุมความกว้างอีกชั้นให้ note ที่ผู้ใช้พิมพ์เองด้วย — cols.note.maxW)
+      const rawVol = num(row.vol);
+      if (wine !== rawVol || num(row.water) > 0) {
+        const adj = String(row.adjust_date ?? "").slice(0, 10);
+        const when = adj && adj !== String(row.draw_date).slice(0, 10) ? " " + fmtIsoDMY(adj) : "";
+        daily[day].drawNote.push("ปรุง" + when + " " + abv + "° ได้ " + wine.toFixed(2) + " ล.");
+      }
+      if (row.note) daily[day].drawNote.push(String(row.note));
+    }
+  }
+
+  for (const row of packLog) {
+    if (row.trans_type !== "รับ") continue;
+    const prodId = String(row.product_id);
+    if (!targetProductIds.includes(prodId)) continue;
+    const r = ymd(row.doc_date); if (!r) continue;
+    const product = products.find((p) => String(p.product_id) === prodId);
+    if (!product) continue;
+    const qty = num(row.amount);
+    const size = num(product.bottle_size_l);
+    const totalVol = qty * size;
+    if (before(r, targetYear, targetMonth)) bfWine -= totalVol;
+    if (upto(r, targetYear, targetMonth)) yearPackVol += totalVol;
+    if (inMonth(r, targetYear, targetMonth)) {
+      const day = r.d;
+      monthPackVol += totalVol;
+      daily[day].packVol += totalVol;
+      daily[day].packQty += qty;
+      if (!daily[day].packSize.includes(size)) daily[day].packSize.push(size);
+    }
+  }
+
+  const grid = [];
+  let curMash = bfMash, curWine = bfWine;
+  const numOrNull = (v: number) => (v && v !== 0 ? v : null);
+  for (let i = 1; i <= dim; i++) {
+    const d = daily[i];
+    curMash = curMash + d.fermMash - d.drawMash;
+    curWine = curWine + d.drawVol - d.packVol;
+    const hasActivity = d.fermBatch.length || d.drawBatch.length || d.fermQty || d.drawVol || d.packVol;
+    if (!hasActivity) continue;
+    const avgFermVol = d.fermQty > 0 ? d.fermMash / d.fermQty : 0;
+    const avgAbv = d.drawAbv.length > 0 ? d.drawAbv.reduce((a, b) => a + b, 0) / d.drawAbv.length : 0;
+    const packSizeStr = d.packSize.length > 0
+      ? d.packSize.map((s) => { const n = parseFloat(String(s)); return isNaN(n) ? "-" : n.toFixed(3); }).join(", ")
+      : "";
+    grid.push({
+      day: i, date: fmtDateDMY(i, monthStr),
+      fermBatch: d.fermBatch.length ? d.fermBatch.join(", ") : "",
+      fermQty: numOrNull(d.fermQty), avgFermVol: numOrNull(avgFermVol), fermMash: numOrNull(d.fermMash),
+      drawBatch: d.drawBatch.length ? d.drawBatch.join(", ") : "",
+      avgAbv: numOrNull(avgAbv), drawVol: numOrNull(d.drawVol),
+      curMash,
+      packSize: packSizeStr, packQty: numOrNull(d.packQty), packVol: numOrNull(d.packVol),
+      curWine,
+      note: d.drawNote.length ? d.drawNote.join(", ") : "",
+    });
+  }
+
+  // ช่องท้ายกระดาษ: "ปริมาณสุทธิของภาชนะสำหรับบรรจุน้ำหมัก หน่วยมีขนาดบรรจุ ___ ลิตร"
+  // = ความจุของภาชนะที่ใช้หมักสุราตัวนี้ (ไม่มีข้อมูล → เว้นว่างไว้ให้เขียนมือ ห้ามเดา)
+  const capMap = new Map(containers.map((c) => [String(c.container_id), num(c.capacity_l)]));
+  const caps: number[] = [];
+  for (const row of fermLog) {
+    if (row.product_name !== productName || !row.container_id) continue;
+    const cap = capMap.get(String(row.container_id));
+    if (cap && !caps.includes(cap)) caps.push(cap);
+  }
+  const containerSize = caps.length ? caps.sort((a, b) => a - b).map((c) => String(c)).join(", ") : "";
+
+  return {
+    company: entity.company, exciseId: entity.exciseId,
+    monthThai: getThaiMonthYear(monthStr),
+    productName, liquorType, degree, containerSize,
+    bfMash, bfWine,
+    monthFermMash, monthWine, monthPackVol,
+    yearFermMash, yearWine, yearPackVol,
+    endMash: curMash, endWine: curWine,
+    grid,
   };
 }

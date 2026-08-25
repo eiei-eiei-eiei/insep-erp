@@ -1,7 +1,8 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import type { ReportSource } from "@/lib/payroll/report";
-import type { FilingItem, FilingEmployee } from "@/lib/payroll/filings";
+import { countsForFiling, keepFiledItems } from "@/lib/payroll/filings";
+import type { FilingItem, FilingEmployee, PeriodFilingStatus } from "@/lib/payroll/filings";
 import type { FilingEntity } from "@/lib/payroll/filingHtml";
 import type {
   Employee,
@@ -299,16 +300,22 @@ function toItem(r: any): ItemRow {
  */
 export async function getPayrollReportSource(year: number): Promise<ReportSource[]> {
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("payroll_items")
-    .select("period_id, emp_id, emp_name, group_code, computed, base_amount, gross, sso, sso_employer, wht, net")
-    .like("period_id", `PR-${year}-%`)
-    .order("period_id");
+  // ★ ต้องดึง employees มาด้วย — **ชื่อ = ค่าปัจจุบันเสมอ · ตัวเงิน = ค่าที่แช่ไว้เสมอ** (D75/D80)
+  //   ของเดิม query แต่ payroll_items → รายงานทั้งปีติดชื่อ snapshot ค้างไปด้วย
+  const [rows, emps] = await Promise.all([
+    supabase
+      .from("payroll_items")
+      .select("period_id, emp_id, emp_name, group_code, computed, base_amount, gross, sso, sso_employer, wht, net")
+      .like("period_id", `PR-${year}-%`)
+      .order("period_id"),
+    supabase.from("employees").select("emp_id, name"),
+  ]);
+  const nameNow = new Map((emps.data ?? []).map((e: any) => [e.emp_id as string, e.name as string]));
 
-  return (data ?? []).map((r: any) => ({
+  return (rows.data ?? []).map((r: any) => ({
     periodId: r.period_id,
     empId: r.emp_id,
-    empName: r.emp_name,
+    empName: nameNow.get(r.emp_id) || r.emp_name || "",
     groupCode: r.group_code,
     baseAmount: Number(r.base_amount),
     gross: Number(r.gross),
@@ -395,18 +402,26 @@ export async function getFilingPeriod(
   ]);
 
   const period = p.data ? toPeriod(p.data) : null;
+
+  // 🚨 งวดร่าง (ยังไม่ลงบัญชีสักขา) ห้ามออกเอกสารยื่น — D81
+  //    คืน `period` ไว้ด้วยเสมอ เพื่อให้หน้าจอบอก**เหตุผล**ได้ ไม่ใช่ขึ้น "ไม่มีข้อมูล" ลอย ๆ
+  //    (ปกติดร็อปดาวน์กรองให้แล้ว — ด่านนี้ไว้กันลิงก์ตรง/งวดที่ถูกถอน post ทีหลัง)
+  const filed = countsForFiling(period?.status);
+
   return {
     period,
     entity: await filingEntity(period?.entityId ?? null),
-    items: (it.data ?? []).map(toFilingItem),
+    items: filed ? (it.data ?? []).map(toFilingItem) : [],
     emps: (em.data ?? []).map(toFilingEmployee),
   };
 }
 
 /** เอกสารรายปี (ภงด.1ก · 50ทวิ) — `year` เป็น ค.ศ. ตาม period_id */
-export async function getFilingYear(year: number): Promise<FilingData & { certs: EmpCertRow[] }> {
+export async function getFilingYear(
+  year: number,
+): Promise<FilingData & { certs: EmpCertRow[]; draftPeriodIds: string[] }> {
   const supabase = await createClient();
-  const [it, em, ct] = await Promise.all([
+  const [it, em, ct, per] = await Promise.all([
     supabase
       .from("payroll_items")
       .select("period_id, emp_id, emp_name, computed, gross, sso, sso_employer, wht")
@@ -415,24 +430,33 @@ export async function getFilingYear(year: number): Promise<FilingData & { certs:
     supabase.from("employees").select("emp_id, name, national_id, sso_no, address, sso_exempt"),
     supabase
       .from("wht_certificates")
-      .select("doc_no, issue_date, emp_id, tax_year, base_amount, wht_amount")
+      // contact_name = ชื่อที่พิมพ์ลงใบ ณ วันออก — ใบที่ออกแล้วต้องพิมพ์ซ้ำได้เหมือนเดิมเป๊ะ (D80)
+      .select("doc_no, issue_date, emp_id, tax_year, base_amount, wht_amount, contact_name")
       .eq("tax_year", year + 543)
       .not("emp_id", "is", null),
+    // 🪤 กิจการต้องมาจาก **งวดของปีนั้นจริง ๆ** ไม่ใช่กิจการปริยายของ tenant —
+    //    โรงที่รันเงินเดือนใต้กิจการที่ 2 จะได้หัวเอกสาร/เลข 50ทวิ ผิดกิจการทันที
+    //    ★ D81: ดึง status มาด้วย เพราะต้องคัดงวดร่างออกจากยอดทั้งปี
+    supabase
+      .from("payroll_periods")
+      .select("period_id, entity_id, status")
+      .like("period_id", `PR-${year}-%`)
+      .order("period_id"),
   ]);
 
-  // 🪤 กิจการต้องมาจาก **งวดของปีนั้นจริง ๆ** ไม่ใช่กิจการปริยายของ tenant —
-  //    โรงที่รันเงินเดือนใต้กิจการที่ 2 จะได้หัวเอกสาร/เลข 50ทวิ ผิดกิจการทันที
-  const { data: per } = await supabase
-    .from("payroll_periods")
-    .select("entity_id")
-    .like("period_id", `PR-${year}-%`)
-    .limit(1)
-    .maybeSingle();
+  type PeriodStatusRow = { period_id: string; entity_id: string; status: PeriodFilingStatus };
+  const periods = (per.data ?? []) as PeriodStatusRow[];
+  const filed = periods.filter((p) => countsForFiling(p.status));
+  const draftPeriodIds = periods.filter((p) => !countsForFiling(p.status)).map((p) => p.period_id);
+
+  // กิจการเอาจากงวดที่**นับได้**ก่อน — ปีที่มีแต่งวดร่างค่อยตกไปใช้งวดแรกที่มี
+  const entityId = (filed[0] ?? periods[0])?.entity_id ?? null;
 
   return {
-    entity: await filingEntity(per?.entity_id ?? null),
-    items: (it.data ?? []).map(toFilingItem),
+    entity: await filingEntity(entityId),
+    items: keepFiledItems((it.data ?? []).map(toFilingItem), filed.map((p) => p.period_id)),
     emps: (em.data ?? []).map(toFilingEmployee),
+    draftPeriodIds,
     certs: (ct.data ?? []).map((r: any) => ({
       docNo: r.doc_no,
       issueDate: r.issue_date,
@@ -440,6 +464,7 @@ export async function getFilingYear(year: number): Promise<FilingData & { certs:
       taxYear: r.tax_year,
       baseAmount: Number(r.base_amount),
       whtAmount: Number(r.wht_amount),
+      empName: r.contact_name ?? "",
     })),
   };
 }
@@ -452,4 +477,6 @@ export type EmpCertRow = {
   taxYear: number;
   baseAmount: number;
   whtAmount: number;
+  /** ชื่อที่พิมพ์ลงใบตอนออก — ใช้ตอนแสดง/พิมพ์ซ้ำใบที่ออกแล้ว ห้ามแทนด้วยชื่อปัจจุบัน */
+  empName: string;
 };

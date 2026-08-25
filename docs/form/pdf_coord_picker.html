@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>PDF Coordinate Picker — Insep ERP</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #f3f4f6; color: #111; }
+  header { background: #1f2937; color: #fff; padding: 10px 16px; }
+  header b { color: #fbbf24; }
+  .wrap { display: flex; gap: 12px; padding: 12px; align-items: flex-start; }
+  .left { flex: 1; min-width: 0; }
+  .right { width: 360px; flex-shrink: 0; }
+  .panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+  .panel h3 { margin: 0 0 8px; font-size: 14px; color: #374151; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+  button { background: #2563eb; color: #fff; border: 0; border-radius: 6px; padding: 7px 12px; cursor: pointer; font-size: 13px; }
+  button.sec { background: #6b7280; }
+  button.danger { background: #dc2626; }
+  button:disabled { background: #9ca3af; cursor: not-allowed; }
+  input, select { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; }
+  label { font-size: 13px; color: #374151; }
+  .canvas-box { position: relative; display: inline-block; border: 1px solid #cbd5e1; background: #fff; cursor: crosshair; max-width: 100%; }
+  canvas { display: block; }
+  #cross-h, #cross-v { position: absolute; background: rgba(220,38,38,.5); pointer-events: none; z-index: 5; }
+  #cross-h { left: 0; right: 0; height: 1px; }
+  #cross-v { top: 0; bottom: 0; width: 1px; }
+  .marker { position: absolute; width: 7px; height: 7px; margin: -4px 0 0 -4px; border: 2px solid #16a34a; border-radius: 50%; background: rgba(22,163,74,.3); pointer-events: none; z-index: 6; }
+  .live { font-family: 'Courier New', monospace; font-size: 16px; font-weight: bold; color: #dc2626; background: #fef2f2; padding: 6px 10px; border-radius: 6px; }
+  textarea { width: 100%; height: 280px; font-family: 'Courier New', monospace; font-size: 12px; border: 1px solid #d1d5db; border-radius: 6px; padding: 8px; }
+  .hint { font-size: 12px; color: #6b7280; line-height: 1.5; }
+  .badge { display: inline-block; background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; border-radius: 4px; padding: 1px 6px; font-size: 12px; }
+  kbd { background: #111; color: #fff; border-radius: 3px; padding: 1px 5px; font-size: 11px; }
+</style>
+</head>
+<body>
+<header><b>PDF Coordinate Picker</b> — คลิกบนฟอร์มเพื่อเก็บพิกัด (ระบบเดียวกับ pdf-lib: จุด, origin มุมล่างซ้าย)</header>
+<div class="wrap">
+  <div class="left">
+    <div class="panel">
+      <div class="row">
+        <input type="file" id="file" accept="application/pdf">
+        <button class="sec" id="prev" disabled>◀ หน้า</button>
+        <span id="pageinfo" class="hint">—</span>
+        <button class="sec" id="next" disabled>หน้า ▶</button>
+        <label>ซูม</label>
+        <select id="zoom">
+          <option value="1">100%</option>
+          <option value="1.5" selected>150%</option>
+          <option value="2">200%</option>
+          <option value="2.5">250%</option>
+          <option value="3">300%</option>
+        </select>
+        <span id="pagesize" class="hint"></span>
+      </div>
+      <div class="canvas-box" id="cbox">
+        <canvas id="cv"></canvas>
+        <div id="cross-h" style="display:none"></div>
+        <div id="cross-v" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="panel">
+      <h3>ตำแหน่งเคอร์เซอร์</h3>
+      <div class="live" id="live">x = —, y = —</div>
+      <p class="hint" style="margin:8px 0 0">เลื่อนเมาส์เพื่อดูพิกัดสด · คลิกเพื่อบันทึก</p>
+    </div>
+
+    <div class="panel">
+      <h3>บันทึกจุด</h3>
+      <div class="row">
+        <label>ป้ายชื่อ</label>
+        <input type="text" id="label" placeholder="เช่น col_รับ หรือ header_ชื่อโรงงาน" style="flex:1">
+      </div>
+      <div class="row">
+        <label>ชนิด</label>
+        <select id="kind">
+          <option value="point">point — จุดเดี่ยว (header/totals/กล่องเลข)</option>
+          <option value="col">col — คอลัมน์ (เก็บแค่ค่า x)</option>
+          <option value="rowFirst">rowFirst — baseline แถวข้อมูลแรก</option>
+          <option value="rowLast">rowLast — baseline แถวข้อมูลสุดท้าย</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>จัดชิด (สำหรับ point/col)</label>
+        <select id="align">
+          <option value="L">ซ้าย (ข้อความ)</option>
+          <option value="R">ขวา (ตัวเลข)</option>
+          <option value="C">กลาง (เลขลำดับ)</option>
+        </select>
+      </div>
+      <p class="hint">ตัวเลข = คลิก<b>ขอบขวา</b>ของช่อง · ข้อความ = คลิก<b>จุดเริ่ม</b>ซ้าย · เลขลำดับ = คลิก<b>กึ่งกลาง</b>ช่อง<br>แนวตั้ง (y): คลิกตรงระดับที่อยากให้<b>ฐานตัวอักษร (baseline)</b> วาง — กะระยะชิดเส้นล่างเองได้เลย</p>
+    </div>
+
+    <div class="panel">
+      <h3>Log <span class="badge" id="count">0 จุด</span></h3>
+      <textarea id="log" readonly placeholder="คลิกบนฟอร์ม จุดจะมาปรากฏที่นี่..."></textarea>
+      <div class="row" style="margin-top:8px">
+        <button id="copy">คัดลอกทั้งหมด</button>
+        <button class="sec" id="undo">ลบจุดล่าสุด</button>
+        <button class="danger" id="clear">ล้างทั้งหมด</button>
+      </div>
+      <p class="hint">กด <kbd>คัดลอกทั้งหมด</kbd> แล้วส่งข้อความนี้กลับมาให้ผมได้เลย</p>
+    </div>
+  </div>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let pdfDoc = null, pageNum = 1, viewport = null, scale = 1.5, fileName = '';
+const points = []; // {label, kind, align, page, x, y}
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const cbox = document.getElementById('cbox');
+const live = document.getElementById('live');
+const crossH = document.getElementById('cross-h'), crossV = document.getElementById('cross-v');
+
+document.getElementById('file').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return;
+  fileName = f.name;
+  const buf = await f.arrayBuffer();
+  pdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
+  pageNum = 1;
+  render();
+});
+document.getElementById('zoom').addEventListener('change', e => { scale = parseFloat(e.target.value); render(); });
+document.getElementById('prev').addEventListener('click', () => { if (pageNum > 1) { pageNum--; render(); } });
+document.getElementById('next').addEventListener('click', () => { if (pdfDoc && pageNum < pdfDoc.numPages) { pageNum++; render(); } });
+
+async function render() {
+  if (!pdfDoc) return;
+  const page = await pdfDoc.getPage(pageNum);
+  viewport = page.getViewport({ scale });
+  cv.width = viewport.width; cv.height = viewport.height;
+  cv.style.width = viewport.width + 'px'; cv.style.height = viewport.height + 'px';
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  document.getElementById('pageinfo').textContent = 'หน้า ' + pageNum + ' / ' + pdfDoc.numPages;
+  document.getElementById('prev').disabled = pageNum <= 1;
+  document.getElementById('next').disabled = pageNum >= pdfDoc.numPages;
+  const [w, h] = page.view.slice(2); // pdf points
+  document.getElementById('pagesize').textContent = 'ขนาดหน้า: ' + w.toFixed(1) + ' × ' + h.toFixed(1) + ' pt';
+  drawMarkers();
+}
+
+function toPdf(offsetX, offsetY) {
+  // pdf.js viewport → PDF point space (origin ล่างซ้าย) ตรงกับ pdf-lib
+  const p = viewport.convertToPdfPoint(offsetX, offsetY);
+  return { x: p[0], y: p[1] };
+}
+
+cbox.addEventListener('mousemove', e => {
+  if (!viewport) return;
+  const r = cv.getBoundingClientRect();
+  const ox = e.clientX - r.left, oy = e.clientY - r.top;
+  const p = toPdf(ox, oy);
+  live.textContent = 'x = ' + p.x.toFixed(1) + ',  y = ' + p.y.toFixed(1);
+  crossH.style.display = crossV.style.display = 'block';
+  crossH.style.top = oy + 'px'; crossV.style.left = ox + 'px';
+});
+cbox.addEventListener('mouseleave', () => { crossH.style.display = crossV.style.display = 'none'; });
+
+cv.addEventListener('click', e => {
+  if (!viewport) return;
+  const r = cv.getBoundingClientRect();
+  const p = toPdf(e.clientX - r.left, e.clientY - r.top);
+  const kind = document.getElementById('kind').value;
+  const align = document.getElementById('align').value;
+  let label = document.getElementById('label').value.trim();
+  if (!label) label = kind + '_' + (points.length + 1);
+  points.push({ label, kind, align, page: pageNum, x: +p.x.toFixed(1), y: +p.y.toFixed(1) });
+  refresh();
+});
+
+function refresh() {
+  const lines = points.map(p => {
+    let s = '[หน้า' + p.page + '] ' + p.label + ' (' + p.kind + ')';
+    if (p.kind === 'col') s += '  x=' + p.x + '  align=' + p.align;
+    else if (p.kind === 'rowFirst' || p.kind === 'rowLast') s += '  y=' + p.y;
+    else s += '  x=' + p.x + '  y=' + p.y + '  align=' + p.align;
+    return s;
+  });
+  document.getElementById('log').value = (fileName ? '# ไฟล์: ' + fileName + '\n' : '') + lines.join('\n');
+  document.getElementById('count').textContent = points.length + ' จุด';
+  drawMarkers();
+}
+
+function drawMarkers() {
+  document.querySelectorAll('.marker').forEach(m => m.remove());
+  if (!viewport) return;
+  points.filter(p => p.page === pageNum).forEach(p => {
+    const v = viewport.convertToViewportPoint(p.x, p.y);
+    const d = document.createElement('div');
+    d.className = 'marker';
+    d.style.left = v[0] + 'px'; d.style.top = v[1] + 'px';
+    d.title = p.label;
+    cbox.appendChild(d);
+  });
+}
+
+document.getElementById('copy').addEventListener('click', () => {
+  navigator.clipboard.writeText(document.getElementById('log').value)
+    .then(() => { const b = document.getElementById('copy'); b.textContent = 'คัดลอกแล้ว ✓'; setTimeout(() => b.textContent = 'คัดลอกทั้งหมด', 1500); });
+});
+document.getElementById('undo').addEventListener('click', () => { points.pop(); refresh(); });
+document.getElementById('clear').addEventListener('click', () => { if (confirm('ล้างทั้งหมด?')) { points.length = 0; refresh(); } });
+</script>
+</body>
+</html>

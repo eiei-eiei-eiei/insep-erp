@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { diluteCalc } from "@/lib/production/calc";
+import { diluteCalc, isFermented } from "@/lib/production/calc";
 import { getRemainingDistillVolAction, saveDiluteAction, getRecentDilutesAction, deleteDiluteLogAction, updateDiluteLogAction } from "../actions";
 import { Card, Field, Msg, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import type { Product } from "./types";
@@ -29,7 +29,9 @@ export function DiluteTab({ products }: { products: Product[] }) {
   const [editId, setEditId] = useState<number | null>(null);
   const [edit, setEdit] = useState<EditFields>({ date: "", productName: "", bottleSize: "", startVol: "", startAbv: "", water: "", finalVol: "", finalAbv: "", note: "" });
 
-  const productNames = Array.from(new Set(products.map((p) => p.name)));
+  // D78: ตัดสินค้าประเภท "สุราแช่" ออก — ขั้นปรุงของสุราแช่อยู่ในแท็บ "รินน้ำสุราแช่" แถวเดียวกับการริน
+  //   ★ ปล่อยให้ลงที่นี่ด้วย = ปรุงถูกนับ 2 ที่ (log_dilute + log_ferment_draw) ยอดพองโดยไม่มีอะไรฟ้อง
+  const productNames = Array.from(new Set(products.filter((p) => !isFermented(p.liquor_type)).map((p) => p.name)));
 
   function loadRecent() { getRecentDilutesAction().then((r) => setRecent(r as RecentDilute[])); }
   function refreshRemaining() { if (productName) getRemainingDistillVolAction(productName).then(setRemaining); }

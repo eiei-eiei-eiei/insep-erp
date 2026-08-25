@@ -17,11 +17,14 @@ export function Nav({
   displayName,
   role,
   branding,
+  processes,
 }: {
   workspaces: Workspace[];
   displayName: string;
   role: Role;
   branding: Branding;
+  /** D78 — ประเภทสุราที่มีสินค้าจริง (ใช้ซ่อนแท็บผลิตของเส้นทางที่โรงนี้ไม่ได้ทำ) */
+  processes?: string[];
 }) {
   const pathname = usePathname();
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
@@ -65,6 +68,7 @@ export function Nav({
                 role={role}
                 active={isActive(w.href)}
                 currentPath={pathname}
+                processes={processes}
               />
             ))}
           </nav>
@@ -133,16 +137,18 @@ function NavItem({
   role,
   active,
   currentPath,
+  processes,
 }: {
   item: { key: string; href: string; label: string };
   role: Role;
   active: boolean;
   currentPath: string;
+  processes?: string[];
 }) {
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
   const Icon = WORKSPACE_ICON[item.key];
-  const subs = navSubItems(item.key, role);
+  const subs = navSubItems(item.key, role, processes);
 
   // ปิดเมื่อคลิกนอกกล่อง หรือกด Esc (ไม่งั้นเมนูค้างคาจอเวลาเปลี่ยนใจ)
   useEffect(() => {

@@ -19,6 +19,7 @@ import {
 import type { Bootstrap, Contact } from "./types";
 import { Card, Field, Msg, NumBox, NumInput, SaveButton, Select, TextInput, cleanTaxId13, fmt, todayISO, useSaver, EscToClose } from "./ui";
 import { IconEye, IconEyeOff, IconTrash } from "@/lib/shared/icons";
+import { isForwardCat } from "@/lib/accounting/forwardCats";
 
 type Item = BillItem;
 type Inst = { percent: number; dueDate: string };
@@ -92,8 +93,11 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   const [revRate, setRevRate] = useState(3);
   const rev = useMemo(() => reverseWht(revNet, revRate), [revNet, revRate]);
 
-  const isCost = type === "รายจ่าย" && category === "ต้นทุนสุรา";
+  // D80: หมวดที่จุดชนวนรับวัตถุดิบ ตั้งเองได้ที่แท็บตั้งค่า (เดิมฮาร์ดโค้ด "ต้นทุนสุรา")
+  const isCost = type === "รายจ่าย" && isForwardCat(category, boot.forwardCats);
   const cats = type === "รายรับ" ? boot.incomeCats : boot.expenseCats;
+  // หมวดจุดชนวนที่ยังไม่อยู่ในผังบัญชี — เติมเป็นตัวเลือกให้ ไม่งั้นผู้ใช้ต้องพิมพ์เองเป๊ะ ๆ ทุกครั้ง
+  const extraCats = type === "รายจ่าย" ? boot.forwardCats.filter((c) => !cats.includes(c)) : [];
 
   // ── กู้/เก็บร่างที่ยังไม่บันทึก (localStorage) — สลับแท็บ/รีเฟรชแล้วข้อมูลไม่หาย ──
   const [hydrated, setHydrated] = useState(false);
@@ -243,7 +247,8 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
         ap_ar_status: isApAr ? (type === "รายรับ" ? "AR" : "AP") : "", due_date: isApAr ? dueDate : "", forward_material: isCost,
       }, itemInputs),
       "บันทึกข้อมูลเรียบร้อยแล้ว",
-      (data) => { const d = data as { warning?: string | null } | undefined; if (d?.warning) setMsg({ ok: true, text: d.warning }); resetItems(); refreshItemHist(); },
+      // forward วัตถุดิบพลาด = บิลลงบัญชีแล้วแต่สต็อกผลิตไม่ได้รับ → ต้องขึ้น "เหลือง" ไม่ใช่เขียว
+      (data) => { const d = data as { warning?: string | null } | undefined; if (d?.warning) setMsg({ ok: true, warn: true, text: d.warning }); resetItems(); refreshItemHist(); },
     );
   }
   // หลังบันทึก: ล้างเฉพาะรายการ/รายละเอียด/เลขใบกำกับ (คงคู่ค้า/หมวดหมู่ไว้กรอกบิลถัดไปเร็วขึ้น)
@@ -278,7 +283,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
             <input ref={catRef} list="bill-cat-list" value={category} onChange={(e) => { setCategory(e.target.value); setErrField(null); }} placeholder="พิมพ์เพื่อค้นหา / เลือก" className={`w-full rounded-lg border px-3 py-2 text-ink outline-none focus:ring-2 ${errField === "category" ? "border-crit-line ring-2 ring-crit-line" : "border-line focus:border-brand focus:ring-brand-soft"}`} />
             <datalist id="bill-cat-list">
               {cats.map((c) => (<option key={c} value={c} />))}
-              {type === "รายจ่าย" && !cats.includes("ต้นทุนสุรา") && <option value="ต้นทุนสุรา" />}
+              {extraCats.map((c) => (<option key={c} value={c} />))}
             </datalist>
           </Field>
           <Field label="บัญชี">
@@ -334,7 +339,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <button type="button" onClick={() => setShowOpt((v) => !v)} className="text-xs text-faint hover:text-ink">{showOpt ? <><IconEyeOff size={14} className="mr-1 inline align-[-2px]" />ซ่อนคอลัมน์เสริม</> : <><IconEye size={14} className="mr-1 inline align-[-2px]" />แสดงคอลัมน์เสริม (หมวด/งาน/ส่วนลด)</>}</button>
           <button type="button" onClick={() => { if (confirm("ล้างฟอร์มทั้งหมด? (ข้อมูลที่กรอกค้างจะหาย)")) clearForm(); }} className="inline-flex items-center gap-1 text-xs text-faint transition hover:text-crit"><IconTrash size={14} />ล้างฟอร์ม</button>
-          {isCost && <span className="text-xs text-warn">ต้นทุนสุรา — จะรับวัตถุดิบเข้าสต็อกผลิตอัตโนมัติ (ชื่อรายการต้องตรง master)</span>}
+          {isCost && <span className="text-xs text-warn">{category} — จะรับวัตถุดิบเข้าสต็อกผลิตอัตโนมัติ (ชื่อรายการต้องตรง master)</span>}
         </div>
       </Card>
       </div>

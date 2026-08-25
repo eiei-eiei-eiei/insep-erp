@@ -6,6 +6,9 @@ import {
   wht50Totals,
   taxBaseOf,
   yearBEfromCE,
+  empDisplayName,
+  countsForFiling,
+  keepFiledItems,
   type FilingItem,
   type FilingEmployee,
 } from "./filings";
@@ -161,12 +164,56 @@ describe("ภ.ง.ด.1ก — รวมทั้งปี", () => {
     expect(row.income).toBe(10000);
   });
 
-  it("เปลี่ยนนามสกุลกลางปี → ใช้ชื่อล่าสุด", () => {
+  it("เปลี่ยนนามสกุลกลางปี → ใช้ชื่อ**ปัจจุบันในทะเบียน** ไม่ใช่ชื่อที่แช่ไว้ในงวดไหนเลย", () => {
     const items: FilingItem[] = [
       { periodId: "PR-2026-01", empId: "EMP-0001", empName: "สมชาย ใจดี", gross: 100, taxableIncome: 100, ssoWageBase: 100, sso: 0, ssoEmployer: 0, wht: 0 },
       { periodId: "PR-2026-02", empId: "EMP-0001", empName: "สมชาย ใจงาม", gross: 100, taxableIncome: 100, ssoWageBase: 100, sso: 0, ssoEmployer: 0, wht: 0 },
     ];
-    expect(pnd1kRows(items, EMPS).rows[0].name).toBe("สมชาย ใจงาม");
+    const emps: FilingEmployee[] = [{ empId: "EMP-0001", name: "สมชาย เปลี่ยนแล้ว", nationalId: "1234567890123" }];
+    expect(pnd1kRows(items, emps).rows[0].name).toBe("สมชาย เปลี่ยนแล้ว");
+  });
+});
+
+/**
+ * 🚨 กติกา D75/D80 — **ชื่อ = ค่าปัจจุบันเสมอ · ตัวเงิน = ค่าที่แช่ไว้เสมอ**
+ *
+ * อาการจริงที่ทำให้ต้องมีชุดนี้ (เจอตอนเทสใช้งานจริงในเบราว์เซอร์):
+ * ภงด.1 พิมพ์ชื่อเก่าที่แช่ไว้ในงวด คู่กับ **เลขประจำตัวผู้เสียภาษีที่ดึงจากทะเบียนปัจจุบัน**
+ * → ชื่อกับเลขบัตรเป็นคนละคนบนแบบที่ยื่นสรรพากร
+ */
+describe("ชื่อบนเอกสารยื่น = ชื่อปัจจุบันเสมอ (D80)", () => {
+  const renamed: FilingEmployee[] = [
+    { empId: "EMP-0001", name: "สมชาย ชื่อใหม่", nationalId: "1234567890123", ssoNo: "1234567890" },
+    { empId: "EMP-0002", name: "สมหญิง รักงาน", nationalId: "9876543210987" },
+    { empId: "EMP-0003", name: "ลุงมี อาวุโส", nationalId: "5555555555555", ssoExempt: true },
+  ];
+  const items = period("PR-2026-05"); // empName ที่แช่ไว้ยังเป็น "สมชาย ใจดี"
+
+  it("ภ.ง.ด.1 ใช้ชื่อปัจจุบัน", () => {
+    const row = pnd1Rows(items, renamed).rows.find((r) => r.empId === "EMP-0001")!;
+    expect(row.name).toBe("สมชาย ชื่อใหม่");
+    expect(row.nationalId).toBe("1234567890123"); // ★ ชื่อกับเลขบัตรต้องเป็นคนเดียวกัน
+  });
+
+  it("สปส.1-10 ใช้ชื่อปัจจุบัน", () => {
+    const row = sso110Rows(items, renamed).rows.find((r) => r.empId === "EMP-0001")!;
+    expect(row.name).toBe("สมชาย ชื่อใหม่");
+  });
+
+  it("ภ.ง.ด.1ก ใช้ชื่อปัจจุบัน", () => {
+    expect(pnd1kRows(items, renamed).rows[0].name).toBe("สมชาย ชื่อใหม่");
+  });
+
+  it("พนักงานถูกลบจากทะเบียนแล้ว → ตกไปใช้ชื่อที่แช่ไว้ (ไม่ปล่อยช่องว่าง)", () => {
+    const gone: FilingEmployee[] = renamed.filter((e) => e.empId !== "EMP-0001");
+    expect(pnd1Rows(items, gone).rows.find((r) => r.empId === "EMP-0001")!.name).toBe("สมชาย ใจดี");
+    expect(pnd1kRows(items, gone).rows[0].name).toBe("สมชาย ใจดี");
+  });
+
+  it("empDisplayName: ทะเบียน > snapshot > ค่าว่าง", () => {
+    expect(empDisplayName(renamed, "EMP-0001", "เก่า")).toBe("สมชาย ชื่อใหม่");
+    expect(empDisplayName([], "EMP-0001", "เก่า")).toBe("เก่า");
+    expect(empDisplayName([], "EMP-9999", null)).toBe("");
   });
 });
 
@@ -221,5 +268,78 @@ describe("fallback งวดเก่าที่ยังไม่มี taxabl
 describe("ปี พ.ศ.", () => {
   it("ค.ศ. → พ.ศ.", () => {
     expect(yearBEfromCE(2026)).toBe(2569);
+  });
+});
+
+/**
+ * D81 — เอกสารยื่นต้องนับเฉพาะงวดที่ลงบัญชีแล้ว
+ *
+ * ★ ของเดิมไม่มีตัวกรองนี้เลย ทั้งที่หน้าจอเขียนว่า "งวดร่างยังไม่นับ" →
+ *   ภ.ง.ด.1ก ของ tenant ทดสอบขึ้น 925,171 ทั้งที่งวดที่ลงบัญชีจริงมีแค่ 254,860
+ */
+describe("งวดที่นับเข้าเอกสารยื่น (D81)", () => {
+  it("posted และ partial นับ · draft ไม่นับ", () => {
+    expect(countsForFiling("posted")).toBe(true);
+    expect(countsForFiling("partial")).toBe(true);
+    expect(countsForFiling("draft")).toBe(false);
+  });
+
+  it("🪤 partial ต้องนับ — ลงยอดสุทธิแล้วแต่ยังไม่ลงขา WHT คือคนที่กำลังจะยื่น ภ.ง.ด.1 พอดี", () => {
+    expect(countsForFiling("partial")).toBe(true);
+  });
+
+  it("ไม่รู้สถานะ (null/undefined) = ไม่นับ — ห้ามเดาว่าลงบัญชีแล้ว", () => {
+    expect(countsForFiling(null)).toBe(false);
+    expect(countsForFiling(undefined)).toBe(false);
+  });
+
+  it("keepFiledItems ตัดแถวของงวดที่ไม่ได้อยู่ในลิสต์ และคงลำดับเดิม", () => {
+    const all = [...period("PR-2026-01"), ...period("PR-2026-02")];
+    const kept = keepFiledItems(all, ["PR-2026-02"]);
+    expect(kept).toHaveLength(3);
+    expect(kept.every((r) => r.periodId === "PR-2026-02")).toBe(true);
+    expect(kept.map((r) => r.empId)).toEqual(["EMP-0001", "EMP-0002", "EMP-0003"]);
+  });
+
+  it("ไม่มีงวดที่นับได้เลย → ได้ลิสต์ว่าง (ไม่ใช่คืนทั้งหมด)", () => {
+    expect(keepFiledItems(period("PR-2026-01"), [])).toEqual([]);
+  });
+
+  it("🔑 ตัวคุมข้ามเอกสาร — ภ.ง.ด.1ก ของชุดที่กรองแล้ว = ผลบวก ภ.ง.ด.1 เฉพาะงวดที่ลงบัญชี", () => {
+    const filedIds = ["PR-2026-01", "PR-2026-02"];
+    const all = [...period("PR-2026-01"), ...period("PR-2026-02"), ...period("PR-2026-03")];
+
+    const k = pnd1kRows(keepFiledItems(all, filedIds), EMPS);
+    const sumFiled = filedIds.reduce((s, id) => s + pnd1Rows(period(id), EMPS).totalIncome, 0);
+    const sumWht = filedIds.reduce((s, id) => s + pnd1Rows(period(id), EMPS).totalWht, 0);
+
+    expect(k.totalIncome).toBe(sumFiled);
+    expect(k.totalWht).toBe(sumWht);
+    expect(k.rows.every((r) => r.periods === 2)).toBe(true);
+  });
+
+  it("🔴 ยอดที่กรองแล้วต้องน้อยกว่ายอดที่รวมงวดร่าง (ล็อกบั๊กไว้ไม่ให้กลับมา)", () => {
+    const all = [...period("PR-2026-01"), ...period("PR-2026-02"), ...period("PR-2026-03")];
+    const filtered = pnd1kRows(keepFiledItems(all, ["PR-2026-01", "PR-2026-02"]), EMPS);
+    const unfiltered = pnd1kRows(all, EMPS);
+
+    expect(filtered.totalIncome).toBeLessThan(unfiltered.totalIncome);
+    expect(filtered.totalWht).toBeLessThan(unfiltered.totalWht);
+    // สัดส่วนต้องเป็น 2 ใน 3 งวดพอดี — ไม่ใช่แค่ "น้อยกว่า" เฉย ๆ
+    expect(filtered.totalIncome).toBe((unfiltered.totalIncome / 3) * 2);
+  });
+
+  it("50ทวิ หลังกรองแล้ว ต้องไม่นับงวดร่าง", () => {
+    const all = [...period("PR-2026-01"), ...period("PR-2026-02")];
+    const t = wht50Totals(keepFiledItems(all, ["PR-2026-01"]), "EMP-0001");
+    expect(t.periods).toBe(1);
+    expect(t.income).toBe(40000);
+    expect(t.wht).toBe(1200);
+  });
+
+  it("สปส.1-10 ของงวดที่นับได้ ต้องไม่ขยับเพราะมีงวดร่างอยู่ในระบบ", () => {
+    const all = [...period("PR-2026-01"), ...period("PR-2026-02")];
+    const only = sso110Rows(keepFiledItems(all, ["PR-2026-01"]), EMPS);
+    expect(only).toEqual(sso110Rows(period("PR-2026-01"), EMPS));
   });
 });

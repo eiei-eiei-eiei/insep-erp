@@ -17,6 +17,12 @@ export type SubTab = {
   label: string;
   /** role ที่เห็นแท็บนี้ (ไม่ระบุ = ทุก role ที่เข้า workspace นี้ได้อยู่แล้ว) */
   roles?: Role[];
+  /**
+   * D78 — แท็บนี้เกี่ยวกับ "ประเภทสุรา" ไหน (ไม่ระบุ = เห็นเสมอ)
+   * โรงที่ทำแต่สุรากลั่นไม่ต้องเห็นแท็บของสุราแช่ และกลับกัน
+   * ★ ตัดสินจาก **สินค้าจริงใน products** ไม่ใช่ธงแพ็กเกจ (หลักเดียวกับ D51)
+   */
+  process?: string;
 };
 
 /** ผลิต — ลำดับตรงกับแถบแท็บใน ProductionApp */
@@ -25,8 +31,9 @@ export const PRODUCTION_TABS: SubTab[] = [
   { slug: "material", label: "วัตถุดิบ" },
   { slug: "ferment", label: "ลงหมัก" },
   { slug: "monitor", label: "ติดตามหมัก" },
-  { slug: "distill", label: "กลั่น" },
-  { slug: "dilute", label: "ปรุง/ปรับดีกรี" },
+  { slug: "distill", label: "กลั่น", process: "สุรากลั่น" },
+  { slug: "dilute", label: "ปรุง/ปรับดีกรี", process: "สุรากลั่น" },
+  { slug: "draw", label: "รินน้ำสุราแช่", process: "สุราแช่" },
   { slug: "pack", label: "บรรจุ/จ่าย" },
   { slug: "history", label: "ประวัติ/เทียบ" },
   { slug: "stock", label: "สต็อก" },
@@ -85,12 +92,20 @@ export const SETTINGS_TABS: { slug: string; label: string; href: string }[] = [
   { slug: "branding", label: "แบรนด์", href: "/settings/branding" },
   { slug: "notify", label: "แจ้งเตือน", href: "/settings/notify" },
   { slug: "users", label: "ผู้ใช้", href: "/settings/users" },
+  { slug: "history", label: "ประวัติการแก้ไข", href: "/settings/history" },
   { slug: "data", label: "สำรองข้อมูล", href: "/settings/data" },
 ];
 
-/** แท็บที่ role นี้เห็น (workspace ที่ไม่กรอง role = เห็นครบ) */
-export function tabsFor(workspaceKey: string, role: Role): SubTab[] {
-  return (WORKSPACE_TABS[workspaceKey] ?? []).filter((t) => !t.roles || t.roles.includes(role));
+/**
+ * แท็บที่ role นี้เห็น (workspace ที่ไม่กรอง role = เห็นครบ)
+ * processes = ประเภทสุราที่มีสินค้าจริงในระบบ (D78)
+ *   · ไม่ส่งมา หรือส่งมาเป็นเซ็ตว่าง → **เห็นครบ** (ระบบเปล่าที่ยังไม่มีสินค้าต้องไม่หายทั้งแท็บ)
+ */
+export function tabsFor(workspaceKey: string, role: Role, processes?: string[]): SubTab[] {
+  const set = processes && processes.length > 0 ? new Set(processes) : null;
+  return (WORKSPACE_TABS[workspaceKey] ?? []).filter(
+    (t) => (!t.roles || t.roles.includes(role)) && (!set || !t.process || set.has(t.process)),
+  );
 }
 
 /** slug → label · ไม่รู้จัก = null ให้ผู้เรียกใช้ค่าปริยายของตัวเอง (URL แปลก ๆ ต้องไม่ทำให้หน้าว่าง) */
@@ -109,11 +124,11 @@ export function slugFromLabel(workspaceKey: string, label: string): string {
  * · workspace ปกติ → `/production?tab=excise`
  * · ตั้งค่า → route จริง `/settings/company`
  */
-export function navSubItems(workspaceKey: string, role: Role): { label: string; href: string }[] {
+export function navSubItems(workspaceKey: string, role: Role, processes?: string[]): { label: string; href: string }[] {
   if (workspaceKey === "settings") {
     return SETTINGS_TABS.map((t) => ({ label: t.label, href: t.href }));
   }
-  return tabsFor(workspaceKey, role).map((t) => ({
+  return tabsFor(workspaceKey, role, processes).map((t) => ({
     label: t.label,
     href: `/${workspaceKey}?tab=${t.slug}`,
   }));

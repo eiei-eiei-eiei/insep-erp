@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 //    static import = ทุกคนที่เปิดแอปผลิตต้องโหลด pdf-lib + fontkit ทั้งที่ส่วนใหญ่ไม่ได้ออกฟอร์ม
 //    (ตอนอยู่ /reports ต้นทุนนี้ถูกกักไว้หน้าเดียว) → โหลดตอนกดสร้าง PDF เท่านั้น
 import { EXCISE_TEMPLATE_KEY, FONT_KEY, type ExciseKind } from "@/lib/pdf/keys";
+import { downloadBlob, MIME } from "@/lib/shared/download";
 import { getPdfAssetUrl } from "../../actions";
 import { getExciseOptionsAction, getExciseReportData, getExciseReportRunsAction, markExciseRunAction } from "../excise-actions";
 import { ReportChecklist } from "../../_components/ReportChecklist";
@@ -12,18 +13,30 @@ import { ReportChecklist } from "../../_components/ReportChecklist";
 // report_key ของ report_runs ↔ ฟอร์ม ภส. (FLOW sec 6 — "เดือนนี้สร้างครบยัง")
 const EXCISE_CHECKLIST = [
   { key: "phor_so_07_01", label: "ภส.๐๗-๐๑/๑ บัญชีวัตถุดิบ" },
-  { key: "phor_so_07_02_1", label: "ภส.๐๗-๐๒/๑(๑) บัญชีผลิตสุรา" },
+  { key: "phor_so_07_02_1", label: "ภส.๐๗-๐๒/๑(๑) บัญชีผลิตสุรากลั่น" },
+  { key: "phor_so_07_02_1_chae", label: "ภส.๐๗-๐๒/๑(๑) บัญชีผลิตสุราแช่" },
   { key: "phor_so_07_02_2", label: "ภส.๐๗-๐๒/๑(๒) บัญชีสุราบรรจุขวด" },
   { key: "phor_so_07_04", label: "ภส.๐๗-๐๔ งบเดือน" },
 ];
 const RUN_KEY: Record<ExciseKind, string> = {
   "0701": "phor_so_07_01",
   "0702_1": "phor_so_07_02_1",
+  "0702_1_chae": "phor_so_07_02_1_chae",
   "0702_2": "phor_so_07_02_2",
   "0704": "phor_so_07_04",
 };
 
-type Opt = { entities: { entity_id: string; name: string; excise_id: string | null }[]; materials: { material_id: string; name: string; unit: string | null }[]; products: { product_id: string; name: string; degree: number | null; bottle_size_l: number | null }[]; productNames: string[] };
+type Opt = {
+  entities: { entity_id: string; name: string; excise_id: string | null }[];
+  materials: { material_id: string; name: string; unit: string | null }[];
+  products: { product_id: string; name: string; degree: number | null; bottle_size_l: number | null }[];
+  productNames: string[];
+  /** D78 — ชื่อสุราแยกตามประเภท (ฟอร์มผลิตคนละใบ) + รายชื่อที่ตั้งประเภทไม่ครบ/ไม่ตรงกัน */
+  productNamesDistilled: string[];
+  productNamesFermented: string[];
+  namesNoProcess: string[];
+  namesMixedProcess: string[];
+};
 
 function nowMonth() {
   const d = new Date();
@@ -41,19 +54,15 @@ async function mergePdfs(PDFDocument: typeof import("pdf-lib").PDFDocument, arra
   return merged.save();
 }
 
+/** ★ ตัวจริงอยู่ที่ `lib/shared/download.ts` แล้ว (D82) — ที่นี่เหลือแค่ห่อให้เรียกสั้นเหมือนเดิม */
 function download(bytes: Uint8Array, name: string) {
-  const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  downloadBlob(bytes as BlobPart, name, MIME.pdf);
 }
 
-const EMPTY_OPT: Opt = { entities: [], materials: [], products: [], productNames: [] };
+const EMPTY_OPT: Opt = {
+  entities: [], materials: [], products: [], productNames: [],
+  productNamesDistilled: [], productNamesFermented: [], namesNoProcess: [], namesMixedProcess: [],
+};
 
 /**
  * แท็บ "รายงานสรรพสามิต" ของแอปผลิต — ออกฟอร์ม ภส.๐๗ ทั้ง 4 ตัว
@@ -73,8 +82,9 @@ export function ExciseTab({ active }: { active: boolean }) {
   // เลือกรายการต่อฟอร์ม (default เลือกทั้งหมด — เติมให้ตอนตัวเลือกโหลดเสร็จ)
   const [sel0701, setSel0701] = useState<string[]>([]);
   const [sel0702_1, setSel0702_1] = useState<string[]>([]);
+  const [sel0702_1_chae, setSel0702_1Chae] = useState<string[]>([]);
   const [sel0702_2, setSel0702_2] = useState<string[]>([]);
-  const [en, setEn] = useState({ "0701": true, "0702_1": true, "0702_2": true, "0704": true });
+  const [en, setEn] = useState({ "0701": true, "0702_1": true, "0702_1_chae": true, "0702_2": true, "0704": true });
 
   useEffect(() => {
     if (!active || loaded) return;
@@ -85,7 +95,8 @@ export function ExciseTab({ active }: { active: boolean }) {
       // default = กิจการที่มีเลขสรรพสามิต (ไม่งั้นหัวฟอร์มจะว่าง)
       setEntityId(o.entities.find((e) => e.excise_id)?.entity_id ?? o.entities[0]?.entity_id ?? "");
       setSel0701(o.materials.map((m) => m.material_id));
-      setSel0702_1(o.productNames);
+      setSel0702_1(o.productNamesDistilled);
+      setSel0702_1Chae(o.productNamesFermented);
       setSel0702_2(o.products.map((p) => p.product_id));
       setLoaded(true);
     });
@@ -132,7 +143,8 @@ export function ExciseTab({ active }: { active: boolean }) {
       const font = await fetchAsset(FONT_KEY);
       const jobs: { kind: ExciseKind; ids: string[]; file: string }[] = [];
       if (en["0701"]) jobs.push({ kind: "0701", ids: sel0701, file: "ภส07-01_วัตถุดิบ" });
-      if (en["0702_1"]) jobs.push({ kind: "0702_1", ids: sel0702_1, file: "ภส07-02-1_ผลิตสุรา" });
+      if (en["0702_1"] && options.productNamesDistilled.length > 0) jobs.push({ kind: "0702_1", ids: sel0702_1, file: "ภส07-02-1_ผลิตสุรากลั่น" });
+      if (en["0702_1_chae"] && options.productNamesFermented.length > 0) jobs.push({ kind: "0702_1_chae", ids: sel0702_1_chae, file: "ภส07-02-1_ผลิตสุราแช่" });
       if (en["0702_2"]) jobs.push({ kind: "0702_2", ids: sel0702_2, file: "ภส07-02-2_สุราขวด" });
       if (en["0704"]) jobs.push({ kind: "0704", ids: [""], file: "ภส07-04_งบเดือน" });
 
@@ -170,6 +182,12 @@ export function ExciseTab({ active }: { active: boolean }) {
     [options],
   );
 
+  // D80 — ขนาดขวดที่น่าจะกรอกเป็นมิลลิลิตร (ไม่มีขวดขายปลีกใหญ่กว่า 5 ลิตร)
+  const bigBottles = useMemo(
+    () => options.products.filter((p) => (Number(p.bottle_size_l) || 0) > 5),
+    [options],
+  );
+
   if (!loaded) return <p className="text-sm text-faint">กำลังโหลด…</p>;
 
   return (
@@ -177,6 +195,35 @@ export function ExciseTab({ active }: { active: boolean }) {
       {anyMaster === 0 && (
         <div className="mb-4 rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">
           ยังไม่มีข้อมูลวัตถุดิบ/สินค้า — เพิ่ม master (หรือรัน seed ทดสอบ) ก่อนออกรายงาน
+        </div>
+      )}
+
+      {/* D78 🚨 ห้าม default เป็นสุรากลั่น — เดาแล้วออกฟอร์มผิดใบโดยไม่มีอะไรฟ้อง */}
+      {options.namesNoProcess.length > 0 && (
+        <div className="mb-4 rounded-lg bg-crit-bg px-3 py-2 text-sm text-crit">
+          สินค้าเหล่านี้ยังไม่ได้ตั้ง <b>ประเภทสุรา</b> (สุรากลั่น / สุราแช่) จึงยัง<b>ออกฟอร์มบัญชีผลิตให้ไม่ได้</b>:{" "}
+          <b>{options.namesNoProcess.join(", ")}</b>
+          <br />ตั้งได้ที่แท็บ <b>จัดการข้อมูล → สินค้า / สุรา</b> (ฟอร์มวัตถุดิบ · สุราบรรจุขวด · งบเดือน ยังออกได้ตามปกติ)
+        </div>
+      )}
+      {options.namesMixedProcess.length > 0 && (
+        <div className="mb-4 rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">
+          ชื่อสุราเหล่านี้มีหลายแถวที่ <b>ประเภทสุราไม่ตรงกัน</b>: <b>{options.namesMixedProcess.join(", ")}</b>
+          <br />รายงานรวมยอดตาม<b>ชื่อสุรา</b> — ถ้าประเภทไม่ตรงกันระบบจะยึดแถวแรกที่เจอ ควรแก้ให้ตรงกันก่อนยื่น
+        </div>
+      )}
+
+      {/*
+        D80 — ที่นี่คือจุดที่ขนาดขวดผิดหน่วยกลายเป็นเลขบนเอกสารราชการจริง
+        🚨 ภส.๐๗-๐๒/๑(๒) คิดลิตร = จำนวนขวด × bottle_size_l · กรอก 330 แทน 0.33
+           = ปริมาตรบนฟอร์มพันเท่า และไม่มีอะไรฟ้องจนกว่าเจ้าหน้าที่จะทัก
+      */}
+      {bigBottles.length > 0 && (
+        <div className="mb-4 rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">
+          สินค้าเหล่านี้ตั้ง <b>ขนาดขวดเกิน 5 ลิตร/ขวด</b> — น่าจะกรอกเป็น <b>มิลลิลิตร</b>:{" "}
+          <b>{bigBottles.map((p) => `${p.name} ${p.bottle_size_l} ล.`).join(", ")}</b>
+          <br />ฟอร์ม <b>ภส.๐๗-๐๒/๑(๒)</b> คิดปริมาตรจาก <b>จำนวนขวด × ขนาดขวด</b> —
+          ถ้าหน่วยผิด ปริมาณบนฟอร์มจะมากกว่าความจริงพันเท่า · แก้ที่แท็บ <b>จัดการข้อมูล → สินค้า / สุรา</b>
         </div>
       )}
 
@@ -247,20 +294,41 @@ export function ExciseTab({ active }: { active: boolean }) {
           </div>
         </div>
 
-        <div className={box}>
-          <label className="mb-2 flex items-center gap-2 font-semibold text-ink">
-            <input type="checkbox" checked={en["0702_1"]} onChange={(e) => setEn({ ...en, "0702_1": e.target.checked })} />
-            ภส.๐๗-๐๒/๑(๑) บัญชีผลิตสุรา (ต่อชื่อสุรา)
-          </label>
-          <div className="max-h-48 space-y-0.5 overflow-y-auto pl-6">
-            {options.productNames.map((n) => (
-              <label key={n} className={chk}>
-                <input type="checkbox" checked={sel0702_1.includes(n)} onChange={() => toggle(sel0702_1, setSel0702_1, n)} />
-                {n}
-              </label>
-            ))}
+        {/* D78: ฟอร์มผลิตแยกใบตามประเภทสุรา — กล่องที่ไม่มีสินค้าเลยจะไม่โผล่ */}
+        {options.productNamesDistilled.length > 0 && (
+          <div className={box}>
+            <label className="mb-2 flex items-center gap-2 font-semibold text-ink">
+              <input type="checkbox" checked={en["0702_1"]} onChange={(e) => setEn({ ...en, "0702_1": e.target.checked })} />
+              ภส.๐๗-๐๒/๑(๑) บัญชีผลิต<b>สุรากลั่น</b> (ต่อชื่อสุรา)
+            </label>
+            <div className="max-h-48 space-y-0.5 overflow-y-auto pl-6">
+              {options.productNamesDistilled.map((n) => (
+                <label key={n} className={chk}>
+                  <input type="checkbox" checked={sel0702_1.includes(n)} onChange={() => toggle(sel0702_1, setSel0702_1, n)} />
+                  {n}
+                </label>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
+
+        {options.productNamesFermented.length > 0 && (
+          <div className={box}>
+            <label className="mb-2 flex items-center gap-2 font-semibold text-ink">
+              <input type="checkbox" checked={en["0702_1_chae"]} onChange={(e) => setEn({ ...en, "0702_1_chae": e.target.checked })} />
+              ภส.๐๗-๐๒/๑(๑) บัญชีผลิต<b>สุราแช่</b> (ต่อชื่อสุรา)
+            </label>
+            <div className="max-h-48 space-y-0.5 overflow-y-auto pl-6">
+              {options.productNamesFermented.map((n) => (
+                <label key={n} className={chk}>
+                  <input type="checkbox" checked={sel0702_1_chae.includes(n)} onChange={() => toggle(sel0702_1_chae, setSel0702_1Chae, n)} />
+                  {n}
+                </label>
+              ))}
+            </div>
+            <p className="mt-2 pl-6 text-xs text-faint">คนละกระดาษกับฉบับสุรากลั่น แม้เลขฟอร์มบนหัวกระดาษจะเหมือนกัน</p>
+          </div>
+        )}
 
         <div className={box}>
           <label className="mb-2 flex items-center gap-2 font-semibold text-ink">

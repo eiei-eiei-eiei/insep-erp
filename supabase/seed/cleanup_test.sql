@@ -11,6 +11,7 @@ delete from log_product         where product_id like 'T-%';
 delete from log_ferment         where product_name like '%ทดสอบ%';
 delete from log_distill         where product_name like '%ทดสอบ%';
 delete from log_dilute          where product_name like '%ทดสอบ%';
+delete from log_ferment_draw    where product_name like '%ทดสอบ%';   -- D78 สุราแช่
 delete from log_ferment_monitor where product_name like '%ทดสอบ%';
 delete from log_distill_run     where product_name like '%ทดสอบ%';
 delete from stock_product       where product_id like 'T-%';

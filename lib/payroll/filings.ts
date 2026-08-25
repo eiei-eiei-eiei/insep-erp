@@ -125,6 +125,26 @@ function empOf(emps: FilingEmployee[], empId: string): FilingEmployee | undefine
   return emps.find((e) => e.empId === empId);
 }
 
+/**
+ * ชื่อที่ขึ้นเอกสาร — **ชื่อปัจจุบันในทะเบียนพนักงานเสมอ** (กติกา D75, D80)
+ *
+ * 🚨 `payroll_items.emp_name` เป็น snapshot ตอนสร้างแถวงวด → เหลือเป็น **fallback อย่างเดียว**
+ *    ใช้เมื่อพนักงานถูกลบออกจากทะเบียนไปแล้วเท่านั้น
+ *
+ * 🪤 อาการตอนสลับข้าง (บั๊กเดิม D69 ที่ D75 กวาดไม่ถึง): ภงด.1 พิมพ์ชื่อเก่าคู่กับเลขบัตร
+ *    ที่ดึงจากทะเบียนปัจจุบัน = **ชื่อกับเลขประจำตัวเป็นคนละคนบนแบบที่ยื่นสรรพากร**
+ *    (เจอจริงตอนเทส: "นายรัง" คู่เลขบัตรของ "นายอำนวย ตระกูลทุม")
+ *
+ * ★ ตัวเงินไม่เกี่ยวกับฟังก์ชันนี้ — ยอดยังมาจากค่าที่แช่ไว้เหมือนเดิมทุกตัว
+ */
+export function empDisplayName(
+  emps: FilingEmployee[],
+  empId: string,
+  snapshot?: string | null,
+): string {
+  return empOf(emps, empId)?.name || snapshot || "";
+}
+
 /** เรียงตามรหัสพนักงาน — ลำดับที่ผู้ใช้ต้องคีย์เข้าเว็บราชการต้องคงที่ทุกครั้งที่เปิด */
 function byEmpId<T extends { empId: string }>(rows: T[]): T[] {
   return [...rows].sort((a, b) => a.empId.localeCompare(b.empId));
@@ -142,7 +162,7 @@ export function pnd1Rows(items: FilingItem[], emps: FilingEmployee[]): Pnd1Resul
     return {
       seq: i + 1,
       empId: it.empId,
-      name: it.empName || e?.name || "",
+      name: empDisplayName(emps, it.empId, it.empName),
       nationalId: e?.nationalId ?? "",
       income: round2(base.value),
       wht: round2(n(it.wht)),
@@ -169,7 +189,7 @@ export function sso110Rows(items: FilingItem[], emps: FilingEmployee[]): Sso110R
     return {
       seq: i + 1,
       empId: it.empId,
-      name: it.empName || e?.name || "",
+      name: empDisplayName(emps, it.empId, it.empName),
       ssoRef: e?.ssoNo || e?.nationalId || "",
       wage: round2(ssoWageOf(it)),
       sso: round2(n(it.sso)),
@@ -197,11 +217,13 @@ export function pnd1kRows(yearItems: FilingItem[], emps: FilingEmployee[]): Pnd1
   for (const it of yearItems) {
     const base = taxBaseOf(it);
     if (base.fallback) usedGrossFallback = true;
-    const cur = agg.get(it.empId) ?? { name: it.empName, income: 0, wht: 0, periods: 0 };
+    const cur = agg.get(it.empId) ?? { name: "", income: 0, wht: 0, periods: 0 };
     cur.income += base.value;
     cur.wht += n(it.wht);
     cur.periods += 1;
-    // ชื่อล่าสุดชนะ (คนเปลี่ยนนามสกุลกลางปี — เอกสารสิ้นปีควรเป็นชื่อปัจจุบัน)
+    // snapshot ล่าสุดของปี — เก็บไว้เป็น fallback เฉย ๆ (คนที่ถูกลบจากทะเบียนไปแล้ว)
+    // 🪤 ของเดิมเขียนว่า "ชื่อล่าสุดชนะ · เอกสารสิ้นปีควรเป็นชื่อปัจจุบัน" ซึ่งเจตนาถูก
+    //    แต่หยิบ **snapshot ล่าสุด** ไม่ใช่ชื่อจริงปัจจุบัน → คนเปลี่ยนนามสกุลแล้วยังได้ชื่อเก่าอยู่ดี
     if (it.empName) cur.name = it.empName;
     agg.set(it.empId, cur);
   }
@@ -211,7 +233,7 @@ export function pnd1kRows(yearItems: FilingItem[], emps: FilingEmployee[]): Pnd1
     .map(([empId, v], i) => ({
       seq: i + 1,
       empId,
-      name: v.name || empOf(emps, empId)?.name || "",
+      name: empDisplayName(emps, empId, v.name),
       nationalId: empOf(emps, empId)?.nationalId ?? "",
       income: round2(v.income),
       wht: round2(v.wht),
@@ -258,4 +280,39 @@ export function wht50Totals(
 /** ปี พ.ศ. จากปี ค.ศ. (ระบบเก็บ period เป็น ค.ศ. ทั้งหมด — เอกสารราชการใช้ พ.ศ.) */
 export function yearBEfromCE(yearCE: number): number {
   return yearCE + 543;
+}
+
+// ── งวดไหนนับเข้าเอกสารยื่นได้ (D81) ─────────────────────────────────────────
+/**
+ * สถานะงวด — DB derive ให้เองจาก `post_state` (0040 §142 · 0042 §228)
+ * ฝั่ง TS มีหน้าที่แค่ "อ่าน" ห้ามคำนวณสถานะเอง
+ */
+export type PeriodFilingStatus = "draft" | "partial" | "posted";
+
+/**
+ * งวดนี้นับเข้าเอกสารยื่นราชการได้ไหม
+ *
+ * 🚨 `draft` = `post_state` ว่าง = **ยังไม่ลงบัญชีสักขา** = ยังไม่เกิดการจ่ายจริง → ห้ามนับ
+ *    ของเดิมไม่มีตัวกรองนี้เลย ทั้งที่หน้าจอเขียนว่า "งวดร่างยังไม่นับ" →
+ *    ภ.ง.ด.1ก ของ tenant ทดสอบขึ้น 925,171 ทั้งที่งวดที่ลงบัญชีจริงมีแค่ 254,860
+ *
+ * 🪤 `partial` ต้อง **นับ** — ลงยอดสุทธิแล้วแต่ยังไม่ลงขา WHT คือสภาพปกติของคนที่
+ *    *กำลังจะยื่น* ภ.ง.ด.1 · ตัดออกเมื่อไหร่ = งวดที่จ่ายเงินให้ลูกจ้างไปแล้วจริง
+ *    หายจากแบบที่ใช้นำส่งภาษีของงวดนั้นเอง ซึ่งผิดหนักกว่าที่ตั้งใจจะแก้
+ */
+export function countsForFiling(status: PeriodFilingStatus | null | undefined): boolean {
+  return status === "posted" || status === "partial";
+}
+
+/**
+ * คัดเหลือเฉพาะแถวของงวดที่นับได้
+ * ★ กฎอยู่ที่นี่ที่เดียว — ฝั่ง server (รายเดือน/รายปี) และดร็อปดาวน์บนจอเรียกตัวเดียวกัน
+ *   ห้ามเขียน `status !== "draft"` ซ้ำที่อื่น (เหตุผลเดียวกับ periodView.ts ของ D75)
+ */
+export function keepFiledItems<T extends { periodId: string }>(
+  items: readonly T[],
+  filedPeriodIds: Iterable<string>,
+): T[] {
+  const ok = new Set(filedPeriodIds);
+  return items.filter((it) => ok.has(it.periodId));
 }

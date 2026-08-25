@@ -12,7 +12,13 @@ export type Product = {
   liquor_type: string | null;
   liquor_kind: string | null;
 };
-export type PendingBatch = { batch: string; productName: string; fermVol: number };
+export type PendingBatch = {
+  batch: string;
+  productName: string;
+  fermVol: number;
+  /** D80 — batch ของสุราแช่ (แท็บกลั่นต้องกรองออก · แท็บติดตามหมักยังต้องเห็น) */
+  fermented: boolean;
+};
 export type StockRow = {
   product_id: string;
   balance: number;

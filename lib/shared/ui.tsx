@@ -49,9 +49,19 @@ export function cleanTaxId13(raw: string | null | undefined): string | null {
 }
 
 // ── state helper ─────────────────────────────────────────────────────────────
+/**
+ * ข้อความผลลัพธ์ท้ายฟอร์ม
+ * · `ok: true`  = สำเร็จ (เขียว)
+ * · `ok: false` = ล้มเหลว ไม่ได้บันทึกอะไร (แดง)
+ * · `warn: true` = **บันทึกแล้วแต่มีบางส่วนไม่สำเร็จ** (เหลือง) — เช่น ลงบัญชีสำเร็จ
+ *   แต่ forward วัตถุดิบเข้าสต็อกผลิตไม่ได้ · 🚨 เคสนี้ห้ามโชว์เขียวเด็ดขาด
+ *   ผู้ใช้อ่านผ่านแล้วเข้าใจว่าครบ (D79)
+ */
+export type UiMsg = { ok: boolean; text: string; warn?: boolean };
+
 export function useSaver<R extends SaveResultLike = SaveResultLike>() {
   const [pending, startTransition] = useTransition();
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [msg, setMsg] = useState<UiMsg | null>(null);
 
   function run(fn: () => Promise<R>, okText: string, onOk?: (data?: unknown) => void) {
     setMsg(null);
@@ -69,15 +79,15 @@ export function useSaver<R extends SaveResultLike = SaveResultLike>() {
 }
 
 // ── layout ───────────────────────────────────────────────────────────────────
-export function Msg({ msg }: { msg: { ok: boolean; text: string } | null }) {
+export function Msg({ msg }: { msg: UiMsg | null }) {
   if (!msg) return null;
+  const tone = msg.warn
+    ? "border-warn-line bg-warn-bg text-warn"
+    : msg.ok
+      ? "border-ok-line bg-ok-bg text-ok"
+      : "border-crit-line bg-crit-bg text-crit";
   return (
-    <div
-      role="status"
-      className={`mb-3 rounded-lg border px-3 py-2 text-sm ${
-        msg.ok ? "border-ok-line bg-ok-bg text-ok" : "border-crit-line bg-crit-bg text-crit"
-      }`}
-    >
+    <div role="status" className={`mb-3 rounded-lg border px-3 py-2 text-sm ${tone}`}>
       {msg.text}
     </div>
   );

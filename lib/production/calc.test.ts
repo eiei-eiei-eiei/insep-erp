@@ -8,6 +8,13 @@ import {
   nextBatchNumber,
   remainingDistillVol,
   diluteCalc,
+  isKnownProcess,
+  isFermented,
+  productionFormKind,
+  processesOf,
+  drawnVol,
+  drawnAbv,
+  remainingFermentedVol,
   closeBatchSummary,
 } from "./calc";
 
@@ -119,5 +126,72 @@ describe("diluteCalc C1V1=C2V2 (P9)", () => {
   });
   it("ข้อมูลไม่ครบ → ไม่คำนวณ (คงค่าเดิม)", () => {
     expect(diluteCalc("v1", { v1: 0, c1: 70, c2: 40, v2: 0 })).toEqual({ v1: 0, v2: 0, water: 0 });
+  });
+});
+
+// ── D78 สุราแช่ ────────────────────────────────────────────────────────────────────
+describe("D78 ประเภทสุรา — ชุดปิด 2 ค่า", () => {
+  it("รู้จักเฉพาะ สุรากลั่น/สุราแช่ (เว้นวรรคหัวท้ายตัดออก)", () => {
+    expect(isKnownProcess("สุรากลั่น")).toBe(true);
+    expect(isKnownProcess(" สุราแช่ ")).toBe(true);
+    expect(isKnownProcess("สุราขาว")).toBe(false);
+    expect(isKnownProcess("")).toBe(false);
+    expect(isKnownProcess(null)).toBe(false);
+  });
+  it("productionFormKind — คืน null เมื่อยังตั้งประเภทไม่ครบ (ห้ามเดาเป็นกลั่น)", () => {
+    expect(productionFormKind("สุรากลั่น")).toBe("distilled");
+    expect(productionFormKind("สุราแช่")).toBe("fermented");
+    expect(productionFormKind("")).toBeNull();
+    expect(productionFormKind(null)).toBeNull();
+    expect(productionFormKind("เบียร์")).toBeNull();
+  });
+  it("productionFormKind — ชนิดสุรายังไม่มีผล (ที่ว่างไว้ให้เฟสเบียร์)", () => {
+    expect(productionFormKind("สุราแช่", "เบียร์")).toBe("fermented");
+    expect(productionFormKind("สุราแช่", "ไวน์ผลไม้")).toBe("fermented");
+  });
+  it("isFermented ไม่เดาให้เมื่อค่าว่าง/ไม่รู้จัก", () => {
+    expect(isFermented("สุราแช่")).toBe(true);
+    expect(isFermented("สุรากลั่น")).toBe(false);
+    expect(isFermented(null)).toBe(false);
+    expect(isFermented("เบียร์")).toBe(false);
+  });
+});
+
+describe("D78 drawnVol/drawnAbv — ยอดที่ลงฟอร์มคือยอดหลังปรุง", () => {
+  it("มี final_* → ใช้ค่าหลังปรุง", () => {
+    expect(drawnVol({ vol: 160, final_vol: 200 })).toBe(200);
+    expect(drawnAbv({ abv: 12, final_abv: 9 })).toBe(9);
+  });
+  it("final_* ว่าง/null → ใช้ค่าตอนริน (ไม่ปรุง)", () => {
+    expect(drawnVol({ vol: 160, final_vol: null })).toBe(160);
+    expect(drawnVol({ vol: 160 })).toBe(160);
+    expect(drawnAbv({ abv: 12, final_abv: "" })).toBe(12);
+  });
+  it("final_vol = 0 ต้องเป็น 0 ไม่ใช่ fallback (รินแล้วเททิ้งหมด)", () => {
+    expect(drawnVol({ vol: 160, final_vol: 0 })).toBe(0);
+  });
+});
+
+describe("D78 remainingFermentedVol — น้ำสุราแช่คงเหลือรอบรรจุ", () => {
+  it("Σ ยอดหลังปรุง − Σ ที่บรรจุแล้ว", () => {
+    expect(remainingFermentedVol([{ vol: 160, final_vol: 200 }], [150])).toBe(50);
+  });
+  it("ไม่ปรุง → นับยอดตอนริน", () => {
+    expect(remainingFermentedVol([{ vol: 160 }], [150])).toBe(10);
+  });
+  it("บรรจุเกิน → 0 ไม่ติดลบ (เหมือน remainingDistillVol)", () => {
+    expect(remainingFermentedVol([{ vol: 100 }], [150])).toBe(0);
+  });
+  it("ยังไม่มีรายการ → 0", () => {
+    expect(remainingFermentedVol([], [])).toBe(0);
+  });
+});
+
+describe("D78 processesOf — ประเภทที่มีสินค้าจริง (ใช้ซ่อนแท็บ)", () => {
+  it("เก็บเฉพาะค่าที่รู้จัก ไม่ซ้ำ", () => {
+    expect(processesOf(["สุรากลั่น", "สุรากลั่น", "สุราแช่"]).sort()).toEqual(["สุรากลั่น", "สุราแช่"]);
+  });
+  it("ค่าว่าง/ไม่รู้จัก ไม่นับ (ไม่ทำให้แท็บโผล่มั่ว)", () => {
+    expect(processesOf([null, "", "เบียร์", undefined])).toEqual([]);
   });
 });

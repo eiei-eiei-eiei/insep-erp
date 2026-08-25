@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { workspacesFor, type Role } from "@/lib/shared/workspaces";
 import { brandingFromSettings } from "@/lib/shared/branding";
 import { bangkokDateISO } from "@/lib/shared/datetime";
+import { processesOf } from "@/lib/production/calc";
 import { Nav } from "./_components/nav";
 import { BillingNotice } from "./_components/billing-notice";
 
@@ -25,7 +26,7 @@ export default async function AppLayout({
 
   if (!user) redirect("/login");
 
-  const [{ data: profile }, { data: settings }, { data: tenant }] = await Promise.all([
+  const [{ data: profile }, { data: settings }, { data: tenant }, { data: prodTypes }] = await Promise.all([
     supabase
       .from("profiles")
       .select("display_name, username, role, must_change_password")
@@ -38,6 +39,10 @@ export default async function AppLayout({
       .from("tenants")
       .select("modules_enabled, is_active, is_platform, billing_due_on, billing_notice")
       .maybeSingle(),
+    // D78: ประเภทสุราที่มีสินค้าจริง → ซ่อนแท็บของเส้นทางที่โรงนี้ไม่ได้ทำ ในดร็อปดาวน์แถบเมนู
+    //   ไม่ทำที่นี่ = ดร็อปดาวน์ลิงก์ไปแท็บที่ ProductionApp ซ่อนไว้ (กดแล้วเด้งกลับแท็บแรก)
+    //   ตาราง products หลักสิบแถว + RLS กรองเหลือ tenant ตัวเองอยู่แล้ว
+    supabase.from("products").select("liquor_type"),
   ]);
 
   // ยังใช้รหัสที่คนอื่นตั้งให้ → ต้องเปลี่ยนก่อนเข้าใช้งาน (0031)
@@ -71,6 +76,7 @@ export default async function AppLayout({
         displayName={displayName}
         role={role}
         branding={branding}
+        processes={processesOf((prodTypes ?? []).map((p) => p.liquor_type as string | null))}
       />
       {/* pb ล่างบนมือถือ กันเนื้อหาโดน bottom-tab บัง */}
       <main className="mx-auto max-w-6xl px-4 py-6 pb-24 md:pb-6">{children}</main>

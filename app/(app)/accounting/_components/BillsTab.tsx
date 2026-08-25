@@ -274,7 +274,7 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
               <Field label="ประเภท"><Select value={type} onChange={(e) => setType(e.target.value as "รายรับ" | "รายจ่าย")}><option value="รายจ่าย">รายจ่าย</option><option value="รายรับ">รายรับ</option></Select></Field>
               <Field label="หมวดหมู่">
                 <input list="edit-cat-list" value={category} onChange={(e) => setCategory(e.target.value)} className="w-full rounded-lg border border-line px-3 py-2 text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft" />
-                <datalist id="edit-cat-list">{cats.map((c) => (<option key={c} value={c} />))}{type === "รายจ่าย" && !cats.includes("ต้นทุนสุรา") && <option value="ต้นทุนสุรา" />}</datalist>
+                <datalist id="edit-cat-list">{cats.map((c) => (<option key={c} value={c} />))}{type === "รายจ่าย" && boot.forwardCats.filter((c) => !cats.includes(c)).map((c) => (<option key={c} value={c} />))}</datalist>
               </Field>
               <Field label="บัญชี"><Select value={accountName} onChange={(e) => setAccountName(e.target.value)}><option value="">— เลือก —</option>{accountOptions.map((a) => (<option key={a.account_name} value={a.account_name}>{a.account_name}</option>))}</Select></Field>
               <Field label="คู่ค้า">
@@ -359,7 +359,11 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
             </dl>
             {manualAmt && <p className="mt-1 text-xs text-warn">โหมดแก้ยอดเอง — 3 ค่านี้จะไม่คำนวณอัตโนมัติจนกดกลับ (ยอดสุทธิ = หลังหักส่วนลด + VAT − หัก ณ ที่จ่าย)</p>}
 
-            <p className="mt-2 text-xs text-faint">* คงสถานะชำระ (AP/AR) และกลุ่มงวด/โอนไว้เดิม · การแก้จะถูกบันทึกใน edit_log</p>
+            {/* 🪤 ของเดิมเขียนว่า "บันทึกใน edit_log" ซึ่งเป็นชื่อตารางใน DB ที่ผู้ใช้เปิดดูไม่ได้เลย
+                — บอกว่าเก็บไว้แต่ไม่บอกว่าดูที่ไหน · ตอนนี้มีหน้าให้ดูจริงแล้ว (D80) */}
+            <p className="mt-2 text-xs text-faint">
+              * คงสถานะชำระ (AP/AR) และกลุ่มงวด/โอนไว้เดิม · ดูย้อนหลังได้ที่ <b>ตั้งค่า → ประวัติการแก้ไข</b>
+            </p>
             <Msg msg={msg} />
             <div className="mt-3 flex justify-end gap-2">
               <button onClick={onClose} className="rounded-lg border border-line px-4 py-2 text-sm">ยกเลิก</button>

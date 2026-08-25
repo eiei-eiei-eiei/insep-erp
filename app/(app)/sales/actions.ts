@@ -211,7 +211,9 @@ export async function processOrderActionAction(quNo: string, action: OrderAction
   // ต้องมีกิจการรับรายได้ก่อน (RECEIVE_REVENUE ลง transactions ต้องมี entity_id ที่มีจริง)
   const needsRevenue = ["DEPOSIT_AND_SEND", "FULL_PAYMENT_AND_SEND", "FULL_PAYMENT_LATER", "PAY_BALANCE"].includes(action);
   if (needsRevenue && !config.entityId) {
-    return fail("ยังไม่ได้ตั้งค่ากิจการรับรายได้ขาย (app_settings sales_revenue_entity) — ดู GOLIVE_CHECKLIST Phase 4");
+    // 🪤 ของเดิมชี้ให้ไปเปิดไฟล์เอกสาร + บอกชื่อ kind ใน DB ทั้งที่ **ไม่มีหน้าจอให้ตั้งเลย**
+    //    (D80) — ตอนนี้ตั้งได้จากในแอปแล้ว ข้อความต้องพาไปถึงที่
+    return fail("ยังไม่ได้ตั้งกิจการที่รับรายได้จากการขาย — ไปที่ ตั้งค่า → กิจการ → การ์ด “กิจการและบัญชีที่รับรายได้จากการขาย”");
   }
 
   // ข้อมูลคู่ค้า (taxId/branch/address) จาก contacts

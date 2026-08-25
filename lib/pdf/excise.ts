@@ -309,5 +309,146 @@ export async function fillExciseForm(
   if (kind === "0702_2") return fillDailyForm(CFG_0702_2, data, templateBytes, fontBytes);
   if (kind === "0704") return fillSummaryForm(CFG_0704, data, templateBytes, fontBytes);
   if (kind === "0702_1") return fillProductionForm(CFG_0702_1, data, templateBytes, fontBytes);
+  if (kind === "0702_1_chae") return fillFermentedForm(CFG_0702_1_CHAE, data, templateBytes, fontBytes);
   throw new Error("ชนิดรายงานไม่ถูกต้อง: " + kind);
+}
+
+// ── D78 ฟอร์มผลิตสุราแช่ ๐๗-๐๒/๑(๑) ฉบับสุราแช่ (landscape 14 คอลัมน์ 17 แถว) ─────────
+// พิกัดทุกตัวมาจาก docs/form/พิกัด_ภส07-02ทับ11_สุราแช่.md (ผู้ใช้ปักด้วย pdf_coord_picker)
+//
+// 🔴 ทำไม helper ในฟังก์ชันนี้ซ้ำกับ 3 ฟังก์ชันข้างบน (txt/right/center/drawCol):
+//    ไฟล์นี้อยู่ใต้กติกาเหล็กข้อ 3 "ฟอร์มราชการห้ามเพี้ยนแม้ 1 mm" — ฟอร์ม 4 ใบเดิมต้องได้
+//    ผลลัพธ์ไบต์เดิมเป๊ะ การดึง helper ออกมารวมกันคือการแก้โค้ดที่วาดฟอร์มเดิมทั้ง 3 ใบ
+//    เพื่อความสวยงามเท่านั้น = ความเสี่ยงที่ไม่คุ้ม → ยอมให้ซ้ำเป็นชุดที่ 4
+const CFG_0702_1_CHAE: any = {
+  size: 8, rowsPerPage: 17, rowFirst: 364.5, rowLast: 160.5,
+  header: [
+    { text: (d: any) => d.company, x: 106.7, y: 464.5, align: "L" },
+    { text: (d: any) => d.productName, x: 69.7, y: 450.5, align: "L" },
+    { text: (d: any) => d.liquorType, x: 303.7, y: 449.5, align: "L" },
+    { text: (d: any) => d.monthThai, x: 461.7, y: 449.5, align: "L" },
+  ],
+  // y ที่ผู้ใช้คลิกได้ 463.5/464.5 ปนกัน (กล่องเรียงบรรทัดเดียว) → ใช้กึ่งกลาง 464.0
+  reg: { groups: [{ xFirst: 295.7, xLast: 393.7, count: 13 }, { xFirst: 403.7, xLast: 403.7, count: 1 }, { xFirst: 414.7, xLast: 430.7, count: 3 }], y: 464.0 },
+  // ติ๊ก "โรงอุตสาหกรรมสุราขนาดเล็ก" เป็นค่าปริยาย เหมือนฟอร์มเดิมทั้ง 4 ใบ
+  // (ช่อง "ขนาดกลาง" เก็บพิกัดไว้แล้วที่ checkboxMedium — จะสลับได้ต้องมีช่องข้อมูล
+  //  "ขนาดโรงงาน" ใน entities ก่อน ยังไม่มี จึงไม่เดา)
+  checkbox: { x: 452.7, y: 464.5 },
+  checkboxMedium: { x: 563.7, y: 464.5 },
+  degreeLabel: { x: 608.7, y: 406.5, size: 8 },   // ช่องว่างหน้าคำว่า "ดีกรี" ในหัวคอลัมน์กลุ่มบรรจุ
+  footer: { x: 232.7, y: 122.5, size: 8 },        // "...หน่วยมีขนาดบรรจุ ___ ลิตร ถัง โอ่ง ไห ฯลฯ"
+  bf: { mash: { x: 539.7, y: 377.5 }, wine: { x: 751.7, y: 377.5 } },
+  cols: {
+    day: { x: 48.7, align: "C", size: 7 },
+    fermBatch: { x: 95.7, align: "C" },
+    fermQty: { x: 171.7, align: "R" },
+    avgFermVol: { x: 245.7, align: "R" },
+    fermMash: { x: 305.7, align: "R" },
+    drawBatch: { x: 341.7, align: "C" },
+    // ★ 7 คอลัมน์ตัวเลขต่อจากนี้ ผู้ใช้คลิก "ขอบขวาของช่อง" แต่ดร็อปดาวน์ค้างที่ C
+    //   (x ทั้ง 7 ตัวห่างจากเส้นขอบขวา 3.5-4.1 จุดเท่ากันหมด = ระยะเดียวกับที่ติด R มาถูก)
+    //   → ใช้ R · ถ้าใช้ C ตัวเลขจะล้นออกนอกช่องครึ่งความกว้าง (เหตุผลเต็มในไฟล์พิกัด)
+    avgAbv: { x: 421.7, align: "R" },
+    drawVol: { x: 480.7, align: "R" },
+    curMash: { x: 539.7, align: "R", keepZero: true },
+    packSize: { x: 590.7, align: "RT" },
+    packQty: { x: 640.7, align: "R" },
+    packVol: { x: 690.7, align: "R" },
+    curWine: { x: 751.7, align: "R", keepZero: true },
+    // maxW = ความกว้างช่องจริง (823.8 − 759.7) · หมายเหตุมีข้อความที่ผู้ใช้พิมพ์เองปนอยู่ =
+    // ความยาวไม่จำกัด → ไม่คุมความกว้าง ตัวอักษรจะไหลออกนอกขอบกระดาษ (กว้าง 841.8)
+    note: { x: 759.7, align: "L", size: 6.5, maxW: 64.1 },
+  },
+  totals: {
+    monthY: 148.5, yearY: 136.5,
+    month: [
+      { key: "monthFermMash", x: 305.7 }, { key: "monthWine", x: 480.7 }, { key: "endMash", x: 539.7 },
+      { key: "monthPackVol", x: 690.7 }, { key: "endWine", x: 751.7 },
+    ],
+    // แถว "รวมแต่ต้นปี" ไม่มียอดคงเหลือ (ยอดคงเหลือรวมข้ามปีไม่ได้) — เหมือนฟอร์มกลั่น
+    year: [
+      { key: "yearFermMash", x: 305.7 }, { key: "yearWine", x: 480.7 }, { key: "yearPackVol", x: 690.7 },
+    ],
+  },
+};
+
+async function fillFermentedForm(cfg: any, data: any, templateBytes: Uint8Array, fontBytes: Uint8Array) {
+  const { tplDoc, outDoc, f } = await loadDoc(templateBytes, fontBytes);
+  const S = cfg.size || 8;
+  const per = cfg.rowsPerPage;
+  const pages: any[][] = [];
+  for (let i = 0; i < data.grid.length; i += per) pages.push(data.grid.slice(i, i + per));
+  if (pages.length === 0) pages.push([]);
+
+  for (let pi = 0; pi < pages.length; pi++) {
+    const [page] = await outDoc.copyPages(tplDoc, [0]);
+    outDoc.addPage(page);
+    const txt = (s: any, x: number, y: number, sz?: number) => { if (s === "" || s == null) return; page.drawText(String(s), { x, y, size: sz || S, font: f }); };
+    const right = (v: any, xr: number, y: number, sz?: number) => { if (v == null || v === "") return; const s = rfFmt(v); const w = f.widthOfTextAtSize(s, sz || S); page.drawText(s, { x: xr - w, y, size: sz || S, font: f }); };
+    const rightText = (s: any, xr: number, y: number, sz?: number) => { if (s === "" || s == null) return; const w = f.widthOfTextAtSize(String(s), sz || S); page.drawText(String(s), { x: xr - w, y, size: sz || S, font: f }); };
+    const center = (s: any, xc: number, y: number, sz?: number) => { if (s === "" || s == null) return; const w = f.widthOfTextAtSize(String(s), sz || S); page.drawText(String(s), { x: xc - w / 2, y, size: sz || S, font: f }); };
+    /**
+     * ข้อความชิดซ้ายที่ต้องอยู่ในความกว้างที่กำหนด (ช่องหมายเหตุ)
+     * ลดขนาดฟอนต์ทีละขั้นจนพอดี · เล็กสุด 5 จุด แล้วยังไม่พอค่อยตัดท้ายด้วย …
+     * 🚨 ไม่มีตัวนี้ = หมายเหตุที่ผู้ใช้พิมพ์ยาว ๆ ไหลออกนอกขอบกระดาษของเอกสารยื่นราชการ
+     */
+    const fit = (s: any, x: number, y: number, sz?: number, maxW?: number) => {
+      if (s === "" || s == null) return;
+      let str = String(s);
+      let size = sz || S;
+      if (!maxW) { page.drawText(str, { x, y, size, font: f }); return; }
+      while (size > 5 && f.widthOfTextAtSize(str, size) > maxW) size -= 0.25;
+      while (str.length > 1 && f.widthOfTextAtSize(str, size) > maxW) str = str.slice(0, -2) + "…";
+      page.drawText(str, { x, y, size, font: f });
+    };
+    const drawCol = (col: any, val: any, y: number) => {
+      if (!col) return;
+      let s: string;
+      if (col.align === "R") { const empty = col.keepZero ? val == null || val === "" : !val; s = empty ? "-" : rfFmt(val); }
+      else s = val == null || val === "" ? "-" : String(val);
+      if (col.align === "C") center(s, col.x, y, col.size);
+      else if (col.align === "R" || col.align === "RT") rightText(s, col.x, y, col.size);
+      else fit(s, col.x, y, col.size, col.maxW);
+    };
+
+    if (cfg.header) cfg.header.forEach((h: any) => {
+      const v = typeof h.text === "function" ? h.text(data) : h.text;
+      if (h.align === "R") right(v, h.x, h.y, h.size); else if (h.align === "C") center(v, h.x, h.y, h.size); else txt(v, h.x, h.y, h.size);
+    });
+    if (cfg.reg && data.exciseId) {
+      const digits = String(data.exciseId).replace(/\D/g, "");
+      let idx = 0;
+      cfg.reg.groups.forEach((g: any) => {
+        for (let i = 0; i < g.count; i++, idx++) {
+          if (idx >= digits.length) continue;
+          const x = g.count > 1 ? g.xFirst + (g.xLast - g.xFirst) * (i / (g.count - 1)) : g.xFirst;
+          center(digits[idx], x, cfg.reg.y, 9);
+        }
+      });
+    }
+    if (cfg.checkbox) rfDrawCheck(page, cfg.checkbox.x, cfg.checkbox.y);
+    if (cfg.degreeLabel && data.degree != null && data.degree !== "") txt(data.degree, cfg.degreeLabel.x, cfg.degreeLabel.y, cfg.degreeLabel.size || S);
+    if (cfg.footer && data.containerSize) txt(data.containerSize, cfg.footer.x, cfg.footer.y, cfg.footer.size || S);
+
+    if (pi === 0 && cfg.bf) {
+      right(data.bfMash, cfg.bf.mash.x, cfg.bf.mash.y, S);
+      right(data.bfWine, cfg.bf.wine.x, cfg.bf.wine.y, S);
+    }
+
+    const C = cfg.cols;
+    pages[pi].forEach((r: any, k: number) => {
+      const y = cfg.rowFirst + (cfg.rowLast - cfg.rowFirst) * (per > 1 ? k / (per - 1) : 0);
+      drawCol(C.day, r.date, y); drawCol(C.fermBatch, r.fermBatch, y); drawCol(C.fermQty, r.fermQty, y);
+      drawCol(C.avgFermVol, r.avgFermVol, y); drawCol(C.fermMash, r.fermMash, y); drawCol(C.drawBatch, r.drawBatch, y);
+      drawCol(C.avgAbv, r.avgAbv, y); drawCol(C.drawVol, r.drawVol, y); drawCol(C.curMash, r.curMash, y);
+      drawCol(C.packSize, r.packSize, y); drawCol(C.packQty, r.packQty, y); drawCol(C.packVol, r.packVol, y);
+      drawCol(C.curWine, r.curWine, y); drawCol(C.note, r.note, y);
+    });
+
+    if (pi === pages.length - 1 && cfg.totals) {
+      (cfg.totals.month || []).forEach((t: any) => right(data[t.key], t.x, cfg.totals.monthY, S));
+      (cfg.totals.year || []).forEach((t: any) => right(data[t.key], t.x, cfg.totals.yearY, S));
+    }
+  }
+  return outDoc.save();
 }

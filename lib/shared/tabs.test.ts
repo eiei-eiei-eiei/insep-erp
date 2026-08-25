@@ -108,6 +108,7 @@ describe("navSubItems — รายการในดร็อปดาวน์
       "/settings/branding",
       "/settings/notify",
       "/settings/users",
+      "/settings/history",
       "/settings/data",
     ]);
   });
@@ -120,5 +121,45 @@ describe("navSubItems — รายการในดร็อปดาวน์
 
   it("workspace ที่ไม่มีในทะเบียน = ไม่มีรายการ (ไม่ throw)", () => {
     expect(navSubItems("ไม่มีจริง", "main")).toEqual([]);
+  });
+});
+
+// ── D78: ซ่อนแท็บของเส้นทางที่โรงนี้ไม่ได้ทำ (ตัดสินจากสินค้าจริง) ────────────────────
+describe("tabsFor — กรองตามประเภทสุราที่มีสินค้าจริง", () => {
+  const slugs = (p?: string[]) => tabsFor("production", "main", p).map((t) => t.slug);
+
+  it("มีแต่สุรากลั่น → ไม่เห็นแท็บรินน้ำสุราแช่", () => {
+    const s = slugs(["สุรากลั่น"]);
+    expect(s).toContain("distill");
+    expect(s).toContain("dilute");
+    expect(s).not.toContain("draw");
+  });
+  it("มีแต่สุราแช่ → ไม่เห็นแท็บกลั่น/ปรุง", () => {
+    const s = slugs(["สุราแช่"]);
+    expect(s).toContain("draw");
+    expect(s).not.toContain("distill");
+    expect(s).not.toContain("dilute");
+  });
+  it("มีทั้งสองประเภท → เห็นครบ", () => {
+    const s = slugs(["สุรากลั่น", "สุราแช่"]);
+    expect(s).toContain("distill");
+    expect(s).toContain("draw");
+  });
+  it("ยังไม่มีสินค้า (เซ็ตว่าง/ไม่ส่งมา) → เห็นครบ ไม่ใช่หายทั้งแท็บ", () => {
+    expect(slugs([])).toContain("draw");
+    expect(slugs([])).toContain("distill");
+    expect(slugs(undefined)).toContain("draw");
+  });
+  it("แท็บที่ไม่ผูกประเภท (สต็อก/รายงาน) ไม่เคยถูกซ่อน", () => {
+    for (const p of [["สุรากลั่น"], ["สุราแช่"], []]) {
+      expect(slugs(p)).toContain("stock");
+      expect(slugs(p)).toContain("excise");
+      expect(slugs(p)).toContain("ferment");
+    }
+  });
+  it("navSubItems ส่งต่อการกรองไปที่ดร็อปดาวน์แถบเมนูด้วย (ไม่งั้นลิงก์ไปแท็บที่ถูกซ่อน)", () => {
+    const hrefs = navSubItems("production", "main", ["สุรากลั่น"]).map((i) => i.href);
+    expect(hrefs).not.toContain("/production?tab=draw");
+    expect(navSubItems("production", "main", ["สุราแช่"]).map((i) => i.href)).toContain("/production?tab=draw");
   });
 });

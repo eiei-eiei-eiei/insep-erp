@@ -2,7 +2,7 @@ import { getCompanySettings } from "../settings-data";
 import { CompanyCard } from "../_components/CompanyCard";
 
 export default async function CompanySettingsPage() {
-  const { entities, docEntityId } = await getCompanySettings();
+  const { entities, docEntityId, revenueEntityId, revenueAccountName, accounts } = await getCompanySettings();
 
   if (entities.length === 0) {
     return (
@@ -11,5 +11,13 @@ export default async function CompanySettingsPage() {
       </div>
     );
   }
-  return <CompanyCard entities={entities} docEntityId={docEntityId} />;
+  return (
+    <CompanyCard
+      entities={entities}
+      docEntityId={docEntityId}
+      revenueEntityId={revenueEntityId}
+      revenueAccountName={revenueAccountName}
+      accounts={accounts}
+    />
+  );
 }

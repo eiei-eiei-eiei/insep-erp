@@ -10,6 +10,7 @@ import {
   deleteContactAction,
 } from "../actions";
 import Link from "next/link";
+import { FORWARD_CAT_KIND, DEFAULT_FORWARD_CATS } from "@/lib/accounting/forwardCats";
 import type { AccountRow, Bootstrap, Contact } from "./types";
 import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, cleanTaxId13, fmt, useSaver, EscToClose } from "./ui";
 
@@ -33,6 +34,18 @@ export function SettingsTab({ boot }: { boot: Bootstrap }) {
         <ChipList kind="income_cat" title="หมวดหมู่รายรับ" initial={boot.incomeCats} />
         <ChipList kind="wht_rate" title="อัตรา WHT (%)" initial={boot.whtRates} placeholder="เช่น 3" />
         <ChipList kind="tax_account" title="บัญชีในระบบภาษี (ชื่อต้องตรงบัญชีเงิน)" initial={boot.taxAccounts} />
+        {/* D80: เดิมฮาร์ดโค้ด "ต้นทุนสุรา" ไว้ในหน้าจอ — ผังบัญชีจริงของลูกค้าไม่มีคำนั้น
+            🪤 ส่ง `forwardCatsSet` (ที่ตั้งเองจริง) ไม่ใช่ `forwardCats` (ที่มีผลจริง) —
+               โชว์ค่าปริยายเป็น chip เมื่อไหร่ ผู้ใช้จะนึกว่าบันทึกไว้แล้ว พอเพิ่มตัวที่ 2
+               ค่าปริยายจะหลุดเงียบ ๆ ทันที (กับดักเดียวกับ D74) */}
+        <ChipList
+          kind={FORWARD_CAT_KIND}
+          title="หมวดที่รับวัตถุดิบเข้าสต็อกผลิต"
+          initial={boot.forwardCatsSet}
+          placeholder="เช่น วัตถุดิบผลิตสุรา"
+          emptyHint={`ยังไม่ได้ตั้ง — ระบบใช้ “${DEFAULT_FORWARD_CATS.join(" · ")}” ให้ก่อน · เพิ่มเองแล้วจะใช้เฉพาะที่เพิ่ม`}
+          note="ลงบิลรายจ่ายด้วยหมวดเหล่านี้ = ช่องรายการกลายเป็นดร็อปดาวน์วัตถุดิบ และของเข้าสต็อกผลิตให้อัตโนมัติ"
+        />
       </div>
       <BankAccounts boot={boot} />
       <Contacts initial={boot.contacts} />
@@ -41,7 +54,13 @@ export function SettingsTab({ boot }: { boot: Bootstrap }) {
   );
 }
 
-function ChipList({ kind, title, initial, placeholder }: { kind: string; title: string; initial: string[]; placeholder?: string }) {
+function ChipList({ kind, title, initial, placeholder, emptyHint, note }: {
+  kind: string; title: string; initial: string[]; placeholder?: string;
+  /** ข้อความตอนยังไม่มีรายการ — ใช้บอกว่า "ระบบใช้ค่าปริยายอะไรให้อยู่" */
+  emptyHint?: string;
+  /** คำอธิบายใต้กล่อง (ผลของการตั้งค่านี้) */
+  note?: string;
+}) {
   const { pending, msg, run } = useSaver();
   const [list, setList] = useState<string[]>(initial);
   const [val, setVal] = useState("");
@@ -56,7 +75,11 @@ function ChipList({ kind, title, initial, placeholder }: { kind: string; title: 
   return (
     <Card title={title}>
       <div className="mb-2 flex flex-wrap gap-2">
-        {list.length === 0 && <span className="text-sm text-faint">— ยังไม่มี —</span>}
+        {list.length === 0 && (
+          <span className={emptyHint ? "text-sm text-warn" : "text-sm text-faint"}>
+            {emptyHint ?? "— ยังไม่มี —"}
+          </span>
+        )}
         {list.map((v) => (
           <span key={v} className="inline-flex items-center gap-1 rounded-full bg-raised px-3 py-1 text-sm text-muted">
             {v}<button onClick={() => del(v)} disabled={pending} className="text-faint hover:text-crit">✕</button>
@@ -67,6 +90,7 @@ function ChipList({ kind, title, initial, placeholder }: { kind: string; title: 
         <TextInput value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} placeholder={placeholder ?? "เพิ่มรายการ…"} />
         <SaveButton pending={pending} onClick={add}>เพิ่ม</SaveButton>
       </div>
+      {note && <p className="mt-2 text-xs text-faint">{note}</p>}
       <Msg msg={msg} />
     </Card>
   );
