@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { saveMaterialAction, getRecentMaterialsAction, deleteMaterialLogAction, updateMaterialLogAction } from "../actions";
-import { Card, Field, Msg, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
+import { Card, Field, MissingHint, Msg, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import { MATERIAL_TYPES, type Material } from "./types";
 import { IconEdit, IconTrash } from "@/lib/shared/icons";
 
@@ -112,6 +112,7 @@ export function MaterialTab({ materials }: { materials: Material[] }) {
         <SaveButton pending={pending} onClick={submit} disabled={!materialId || !amount}>
           บันทึกวัตถุดิบ
         </SaveButton>
+        <MissingHint checks={[{ label: "วัตถุดิบ", ok: !!materialId }, { label: "จำนวน", ok: !!amount }]} />
       </div>
     </Card>
 

@@ -201,6 +201,7 @@ export function UsersManager({
                     </button>
                     <button
                       disabled={pending || isSelf}
+                      title={isSelf ? "ลบบัญชีที่กำลังใช้งานอยู่ไม่ได้ (ให้ผู้ใช้ main อีกคนลบให้)" : undefined}
                       onClick={() => {
                         if (
                           window.confirm(`ลบผู้ใช้ "${u.username}" ถาวร?`)

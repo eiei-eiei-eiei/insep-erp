@@ -17,7 +17,7 @@ import {
 import { IconAlert, IconCheck, IconPlus } from "@/lib/shared/icons";
 import { formatDateThai } from "@/lib/shared/format";
 import { BRAND_COLORS } from "@/lib/shared/branding";
-import { MODULES, ROLE_LABEL, type Role } from "@/lib/shared/workspaces";
+import { MODULES, MODULE_LABEL, ROLE_LABEL, type ModuleKey, type Role } from "@/lib/shared/workspaces";
 import type { TenantRow } from "@/lib/platform/provision";
 import {
   addEntityAction,
@@ -28,12 +28,19 @@ import {
 } from "../actions";
 
 /** ป้ายชื่อโมดูลภาษาไทย — ต้องตรงกับที่ลูกค้าเห็นในแถบเมนู ไม่งั้นคุยกันคนละเรื่องตอนซัพพอร์ต */
-const MODULE_LABEL: Record<string, string> = {
-  production: "ผลิต (+ ฟอร์ม ภส.)",
-  accounting: "บัญชี",
-  sales: "ขาย",
-  payroll: "เงินเดือน",
+/**
+ * คำต่อท้ายที่โชว์เฉพาะใน **ช่องติ๊กเลือกโมดูล** (มีที่ให้เขียนยาว)
+ * ชื่อโมดูลตัวจริงมาจาก `MODULE_LABEL` ใน lib/shared/workspaces — 🚨 ห้ามก๊อปชื่อมาไว้ที่นี่อีก (D84)
+ */
+const MODULE_NOTE: Record<string, string> = {
+  production: " (+ ฟอร์ม ภส.)",
 };
+
+/** ชื่อโมดูลบนจอนี้ — สั้นเสมอ ต่อคำอธิบายเฉพาะที่ที่มีที่พอ */
+function moduleLabel(m: string, withNote = false): string {
+  const base = MODULE_LABEL[m as ModuleKey] ?? m;
+  return withNote ? base + (MODULE_NOTE[m] ?? "") : base;
+}
 
 /** วันที่ไทยย่อ — ใช้ตัวเดียวกับทั้งระบบ (`lib/shared/format`) ไม่เขียนของตัวเอง */
 const dateTH = (iso: string) => formatDateThai(iso);
@@ -133,7 +140,7 @@ function ModulePicker({
               onChange(e.target.checked ? [...value, m] : value.filter((x) => x !== m))
             }
           />
-          {MODULE_LABEL[m] ?? m}
+          {moduleLabel(m, true)}
         </label>
       ))}
     </div>
@@ -517,7 +524,7 @@ export function PlatformManager({ tenants }: { tenants: TenantRow[] }) {
                     <span className="flex flex-wrap gap-1">
                       {MODULES.filter((m) => t.modules.includes(m)).map((m) => (
                         <Badge key={m} tone="brand">
-                          {m === "production" ? "ผลิต" : m === "accounting" ? "บัญชี" : "ขาย"}
+                          {moduleLabel(m)}
                         </Badge>
                       ))}
                       {t.modules.length === 0 && <Badge tone="warn">ไม่ได้ตั้ง = เปิดหมด</Badge>}

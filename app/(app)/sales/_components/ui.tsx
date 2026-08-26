@@ -25,6 +25,7 @@ export {
   RowBtn,
   IconBtn,
   Badge,
+  MissingHint,
 } from "@/lib/shared/ui";
 
 import { Badge } from "@/lib/shared/ui";

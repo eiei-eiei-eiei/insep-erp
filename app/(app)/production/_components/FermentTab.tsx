@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getNextBatchNumberAction, saveFermentAction, getRecentFermentsAction, deleteFermentBatchAction } from "../actions";
-import { Card, Field, Msg, NumInput, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
+import { Card, Field, MissingHint, Msg, NumInput, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import type { Container, Material, Product } from "./types";
 import { IconTrash } from "@/lib/shared/icons";
 
@@ -193,6 +193,13 @@ export function FermentTab({
         >
           ลงหมัก
         </SaveButton>
+        <MissingHint
+          checks={[
+            { label: "ชื่อสุรา", ok: !!productName },
+            { label: "รหัส Batch", ok: !!batch },
+            { label: "วัตถุดิบอย่างน้อย 1 รายการ (ใส่จำนวนด้วย)", ok: validRows.length > 0 },
+          ]}
+        />
       </div>
     </Card>
 

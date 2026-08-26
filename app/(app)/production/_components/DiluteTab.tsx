@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { diluteCalc, isFermented } from "@/lib/production/calc";
 import { getRemainingDistillVolAction, saveDiluteAction, getRecentDilutesAction, deleteDiluteLogAction, updateDiluteLogAction } from "../actions";
-import { Card, Field, Msg, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
+import { Card, Field, MissingHint, Msg, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import type { Product } from "./types";
 import { IconEdit, IconTrash } from "@/lib/shared/icons";
 
@@ -178,6 +178,7 @@ export function DiluteTab({ products }: { products: Product[] }) {
         <SaveButton pending={pending} onClick={submit} disabled={!productName}>
           บันทึกปรุง
         </SaveButton>
+        <MissingHint checks={[{ label: "ชื่อสุรา", ok: !!productName }]} />
       </div>
     </Card>
 

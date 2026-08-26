@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveBrandingAction } from "../actions";
 import { BRAND_COLORS, type BrandColor, type ColorMode } from "@/lib/shared/branding";
-import { Card, Field, Msg, SaveButton, Select, TextInput, useSaver } from "@/lib/shared/ui";
+import { Card, Field, MissingHint, Msg, SaveButton, Select, TextInput, useSaver } from "@/lib/shared/ui";
 
 /**
  * ตั้งค่าแบรนด์ของกิจการ (D43) — ชื่อ/สี/โลโก้/โหมดเริ่มต้น
@@ -77,6 +77,7 @@ export function BrandingCard({
         <SaveButton pending={pending} onClick={save} disabled={!name.trim()}>
           บันทึกแบรนด์
         </SaveButton>
+        <MissingHint checks={[{ label: "ชื่อที่แสดงบนแถบเมนู", ok: !!name.trim() }]} />
       </div>
       <p className="mt-2 text-xs text-faint">
         สีสถานะ (เขียว = ปกติ · เหลือง = ค้าง · แดง = ผิดพลาด) ตั้งค่าไม่ได้โดยตั้งใจ —

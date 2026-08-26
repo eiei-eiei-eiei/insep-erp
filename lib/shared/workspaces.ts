@@ -103,6 +103,24 @@ export function workspacesWithLock(
   }));
 }
 
+/**
+ * ชื่อไทยของโมดูล — **แหล่งเดียวทั้งระบบ** (ตรงกับ label ของ workspace ที่โมดูลนั้นเปิดให้)
+ *
+ * 🚨 ห้ามเขียน ternary ไล่เช็ค key เองที่หน้าจอไหนอีก — D84 เจอมาแล้วว่าหน้าแอดมินเขียน
+ *    `m === "production" ? "ผลิต" : m === "accounting" ? "บัญชี" : "ขาย"` ไว้ตอนมี 3 โมดูล
+ *    พอ D66 เพิ่มโมดูลที่ 4 `payroll` มันตกเข้า else กลายเป็น **"ขาย"** เงียบ ๆ
+ *    → ลูกค้าที่ซื้อเงินเดือนดูเหมือนซื้อขาย 2 อัน บนหน้าจอที่ใช้ตัดสินเรื่องเงิน
+ *
+ * ★ ประกาศเป็น `Record<ModuleKey, string>` โดยตั้งใจ — เพิ่มโมดูลใหม่ใน MODULES แล้วลืมเติมที่นี่
+ *   จะ **build ไม่ผ่าน** ไม่ใช่ขึ้นชื่อผิดบนจอ
+ */
+export const MODULE_LABEL: Record<ModuleKey, string> = {
+  production: "ผลิต",
+  accounting: "บัญชี",
+  sales: "ขาย",
+  payroll: "เงินเดือน",
+};
+
 export const ROLE_LABEL: Record<Role, string> = {
   main: "เจ้าของกิจการ",
   viewer: "ผู้ดูข้อมูล",

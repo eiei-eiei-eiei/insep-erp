@@ -23,6 +23,7 @@ export {
   RowBtn,
   IconBtn,
   Badge,
+  MissingHint,
 } from "@/lib/shared/ui";
 
 /** ผลิตใช้ข้อความ "กำลังบันทึก…" ตามเดิม (บัญชี/ขายใช้ "กำลังทำงาน…") */

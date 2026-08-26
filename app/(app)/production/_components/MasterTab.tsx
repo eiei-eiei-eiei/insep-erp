@@ -158,6 +158,7 @@ function CrudSection({
                         <select
                           className={inputCls}
                           disabled={f.pk}
+                          title={f.pk ? "รหัสเป็นกุญแจของแถว แก้ไม่ได้ — ถ้าพิมพ์ผิด ให้ลบแถวนี้แล้วสร้างใหม่" : undefined}
                           value={editRow[f.key] ?? ""}
                           onChange={(e) => setEditRow({ ...editRow, [f.key]: e.target.value })}
                         >
@@ -175,6 +176,7 @@ function CrudSection({
                             type={f.num ? "number" : "text"}
                             step={f.num ? "any" : undefined}
                             disabled={f.pk}
+                            title={f.pk ? "รหัสเป็นกุญแจของแถว แก้ไม่ได้ — ถ้าพิมพ์ผิด ให้ลบแถวนี้แล้วสร้างใหม่" : undefined}
                             value={editRow[f.key] ?? ""}
                             onChange={(e) => setEditRow({ ...editRow, [f.key]: e.target.value })}
                           />

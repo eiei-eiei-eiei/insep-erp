@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveEntityInfoAction, saveDocEntityAction, saveSalesRevenueAction } from "../actions";
 import type { SettingsEntity } from "../settings-data";
-import { Card, Field, Msg, SaveButton, Select, TextArea, TextInput, useSaver } from "@/lib/shared/ui";
+import { Card, Field, MissingHint, Msg, SaveButton, Select, TextArea, TextInput, useSaver } from "@/lib/shared/ui";
 import { companyFromEntity } from "@/lib/sales/company";
 import { companyHeaderPreviewHtml } from "../../sales/_components/print";
 
@@ -180,6 +180,7 @@ export function CompanyCard({
           <SaveButton pending={pending} onClick={save} disabled={!entityId || !form.name.trim()}>
             บันทึกข้อมูลกิจการ
           </SaveButton>
+          <MissingHint checks={[{ label: "กิจการที่กำลังแก้", ok: !!entityId }, { label: "ชื่อกิจการ (ไทย)", ok: !!form.name.trim() }]} />
         </div>
       </Card>
 
@@ -205,6 +206,7 @@ export function CompanyCard({
               บันทึกผู้ออกเอกสาร
             </SaveButton>
           </div>
+          <MissingHint checks={[{ label: "ผู้ออกเอกสาร", ok: !!docId }]} prefix="ยังเลือกไม่ครบ" />
         </Card>
       )}
 
@@ -248,6 +250,7 @@ export function CompanyCard({
             บันทึกกิจการ/บัญชีรับรายได้
           </SaveButton>
         </div>
+        <MissingHint checks={[{ label: "กิจการที่รับรายได้", ok: !!revId }, { label: "บัญชีที่เงินเข้า", ok: !!revAcc }]} prefix="ยังเลือกไม่ครบ" />
       </Card>
     </div>
   );

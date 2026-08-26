@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { SalesBoot, CustomerRow, MenuRow, OrderRow, OrderItem } from "./types";
-import { Card, Combobox, Msg, NumBox, NumInput, Select, TextInput, useSaver, fmt } from "./ui";
+import { Card, Combobox, MissingHint, Msg, NumBox, NumInput, Select, TextInput, useSaver, fmt } from "./ui";
 import { quotationTotals, inclFromExVat } from "@/lib/sales/calc";
 import {
   saveQuotationAction,
@@ -317,6 +317,13 @@ export function QuotationTab({
           >
             {pending ? "กำลังทำงาน…" : editOrder ? "อัปเดตใบเสนอราคา" : "ออกใบเสนอราคา (A4)"}
           </button>
+          <MissingHint
+            checks={[
+              { label: "ลูกค้า", ok: !!selCustId },
+              { label: "รายการในตะกร้า", ok: items.length > 0 },
+              { label: "ผู้เสนอราคา", ok: !!saleName.trim() },
+            ]}
+          />
           {editOrder && (
             <button onClick={reset} className="w-full rounded-lg border border-line py-2 text-sm text-muted hover:bg-raised">
               ✕ ยกเลิกการแก้ไข

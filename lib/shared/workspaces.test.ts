@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { workspacesFor, workspacesWithLock, hasModule, WORKSPACES, ALL_MODULES } from "./workspaces";
+import { workspacesFor, workspacesWithLock, hasModule, WORKSPACES, ALL_MODULES, MODULES, MODULE_LABEL } from "./workspaces";
 
 /**
  * เมนูถูกกรอง 2 ชั้น: role (ทำอะไรได้) × โมดูล (ซื้ออะไรไว้)
@@ -83,5 +83,34 @@ describe("workspacesWithLock — หน้าแรกโชว์ของท�
   it("★ role ยังตัดทิ้งเหมือนเดิม — คลังไม่ต้องเห็นว่ามีโมดูลบัญชีให้ซื้อ", () => {
     const ws = workspacesWithLock("warehouse", ["sales"]);
     expect(ws.map((w) => w.key)).toEqual(["sales"]);
+  });
+});
+
+/**
+ * 🔴 D84 — หน้าแอดมินเคยเขียน ternary ไล่เช็ค key เองตอนมี 3 โมดูล
+ *    พอ D66 เพิ่ม `payroll` มันตกเข้า else กลายเป็น "ขาย" → ลูกค้าที่ซื้อเงินเดือน
+ *    ดูเหมือนซื้อขาย 2 อัน บนหน้าจอที่ใช้ตัดสินว่าจะเก็บเงินลูกค้าเท่าไหร่
+ */
+describe("MODULE_LABEL — ชื่อโมดูลต้องมีแหล่งเดียวและครบทุกตัว", () => {
+  it("ทุกโมดูลใน MODULES มีชื่อไทย ไม่มีตัวไหนตกหล่น", () => {
+    for (const m of MODULES) {
+      expect(MODULE_LABEL[m], `โมดูล "${m}" ยังไม่มีชื่อไทย`).toBeTruthy();
+    }
+    expect(Object.keys(MODULE_LABEL).sort()).toEqual([...MODULES].sort());
+  });
+
+  it("ชื่อต้องไม่ซ้ำกัน — ซ้ำเมื่อไหร่แปลว่ามีโมดูลถูกกลืนไปเป็นชื่อของอีกตัว", () => {
+    const labels = MODULES.map((m) => MODULE_LABEL[m]);
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
+  it("ตรงกับชื่อ workspace ที่โมดูลนั้นเปิดให้ (ห้าม drift กันเอง)", () => {
+    for (const w of WORKSPACES) {
+      expect(MODULE_LABEL[w.module]).toBe(w.label);
+    }
+  });
+
+  it("★ payroll ต้องเป็น 'เงินเดือน' ไม่ใช่ 'ขาย' — เคสที่พังจริงใน D84", () => {
+    expect(MODULE_LABEL.payroll).toBe("เงินเดือน");
   });
 });

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getFermentMonitorAction, saveFermentMonitorAction, updateFermentMonitorAction, deleteFermentMonitorAction } from "../actions";
-import { Card, Field, Msg, NumInput, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
+import { Card, Field, MissingHint, Msg, NumInput, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import { LineChart } from "./LineChart";
 import { chartColor } from "@/lib/shared/chart";
 import type { PendingBatch } from "./types";
@@ -117,6 +117,7 @@ export function MonitorTab({
         </div>
         <div className="mt-4">
           <SaveButton pending={pending} onClick={submit} disabled={!batch}>บันทึกค่าวัด</SaveButton>
+          <MissingHint checks={[{ label: "Batch", ok: !!batch }]} prefix="ยังเลือกไม่ครบ" />
         </div>
       </Card>
 

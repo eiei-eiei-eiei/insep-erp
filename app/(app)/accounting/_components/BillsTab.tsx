@@ -322,9 +322,9 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
               <div className="flex flex-wrap items-center gap-1.5 text-xs text-faint">
                 <span>เติมทุกแถว:</span>
                 <div className="w-32"><TextInput list="edit-item-cats" value={bulkCat} onChange={(e) => setBulkCat(e.target.value)} placeholder="หมวดหมู่" className="py-1 text-sm" /></div>
-                <button type="button" onClick={() => fillAll({ itemCategory: bulkCat.trim() })} disabled={!bulkCat.trim()} className="rounded border border-line px-2 py-1 text-muted hover:bg-raised disabled:opacity-40">เติม</button>
+                <button type="button" onClick={() => fillAll({ itemCategory: bulkCat.trim() })} disabled={!bulkCat.trim()} title={bulkCat.trim() ? "เติมหมวดหมู่นี้ให้ทุกแถว" : "พิมพ์หมวดหมู่ในช่องซ้ายก่อน (ช่องว่าง = จะไปล้างค่าเดิมทั้งบิล)"} className="rounded border border-line px-2 py-1 text-muted hover:bg-raised disabled:opacity-40">เติม</button>
                 <div className="w-32"><TextInput list="edit-item-jobs" value={bulkJob} onChange={(e) => setBulkJob(e.target.value)} placeholder="งาน" className="py-1 text-sm" /></div>
-                <button type="button" onClick={() => fillAll({ itemJob: bulkJob.trim() })} disabled={!bulkJob.trim()} className="rounded border border-line px-2 py-1 text-muted hover:bg-raised disabled:opacity-40">เติม</button>
+                <button type="button" onClick={() => fillAll({ itemJob: bulkJob.trim() })} disabled={!bulkJob.trim()} title={bulkJob.trim() ? "เติมงานนี้ให้ทุกแถว" : "พิมพ์ชื่องานในช่องซ้ายก่อน (ช่องว่าง = จะไปล้างค่าเดิมทั้งบิล)"} className="rounded border border-line px-2 py-1 text-muted hover:bg-raised disabled:opacity-40">เติม</button>
               </div>
             </div>
 

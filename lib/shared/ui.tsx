@@ -13,6 +13,8 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 
+import { missingText, type FieldCheck } from "./forms";
+
 export type SaveResultLike = { ok: boolean; error?: string; data?: unknown };
 
 // ── formatters ───────────────────────────────────────────────────────────────
@@ -438,4 +440,21 @@ export function EscToClose({ onClose }: { onClose: () => void }) {
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
   return null;
+}
+
+/**
+ * ข้อความใต้ปุ่มที่ถูก disable — บอกว่า "ยังขาดอะไร"
+ *
+ * 🪤 ปุ่มเทาเฉย ๆ โดยไม่บอกเหตุผล = ผู้ใช้ใหม่นึกว่าปุ่มเสีย (ตระกูล D74/D77/D80)
+ *    วางไว้ **ใต้ปุ่ม** เสมอ · ครบแล้วจะไม่ render อะไรเลย (ไม่ใช่ช่องว่างค้างไว้)
+ *
+ *   <SaveButton disabled={!a || !b} … />
+ *   <MissingHint checks={[{ label: "ลูกค้า", ok: !!a }, { label: "ชื่อ", ok: !!b }]} />
+ *
+ * 🚨 เงื่อนไข disabled= ของปุ่มยังเป็นตัวจริง — อันนี้เป็นคำอธิบายอย่างเดียว
+ */
+export function MissingHint({ checks, prefix }: { checks: FieldCheck[]; prefix?: string }) {
+  const text = missingText(checks, prefix);
+  if (!text) return null;
+  return <p className="mt-1 text-xs text-warn">{text}</p>;
 }

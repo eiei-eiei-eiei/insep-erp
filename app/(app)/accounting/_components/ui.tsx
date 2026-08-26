@@ -26,4 +26,5 @@ export {
   IconBtn,
   Badge,
   EscToClose,
+  MissingHint,
 } from "@/lib/shared/ui";

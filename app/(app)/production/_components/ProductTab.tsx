@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { saveProductAction, getRecentProductsAction, deleteProductLogAction, updateProductLogAction } from "../actions";
-import { Card, Field, Msg, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
+import { Card, Field, MissingHint, Msg, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import { PRODUCT_TYPES, type Product } from "./types";
 import { IconEdit, IconTrash } from "@/lib/shared/icons";
 
@@ -108,6 +108,7 @@ export function ProductTab({ products }: { products: Product[] }) {
         <SaveButton pending={pending} onClick={submit} disabled={!productId || !amount}>
           บันทึกขวด
         </SaveButton>
+        <MissingHint checks={[{ label: "สินค้า", ok: !!productId }, { label: "จำนวน (ขวด)", ok: !!amount }]} />
       </div>
     </Card>
 

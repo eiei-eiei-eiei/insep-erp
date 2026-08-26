@@ -9,7 +9,7 @@ import {
   updateDrawLogAction,
   deleteDrawLogAction,
 } from "../actions";
-import { Card, Field, Msg, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
+import { Card, Field, MissingHint, Msg, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import type { PendingBatch, Product } from "./types";
 import { IconEdit, IconTrash } from "@/lib/shared/icons";
 
@@ -245,6 +245,14 @@ export function DrawTab({
           <SaveButton pending={busy} onClick={submit} disabled={!productName || !batch || !vol || !abv}>
             บันทึกการริน
           </SaveButton>
+          <MissingHint
+            checks={[
+              { label: "ชื่อสุรา", ok: !!productName },
+              { label: "ครั้งที่หมัก", ok: !!batch },
+              { label: "ปริมาณน้ำสุราแช่ที่รินได้", ok: !!vol },
+              { label: "ดีกรีตอนริน", ok: !!abv },
+            ]}
+          />
         </div>
       </Card>
 
