@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { IconPeople } from "@/lib/shared/icons";
-import { PAYROLL_TABS, labelFromSlug, slugFromLabel } from "@/lib/shared/tabs";
+import { tabsFor, labelFromSlug, slugFromLabel } from "@/lib/shared/tabs";
+import type { Role } from "@/lib/shared/roles";
 import { useTabUrl } from "../../_components/useTabUrl";
 import type { EmployeeRow, PeriodRow } from "../data";
 import type { getPayrollConfig } from "../data";
@@ -15,21 +16,28 @@ import { FilingTab } from "./FilingTab";
 
 export type PayrollConfig = Awaited<ReturnType<typeof getPayrollConfig>>;
 
-const TABS = PAYROLL_TABS.map((t) => t.label);
 type Tab = string;
 
 export function PayrollApp({
   config,
   employees,
   periods,
+  role,
 }: {
   config: PayrollConfig;
   employees: EmployeeRow[];
   periods: PeriodRow[];
+  /** 🚨 ต้องรับมาจาก page — แท็บ "ตั้งค่าการคำนวณ" เปิดเฉพาะคนที่มี pay.config (D85) */
+  role: Role;
 }) {
   const sp = useSearchParams();
-  const [tab, setTab] = useState<Tab>(() => labelFromSlug("payroll", sp.get("tab")) ?? "งวดจ่าย");
-  useTabUrl("payroll", tab, setTab, (l) => slugFromLabel("payroll", l));
+  const TABS = useMemo(() => tabsFor("payroll", role).map((t) => t.label), [role]);
+  const [tab, setTab] = useState<Tab>(() => {
+    const l = labelFromSlug("payroll", sp.get("tab"));
+    return l && TABS.includes(l) ? l : TABS[0];
+  });
+  // 🚨 กันยัดแท็บที่ไม่มีสิทธิ์ผ่าน URL
+  useTabUrl("payroll", tab, (l) => { if (TABS.includes(l)) setTab(l); }, (l) => slugFromLabel("payroll", l));
 
   const [visited, setVisited] = useState<Set<Tab>>(() => new Set<Tab>([tab]));
   useEffect(() => { setVisited((v) => (v.has(tab) ? v : new Set(v).add(tab))); }, [tab]);

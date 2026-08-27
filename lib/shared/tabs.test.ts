@@ -1,4 +1,9 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
+const ROOT = path.resolve(__dirname, "../..");
+const src = (p: string) => readFileSync(path.join(ROOT, p), "utf8");
 import {
   WORKSPACE_TABS,
   SETTINGS_TABS,
@@ -188,5 +193,49 @@ describe("tabsFor — กรองตามประเภทสุราที�
     const hrefs = navSubItems("production", "main", ["สุรากลั่น"]).map((i) => i.href);
     expect(hrefs).not.toContain("/production?tab=draw");
     expect(navSubItems("production", "main", ["สุราแช่"]).map((i) => i.href)).toContain("/production?tab=draw");
+  });
+});
+
+/**
+ * 🔴 D85 — ทะเบียนแท็บกรองสิทธิ์ถูก แต่ **หน้าจอไม่ได้เรียกตัวกรอง**
+ *
+ * AccountingApp/PayrollApp เขียน `const TABS = ACCOUNTING_TABS.map(t => t.label)`
+ * ส่วน ProductionApp เรียก `tabsFor()` แต่ **ฮาร์ดโค้ด "main"** เป็น role
+ * → พนักงานบัญชีเห็นแท็บตั้งค่าและเปิดผ่าน ?tab= ได้ ทั้งที่ทะเบียนกำหนด cap ไว้ถูกแล้ว
+ *
+ * 🪤 ตระกูล D68/D74 — ของมีครบทุกชั้น ขาดแค่ชั้นที่เอามาใช้จริง
+ *    build/lint/test ผ่านหมด เพราะโค้ดทำถูกตามที่เขียน · เจอตอนเปิดหน้าจอดูเท่านั้น
+ *
+ * เทสนี้อ่าน **ซอร์สเป็นข้อความ** เพราะ JSX ของ workspace ทดสอบด้วย unit test ตรง ๆ ไม่ไหว
+ */
+describe("ทุก workspace ต้องกรองแท็บผ่าน tabsFor(role)", () => {
+  const APPS: [string, string][] = [
+    ["production", "app/(app)/production/_components/ProductionApp.tsx"],
+    ["accounting", "app/(app)/accounting/_components/AccountingApp.tsx"],
+    ["sales", "app/(app)/sales/_components/SalesApp.tsx"],
+    ["payroll", "app/(app)/payroll/_components/PayrollApp.tsx"],
+  ];
+
+  it.each(APPS)("%s เรียก tabsFor()", (_key, file) => {
+    expect(src(file).includes("tabsFor("), `${file} ไม่ได้เรียก tabsFor`).toBe(true);
+  });
+
+  it.each(APPS)("%s ไม่ map จากทะเบียนดิบ (ข้ามตัวกรองสิทธิ์)", (_key, file) => {
+    const raw = ["PRODUCTION", "ACCOUNTING", "SALES", "PAYROLL"].some((k) =>
+      src(file).includes(k + "_TABS.map"),
+    );
+    expect(raw, `${file} map จาก *_TABS ตรง ๆ = ข้ามการกรองสิทธิ์`).toBe(false);
+  });
+
+  it.each(APPS)("%s ไม่ส่ง role เป็นค่าคงที่ให้ tabsFor", (_key, file) => {
+    // 🚨 tabsFor("production", "main", …) = ทุกคนได้สิทธิ์ของ main
+    const hardcoded = new RegExp('tabsFor\\(\\s*"[a-z]+"\\s*,\\s*"[a-z_]+"');
+    expect(hardcoded.test(src(file)), `${file} ฮาร์ดโค้ด role ให้ tabsFor`).toBe(false);
+  });
+
+  it.each(APPS)("%s กันยัดแท็บที่ไม่มีสิทธิ์ผ่าน ?tab= บน URL", (_key, file) => {
+    // ต้องเช็คว่าแท็บที่ได้จาก URL อยู่ในชุดที่อนุญาต ก่อนเอาไปตั้งเป็นแท็บปัจจุบัน
+    const guarded = src(file).includes("TABS.includes(") || src(file).includes("allowed.includes(");
+    expect(guarded, `${file} ไม่ได้กรองแท็บที่มาจาก URL`).toBe(true);
   });
 });

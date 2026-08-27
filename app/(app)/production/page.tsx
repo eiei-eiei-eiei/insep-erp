@@ -12,7 +12,7 @@ export default async function ProductionPage() {
   // 4.5 — กันเข้าโดเมนที่ลูกค้าไม่ได้ซื้อผ่าน URL ตรง (เมนูซ่อนอย่างเดียวไม่พอ)
   await requireModule("production");
   // ชั้นสิทธิ์ผู้ใช้ (คนละเรื่องกับชั้นแพ็กเกจข้างบน) — ตัวจริงคือ RLS ของ 0051
-  await requireCap("prod.read");
+  const role = await requireCap("prod.read");
   const [masters, pending, stock] = await Promise.all([
     getProductionMasters(),
     getPendingBatches(),
@@ -26,6 +26,7 @@ export default async function ProductionPage() {
       products={masters.products as Product[]}
       pending={pending}
       stock={stock as unknown as StockRow[]}
+      role={role}
     />
   );
 }

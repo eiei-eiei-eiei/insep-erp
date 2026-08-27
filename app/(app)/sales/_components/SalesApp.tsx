@@ -10,7 +10,7 @@ import { SyncHistoryTab } from "./SyncHistoryTab";
 import { MenuTab } from "./MenuTab";
 import { IconCart } from "@/lib/shared/icons";
 import { tabsFor } from "@/lib/shared/tabs";
-import { can, toRole } from "@/lib/shared/roles";
+import { can, toRole, ROLE_LABEL } from "@/lib/shared/roles";
 import { useTabUrl } from "../../_components/useTabUrl";
 
 type Tab = string;
@@ -47,12 +47,15 @@ export function SalesApp({ boot }: { boot: SalesBoot }) {
         <IconCart size={24} className="text-brand" />
         <h1 className="text-2xl font-bold text-ink">ขาย</h1>
         <span className="ml-auto text-sm text-faint">
-          บทบาท <b>{boot.role}</b>
+          บทบาท <b>{ROLE_LABEL[role]}</b>
         </span>
       </div>
 
-      {boot.role === "viewer" && (
-        <div className="mb-4 rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">บทบาท viewer — ดูได้อย่างเดียว</div>
+      {/* ★ ตัดสินจากสิทธิ์ ไม่ใช่เทียบชื่อบทบาท — เพิ่มบทบาทอ่านอย่างเดียวตัวใหม่แล้วต้องขึ้นเอง */}
+      {!canWrite && (
+        <div className="mb-4 rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">
+          บทบาท <b>{ROLE_LABEL[role]}</b> — ดูได้อย่างเดียว บันทึก/แก้ไขไม่ได้
+        </div>
       )}
 
       <div className="mb-5 -mx-4 flex gap-1 overflow-x-auto border-b border-line px-4">

@@ -8,11 +8,11 @@ export default async function PayrollPage() {
   // ★ ชั้นสิทธิ์จริงอยู่ที่ RLS ของ 0040 (select เฉพาะ role main) — นี่เป็นชั้นแพ็กเกจ
   await requireModule("payroll");
   // ชั้นสิทธิ์ผู้ใช้ (คนละเรื่องกับชั้นแพ็กเกจข้างบน) — ตัวจริงคือ RLS ของ 0051
-  await requireCap("pay.read");
+  const role = await requireCap("pay.read");
   const [config, employees, periods] = await Promise.all([
     getPayrollConfig(),
     getEmployees(),
     getPeriods(),
   ]);
-  return <PayrollApp config={config} employees={employees} periods={periods} />;
+  return <PayrollApp config={config} employees={employees} periods={periods} role={role} />;
 }

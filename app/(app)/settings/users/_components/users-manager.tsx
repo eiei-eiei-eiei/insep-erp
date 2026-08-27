@@ -2,6 +2,18 @@
 
 import { useState, useTransition } from "react";
 import { ROLES, ROLE_LABEL, ROLE_HINT, type Role } from "@/lib/shared/roles";
+import { PASSWORD_MIN } from "@/lib/shared/password";
+import {
+  Card,
+  EscToClose,
+  Msg,
+  MissingHint,
+  RowBtn,
+  SaveButton,
+  Select,
+  TextInput,
+  type UiMsg,
+} from "@/lib/shared/ui";
 import {
   createUserAction,
   updateRoleAction,
@@ -25,6 +37,9 @@ export type UserRow = {
  */
 const ROLE_OPTIONS: readonly Role[] = ROLES;
 
+/** ป๊อปอัพที่เปิดอยู่ — `null` = ไม่มี */
+type Dialog = { kind: "reset" | "delete"; user: UserRow } | null;
+
 export function UsersManager({
   users,
   currentUserId,
@@ -33,7 +48,7 @@ export function UsersManager({
   currentUserId: string;
 }) {
   const [pending, startTransition] = useTransition();
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [msg, setMsg] = useState<UiMsg | null>(null);
 
   // ฟอร์มสร้างผู้ใช้
   const [username, setUsername] = useState("");
@@ -41,14 +56,42 @@ export function UsersManager({
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<Role>("viewer");
 
-  function run(action: () => Promise<ActionResult>, successText: string) {
+  // ป๊อปอัพรีเซ็ตรหัส / ลบ
+  const [dialog, setDialog] = useState<Dialog>(null);
+  const [newPw, setNewPw] = useState("");
+
+  function run(action: () => Promise<ActionResult>, successText: string, onOk?: () => void) {
     setMsg(null);
     startTransition(async () => {
       const res = await action();
-      if (res.ok) setMsg({ ok: true, text: successText });
-      else setMsg({ ok: false, text: res.error ?? "เกิดข้อผิดพลาด" });
+      if (res.ok) {
+        setMsg({ ok: true, text: successText });
+        onOk?.();
+      } else {
+        setMsg({ ok: false, text: res.error ?? "เกิดข้อผิดพลาด" });
+      }
     });
   }
+
+  function closeDialog() {
+    if (pending) return;
+    setDialog(null);
+    setNewPw("");
+  }
+
+  function doReset(u: UserRow) {
+    run(
+      () => resetPasswordAction({ id: u.id, password: newPw }),
+      `รีเซ็ตรหัสผ่าน ${u.username} แล้ว`,
+      () => { setDialog(null); setNewPw(""); },
+    );
+  }
+
+  const createChecks = [
+    { label: "ชื่อผู้ใช้", ok: !!username.trim() },
+    { label: `รหัสผ่าน (อย่างน้อย ${PASSWORD_MIN} ตัว)`, ok: password.length >= PASSWORD_MIN },
+  ];
+  const canCreate = createChecks.every((c) => c.ok);
 
   return (
     <div>
@@ -58,91 +101,75 @@ export function UsersManager({
         เฉพาะเจ้าของกิจการ (main)
       </p>
 
-      {msg && (
-        <div
-          className={`mb-4 rounded-lg px-3 py-2 text-sm ${
-            msg.ok ? "bg-ok-bg text-ok" : "bg-crit-bg text-crit"
-          }`}
-        >
-          {msg.text}
-        </div>
-      )}
+      <Msg msg={msg} />
 
       {/* สร้างผู้ใช้ใหม่ */}
-      <div className="mb-8 rounded-lg border border-line bg-card p-5">
+      <Card className="mb-8">
         <h2 className="mb-3 font-semibold text-ink">+ สร้างผู้ใช้ใหม่</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <label className="text-sm">
             <span className="mb-1 block text-muted">ชื่อผู้ใช้ (username)</span>
-            <input
+            <TextInput
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="เช่น sale1"
-              className="w-full rounded-lg border border-line px-3 py-2"
             />
           </label>
           <label className="text-sm">
             <span className="mb-1 block text-muted">ชื่อแสดงผล</span>
-            <input
+            <TextInput
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="เช่น สมชาย"
-              className="w-full rounded-lg border border-line px-3 py-2"
             />
           </label>
           <label className="text-sm">
-            <span className="mb-1 block text-muted">รหัสผ่าน</span>
-            <input
+            {/* ★ ตัวเลขมาจาก PASSWORD_MIN ตัวจริง — เขียนเลขตายตัวไว้แล้วเกณฑ์เปลี่ยน
+                หน้าจอจะโกหกผู้ใช้เงียบ ๆ (ของเดิมเขียน "6 ตัว" ทั้งที่ระบบบังคับ 8) */}
+            <span className="mb-1 block text-muted">รหัสผ่าน (อย่างน้อย {PASSWORD_MIN} ตัว)</span>
+            <TextInput
               type="text"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="อย่างน้อย 6 ตัว"
-              className="w-full rounded-lg border border-line px-3 py-2"
+              placeholder={`อย่างน้อย ${PASSWORD_MIN} ตัว`}
             />
           </label>
           <label className="text-sm">
             <span className="mb-1 block text-muted">สิทธิ์ (role)</span>
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value as Role)}
-              className="w-full rounded-lg border border-line px-3 py-2"
-            >
+            <Select value={role} onChange={(e) => setRole(e.target.value as Role)}>
               {ROLE_OPTIONS.map((r) => (
                 <option key={r} value={r}>
                   {ROLE_LABEL[r]} ({r})
                 </option>
               ))}
-            </select>
+            </Select>
             {/* 9 บทบาทเยอะพอที่จะเดาผิด — บอกตรง ๆ ว่าตัวที่เลือกอยู่ได้/ไม่ได้อะไร */}
             <span className="mt-1 block text-xs text-faint">{ROLE_HINT[role]}</span>
           </label>
-          <div className="flex items-end">
-            <button
-              disabled={pending}
+          <div className="flex flex-col justify-end">
+            <SaveButton
+              pending={pending}
+              pendingText="กำลังสร้าง…"
+              disabled={!canCreate}
               onClick={() =>
-                run(async () => {
-                  const res = await createUserAction({
-                    username,
-                    displayName,
-                    password,
-                    role,
-                  });
-                  if (res.ok) {
+                run(
+                  () => createUserAction({ username, displayName, password, role }),
+                  `สร้างผู้ใช้ "${username}" แล้ว`,
+                  () => {
                     setUsername("");
                     setDisplayName("");
                     setPassword("");
                     setRole("viewer");
-                  }
-                  return res;
-                }, `สร้างผู้ใช้ "${username}" แล้ว`)
+                  },
+                )
               }
-              className="w-full rounded-lg bg-brand py-2 font-medium text-on-brand hover:opacity-90 disabled:opacity-50"
             >
               สร้าง
-            </button>
+            </SaveButton>
+            <MissingHint checks={createChecks} />
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* รายชื่อผู้ใช้ */}
       <div className="overflow-x-auto rounded-lg border border-line bg-card">
@@ -170,58 +197,40 @@ export function UsersManager({
                   </td>
                   <td className="px-4 py-3 text-muted">{u.display_name}</td>
                   <td className="px-4 py-3">
-                    <select
+                    <Select
+                      className="py-1"
                       defaultValue={u.role}
                       disabled={pending}
                       onChange={(e) =>
                         run(
-                          () =>
-                            updateRoleAction({ id: u.id, role: e.target.value }),
+                          () => updateRoleAction({ id: u.id, role: e.target.value }),
                           `เปลี่ยนสิทธิ์ ${u.username} แล้ว`,
                         )
                       }
-                      className="rounded-lg border border-line px-2 py-1"
                     >
                       {ROLE_OPTIONS.map((r) => (
                         <option key={r} value={r} title={ROLE_HINT[r]}>
                           {ROLE_LABEL[r]} ({r})
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </td>
                   <td className="px-4 py-3 num">
-                    <button
+                    <RowBtn
+                      className="mr-2"
                       disabled={pending}
-                      onClick={() => {
-                        const pw = window.prompt(
-                          `ตั้งรหัสผ่านใหม่ให้ "${u.username}" (อย่างน้อย 6 ตัว)`,
-                        );
-                        if (pw)
-                          run(
-                            () => resetPasswordAction({ id: u.id, password: pw }),
-                            `รีเซ็ตรหัสผ่าน ${u.username} แล้ว`,
-                          );
-                      }}
-                      className="mr-2 rounded-lg border border-line px-2.5 py-1 text-muted hover:bg-raised"
+                      onClick={() => { setNewPw(""); setDialog({ kind: "reset", user: u }); }}
                     >
                       รีเซ็ตรหัส
-                    </button>
-                    <button
+                    </RowBtn>
+                    <RowBtn
+                      tone="red"
                       disabled={pending || isSelf}
                       title={isSelf ? "ลบบัญชีที่กำลังใช้งานอยู่ไม่ได้ (ให้ผู้ใช้ main อีกคนลบให้)" : undefined}
-                      onClick={() => {
-                        if (
-                          window.confirm(`ลบผู้ใช้ "${u.username}" ถาวร?`)
-                        )
-                          run(
-                            () => deleteUserAction({ id: u.id }),
-                            `ลบผู้ใช้ ${u.username} แล้ว`,
-                          );
-                      }}
-                      className="rounded-lg border border-crit-line px-2.5 py-1 text-crit hover:bg-crit-bg disabled:opacity-40"
+                      onClick={() => setDialog({ kind: "delete", user: u })}
                     >
                       ลบ
-                    </button>
+                    </RowBtn>
                   </td>
                 </tr>
               );
@@ -229,6 +238,91 @@ export function UsersManager({
           </tbody>
         </table>
       </div>
+
+      {/*
+        🚨 ป๊อปอัพในแอป ไม่ใช่ window.prompt/confirm
+           · `prompt()` **throw ในเบราว์เซอร์ที่ฝังอยู่ในแอปอื่น** ("prompt() is not supported")
+             → ปุ่มรีเซ็ตรหัสพังสนิท ไม่ใช่แค่หน้าตาไม่สวย
+           · และรหัสผ่านใน prompt **ไม่ถูกปิดบัง** ใครยืนข้างหลังก็อ่านได้
+           · `confirm()` ก็ถูกกลืนในบางบริบท → กดลบแล้วเหมือนปุ่มเสีย
+        🪤 พื้นหลังปิดด้วย onMouseDown ไม่ใช่ onClick (D73 — ลากคลุมข้อความแล้วป๊อปอัพปิดเอง)
+      */}
+      {dialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40 p-4"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) closeDialog(); }}
+        >
+          <EscToClose onClose={closeDialog} />
+          <div className="w-full max-w-md rounded-lg bg-card p-5 shadow-xl">
+            {dialog.kind === "reset" ? (
+              <>
+                <div className="mb-1 text-lg font-bold text-ink">รีเซ็ตรหัสผ่าน</div>
+                <p className="mb-3 text-sm text-muted">
+                  ตั้งรหัสผ่านใหม่ให้ <b className="text-ink">{dialog.user.username}</b>
+                </p>
+                <p className="mb-3 rounded-lg bg-raised px-3 py-2 text-xs text-faint">
+                  ผู้ใช้จะเข้าระบบด้วยรหัสนี้ได้ทันที — บอกเขาให้เปลี่ยนเองหลังเข้าได้แล้ว
+                </p>
+                <label className="mb-1 block text-sm text-muted">
+                  รหัสผ่านใหม่ (อย่างน้อย {PASSWORD_MIN} ตัว)
+                </label>
+                <TextInput
+                  type="password"
+                  value={newPw}
+                  autoFocus
+                  onChange={(e) => setNewPw(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && newPw.length >= PASSWORD_MIN) doReset(dialog.user);
+                  }}
+                />
+                <div className="mt-4 flex justify-end gap-2">
+                  <RowBtn onClick={closeDialog} disabled={pending}>ยกเลิก</RowBtn>
+                  <SaveButton
+                    pending={pending}
+                    pendingText="กำลังตั้ง…"
+                    disabled={newPw.length < PASSWORD_MIN}
+                    onClick={() => doReset(dialog.user)}
+                  >
+                    ตั้งรหัสใหม่
+                  </SaveButton>
+                </div>
+                <MissingHint
+                  checks={[
+                    { label: `รหัสผ่านอย่างน้อย ${PASSWORD_MIN} ตัว`, ok: newPw.length >= PASSWORD_MIN },
+                  ]}
+                />
+              </>
+            ) : (
+              <>
+                <div className="mb-1 text-lg font-bold text-crit">ลบผู้ใช้ถาวร</div>
+                <p className="mb-3 text-sm text-muted">
+                  จะลบบัญชี <b className="text-ink">{dialog.user.username}</b> ออกจากระบบ
+                </p>
+                <p className="mb-4 rounded-lg border border-crit-line bg-crit-bg px-3 py-2 text-xs text-crit">
+                  ลบแล้วเข้าระบบด้วยบัญชีนี้ไม่ได้อีก · ส่วนข้อมูลที่เขาเคยบันทึกไว้ยังอยู่ครบ
+                  (ประวัติการแก้ไขยังเก็บชื่อผู้ใช้ไว้)
+                </p>
+                <div className="flex justify-end gap-2">
+                  <RowBtn onClick={closeDialog} disabled={pending}>ยกเลิก</RowBtn>
+                  <RowBtn
+                    tone="red"
+                    disabled={pending}
+                    onClick={() =>
+                      run(
+                        () => deleteUserAction({ id: dialog.user.id }),
+                        `ลบผู้ใช้ ${dialog.user.username} แล้ว`,
+                        () => { setDialog(null); setNewPw(""); },
+                      )
+                    }
+                  >
+                    {pending ? "กำลังลบ…" : "ลบถาวร"}
+                  </RowBtn>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { Bootstrap } from "./types";
 import { nowMonth } from "./ui";
@@ -15,12 +15,9 @@ import { InstallmentsTab } from "./InstallmentsTab";
 import { TaxDocsTab } from "./TaxDocsTab";
 import { SettingsTab } from "./SettingsTab";
 import { IconLedger } from "@/lib/shared/icons";
-import { ACCOUNTING_TABS, labelFromSlug, slugFromLabel } from "@/lib/shared/tabs";
+import { tabsFor, labelFromSlug, slugFromLabel } from "@/lib/shared/tabs";
 import { useTabUrl } from "../../_components/useTabUrl";
-import { can, toRole } from "@/lib/shared/roles";
-
-// ★ ลำดับ/ชื่อแท็บมาจากทะเบียนกลาง lib/shared/tabs (แถบเมนูใช้ชุดเดียวกันทำดร็อปดาวน์)
-const TABS = ACCOUNTING_TABS.map((t) => t.label);
+import { can, toRole, ROLE_LABEL } from "@/lib/shared/roles";
 
 type Tab = string;
 
@@ -33,8 +30,20 @@ function shiftMonth(m: string, delta: number): string {
 
 export function AccountingApp({ boot }: { boot: Bootstrap }) {
   const sp = useSearchParams();
-  const [tab, setTab] = useState<Tab>(() => labelFromSlug("accounting", sp.get("tab")) ?? "บันทึก");
-  useTabUrl("accounting", tab, setTab, (l) => slugFromLabel("accounting", l));
+  const role = toRole(boot.role);
+  /**
+   * ★ ลำดับ/ชื่อแท็บมาจากทะเบียนกลาง lib/shared/tabs (แถบเมนูใช้ชุดเดียวกันทำดร็อปดาวน์)
+   * 🚨 ต้องผ่าน tabsFor(role) — ของเดิม map จาก ACCOUNTING_TABS ตรง ๆ ทำให้ **ตัวกรองสิทธิ์
+   *    ในทะเบียนไม่มีผลกับหน้านี้เลย** (พนักงานบัญชีเห็นแท็บตั้งค่าและเปิดผ่าน ?tab= ได้ · D85)
+   */
+  const TABS = useMemo(() => tabsFor("accounting", role).map((t) => t.label), [role]);
+  const [tab, setTab] = useState<Tab>(() => {
+    const l = labelFromSlug("accounting", sp.get("tab"));
+    return l && TABS.includes(l) ? l : TABS[0];
+  });
+  // 🚨 กันยัดแท็บที่ไม่มีสิทธิ์ผ่าน URL — labelFromSlug คืนชื่อแท็บที่ "มีอยู่จริง"
+  //    ไม่ใช่ "ที่คนนี้เปิดได้" จึงต้องกรองซ้ำตรงนี้ (แพตเทิร์นเดียวกับ SalesApp)
+  useTabUrl("accounting", tab, (l) => { if (TABS.includes(l)) setTab(l); }, (l) => slugFromLabel("accounting", l));
   const [entityId, setEntityId] = useState(boot.entities[0]?.entity_id ?? "");
   const [month, setMonth] = useState(nowMonth());
   const readOnly = !can(toRole(boot.role), "acct.write");
@@ -73,7 +82,13 @@ export function AccountingApp({ boot }: { boot: Bootstrap }) {
         </div>
       </div>
 
-      {readOnly && <div className="mb-4 rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">บทบาท <b>{boot.role}</b> — ดูได้อย่างเดียว (การบันทึก/แก้ไขต้องเป็น main)</div>}
+      {/* 🪤 ห้ามเขียนชื่อบทบาทที่ทำได้ไว้ในข้อความ — D85 เพิ่มบทบาทที่บันทึกได้อีก 3 ตัว
+             แล้วข้อความเดิม ("ต้องเป็น main") กลายเป็นคำโกหกทันทีโดยไม่มีอะไรฟ้อง */}
+      {readOnly && (
+        <div className="mb-4 rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">
+          บทบาท <b>{ROLE_LABEL[role]}</b> — ดูได้อย่างเดียว บันทึก/แก้ไขไม่ได้
+        </div>
+      )}
       {boot.entities.length === 0 && <div className="mb-4 rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">ยังไม่มีข้อมูลกิจการ (entities) — เพิ่มก่อนใช้งาน</div>}
 
       <div className="mb-5 -mx-4 flex gap-1 overflow-x-auto border-b border-line px-4">

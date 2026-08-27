@@ -185,7 +185,8 @@ export function DataManager() {
               onChange={(e) => setPassword(e.target.value)}
               autoFocus
               onKeyDown={(e) => e.key === "Enter" && password && submit()}
-              className="mb-4 w-full rounded-lg border border-line px-3 py-2 outline-none"
+              // ★ ต้องมี bg-input + text-ink — ไม่งั้นโหมดมืดได้สีปริยายของเบราว์เซอร์ (พื้นจม อ่านไม่ออก)
+              className="mb-4 w-full rounded-lg border border-line bg-input px-3 py-2 text-ink outline-none focus:border-brand"
             />
             <div className="flex justify-end gap-2">
               <button

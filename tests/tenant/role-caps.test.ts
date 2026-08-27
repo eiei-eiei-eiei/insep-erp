@@ -312,3 +312,44 @@ describe("has_cap() — ฟังก์ชันตัดสินสิทธ�
     }
   });
 });
+
+describe("🔴 เลข 50ทวิ ต้องไม่ชนกับใบของคู่ค้า", () => {
+  /**
+   * เลข 50ทวิ ใช้ **ชุดเดียวกันต่อกิจการ** ทั้งใบพนักงานและใบคู่ค้า (D69)
+   * แต่ policy `wht_sel` ให้ฝ่ายเงินเดือนเห็นเฉพาะแถวที่ `emp_id` ไม่ว่าง
+   * → ถ้าหน้าเงินเดือน select เองตรง ๆ จะเห็นแค่ครึ่งเดียวแล้ว **ออกเลขทับใบที่ยื่นสรรพากรไปแล้ว**
+   * จึงต้องผ่าน RPC `fn_wht_doc_nos` (security definer) ที่คืน **เฉพาะเลขที่** ไม่คืนชื่อ/ยอด
+   */
+  const PARTNER_DOC = "6905";
+
+  beforeAll(async () => {
+    await admin().from("wht_certificates").insert({
+      tenant_id: T.tenantId, entity_id: T.entityId, doc_no: PARTNER_DOC,
+      issue_date: "2026-08-01", contact_name: "คู่ค้าทดสอบ", wht_amount: 100,
+      base_amount: 3333, pnd_type: "3", income_type: "ค่าบริการ", income_seq: 1, tx_ids: [],
+    });
+  });
+
+  it("🚨 ฝ่ายเงินเดือน **มองไม่เห็นแถว** ของใบคู่ค้า (ไม่รู้ว่าจ่ายใครเท่าไหร่)", async () => {
+    const { data } = await as.payroll.from("wht_certificates").select("doc_no, emp_id");
+    const docs = (data ?? []).map((c) => c.doc_no as string);
+    expect(docs, "ใบของคู่ค้าไม่ควรโผล่ให้ฝ่ายเงินเดือนเห็น").not.toContain(PARTNER_DOC);
+    expect((data ?? []).every((c) => c.emp_id !== null)).toBe(true);
+  });
+
+  it("★ แต่ RPC ต้องคืนเลขนั้นมาให้ตอนคำนวณเลขใบถัดไป", async () => {
+    const { data, error } = await as.payroll.rpc("fn_wht_doc_nos", { p_entity_id: T.entityId });
+    expect(error, error?.message).toBeNull();
+    expect(data, "RPC ต้องเห็นใบคู่ค้าด้วย ไม่งั้นเลขจะซ้ำ").toContain(PARTNER_DOC);
+  });
+
+  it("ฝ่ายบัญชีเห็นทั้งสองแบบตามปกติ", async () => {
+    const { data } = await as.accounting.from("wht_certificates").select("doc_no");
+    expect((data ?? []).map((c) => c.doc_no)).toContain(PARTNER_DOC);
+  });
+
+  it("🚨 ฝ่ายขายไม่เกี่ยวเลย — เรียก RPC แล้วต้องไม่ได้เลขสักตัว", async () => {
+    const { data } = await as.sales.rpc("fn_wht_doc_nos", { p_entity_id: T.entityId });
+    expect(data ?? []).toHaveLength(0);
+  });
+});

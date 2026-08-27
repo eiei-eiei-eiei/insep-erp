@@ -17,6 +17,7 @@ import { BoardTab } from "./BoardTab";
 import { ExciseTab } from "./ExciseTab";
 import { IconStill } from "@/lib/shared/icons";
 import { tabsFor, labelFromSlug, slugFromLabel } from "@/lib/shared/tabs";
+import type { Role } from "@/lib/shared/roles";
 import { processesOf } from "@/lib/production/calc";
 import { useTabUrl } from "../../_components/useTabUrl";
 
@@ -29,22 +30,29 @@ export function ProductionApp({
   products,
   pending,
   stock,
+  role,
 }: {
   materials: Material[];
   containers: Container[];
   products: Product[];
   pending: PendingBatch[];
   stock: StockRow[];
+  /** 🚨 ของเดิมส่ง "main" ตายตัว → ตัวกรองสิทธิ์ในทะเบียนแท็บไม่มีผลเลย (D85) */
+  role: Role;
 }) {
   const sp = useSearchParams();
   // D78: ซ่อนแท็บของเส้นทางที่โรงนี้ไม่ได้ทำ — ตัดสินจาก **ประเภทสุราของสินค้าจริง**
   //   (ยังไม่มีสินค้า = เห็นครบ · แถบเมนูด้านบนกรองด้วยชุดเดียวกันจาก layout)
   const TABS = useMemo(
-    () => tabsFor("production", "main", processesOf(products.map((p) => p.liquor_type))).map((t) => t.label),
-    [products],
+    () => tabsFor("production", role, processesOf(products.map((p) => p.liquor_type))).map((t) => t.label),
+    [products, role],
   );
-  const [tab, setTab] = useState<Tab>(() => labelFromSlug("production", sp.get("tab")) ?? "กระดาน batch");
-  useTabUrl("production", tab, setTab, (l) => slugFromLabel("production", l));
+  const [tab, setTab] = useState<Tab>(() => {
+    const l = labelFromSlug("production", sp.get("tab"));
+    return l && TABS.includes(l) ? l : TABS[0];
+  });
+  // 🚨 กันยัดแท็บที่ไม่มีสิทธิ์ผ่าน URL
+  useTabUrl("production", tab, (l) => { if (TABS.includes(l)) setTab(l); }, (l) => slugFromLabel("production", l));
 
   // mount แท็บครั้งเดียวแล้วคงไว้ (ซ่อนด้วย CSS) → สลับแท็บลื่น + คงสถานะ (เช่น หม้อกลั่นที่เลือก/ค่าที่กรอกค้าง)
   const [visited, setVisited] = useState<Set<Tab>>(() => new Set<Tab>([tab]));

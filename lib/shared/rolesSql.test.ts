@@ -120,3 +120,36 @@ describe("ไม่มี my_role() หลงเหลือเป็นตั�
     expect(codeOnly).not.toMatch(/my_role\(\)/);
   });
 });
+
+/**
+ * 🔴 D85 — `for all` ครอบ SELECT ด้วย และ policy แบบ permissive ถูก **OR กัน**
+ *
+ * `wht_sel` เขียนถูกแล้วว่าฝ่ายเงินเดือนเห็นเฉพาะแถวที่ `emp_id` ไม่ว่าง
+ * แต่ `wht_w` (for all) ไม่มีเงื่อนไขนั้น → `pay.write` เปิดอ่านทุกแถวทับไปเลย
+ * = เห็นว่ากิจการจ่ายค่าบริการให้คู่ค้ารายไหนเท่าไหร่
+ *
+ * 🪤 **เขียน policy อ่านให้แคบไม่พอ** ถ้ายังมี policy for all ที่กว้างกว่าบนตารางเดียวกัน
+ */
+describe("wht_certificates — เงื่อนไข emp_id ต้องอยู่ครบทั้งฝั่งอ่านและฝั่งเขียน", () => {
+  /** ไฟล์ migration ล่าสุดที่นิยาม policy ชื่อนี้ */
+  function latestPolicy(name: string): string {
+    const dir = path.join(ROOT, "supabase/migrations");
+    const hit = readdirSync(dir)
+      .filter((f) => f.endsWith(".sql"))
+      .sort()
+      .reverse()
+      .find((f) => readFileSync(path.join(dir, f), "utf8").includes(`create policy ${name} on`));
+    expect(hit, `ไม่พบ migration ที่นิยาม policy ${name}`).toBeTruthy();
+    const sql = readFileSync(path.join(dir, hit!), "utf8");
+    const i = sql.indexOf(`create policy ${name} on`);
+    return sql.slice(i, sql.indexOf(";", i));
+  }
+
+  it("🚨 policy ฝั่งเขียน (for all) ต้องมีเงื่อนไข emp_id ด้วย ไม่งั้นรั่วทางอ่าน", () => {
+    expect(latestPolicy("wht_w")).toContain("emp_id is not null");
+  });
+
+  it("policy ฝั่งอ่านก็ต้องมี", () => {
+    expect(latestPolicy("wht_sel")).toContain("emp_id is not null");
+  });
+});
