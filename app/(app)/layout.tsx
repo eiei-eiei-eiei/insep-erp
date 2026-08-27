@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { workspacesFor, type Role } from "@/lib/shared/workspaces";
+import { workspacesFor } from "@/lib/shared/workspaces";
+import { can, toRole } from "@/lib/shared/roles";
 import { brandingFromSettings } from "@/lib/shared/branding";
 import { bangkokDateISO } from "@/lib/shared/datetime";
 import { processesOf } from "@/lib/production/calc";
@@ -57,14 +58,16 @@ export default async function AppLayout({
   //    โดยตั้งใจ (กันโผล่ใน tenant_branding) ไม่ได้แปลว่าถูกระงับ
   if (tenant?.is_active === false && !tenant?.is_platform) redirect("/suspended");
 
-  const role = (profile?.role ?? "viewer") as Role;
+  // 🚨 ต้องผ่าน toRole() ไม่ใช่ cast ดิบ — ช่วงที่โค้ดขึ้นแล้วแต่ migration 0051 ยังไม่ลง
+  //    ค่าใน DB ยังเป็น sale/warehouse → cast ดิบจะทำให้ can() คืน false ทุกข้อ = เมนูหายเกลี้ยง
+  const role = toRole(profile?.role as string | null);
   const displayName = profile?.display_name ?? profile?.username ?? user.email ?? "ผู้ใช้";
   const branding = brandingFromSettings(settings);
 
   // แจ้งเตือนค่าบริการ — เฉพาะเจ้าของกิจการ และเฉพาะรายที่ยังเปิดการเตือนไว้
   // (พนักงานขาย/คลังเห็นแล้วทำอะไรไม่ได้ · เป็นเรื่องน่าอายของเจ้าของด้วย)
   const billingDueOn =
-    role === "main" && tenant?.billing_notice !== false
+    can(role, "admin") && tenant?.billing_notice !== false
       ? ((tenant?.billing_due_on as string | null) ?? null)
       : null;
 

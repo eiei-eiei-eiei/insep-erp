@@ -11,6 +11,7 @@ import { navSubItems } from "@/lib/shared/tabs";
 import { WORKSPACE_ICON, IconLogout, IconChevronDown } from "@/lib/shared/icons";
 import type { Branding } from "@/lib/shared/branding";
 import { ModeToggle } from "./ModeToggle";
+import { can } from "@/lib/shared/roles";
 
 export function Nav({
   workspaces,
@@ -33,7 +34,7 @@ export function Nav({
   // ★ "สำรอง" ไม่ใช่เมนูแยกแล้ว — กลายเป็นแท็บหนึ่งในหน้าตั้งค่า (D63)
   const items: { key: string; href: string; label: string }[] = [
     ...workspaces.map((w) => ({ key: w.key, href: w.href, label: w.label })),
-    ...(role === "main" ? [{ key: "settings", href: "/settings", label: "ตั้งค่า" }] : []),
+    ...(can(role, "admin") ? [{ key: "settings", href: "/settings", label: "ตั้งค่า" }] : []),
   ];
 
   const initials = displayName.trim().slice(0, 2);

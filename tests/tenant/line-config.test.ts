@@ -55,7 +55,8 @@ beforeAll(async () => {
   B = await seedTenant("lineb");
   asA = await signIn(A);
   asB = await signIn(B);
-  asSaleOfA = await addUser(A, `sale-${A.slug}`, "sale");
+  // D85: role 'sale' ยุบเป็น 'sales' แล้ว (CHECK ของ profiles ไม่รับค่าเดิมอีก)
+  asSaleOfA = await addUser(A, `sale-${A.slug}`, "sales");
 
   // main ของ A ตั้งค่า LINE ของตัวเอง (ผ่าน RLS ปกติ ไม่ใช่ service role — เหมือนที่ UI ทำ)
   const { error } = await asA.from("app_settings").insert([

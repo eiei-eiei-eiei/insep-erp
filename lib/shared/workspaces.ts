@@ -1,11 +1,16 @@
 /**
  * 4 พื้นที่ทำงาน (workspace) — ผลิต / ขาย / บัญชี / เงินเดือน
- * role คุมว่าเห็น workspace ไหน (FLOW_REDESIGN sec 7 บรรทัดสุดท้าย)
  *
  * ★ เคยมี workspace ที่ 4 "รายงานราชการ" — ยุบแล้ว (D62): ฟอร์ม ภส. กลายเป็นแท็บ
  *   "รายงานสรรพสามิต" ในผลิต · ภพ.30/ภงด./50ทวิ อยู่แท็บ "เอกสารสรรพากร" ในบัญชีตั้งแต่ D23#7
+ *
+ * ★ **บทบาท/สิทธิ์ย้ายไป `lib/shared/roles.ts` แล้ว** — ที่นี่ถามแค่ว่า workspace นี้
+ *   ต้องมีความสามารถอะไรถึงจะเห็น · re-export `Role`/`ROLE_LABEL` ต่อให้ import เดิมใช้ได้เหมือนเดิม
  */
-export type Role = "main" | "viewer" | "sale" | "warehouse";
+import { can, type Cap, type Role } from "./roles";
+
+export { ROLES, ROLE_LABEL, ROLE_HINT, ROLE_CAPS, CAPS, can, canAny, toRole } from "./roles";
+export type { Role, Cap } from "./roles";
 
 /** โมดูลที่ขายแยกกันได้ (tenants.modules_enabled) — 7 SKU ประกอบจาก 3 ตัวนี้ */
 export const MODULES = ["production", "accounting", "sales", "payroll"] as const;
@@ -21,21 +26,22 @@ export type Workspace = {
   label: string;
   href: string;
   icon: string;
-  /** role ที่เห็น workspace นี้ (main เห็นหมดเสมอ) */
-  roles: Role[];
+  /** ความสามารถที่ต้องมีถึงจะเห็น workspace นี้ (ดู lib/shared/roles.ts) */
+  cap: Cap;
   /** โมดูลที่ต้องซื้อถึงจะเห็น workspace นี้ */
   module: ModuleKey;
 };
 
 export const WORKSPACES: Workspace[] = [
-  // ★ เงินเดือนเปิดให้ role main เท่านั้น — เงินเดือนรายคนเป็นข้อมูลอ่อนไหวที่สุดในระบบ
-  //   (viewer/sale/warehouse ไม่ควรเห็นแม้แต่ชื่อเมนู) · RLS ฝั่ง DB กันซ้ำอีกชั้นใน 0040
+  // 🚨 เงินเดือนต้องมี `pay.read` — ซึ่ง **viewer ไม่มีโดยตั้งใจ** (เงินเดือนรายคนเป็นข้อมูล
+  //    อ่อนไหวที่สุดในระบบ · viewer มักเป็นบัญชีที่แจกให้คนนอกหรือที่ปรึกษาดู)
+  //    RLS ของ 0040/0051 กันซ้ำอีกชั้นฝั่ง DB
   {
     key: "production",
     label: "ผลิต",
     href: "/production",
     icon: "🏭",
-    roles: ["main", "viewer"],
+    cap: "prod.read",
     module: "production",
   },
   {
@@ -43,7 +49,7 @@ export const WORKSPACES: Workspace[] = [
     label: "ขาย",
     href: "/sales",
     icon: "🛒",
-    roles: ["main", "viewer", "sale", "warehouse"],
+    cap: "sales.read",
     module: "sales",
   },
   {
@@ -51,7 +57,7 @@ export const WORKSPACES: Workspace[] = [
     label: "บัญชี",
     href: "/accounting",
     icon: "📒",
-    roles: ["main", "viewer"],
+    cap: "acct.read",
     module: "accounting",
   },
   {
@@ -59,7 +65,7 @@ export const WORKSPACES: Workspace[] = [
     label: "เงินเดือน",
     href: "/payroll",
     icon: "👥",
-    roles: ["main"],
+    cap: "pay.read",
     module: "payroll",
   },
 ];
@@ -71,16 +77,14 @@ export function hasModule(modules: string[] | null | undefined, key: ModuleKey):
 }
 
 /**
- * workspace ที่ผู้ใช้คนนี้เห็น — กรอง 2 ชั้น: **role** (ทำอะไรได้) × **โมดูล** (ซื้ออะไรไว้)
+ * workspace ที่ผู้ใช้คนนี้เห็น — กรอง 2 ชั้น: **สิทธิ์** (ทำอะไรได้) × **โมดูล** (ซื้ออะไรไว้)
  *
- * ★ role `main` เห็นทุก workspace ที่ "ซื้อไว้" — ไม่ใช่ทุก workspace ที่มีในระบบ
- *   (ของเดิม main ลัดผ่านตัวกรองทั้งหมด ถ้าไม่แก้ เจ้าของกิจการที่ซื้อแค่โมดูลผลิต
- *    จะยังเห็นเมนูบัญชี/ขายที่ไม่ได้จ่าย)
+ * ★ `main` ไม่ได้ลัดผ่านตัวกรองโมดูล — เห็นทุก workspace ที่ "ซื้อไว้" ไม่ใช่ทุก workspace
+ *   ที่มีในระบบ (ไม่งั้นเจ้าของกิจการที่ซื้อแค่โมดูลผลิตจะเห็นเมนูบัญชี/ขายที่ไม่ได้จ่าย)
+ *   ส่วนชั้นสิทธิ์ `main` ผ่านเองอยู่แล้วเพราะมีครบทุก cap
  */
 export function workspacesFor(role: Role, modules?: string[] | null): Workspace[] {
-  return WORKSPACES.filter(
-    (w) => (role === "main" || w.roles.includes(role)) && hasModule(modules, w.module),
-  );
+  return WORKSPACES.filter((w) => can(role, w.cap) && hasModule(modules, w.module));
 }
 
 /**
@@ -90,14 +94,14 @@ export function workspacesFor(role: Role, modules?: string[] | null): Workspace[
  * ส่วนแถบเมนูยังใช้ workspacesFor ตัวเดิมที่ตัดทิ้ง — เมนูที่ใช้ทุกวันต้องสะอาด
  * ไม่ใช่ที่โฆษณา
  *
- * ★ role ยังตัดทิ้งเหมือนเดิม — พนักงานคลังไม่ควรเห็นว่า "มีโมดูลบัญชีให้ซื้อ"
+ * ★ ชั้นสิทธิ์ยังตัดทิ้งเหมือนเดิม — พนักงานขายไม่ควรเห็นว่า "มีโมดูลบัญชีให้ซื้อ"
  *   เพราะไม่ใช่คนตัดสินใจซื้อ และเห็นแล้วสับสนเปล่า ๆ
  */
 export function workspacesWithLock(
   role: Role,
   modules?: string[] | null,
 ): (Workspace & { locked: boolean })[] {
-  return WORKSPACES.filter((w) => role === "main" || w.roles.includes(role)).map((w) => ({
+  return WORKSPACES.filter((w) => can(role, w.cap)).map((w) => ({
     ...w,
     locked: !hasModule(modules, w.module),
   }));
@@ -121,9 +125,3 @@ export const MODULE_LABEL: Record<ModuleKey, string> = {
   payroll: "เงินเดือน",
 };
 
-export const ROLE_LABEL: Record<Role, string> = {
-  main: "เจ้าของกิจการ",
-  viewer: "ผู้ดูข้อมูล",
-  sale: "ฝ่ายขาย",
-  warehouse: "คลังสินค้า",
-};

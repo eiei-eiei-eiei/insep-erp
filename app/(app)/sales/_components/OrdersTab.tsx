@@ -11,6 +11,7 @@ import { roundTo2 } from "@/lib/sales/calc";
 import {
   IconBox, IconClock, IconDoc, IconEdit, IconMoney, IconPrint, IconRefresh, IconSearch, IconTrash,
 } from "@/lib/shared/icons";
+import { can, toRole } from "@/lib/shared/roles";
 
 const itemsCache = new Map<string, OrderItem[]>();
 async function loadItems(quNo: string): Promise<OrderItem[]> {
@@ -21,6 +22,10 @@ async function loadItems(quNo: string): Promise<OrderItem[]> {
 }
 
 export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot; canWrite: boolean; onEdit: (o: OrderRow) => void; active: boolean }) {
+  // 🚨 ยกเลิกออเดอร์ / ยกเลิกใบแจ้งหนี้มัดจำ = **void ใบกำกับภาษีที่ออกไปแล้ว + คืนสต็อก**
+  //    จึงเป็นระดับหัวหน้า ไม่ใช่ทุกคนที่ทำงานขายได้ (ผู้ใช้ตัดสิน D85)
+  //    ★ แยกจาก canWrite โดยตั้งใจ — RPC ฝั่ง DB ก็เช็ค sales.config ซ้ำอีกชั้น
+  const canCancel = can(toRole(boot.role), "sales.config");
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"open" | "closed">("open");
@@ -142,7 +147,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
         <>
           <ActBtn tone="primary" icon={<IconMoney size={14} />} onClick={() => setDialog({ order: o, action: "DEPOSIT_AND_SEND" })}>รับมัดจำ &amp; ส่งคลัง</ActBtn>
           <ActBtn tone="secondary" icon={<IconMoney size={14} />} onClick={() => setDialog({ order: o, action: "FULL_PAYMENT_AND_SEND" })}>รับเต็ม &amp; ส่งคลัง</ActBtn>
-          {boot.role === "main" && (
+          {canCancel && (
             <ActBtn tone="danger" icon={<IconTrash size={14} />} onClick={() => voidDepositInvoice(o)}>ยกเลิกใบแจ้งหนี้มัดจำ</ActBtn>
           )}
         </>
@@ -167,7 +172,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
       {o.status === "ปิดการขาย" && (
         <ActBtn tone="secondary" icon={<IconPrint size={14} />} onClick={() => doPrintClosed(o)}>พิมพ์ใบกำกับฯ</ActBtn>
       )}
-      {canWrite && boot.role === "main" && o.status !== "ยกเลิก" && (
+      {canCancel && o.status !== "ยกเลิก" && (
         <ActBtn tone="danger" icon={<IconTrash size={14} />} onClick={() => cancel(o)}>ยกเลิก</ActBtn>
       )}
     </>

@@ -1,4 +1,4 @@
-import type { Role } from "./workspaces";
+import { can, type Cap, type Role } from "./roles";
 
 /**
  * ทะเบียนแท็บย่อยของแต่ละ workspace — **แหล่งเดียว** ที่แถบเมนูด้านบนใช้ทำดร็อปดาวน์
@@ -15,8 +15,11 @@ import type { Role } from "./workspaces";
 export type SubTab = {
   slug: string;
   label: string;
-  /** role ที่เห็นแท็บนี้ (ไม่ระบุ = ทุก role ที่เข้า workspace นี้ได้อยู่แล้ว) */
-  roles?: Role[];
+  /**
+   * ความสามารถที่ต้องมีถึงจะเห็นแท็บนี้ (ไม่ระบุ = ใครเข้า workspace นี้ได้ก็เห็น)
+   * ★ ใช้กับแท็บที่ทำอะไรได้มากกว่าคนอื่น — โดยเฉพาะ **แท็บตั้งค่าของแต่ละโดเมน**
+   */
+  cap?: Cap;
   /**
    * D78 — แท็บนี้เกี่ยวกับ "ประเภทสุรา" ไหน (ไม่ระบุ = เห็นเสมอ)
    * โรงที่ทำแต่สุรากลั่นไม่ต้องเห็นแท็บของสุราแช่ และกลับกัน
@@ -38,7 +41,7 @@ export const PRODUCTION_TABS: SubTab[] = [
   { slug: "history", label: "ประวัติ/เทียบ" },
   { slug: "stock", label: "สต็อก" },
   { slug: "excise", label: "รายงานสรรพสามิต" },
-  { slug: "master", label: "จัดการข้อมูล" },
+  { slug: "master", label: "จัดการข้อมูล", cap: "prod.write" },
 ];
 
 /** บัญชี — ลำดับตรงกับแถบแท็บใน AccountingApp */
@@ -52,7 +55,7 @@ export const ACCOUNTING_TABS: SubTab[] = [
   { slug: "price-history", label: "ประวัติราคา" },
   { slug: "price-check", label: "เช็คราคา" },
   { slug: "tax-docs", label: "เอกสารสรรพากร" },
-  { slug: "settings", label: "ตั้งค่า" },
+  { slug: "settings", label: "ตั้งค่า", cap: "acct.config" },
 ];
 
 /**
@@ -60,20 +63,20 @@ export const ACCOUNTING_TABS: SubTab[] = [
  * role คุมว่าเห็นแท็บไหน (เดิมอยู่ในฟังก์ชัน tabsForRole ของ SalesApp)
  */
 export const SALES_TABS: SubTab[] = [
-  { slug: "create", label: "＋ สร้างใบเสนอราคา", roles: ["main", "sale"] },
-  { slug: "orders", label: "จัดการออเดอร์", roles: ["main", "sale", "viewer"] },
-  { slug: "warehouse", label: "คลังจัดส่ง", roles: ["main", "warehouse"] },
-  { slug: "sync", label: "ประวัติเชื่อมระบบ", roles: ["main", "sale"] },
-  { slug: "manage", label: "จัดการข้อมูล", roles: ["main"] },
+  { slug: "create", label: "＋ สร้างใบเสนอราคา", cap: "sales.write" },
+  { slug: "orders", label: "จัดการออเดอร์" },
+  { slug: "warehouse", label: "คลังจัดส่ง", cap: "sales.write" },
+  { slug: "sync", label: "ประวัติเชื่อมระบบ", cap: "sales.write" },
+  { slug: "manage", label: "จัดการข้อมูล", cap: "sales.config" },
 ];
 
-/** เงินเดือน — เปิดเฉพาะ role main (ทั้ง workspace) จึงไม่ต้องกรอง roles รายแท็บ */
+/** เงินเดือน — เข้าได้ต้องมี `pay.read` อยู่แล้ว · แท็บตั้งค่าการคำนวณต้อง `pay.config` เพิ่ม */
 export const PAYROLL_TABS: SubTab[] = [
   { slug: "period", label: "งวดจ่าย" },
   { slug: "report", label: "รายงาน" },
   { slug: "filing", label: "เอกสารยื่น" },
   { slug: "employees", label: "พนักงาน" },
-  { slug: "config", label: "ตั้งค่าการคำนวณ" },
+  { slug: "config", label: "ตั้งค่าการคำนวณ", cap: "pay.config" },
 ];
 
 export const WORKSPACE_TABS: Record<string, SubTab[]> = {
@@ -104,7 +107,7 @@ export const SETTINGS_TABS: { slug: string; label: string; href: string }[] = [
 export function tabsFor(workspaceKey: string, role: Role, processes?: string[]): SubTab[] {
   const set = processes && processes.length > 0 ? new Set(processes) : null;
   return (WORKSPACE_TABS[workspaceKey] ?? []).filter(
-    (t) => (!t.roles || t.roles.includes(role)) && (!set || !t.process || set.has(t.process)),
+    (t) => (!t.cap || can(role, t.cap)) && (!set || !t.process || set.has(t.process)),
   );
 }
 

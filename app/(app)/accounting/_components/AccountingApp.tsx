@@ -17,6 +17,7 @@ import { SettingsTab } from "./SettingsTab";
 import { IconLedger } from "@/lib/shared/icons";
 import { ACCOUNTING_TABS, labelFromSlug, slugFromLabel } from "@/lib/shared/tabs";
 import { useTabUrl } from "../../_components/useTabUrl";
+import { can, toRole } from "@/lib/shared/roles";
 
 // ★ ลำดับ/ชื่อแท็บมาจากทะเบียนกลาง lib/shared/tabs (แถบเมนูใช้ชุดเดียวกันทำดร็อปดาวน์)
 const TABS = ACCOUNTING_TABS.map((t) => t.label);
@@ -36,7 +37,7 @@ export function AccountingApp({ boot }: { boot: Bootstrap }) {
   useTabUrl("accounting", tab, setTab, (l) => slugFromLabel("accounting", l));
   const [entityId, setEntityId] = useState(boot.entities[0]?.entity_id ?? "");
   const [month, setMonth] = useState(nowMonth());
-  const readOnly = boot.role !== "main";
+  const readOnly = !can(toRole(boot.role), "acct.write");
   const firstEntity = boot.entities[0]?.entity_id ?? "";
   const entryEntity = entityId === "ALL" ? firstEntity : entityId;
 

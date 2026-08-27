@@ -17,7 +17,7 @@ import {
 import { IconAlert, IconCheck, IconPlus } from "@/lib/shared/icons";
 import { formatDateThai } from "@/lib/shared/format";
 import { BRAND_COLORS } from "@/lib/shared/branding";
-import { MODULES, MODULE_LABEL, ROLE_LABEL, type ModuleKey, type Role } from "@/lib/shared/workspaces";
+import { MODULES, MODULE_LABEL, ROLE_LABEL, toRole, type ModuleKey } from "@/lib/shared/workspaces";
 import type { TenantRow } from "@/lib/platform/provision";
 import {
   addEntityAction,
@@ -421,7 +421,7 @@ function TenantPanel({
                 <tr key={u.id}>
                   <td className="font-medium text-ink">{u.username ?? "—"}</td>
                   <td>{u.displayName ?? "—"}</td>
-                  <td>{ROLE_LABEL[u.role as Role] ?? u.role}</td>
+                  <td>{ROLE_LABEL[toRole(u.role)]}</td>
                   <td>
                     {u.mustChangePassword ? (
                       <Badge tone="warn">รอเจ้าตัวตั้งรหัสเอง</Badge>

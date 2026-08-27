@@ -5,10 +5,10 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { usernameToEmail, USERNAME_RE } from "@/lib/shared/auth-domain";
 import { validatePassword } from "@/lib/shared/password";
+import { ROLES, can, toRole } from "@/lib/shared/roles";
 
 export type ActionResult = { ok: boolean; error?: string };
 
-const ROLES = ["main", "viewer", "sale", "warehouse"] as const;
 
 /**
  * ตรวจว่า caller เป็น main จริง (ผ่าน session ปกติ + RLS) — ป้องกันคนอื่นเรียก action ตรง ๆ
@@ -27,7 +27,7 @@ async function requireMain(): Promise<Caller> {
     .select("role, tenant_id")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "main") {
+  if (!profile || !can(toRole(profile.role as string | null), "admin")) {
     throw new Error("เฉพาะเจ้าของกิจการ (main) เท่านั้นที่จัดการผู้ใช้ได้");
   }
   if (!profile.tenant_id) {

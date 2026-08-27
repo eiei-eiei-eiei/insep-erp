@@ -501,8 +501,11 @@ function lastDayISO(year: number, month: number): string {
  */
 export async function nextEmpWhtDocNoAction(entityId: string): Promise<string> {
   const supabase = await createClient();
-  const { data } = await supabase.from("wht_certificates").select("doc_no").eq("entity_id", entityId);
-  return nextWhtDocNo((data ?? []).map((c) => c.doc_no as string));
+  // 🚨 ต้องผ่าน RPC — ตั้งแต่ D85 ฝ่ายเงินเดือนเห็นแถวใน wht_certificates เฉพาะใบของ
+  //    **พนักงาน** (policy กรอง emp_id) · select ตรง ๆ จะเห็นแค่ครึ่งเดียวแล้วออกเลขซ้ำ
+  //    กับใบของคู่ค้า ซึ่งเป็นเอกสารที่ยื่นสรรพากรไปแล้ว (เลขชุดเดียวกันต่อกิจการ — D69)
+  const { data } = await supabase.rpc("fn_wht_doc_nos", { p_entity_id: entityId });
+  return nextWhtDocNo(((data ?? []) as string[]).map((d) => String(d)));
 }
 
 /**

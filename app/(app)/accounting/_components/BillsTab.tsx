@@ -6,6 +6,7 @@ import { entryCalc, itemTotal } from "@/lib/accounting/calc";
 import { qn, emptyItem, makeItemHandlers, buildItemInputs, useBillAmounts, type BillItem } from "./billItems";
 import type { Bootstrap } from "./types";
 import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, fmt, useSaver, EscToClose } from "./ui";
+import { can, toRole } from "@/lib/shared/roles";
 
 type Bills = Awaited<ReturnType<typeof searchBillsAction>>;
 type Detail = Awaited<ReturnType<typeof getBillDetailAction>>;
@@ -27,7 +28,8 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
   const [editId, setEditId] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const { pending, msg, run } = useSaver();
-  const readOnly = boot.role !== "main"; // viewer/sale/warehouse: ดูได้ แต่ซ่อนปุ่มแก้/ยกเลิก (กัน RLS error)
+  // viewer: ดูได้ แต่ซ่อนปุ่มแก้/ยกเลิก (กัน RLS error ตอนกดแล้วโดนปฏิเสธ)
+  const readOnly = !can(toRole(boot.role), "acct.write");
 
   // ดึงข้อมูลใหม่เมื่อฟิลเตอร์เปลี่ยน/กลับเข้าแท็บ — โชว์ผลเดิมค้างระหว่างโหลด (loading เฉพาะครั้งแรก)
   const firstLoad = useRef(true);

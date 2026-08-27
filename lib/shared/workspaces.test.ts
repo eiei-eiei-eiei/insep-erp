@@ -36,13 +36,21 @@ describe("workspacesFor — role × โมดูล", () => {
     expect(keys(workspacesFor("main", ["accounting"]))).toEqual(["accounting"]);
   });
 
-  it("sale เห็นแค่ขาย และหายไปถ้าไม่ได้ซื้อโมดูลขาย", () => {
-    expect(keys(workspacesFor("sale", ALL_MODULES))).toEqual(["sales"]);
-    expect(keys(workspacesFor("sale", ["production"]))).toEqual([]);
+  it("ฝ่ายขายเห็นแค่ขาย และหายไปถ้าไม่ได้ซื้อโมดูลขาย", () => {
+    expect(keys(workspacesFor("sales", ALL_MODULES))).toEqual(["sales"]);
+    expect(keys(workspacesFor("sales", ["production"]))).toEqual([]);
   });
 
-  it("role ยังคุมเหมือนเดิม — warehouse ไม่เห็นบัญชีแม้ซื้อครบ", () => {
-    expect(keys(workspacesFor("warehouse", ALL_MODULES))).toEqual(["sales"]);
+  it("🔴 บทบาทเฉพาะโดเมนเห็นแค่หน้าของตัวเอง แม้ tenant ซื้อครบทุกโมดูล", () => {
+    expect(keys(workspacesFor("sales_manager", ALL_MODULES))).toEqual(["sales"]);
+    expect(keys(workspacesFor("accounting", ALL_MODULES))).toEqual(["accounting"]);
+    expect(keys(workspacesFor("accounting_manager", ALL_MODULES))).toEqual(["accounting"]);
+    expect(keys(workspacesFor("payroll", ALL_MODULES))).toEqual(["payroll"]);
+    expect(keys(workspacesFor("payroll_manager", ALL_MODULES))).toEqual(["payroll"]);
+  });
+
+  it("finance_manager เป็นตัวเดียวที่คร่อม 2 โดเมน (บัญชี + เงินเดือน)", () => {
+    expect(keys(workspacesFor("finance_manager", ALL_MODULES))).toEqual(["accounting", "payroll"]);
   });
 
   it("ไม่ส่งโมดูลมา = เปิดหมด (พฤติกรรมเดิมก่อนมี 4.5 ต้องไม่พัง)", () => {
@@ -52,13 +60,13 @@ describe("workspacesFor — role × โมดูล", () => {
   });
 });
 
-describe("เงินเดือน (โมดูลที่ 4) — เปิดเฉพาะ main", () => {
+describe("เงินเดือน (โมดูลที่ 4) — เปิดเฉพาะคนที่มี pay.read", () => {
   it("main ที่ซื้อโมดูลเงินเดือน เห็นเมนู", () => {
     expect(keys(workspacesFor("main", ["payroll"]))).toEqual(["payroll"]);
   });
 
-  it("★ role อื่นไม่เห็นเลย แม้ tenant จะซื้อโมดูลไว้ — เงินเดือนรายคนเป็นข้อมูลอ่อนไหวที่สุดในระบบ", () => {
-    for (const r of ["viewer", "sale", "warehouse"] as const) {
+  it("★ บทบาทที่ไม่มี pay.read ไม่เห็นเลย แม้ tenant จะซื้อโมดูลไว้ — 🔴 รวม viewer ด้วย", () => {
+    for (const r of ["viewer", "sales", "sales_manager", "accounting", "accounting_manager"] as const) {
       expect(keys(workspacesFor(r, ALL_MODULES)), r).not.toContain("payroll");
     }
   });
@@ -80,8 +88,8 @@ describe("workspacesWithLock — หน้าแรกโชว์ของท�
     expect(workspacesWithLock("main", ALL_MODULES).some((w) => w.locked)).toBe(false);
   });
 
-  it("★ role ยังตัดทิ้งเหมือนเดิม — คลังไม่ต้องเห็นว่ามีโมดูลบัญชีให้ซื้อ", () => {
-    const ws = workspacesWithLock("warehouse", ["sales"]);
+  it("★ ชั้นสิทธิ์ยังตัดทิ้งเหมือนเดิม — ฝ่ายขายไม่ต้องเห็นว่ามีโมดูลบัญชีให้ซื้อ", () => {
+    const ws = workspacesWithLock("sales", ["sales"]);
     expect(ws.map((w) => w.key)).toEqual(["sales"]);
   });
 });

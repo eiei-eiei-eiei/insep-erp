@@ -99,6 +99,10 @@ export async function getPayrollConfig(): Promise<{
     supabase.from("bank_accounts").select("account_name").order("account_name"),
     // ★ ข้อเสนอแนะเท่านั้น — ขาลงบัญชียัง "พิมพ์เองได้" ตามที่ตัดสินไว้ใน D67
     //   (ที่นั่นเข้าใจว่าผู้ใช้ไม่อยากได้ดร็อปดาวน์เลย · จริง ๆ คืออยากได้ทั้งพิมพ์เองและมีตัวช่วย)
+    // 🪤 D85: บทบาท payroll/payroll_manager **อ่าน transactions ไม่ได้แล้ว** → RLS คืน []
+    //    เงียบ ๆ ไม่ error · ผลคือเขาจะเห็นหมวดจาก app_settings + ขาที่ตั้งไว้เท่านั้น
+    //    ซึ่งตั้งใจให้เป็นแบบนั้น (จะเปิดให้เห็น = เปิดบิลทุกใบของกิจการให้ด้วย
+    //    เพราะ RLS เป็น row-level คุมเป็นรายคอลัมน์ไม่ได้) · finance_manager ยังเห็นครบ
     supabase.from("transactions").select("category").eq("type", "รายจ่าย").limit(2000),
     supabase.from("contacts").select("name").order("name").limit(500),
   ]);

@@ -10,7 +10,7 @@ import { SyncHistoryTab } from "./SyncHistoryTab";
 import { MenuTab } from "./MenuTab";
 import { IconCart } from "@/lib/shared/icons";
 import { tabsFor } from "@/lib/shared/tabs";
-import type { Role } from "@/lib/shared/workspaces";
+import { can, toRole } from "@/lib/shared/roles";
 import { useTabUrl } from "../../_components/useTabUrl";
 
 type Tab = string;
@@ -20,7 +20,8 @@ type Tab = string;
 //   ที่นี่ slug = key เดิม (create/orders/warehouse/sync/manage) จึงไม่ต้องแปลงชื่อ
 
 export function SalesApp({ boot }: { boot: SalesBoot }) {
-  const allowedTabs = tabsFor("sales", boot.role as Role);
+  const role = toRole(boot.role);
+  const allowedTabs = tabsFor("sales", role);
   const allowed = allowedTabs.map((t) => t.slug);
   const sp = useSearchParams();
   const urlTab = sp.get("tab");
@@ -28,7 +29,7 @@ export function SalesApp({ boot }: { boot: SalesBoot }) {
   // slug = key อยู่แล้ว · แต่ยังต้องกันแท็บที่ role นี้ไม่มีสิทธิ์ ไม่ให้ยัดผ่าน URL
   useTabUrl("sales", tab, (t) => { if (allowed.includes(t)) setTab(t); }, (k) => (allowed.includes(k) ? k : ""));
   const [editOrder, setEditOrder] = useState<OrderRow | null>(null);
-  const canWrite = boot.role === "main" || boot.role === "sale";
+  const canWrite = can(role, "sales.write");
 
   // mount แท็บครั้งเดียวแล้วคงไว้ (ซ่อนด้วย CSS) → สลับแท็บลื่น ไม่โหลดใหม่
   const [visited, setVisited] = useState<Set<Tab>>(() => new Set<Tab>([allowed[0]]));

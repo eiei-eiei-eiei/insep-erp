@@ -68,7 +68,7 @@ describe("labelFromSlug / slugFromLabel — ต้องแปลงกลับ
   });
 });
 
-describe("tabsFor — ฝั่งขายกรองตาม role", () => {
+describe("tabsFor — กรองตามความสามารถของบทบาท", () => {
   it("main เห็นครบ 5 แท็บ", () => {
     expect(tabsFor("sales", "main").map((t) => t.slug)).toEqual([
       "create",
@@ -79,18 +79,45 @@ describe("tabsFor — ฝั่งขายกรองตาม role", () => {
     ]);
   });
 
-  it("sale ไม่เห็นคลังและจัดการข้อมูล", () => {
-    expect(tabsFor("sales", "sale").map((t) => t.slug)).toEqual(["create", "orders", "sync"]);
+  it("sales_manager เห็นครบเหมือน main (ขาย+คลังเป็นบทบาทเดียวกันแล้ว)", () => {
+    expect(tabsFor("sales", "sales_manager").map((t) => t.slug)).toEqual([
+      "create",
+      "orders",
+      "warehouse",
+      "sync",
+      "manage",
+    ]);
   });
 
-  it("warehouse เห็นแค่คลัง · viewer เห็นแค่ออเดอร์ (ตรงกับของเดิมก่อนย้ายมาทะเบียน)", () => {
-    expect(tabsFor("sales", "warehouse").map((t) => t.slug)).toEqual(["warehouse"]);
+  it("🔴 sales ทำงานได้ครบ แต่ไม่เห็นแท็บจัดการข้อมูล (= ตั้งค่าของหน้าขาย)", () => {
+    expect(tabsFor("sales", "sales").map((t) => t.slug)).toEqual([
+      "create",
+      "orders",
+      "warehouse",
+      "sync",
+    ]);
+  });
+
+  it("viewer เห็นแค่แท็บที่ไม่ต้องเขียนอะไร", () => {
     expect(tabsFor("sales", "viewer").map((t) => t.slug)).toEqual(["orders"]);
   });
 
-  it("ผลิต/บัญชีไม่กรอง role — เห็นครบทุกแท็บ (สิทธิ์คุมที่ระดับ workspace อยู่แล้ว)", () => {
-    expect(tabsFor("production", "viewer")).toHaveLength(PRODUCTION_TABS.length);
-    expect(tabsFor("accounting", "viewer")).toHaveLength(WORKSPACE_TABS.accounting.length);
+  it("🔴 แท็บตั้งค่าของแต่ละโดเมนต้องมี config ถึงจะเห็น", () => {
+    expect(tabsFor("accounting", "accounting").map((t) => t.slug)).not.toContain("settings");
+    expect(tabsFor("accounting", "accounting_manager").map((t) => t.slug)).toContain("settings");
+    expect(tabsFor("payroll", "payroll").map((t) => t.slug)).not.toContain("config");
+    expect(tabsFor("payroll", "payroll_manager").map((t) => t.slug)).toContain("config");
+    expect(tabsFor("payroll", "finance_manager").map((t) => t.slug)).toContain("config");
+  });
+
+  it("🔴 viewer ไม่เห็นแท็บตั้งค่า/จัดการข้อมูลของโดเมนไหนเลย (ดูอย่างเดียว)", () => {
+    expect(tabsFor("production", "viewer").map((t) => t.slug)).not.toContain("master");
+    expect(tabsFor("accounting", "viewer").map((t) => t.slug)).not.toContain("settings");
+  });
+
+  it("main เห็นครบทุกแท็บของผลิตและบัญชี", () => {
+    expect(tabsFor("production", "main")).toHaveLength(PRODUCTION_TABS.length);
+    expect(tabsFor("accounting", "main")).toHaveLength(WORKSPACE_TABS.accounting.length);
   });
 });
 
@@ -113,9 +140,9 @@ describe("navSubItems — รายการในดร็อปดาวน์
     ]);
   });
 
-  it("ฝั่งขายกรอง role ก่อนทำลิงก์ — คลังไม่ได้ลิงก์เข้าแท็บที่กดเข้าไม่ได้", () => {
-    expect(navSubItems("sales", "warehouse")).toEqual([
-      { label: "คลังจัดส่ง", href: "/sales?tab=warehouse" },
+  it("กรองสิทธิ์ก่อนทำลิงก์ — ไม่ยื่นลิงก์เข้าแท็บที่กดเข้าไม่ได้", () => {
+    expect(navSubItems("sales", "viewer")).toEqual([
+      { label: "จัดการออเดอร์", href: "/sales?tab=orders" },
     ]);
   });
 

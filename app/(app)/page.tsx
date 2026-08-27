@@ -2,7 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
 import { createClient } from "@/lib/supabase/server";
-import { workspacesWithLock, type Role } from "@/lib/shared/workspaces";
+import { workspacesWithLock } from "@/lib/shared/workspaces";
+import { toRole } from "@/lib/shared/roles";
 import { WORKSPACE_ICON, IconLock } from "@/lib/shared/icons";
 import { isPlatformAdmin } from "@/lib/platform/auth";
 
@@ -29,7 +30,7 @@ export default async function HomePage() {
     supabase.from("tenants").select("modules_enabled").maybeSingle(),
   ]);
 
-  const role = (profile?.role ?? "viewer") as Role;
+  const role = toRole(profile?.role as string | null);
   const workspaces = workspacesWithLock(role, tenant?.modules_enabled as string[] | null);
   const lockedCount = workspaces.filter((w) => w.locked).length;
 

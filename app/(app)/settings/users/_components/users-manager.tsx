@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { ROLE_LABEL, type Role } from "@/lib/shared/workspaces";
+import { ROLES, ROLE_LABEL, ROLE_HINT, type Role } from "@/lib/shared/roles";
 import {
   createUserAction,
   updateRoleAction,
@@ -18,7 +18,12 @@ export type UserRow = {
   created_at: string;
 };
 
-const ROLE_OPTIONS: Role[] = ["main", "viewer", "sale", "warehouse"];
+/**
+ * 🚨 อ่านจาก ROLES ที่ lib/shared/roles โดยตรง — **ห้ามก๊อปรายชื่อมาไว้ที่นี่**
+ *    ลิสต์ที่ก๊อปไว้คือสาเหตุของ D84 (เพิ่มของใหม่แล้วหน้าจอไม่รู้จัก)
+ *    ที่นี่พลาดแล้วหนักกว่า: เพิ่มบทบาทใหม่แล้ว **ตั้งให้ใครไม่ได้เลย**
+ */
+const ROLE_OPTIONS: readonly Role[] = ROLES;
 
 export function UsersManager({
   users,
@@ -108,6 +113,8 @@ export function UsersManager({
                 </option>
               ))}
             </select>
+            {/* 9 บทบาทเยอะพอที่จะเดาผิด — บอกตรง ๆ ว่าตัวที่เลือกอยู่ได้/ไม่ได้อะไร */}
+            <span className="mt-1 block text-xs text-faint">{ROLE_HINT[role]}</span>
           </label>
           <div className="flex items-end">
             <button
@@ -176,7 +183,7 @@ export function UsersManager({
                       className="rounded-lg border border-line px-2 py-1"
                     >
                       {ROLE_OPTIONS.map((r) => (
-                        <option key={r} value={r}>
+                        <option key={r} value={r} title={ROLE_HINT[r]}>
                           {ROLE_LABEL[r]} ({r})
                         </option>
                       ))}

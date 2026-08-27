@@ -266,3 +266,33 @@ export async function signIn(t: Tenant): Promise<SupabaseClient> {
   if (error) throw new Error(`ล็อกอิน ${t.slug}: ${error.message}`);
   return c;
 }
+
+/**
+ * สร้างผู้ใช้เพิ่มใน tenant เดิมด้วย role ที่ระบุ แล้วล็อกอินให้เลย (D85)
+ *
+ * 🚨 เทสสิทธิ์ต้องล็อกอิน **เป็นคนนั้นจริง ๆ** ผ่าน anon key — ใช้ service role ไม่ได้เลย
+ *    เพราะ service role bypass RLS ทั้งหมด แล้วเทสจะผ่านทุกข้อโดยไม่ได้ทดสอบอะไร
+ */
+export async function seedUser(
+  t: Tenant,
+  role: string,
+): Promise<{ client: SupabaseClient; email: string; userId: string }> {
+  const db = admin();
+  const password = generateInitialPassword();
+  const username = `${role.replace(/_/g, "-")}-${t.slug}`;
+  const email = `${username}@insep.local`;
+  const { data: u, error } = await db.auth.admin.createUser({
+    email, password, email_confirm: true,
+    user_metadata: {
+      username, display_name: role, tenant_id: t.tenantId, skip_password_change: true,
+    },
+  });
+  must(`สร้างผู้ใช้ ${role}`, error);
+  must(`ตั้ง role ${role}`, (await db.from("profiles")
+    .update({ role }).eq("id", u!.user!.id)).error);
+
+  const client = anonClient();
+  const { error: sErr } = await client.auth.signInWithPassword({ email, password });
+  if (sErr) throw new Error(`ล็อกอิน ${role}: ${sErr.message}`);
+  return { client, email, userId: u!.user!.id };
+}

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createRawClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { buildEnvelope, EXPORT_TABLES, type ExportTenant } from "@/lib/export/tenantExport";
+import { can, toRole } from "@/lib/shared/roles";
 
 export type Res<T = unknown> = { ok: boolean; error?: string; data?: T };
 
@@ -20,7 +21,8 @@ async function requireMainUser() {
   if (!user) throw new Error("ต้องเข้าสู่ระบบก่อน");
   const { data: profile } = await supabase
     .from("profiles").select("role, username, tenant_id").eq("id", user.id).single();
-  if (profile?.role !== "main") throw new Error("เฉพาะเจ้าของกิจการ (main) เท่านั้นที่ใช้เมนูนี้ได้");
+  if (!profile || !can(toRole(profile.role as string | null), "admin"))
+    throw new Error("เฉพาะเจ้าของกิจการ (main) เท่านั้นที่ใช้เมนูนี้ได้");
   if (!profile.tenant_id) throw new Error("บัญชีนี้ยังไม่ได้ผูกกับกิจการ (tenant) — ติดต่อผู้ดูแลระบบ");
   return {
     userId: user.id,

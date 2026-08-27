@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { IconSettings } from "@/lib/shared/icons";
 import { SettingsTabs } from "./_components/settings-tabs";
+import { can, toRole } from "@/lib/shared/roles";
 
 /**
  * หน้าตั้งค่ากลาง — ของทั้งระบบ **ไม่ผูกกับโมดูลใด** (D63)
@@ -21,7 +22,9 @@ export default async function SettingsLayout({ children }: { children: React.Rea
   if (!user) redirect("/login");
 
   const { data: me } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-  if (me?.role !== "main") redirect("/");
+  // ★ นิยามเดียวว่า "ใครแตะตั้งค่ากลางได้" = cap admin (ซึ่งตอนนี้มีแต่ main)
+  //   เขียนเป็น cap ไม่ใช่เทียบชื่อ role ตรง ๆ เพื่อไม่ให้ต้องไล่แก้หลายที่ถ้ากติกาเปลี่ยน
+  if (!can(toRole(me?.role as string | null), "admin")) redirect("/");
 
   return (
     <div>

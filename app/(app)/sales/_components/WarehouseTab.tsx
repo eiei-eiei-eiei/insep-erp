@@ -5,10 +5,12 @@ import type { WarehouseOrder, StockItem } from "./types";
 import { Badge, Card, Msg, NumInput, Select, TextInput, fmt, useSaver } from "./ui";
 import { getPendingWarehouseAction, getWarehouseStockAction, confirmFulfillmentAction, manualStockMoveAction } from "../actions";
 import { printSalesDocs, type CompanyInfo, type OrderLike } from "./print";
+import { can, toRole } from "@/lib/shared/roles";
 
 export function WarehouseTab({ role, company, active }: { role: string; company: CompanyInfo; active: boolean }) {
   const [sub, setSub] = useState<"orders" | "stock">("orders");
-  const canWrite = role === "main" || role === "warehouse";
+  // ★ ขาย/คลัง เป็นบทบาทเดียวกันแล้ว (D85) — คนที่ออกใบเสนอราคาได้ ก็กดจัดส่งได้
+  const canWrite = can(toRole(role), "sales.write");
   return (
     <div>
       <div className="mb-4 flex gap-1">
