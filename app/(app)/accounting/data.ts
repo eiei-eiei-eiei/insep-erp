@@ -255,7 +255,15 @@ export async function searchBills(params: {
   includeVoid?: boolean;
 }) {
   const supabase = await db();
-  let q = supabase.from("transactions").select(TX_COLS).order("transaction_date", { ascending: false }).limit(500);
+  // 🪤 เรียงด้วย transaction_date อย่างเดียวไม่พอ — บิลที่ลงวันเดียวกันจะออกมาแบบสุ่มลำดับ
+  //    ทำให้บิลที่เพิ่งบันทึกไปโผล่กลางกองแทนที่จะอยู่บนสุด แล้วผู้ใช้สรุปว่า "ไม่ได้บันทึก"
+  //    (เจอจริงตอนเทส POS: บิลขายไปแทรกอยู่แถวที่ 9 กลางบิลเงินเดือน 8 ใบของวันเดียวกัน)
+  let q = supabase
+    .from("transactions")
+    .select(TX_COLS)
+    .order("transaction_date", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(500);
   if (params.entityId && params.entityId !== "ALL") q = q.eq("entity_id", params.entityId);
   if (params.type) q = q.eq("type", params.type);
   if (params.contact) q = q.eq("contact_name", params.contact);

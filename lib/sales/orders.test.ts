@@ -410,6 +410,30 @@ describe("S11 — ไม่จด VAT: ห้ามได้เลขใบก�
     expect(neededSerials("SEND_TO_WH", baseOrder({ invNo: "INV1" }), false).inv).toBe(false);
   });
 
+  // 🔴 D86 — เดิม action ที่ออกใบเสร็จกินแต่เลข TAX (inv: false) พอตัด tax ทิ้งเพราะ
+  //    ไม่จด VAT จึงไม่ได้เลขอะไรเลย = ใบเสร็จรับเงินไม่มีเลขที่ และบัญชีได้ tax_invoice_no = "-"
+  it("🔴 ใบเสร็จของกิจการไม่จด VAT ต้องมีเลขที่ (ใช้ชุด INV แทนเลขใบกำกับที่ออกไม่ได้)", () => {
+    expect(neededSerials("FULL_PAYMENT_AND_SEND", baseOrder(), false)).toEqual({
+      inv: true, tax1: false, tax2: false,
+    });
+    expect(neededSerials("FULL_PAYMENT_LATER", baseOrder(), false)).toEqual({
+      inv: true, tax1: false, tax2: false,
+    });
+  });
+
+  it("มีเลข INV อยู่แล้วไม่ขอซ้ำ (ใบแจ้งหนี้กับใบเสร็จของใบเดียวกันใช้เลขเดียว)", () => {
+    expect(neededSerials("FULL_PAYMENT_AND_SEND", baseOrder({ invNo: "INV1" }), false).inv).toBe(false);
+  });
+
+  it("★ เส้นทางจด VAT ต้องไม่ขยับ — ยังกินแต่เลข TAX เท่าเดิม", () => {
+    expect(neededSerials("FULL_PAYMENT_AND_SEND", baseOrder())).toEqual({
+      inv: false, tax1: true, tax2: false,
+    });
+    expect(neededSerials("FULL_PAYMENT_LATER", baseOrder())).toEqual({
+      inv: false, tax1: true, tax2: false,
+    });
+  });
+
   it("ไม่ส่ง isVat มา = จด VAT (พฤติกรรมเดิมต้องไม่พัง)", () => {
     expect(neededSerials("DEPOSIT_AND_SEND", baseOrder())).toEqual({ inv: true, tax1: true, tax2: false });
   });

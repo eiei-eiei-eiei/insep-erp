@@ -74,9 +74,10 @@ describe("labelFromSlug / slugFromLabel — ต้องแปลงกลับ
 });
 
 describe("tabsFor — กรองตามความสามารถของบทบาท", () => {
-  it("main เห็นครบ 5 แท็บ", () => {
+  it("main เห็นครบ 6 แท็บ", () => {
     expect(tabsFor("sales", "main").map((t) => t.slug)).toEqual([
       "create",
+      "pos",
       "orders",
       "warehouse",
       "sync",
@@ -87,6 +88,7 @@ describe("tabsFor — กรองตามความสามารถขอ�
   it("sales_manager เห็นครบเหมือน main (ขาย+คลังเป็นบทบาทเดียวกันแล้ว)", () => {
     expect(tabsFor("sales", "sales_manager").map((t) => t.slug)).toEqual([
       "create",
+      "pos",
       "orders",
       "warehouse",
       "sync",
@@ -97,6 +99,7 @@ describe("tabsFor — กรองตามความสามารถขอ�
   it("🔴 sales ทำงานได้ครบ แต่ไม่เห็นแท็บจัดการข้อมูล (= ตั้งค่าของหน้าขาย)", () => {
     expect(tabsFor("sales", "sales").map((t) => t.slug)).toEqual([
       "create",
+      "pos",
       "orders",
       "warehouse",
       "sync",
@@ -105,6 +108,8 @@ describe("tabsFor — กรองตามความสามารถขอ�
 
   it("viewer เห็นแค่แท็บที่ไม่ต้องเขียนอะไร", () => {
     expect(tabsFor("sales", "viewer").map((t) => t.slug)).toEqual(["orders"]);
+    // D86 — ขายหน้าร้านเขียนข้อมูลจริง (ลงบัญชี+ตัดสต็อก) ผู้ดูข้อมูลต้องไม่เห็น
+    expect(tabsFor("sales", "viewer").map((t) => t.slug)).not.toContain("pos");
   });
 
   it("🔴 แท็บตั้งค่าของแต่ละโดเมนต้องมี config ถึงจะเห็น", () => {

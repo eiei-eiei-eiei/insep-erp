@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { SalesBoot, OrderRow } from "./types";
 import { QuotationTab } from "./QuotationTab";
+import { PosTab } from "./PosTab";
 import { OrdersTab } from "./OrdersTab";
 import { WarehouseTab } from "./WarehouseTab";
 import { SyncHistoryTab } from "./SyncHistoryTab";
@@ -73,6 +74,7 @@ export function SalesApp({ boot }: { boot: SalesBoot }) {
       {visited.has("create") && (
         <div className={show("create")}><QuotationTab boot={boot} canWrite={canWrite} editOrder={editOrder} onDoneEdit={() => setEditOrder(null)} /></div>
       )}
+      {visited.has("pos") && <div className={show("pos")}><PosTab boot={boot} canWrite={canWrite} /></div>}
       {visited.has("orders") && <div className={show("orders")}><OrdersTab boot={boot} canWrite={canWrite} onEdit={startEdit} active={tab === "orders"} /></div>}
       {visited.has("warehouse") && <div className={show("warehouse")}><WarehouseTab role={boot.role} company={boot.company} active={tab === "warehouse"} /></div>}
       {visited.has("sync") && <div className={show("sync")}><SyncHistoryTab active={tab === "sync"} /></div>}

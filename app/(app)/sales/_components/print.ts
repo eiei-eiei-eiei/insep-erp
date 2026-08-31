@@ -384,7 +384,9 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
     doc.receiptTitle = isVat ? "ใบกำกับภาษี/ใบเสร็จรับเงิน" : "ใบเสร็จรับเงิน";
     doc.receiptTitleEng = isVat ? "Tax Invoice / Receipt" : "Receipt";
     doc.receiptAmount = roundTo2(netPayable - (order.deposit || 0));
-    doc.docNo = order.taxNo2;
+    // 🔴 D86 — กิจการไม่จด VAT ออกเลขใบกำกับ (TAX) ไม่ได้ → ใบเสร็จใช้เลขชุด INV แทน
+    //    เส้นทางจด VAT ไม่ขยับ เพราะ taxNo มีเสมอ `||` จึงไม่เคยตกไปข้างขวา
+    doc.docNo = order.taxNo2 || order.invNo;
     const v = reverseCalcPrint(doc.receiptAmount as number, whtPercent);
     doc.receiptPreVat = v.preVat;
     doc.receiptVat = v.vat;
@@ -395,13 +397,17 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
     doc.documentDate = docDate2_th;
     doc.receiptTitle = isVat ? "ใบกำกับภาษี/ใบเสร็จรับเงิน" : "ใบเสร็จรับเงิน";
     doc.receiptTitleEng = isVat ? "Tax Invoice / Receipt" : "Receipt";
-    doc.docNo = order.taxNo1;
+    // 🔴 D86 — กิจการไม่จด VAT ออกเลขใบกำกับ (TAX) ไม่ได้ → ใบเสร็จใช้เลขชุด INV แทน
+    //    เส้นทางจด VAT ไม่ขยับ เพราะ taxNo มีเสมอ `||` จึงไม่เคยตกไปข้างขวา
+    doc.docNo = order.taxNo1 || order.invNo;
     doc.outstandingBalance = 0;
   } else if (docType === "tax-invoice-receipt-do") {
     doc.documentDate = docDate2_th;
     doc.receiptTitle = isVat ? "ใบกำกับภาษี/ใบเสร็จรับเงิน/ใบส่งสินค้า" : "ใบเสร็จรับเงิน/ใบส่งสินค้า";
     doc.receiptTitleEng = isVat ? "Tax Invoice / Receipt / Delivery Order" : "Receipt / Delivery Order";
-    doc.docNo = order.taxNo1;
+    // 🔴 D86 — กิจการไม่จด VAT ออกเลขใบกำกับ (TAX) ไม่ได้ → ใบเสร็จใช้เลขชุด INV แทน
+    //    เส้นทางจด VAT ไม่ขยับ เพราะ taxNo มีเสมอ `||` จึงไม่เคยตกไปข้างขวา
+    doc.docNo = order.taxNo1 || order.invNo;
     doc.outstandingBalance = 0;
   }
   return doc;

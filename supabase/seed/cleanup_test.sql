@@ -30,7 +30,7 @@ delete from integration_log where idempotency_key in (select order_no from sales
 delete from sales_orders    where customer_id like 'T-%' or customer_name like '%ทดสอบ%';
 delete from stock_moves     where item_code like 'T-%' or remarks like '%ทดสอบ%';
 delete from warehouse_stock where item_code like 'T-%';
-delete from app_settings    where kind in ('sales_revenue_entity','sales_revenue_account','sales_doc_entity');
+delete from app_settings    where kind in ('sales_revenue_entity','sales_revenue_account','sales_doc_entity','pos_walkin_contact');
 
 -- 3) บัญชี (Phase 3): certs/summaries/report_runs + items ก่อน transactions (กัน FK)
 delete from wht_certificates where entity_id = 'EID99';
@@ -43,7 +43,8 @@ delete from app_settings     where value like '%ทดสอบ%';
 delete from contacts         where name like '%ทดสอบ%' or contact_id like 'T-C%';
 
 -- 4) master + กิจการทดสอบ
-delete from sale_menu   where product_id like 'T-%';
+-- 🪤 เมนูที่ตั้งใจไม่ผูก product_id (seed_pos ข้อ ③) ต้องลบด้วยชื่อ ไม่งั้นค้างถาวร
+delete from sale_menu   where product_id like 'T-%' or menu_name like '%ทดสอบ%';
 delete from products    where product_id like 'T-%';
 delete from materials   where material_id like 'T-%';
 delete from containers  where container_id like 'T-%';

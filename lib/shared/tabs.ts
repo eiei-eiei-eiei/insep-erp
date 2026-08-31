@@ -64,6 +64,9 @@ export const ACCOUNTING_TABS: SubTab[] = [
  */
 export const SALES_TABS: SubTab[] = [
   { slug: "create", label: "＋ สร้างใบเสนอราคา", cap: "sales.write" },
+  // D86 — ขายหน้าร้าน (POS) · 🪤 ห้ามย้ายไปเป็นตัวแรก: SalesApp ใช้ allowed[0]
+  //       เป็นแท็บปริยาย → วางแรกเมื่อไหร่ หน้าแรกของทุกคนเปลี่ยนทันที
+  { slug: "pos", label: "ขายหน้าร้าน", cap: "sales.write" },
   { slug: "orders", label: "จัดการออเดอร์" },
   { slug: "warehouse", label: "คลังจัดส่ง", cap: "sales.write" },
   { slug: "sync", label: "ประวัติเชื่อมระบบ", cap: "sales.write" },

@@ -45,13 +45,24 @@ export async function getSalesBootstrap() {
     supabase.from("stock_product").select("product_id, balance"),
     supabase.from("warehouse_stock").select("item_code, qty"),
     supabase.from("entities").select(ENTITY_DOC_COLS).order("entity_id"),
-    supabase.from("app_settings").select("kind, value").in("kind", ["sales_doc_entity", "sales_revenue_entity"]),
+    supabase
+      .from("app_settings")
+      .select("kind, value")
+      .in("kind", ["sales_doc_entity", "sales_revenue_entity", "pos_walkin_contact"]),
   ]);
 
   let role = "viewer";
+  // D86 — ชื่อผู้ใช้จริง ใช้เป็น p_user ของ stock_moves และ sale_name ของบิลหน้าร้าน
+  //  🪤 ของเดิม WarehouseTab ส่ง "warehouse" ฮาร์ดโค้ด → ทุกแถวในประวัติสต็อกชื่อเดียวกันหมด
+  let userName = "";
   if (user.user) {
-    const { data: p } = await supabase.from("profiles").select("role").eq("id", user.user.id).single();
+    const { data: p } = await supabase
+      .from("profiles")
+      .select("role, display_name, username")
+      .eq("id", user.user.id)
+      .single();
     role = p?.role ?? "viewer";
+    userName = ((p?.display_name as string) || (p?.username as string) || "").trim();
   }
 
   const liveMap = new Map<string, number>();
@@ -102,7 +113,14 @@ export async function getSalesBootstrap() {
   //   (client แก้ค่าที่ส่งกลับมาได้ · ห้ามเชื่อ)
   const isVat = (docEntity as { is_vat?: boolean } | null)?.is_vat !== false;
 
-  return { role, customers, menu: menuList, company, isVat };
+  // D86 — ลูกค้าปริยายของหน้าขายหน้าร้าน · ว่าง = ยังไม่ได้ตั้ง (หน้าจอจะขึ้นการ์ดเตือน)
+  //  ★ เก็บเป็น contact_id ไม่ใช่ชื่อ — เปลี่ยนชื่อลูกค้าแล้วยังชี้ถูก
+  //  ★ ต้องยืนยันว่ายังมีอยู่จริงใน contacts ด้วย (ลบลูกค้าทิ้งแล้วค่าค้างใน app_settings
+  //    = ขายไม่ได้พร้อม error FK ที่อ่านไม่รู้เรื่อง)
+  const walkinRaw = st.find((r) => r.kind === "pos_walkin_contact")?.value ?? "";
+  const posWalkinId = customers.some((c) => c.id === walkinRaw) ? walkinRaw : "";
+
+  return { role, userName, customers, menu: menuList, company, isVat, posWalkinId };
 }
 
 export type OrderRow = {

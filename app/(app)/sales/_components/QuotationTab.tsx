@@ -2,17 +2,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { SalesBoot, CustomerRow, MenuRow, OrderRow, OrderItem } from "./types";
-import { Card, Combobox, MissingHint, Msg, NumBox, NumInput, Select, TextInput, useSaver, fmt } from "./ui";
+import { Card, Combobox, MissingHint, Msg, NumBox, Select, TextInput, useSaver, fmt } from "./ui";
 import { quotationTotals, inclFromExVat } from "@/lib/sales/calc";
 import {
   saveQuotationAction,
   updateQuotationAction,
   getOrderItemsAction,
-  saveCustomerAction,
   type QuotationPayload,
 } from "../actions";
 import { printQuotation, openPrintWindow } from "./print";
 import { IconCart, IconPlus } from "@/lib/shared/icons";
+import { AddCustomerModal } from "./CustomerFields";
 
 const REVENUE_CATS = ["รายได้ค่าสินค้า", "รายได้ค่าบริการ", "รายได้ค่าที่ปรึกษา", "รายได้อื่น ๆ"];
 
@@ -425,76 +425,6 @@ function Row({ label, value, tone }: { label: string; value: number; tone?: "blu
     <div className={`flex justify-between text-sm ${tone === "blue" ? "font-bold text-brand" : ""}`}>
       <span>{label}</span>
       <span>฿{fmt(value)}</span>
-    </div>
-  );
-}
-
-function AddCustomerModal({ onClose, onAdded }: { onClose: () => void; onAdded: (c: CustomerRow) => void }) {
-  const [name, setName] = useState("");
-  const [address, setAddress] = useState("");
-  const [taxId, setTaxId] = useState("");
-  const [branchMode, setBranchMode] = useState<"hq" | "branch">("hq");
-  const [branchNumber, setBranchNumber] = useState("");
-  const [phone, setPhone] = useState("");
-  const [creditTerm, setCreditTerm] = useState(0);
-  const [isExport, setIsExport] = useState(false);
-  const { pending, msg, run, setMsg } = useSaver();
-
-  function save() {
-    const branch = branchMode === "hq" ? "สำนักงานใหญ่" : branchNumber.padStart(5, "0");
-    if (!name.trim()) { setMsg({ ok: false, text: "กรอกชื่อลูกค้า" }); return; }
-    if (!/^\d{13}$/.test(taxId)) { setMsg({ ok: false, text: "เลขผู้เสียภาษีต้องเป็นตัวเลข 13 หลัก" }); return; }
-    if (branchMode === "branch" && !/^\d{5}$/.test(branch)) { setMsg({ ok: false, text: "เลขสาขาต้องเป็นตัวเลข 5 หลัก" }); return; }
-    run(
-      () => saveCustomerAction({ name, address, taxId, branch, phone, creditTerm, isExport }),
-      "เพิ่มลูกค้าแล้ว",
-      (data) => {
-        const { id } = data as { id: string };
-        onAdded({ id, name, address, taxId, branch, phone, creditTerm, saleName: "", isExport });
-      },
-    );
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/50 p-4">
-      <div className="w-full max-w-lg rounded-lg bg-card p-5">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-ink"><IconPlus size={15} className="mr-1 inline align-[-2px]" />เพิ่มลูกค้าใหม่</h2>
-          <button onClick={onClose} className="text-2xl leading-none text-faint hover:text-crit">
-            &times;
-          </button>
-        </div>
-        <Msg msg={msg} />
-        <div className="space-y-3">
-          <TextInput placeholder="ชื่อบริษัท / ลูกค้า *" value={name} onChange={(e) => setName(e.target.value)} />
-          <textarea placeholder="ที่อยู่จดทะเบียน *" value={address} onChange={(e) => setAddress(e.target.value)} rows={2} className="w-full rounded-lg border border-line p-2 text-sm outline-none focus:border-brand" />
-          <div className="grid grid-cols-2 gap-3">
-            <TextInput placeholder="เลขผู้เสียภาษี 13 หลัก *" maxLength={13} value={taxId} onChange={(e) => setTaxId(e.target.value.replace(/\D/g, ""))} />
-            <div className="text-sm">
-              <label className="mr-3">
-                <input type="radio" checked={branchMode === "hq"} onChange={() => setBranchMode("hq")} /> สนญ.
-              </label>
-              <label>
-                <input type="radio" checked={branchMode === "branch"} onChange={() => setBranchMode("branch")} /> สาขา
-              </label>
-              {branchMode === "branch" && <TextInput placeholder="00001" maxLength={5} value={branchNumber} onChange={(e) => setBranchNumber(e.target.value.replace(/\D/g, ""))} className="mt-1" />}
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <TextInput placeholder="เบอร์โทร" value={phone} onChange={(e) => setPhone(e.target.value)} />
-            <NumInput placeholder="เครดิต (วัน)" value={creditTerm || ""} onChange={(e) => setCreditTerm(Number(e.target.value) || 0)} />
-          </div>
-          <label className="flex items-center gap-3 rounded-lg border border-warn-line bg-warn-bg p-3 text-sm">
-            <input type="checkbox" checked={isExport} onChange={(e) => setIsExport(e.target.checked)} />
-            <span>
-              <b className="text-warn">ลูกค้าจำหน่ายต่างประเทศ (Export)</b> — ส่งข้อมูลให้แอปผลิตเป็น &quot;จำหน่ายต่างประเทศ&quot;
-            </span>
-          </label>
-          <button onClick={save} disabled={pending} className="w-full rounded-lg bg-brand py-2 font-bold text-on-brand hover:opacity-90 disabled:opacity-50">
-            {pending ? "กำลังบันทึก…" : "บันทึกข้อมูลลูกค้า"}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

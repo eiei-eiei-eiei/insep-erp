@@ -163,7 +163,15 @@ export function neededSerials(action: OrderAction, order: OrderState, isVat = tr
   if (!isVat) {
     // ไม่จด VAT: ให้เฉพาะเลข INV ตามที่ action นั้นต้องการ · ตัด tax1/tax2 ทิ้งเสมอ
     const base = neededSerials(action, order, true);
-    return { inv: base.inv, tax1: false, tax2: false };
+    // 🔴 D86 — action ที่ "ออกใบเสร็จ" ของเส้นทางจด VAT กินแต่เลข TAX (inv: false)
+    //    พอตัด tax ทิ้งเพราะไม่จด VAT จึงไม่ได้เลขอะไรเลยสักชุด →
+    //    ใบเสร็จรับเงินไม่มีเลขที่ และ taxDocNo() คืน "-" ลง transactions.tax_invoice_no
+    //    (บั๊กมาตั้งแต่ D55 · ไม่มีใครเจอเพราะกิจการของผู้ใช้จด VAT · POS ชนเต็ม ๆ)
+    //    → ให้ใช้เลขชุด INV เป็นเลขใบเสร็จแทน เฉพาะตอนที่ยังไม่มีเลข INV ในใบนั้น
+    // ⚠️ PAY_BALANCE ของใบที่มี invNo แล้ว ยังใช้เลขซ้ำกับใบแจ้งหนี้อยู่ —
+    //    ต้องมีช่องเลขที่ 2 (schema) ถึงจะแก้จริงได้ · ไม่ใช่เส้นทางของ POS
+    const issuesReceipt = action === "FULL_PAYMENT_AND_SEND" || action === "FULL_PAYMENT_LATER";
+    return { inv: base.inv || (issuesReceipt && !order.invNo), tax1: false, tax2: false };
   }
   const noInv = !order.invNo;
   const noTax1 = !order.taxNo1;
