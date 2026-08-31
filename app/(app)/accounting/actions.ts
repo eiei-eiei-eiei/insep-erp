@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { nextWhtDocNo } from "@/lib/accounting/wht";
 import { previousVat, type InstallmentRow, type TaxReport, type TaxSummaryRow } from "@/lib/accounting/calc";
 import { mapDbError } from "@/lib/shared/dbError";
+import { canPay, taxTxDescription, surchargeTxDescription, type TaxKind } from "@/lib/accounting/taxPay";
 import {
   getDashboard,
   getApAr,
@@ -20,6 +21,7 @@ import {
   getRecentBillsByContact,
   getItemHistory,
   getReportRuns,
+  getTaxPayBoard,
 } from "./data";
 
 export type SaveResult = { ok: boolean; error?: string; data?: unknown };
@@ -486,4 +488,86 @@ export async function markReportRunAction(reportKey: string, month: string, enti
   const { error } = await supabase.from("report_runs").insert({ report_key: reportKey, month, entity_id: entityId });
   if (error) return fail(mapDbError(error));
   return { ok: true };
+}
+
+// ── D88 ชำระภาษี (ภพ.30 / ภงด.3 / ภงด.53) ───────────────────────────────────
+
+export async function getTaxPayBoardAction(period: string, entityId: string) {
+  return getTaxPayBoard(period, entityId);
+}
+
+export type PayTaxInput = {
+  kind: TaxKind;
+  period: string;
+  entityId: string;
+  payDate: string;
+  amount: number;
+  surcharge: number;
+  accountName: string;
+  category: string;
+  surchargeCategory: string;
+  contactName: string;
+  contactId?: string;
+  note?: string;
+};
+
+/**
+ * บันทึกการจ่ายภาษี → สร้างบิล `รายจ่าย` + แถวใน `tax_payments` ใน transaction เดียว
+ *
+ * 🚨 ตรวจซ้ำฝั่ง server ด้วย `canPay()` ตัวเดียวกับที่หน้าจอใช้ทำ `disabled=`
+ *    (หน้าจอที่เปิดค้างไว้ข้ามวัน/ข้ามคนแก้บิล = ข้อมูลบนจอเก่าได้เสมอ)
+ *    ★ ยอดเงินไม่ถูกบังคับให้เท่าที่ระบบคำนวณ — ผู้ใช้แก้ได้ (จ่ายบางส่วน/ปัดเศษ)
+ *      แต่ยอดที่ระบบคำนวณ ณ ตอนนั้นถูกแช่ลง `computed_amount` ไว้เทียบย้อนหลัง
+ */
+export async function payTaxAction(input: PayTaxInput): Promise<SaveResult> {
+  if (!(input.amount > 0)) return fail("ยอดที่จ่ายต้องมากกว่า 0");
+  if ((input.surcharge ?? 0) > 0 && !input.surchargeCategory.trim()) {
+    return fail("กรอกเบี้ยปรับแล้วต้องเลือกหมวดของเบี้ยปรับด้วย (ห้ามรวมหมวดเดียวกับตัวภาษี)");
+  }
+
+  const board = await getTaxPayBoard(input.period, input.entityId);
+  const row = board.rows.find((r) => r.kind === input.kind);
+  if (!row) return fail("กิจการนี้ไม่มีแบบนี้ให้ชำระ");
+  if (!canPay(row)) return fail(row.blocked ?? "งวดนี้บันทึกการจ่ายไปแล้ว");
+
+  const supabase = await db();
+  const { data, error } = await supabase.rpc("fn_pay_tax", {
+    p_kind: input.kind,
+    p_period: input.period,
+    p_entity: input.entityId,
+    p_date: input.payDate,
+    p_amount: input.amount,
+    p_surcharge: input.surcharge ?? 0,
+    p_payload: {
+      accountName: input.accountName,
+      category: input.category,
+      surchargeCategory: input.surchargeCategory,
+      contactName: input.contactName,
+      contactId: input.contactId ?? "",
+      note: input.note ?? "",
+      computedAmount: String(row.amount),
+      description: taxTxDescription(input.kind, input.period),
+      surchargeDescription: surchargeTxDescription(input.kind, input.period),
+    },
+  });
+  if (error) return fail(mapDbError(error));
+  const res = data as { ok: boolean; error?: string; tx_id?: string };
+  if (!res.ok) return fail(res.error ?? "บันทึกจ่ายไม่สำเร็จ");
+  revalidatePath("/accounting");
+  return { ok: true, data: res };
+}
+
+/** ถอนการบันทึกจ่าย — บิลกลายเป็น 'ยกเลิก' (ไม่ลบ) · ต้องมีสิทธิ์ acct.config */
+export async function unpayTaxAction(kind: TaxKind, period: string, entityId: string): Promise<SaveResult> {
+  const supabase = await db();
+  const { data, error } = await supabase.rpc("fn_unpay_tax", {
+    p_kind: kind,
+    p_period: period,
+    p_entity: entityId,
+  });
+  if (error) return fail(mapDbError(error));
+  const res = data as { ok: boolean; error?: string };
+  if (!res.ok) return fail(res.error ?? "ถอนไม่สำเร็จ");
+  revalidatePath("/accounting");
+  return { ok: true, data: res };
 }

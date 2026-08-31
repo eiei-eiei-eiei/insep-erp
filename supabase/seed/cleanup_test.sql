@@ -33,6 +33,7 @@ delete from warehouse_stock where item_code like 'T-%';
 delete from app_settings    where kind in ('sales_revenue_entity','sales_revenue_account','sales_doc_entity','pos_walkin_contact');
 
 -- 3) บัญชี (Phase 3): certs/summaries/report_runs + items ก่อน transactions (กัน FK)
+delete from tax_payments     where entity_id = 'EID99';   -- D88 ชำระภาษี (ต้องมาก่อน transactions)
 delete from wht_certificates where entity_id = 'EID99';
 delete from tax_summaries    where entity_id = 'EID99';
 delete from report_runs      where entity_id = 'EID99';

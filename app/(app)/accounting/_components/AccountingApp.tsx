@@ -105,7 +105,7 @@ export function AccountingApp({ boot }: { boot: Bootstrap }) {
       {visited.has("แบ่งงวด") && <div className={show("แบ่งงวด")}><InstallmentsTab /></div>}
       {visited.has("ประวัติราคา") && <div className={show("ประวัติราคา")}><HistoryTab boot={boot} entityId={entityId} /></div>}
       {visited.has("เช็คราคา") && <div className={show("เช็คราคา")}><PriceCheckTab boot={boot} entityId={entryEntity} /></div>}
-      {visited.has("เอกสารสรรพากร") && <div className={show("เอกสารสรรพากร")}><TaxDocsTab period={month} entityId={entityId} active={tab === "เอกสารสรรพากร"} isVat={(boot.entities.find((e) => e.entity_id === entityId)?.is_vat ?? true) !== false} /></div>}
+      {visited.has("เอกสารสรรพากร") && <div className={show("เอกสารสรรพากร")}><TaxDocsTab period={month} entityId={entityId} active={tab === "เอกสารสรรพากร"} isVat={(boot.entities.find((e) => e.entity_id === entityId)?.is_vat ?? true) !== false} accounts={boot.accounts} expenseCats={boot.expenseCats} contacts={boot.contacts} canConfig={can(role, "acct.config")} canWrite={!readOnly} /></div>}
       {visited.has("ตั้งค่า") && <div className={show("ตั้งค่า")}><SettingsTab boot={boot} /></div>}
     </div>
   );

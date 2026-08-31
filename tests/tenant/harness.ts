@@ -91,7 +91,7 @@ export const TENANT_TABLES = [
   "materials", "containers", "products",
   "log_material", "log_ferment", "log_distill", "log_distill_run",
   "log_ferment_monitor", "log_dilute", "log_ferment_draw", "log_product", "stock_product",
-  "transactions", "transaction_items", "tax_summaries", "wht_certificates",
+  "transactions", "transaction_items", "tax_summaries", "tax_payments", "wht_certificates",
   "sale_menu", "sales_orders", "sales_order_items", "warehouse_stock", "stock_moves",
   "pay_inputs", "pay_components", "pay_rates", "pay_variables", "pay_post_legs",
   "employees", "payroll_periods", "payroll_items",

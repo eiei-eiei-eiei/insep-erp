@@ -23,8 +23,12 @@ import {
 } from "../actions";
 import { getPdfAssetUrl } from "../../actions";
 import { ReportChecklist } from "../../_components/ReportChecklist";
+import { TaxPayCard } from "./TaxPayCard";
+import { dueDateOf } from "@/lib/accounting/taxPay";
+import type { AccountRow, Contact } from "./types";
 import { Field, Select, TextInput, fmt, todayISO, useSaver } from "./ui";
 
+/** ★ กำหนดยื่นเติมตอน render (ขึ้นกับเดือนที่เลือก) — ดู `dueDateOf` ใน lib/accounting/taxPay */
 const TAX_CHECKLIST = [
   { key: "phor_por_30", label: "ภพ.30 — รายงานภาษีซื้อ-ขาย" },
   { key: "pnd_3_53", label: "ภงด.3 / ภงด.53 — หัก ณ ที่จ่าย" },
@@ -55,13 +59,29 @@ function openBlankTab(): Window | null {
  * ★ ภงด./50ทวิ ยังต้องมี — ผู้ไม่จด VAT ยังต้องหัก ณ ที่จ่ายและออกหนังสือรับรองตามกฎหมาย
  *   (เลือก "ทุกกิจการ" = entityId 'ALL' → ยังโชว์ ภพ.30 เพราะรวมกิจการที่จด VAT ด้วย)
  */
-export function TaxDocsTab({ period, entityId, active, isVat = true }: { period: string; entityId: string; active: boolean; isVat?: boolean }) {
+export function TaxDocsTab({
+  period, entityId, active, isVat = true, accounts, expenseCats, contacts, canConfig, canWrite,
+}: {
+  period: string;
+  entityId: string;
+  active: boolean;
+  isVat?: boolean;
+  accounts: AccountRow[];
+  expenseCats: string[];
+  contacts: Contact[];
+  canConfig: boolean;
+  canWrite: boolean;
+}) {
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // 🚨 ต้องมีระดับ "warn" — สร้างแบบสำเร็จแต่ติ๊กเช็กลิสต์ไม่ผ่าน = **สำเร็จบางส่วน**
+  //    ขึ้นเขียวเฉย ๆ = โกหก · ขึ้นแดงเฉย ๆ = ผู้ใช้นึกว่าไม่ได้อะไรเลย (บทเรียน D79)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string; warn?: boolean } | null>(null);
   const [fwd, setFwd] = useState<number | null>(null);
   const [wht, setWht] = useState<WhtBundle | null>(null);
   const [summaries, setSummaries] = useState<Summaries>([]);
   const [runs, setRuns] = useState<Record<string, string>>({});
+  // ★ กดสร้างแบบแล้วสถานะ "สร้างแล้ว" ของการ์ดชำระภาษีต้องเปลี่ยนตาม (เงื่อนไขปุ่มจ่าย)
+  const [payReload, setPayReload] = useState(0);
   const assetCache = useRef<Record<string, Uint8Array>>({});
   const realEntity = entityId === "ALL" ? "" : entityId;
 
@@ -100,12 +120,15 @@ export function TaxDocsTab({ period, entityId, active, isVat = true }: { period:
     try {
       const b = await getTaxReportBundleAction(period, realEntity);
       await recordTaxSummaryAction(period, realEntity, b.taxReport);
-      await markReportRunAction("phor_por_30", period, realEntity);
+      const mark = await markReportRunAction("phor_por_30", period, realEntity);
       if (w) { w.document.write(taxReportHtml(period, b.entity, b.taxReport)); w.document.close(); }
-      setMsg({ ok: true, text: w
-        ? "สร้าง ภพ.30 แล้ว (บันทึกยอดยกไป — สร้างซ้ำเดือนเดิมจะทับของเดิม ไม่ซ้ำ)"
-        : "บันทึกยอด ภพ.30 แล้ว แต่เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — อนุญาต popup แล้วกดสร้างใหม่เพื่อพิมพ์" });
+      setMsg(mark.ok
+        ? { ok: true, text: w
+            ? "สร้าง ภพ.30 แล้ว (บันทึกยอดยกไป — สร้างซ้ำเดือนเดิมจะทับของเดิม ไม่ซ้ำ)"
+            : "บันทึกยอด ภพ.30 แล้ว แต่เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — อนุญาต popup แล้วกดสร้างใหม่เพื่อพิมพ์" }
+        : { ok: false, warn: true, text: `บันทึกยอด ภพ.30 แล้ว แต่ติ๊กเช็กลิสต์ไม่สำเร็จ — ${mark.error ?? ""} (ปุ่มบันทึกจ่ายจะยังกดไม่ได้จนกว่าจะติ๊กผ่าน)` });
       reload();
+      setPayReload((n) => n + 1);
     } catch (e) { if (w) w.close(); setMsg({ ok: false, text: e instanceof Error ? e.message : "ผิดพลาด" }); }
     setBusy(false);
   }
@@ -114,11 +137,18 @@ export function TaxDocsTab({ period, entityId, active, isVat = true }: { period:
     setBusy(true); setMsg(null);
     try {
       const b = await getTaxReportBundleAction(period, realEntity);
-      await markReportRunAction("pnd_3_53", period, realEntity);
+      const mark = await markReportRunAction("pnd_3_53", period, realEntity);
       if (w) { w.document.write(whtReportHtml(period, b.entity, b.whtReport)); w.document.close(); }
-      setMsg({ ok: true, text: w
-        ? "สร้าง ภงด.3/53 แล้ว — พิมพ์/บันทึก PDF จากแท็บใหม่"
-        : "เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — อนุญาต popup แล้วลองใหม่" });
+      setMsg(mark.ok
+        ? { ok: true, text: w
+            ? "สร้าง ภงด.3/53 แล้ว — พิมพ์/บันทึก PDF จากแท็บใหม่"
+            : "เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — อนุญาต popup แล้วลองใหม่" }
+        : { ok: false, warn: true, text: `ออกรายงาน ภงด.3/53 แล้ว แต่ติ๊กเช็กลิสต์ไม่สำเร็จ — ${mark.error ?? ""} (ปุ่มบันทึกจ่ายจะยังกดไม่ได้จนกว่าจะติ๊กผ่าน)` });
+      // 🪤 ห้ามติ๊กเช็กลิสต์เองฝั่ง client — เคยเขียน setRuns() ตรง ๆ แล้วเช็กลิสต์ขึ้นว่า
+      //    "สร้างแล้ว" ทั้งที่ DB ปฏิเสธการเขียน (RLS) = หน้าจอโกหกโดยไม่มีอะไรฟ้อง
+      //    ต้องอ่านกลับจากเซิร์ฟเวอร์เสมอ
+      reload();
+      setPayReload((n) => n + 1);
     } catch (e) { if (w) w.close(); setMsg({ ok: false, text: e instanceof Error ? e.message : "ผิดพลาด" }); }
     setBusy(false);
   }
@@ -158,12 +188,16 @@ export function TaxDocsTab({ period, entityId, active, isVat = true }: { period:
 
   return (
     <div className="space-y-4">
-      {msg && <div className={`rounded-lg px-3 py-2 text-sm ${msg.ok ? "bg-ok-bg text-ok" : "bg-crit-bg text-crit"}`}>{msg.text}</div>}
+      {msg && <div className={`rounded-lg px-3 py-2 text-sm ${msg.warn ? "bg-warn-bg text-warn" : msg.ok ? "bg-ok-bg text-ok" : "bg-crit-bg text-crit"}`}>{msg.text}</div>}
 
       <ReportChecklist
         month={period}
-        items={isVat ? TAX_CHECKLIST : TAX_CHECKLIST.filter((i) => i.key !== "phor_por_30")}
+        items={(isVat ? TAX_CHECKLIST : TAX_CHECKLIST.filter((i) => i.key !== "phor_por_30")).map((i) => ({
+          ...i,
+          due: dueDateOf(i.key === "phor_por_30" ? "vat" : "pnd3", period).paper,
+        }))}
         runs={runs}
+        today={todayISO()}
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -186,6 +220,18 @@ export function TaxDocsTab({ period, entityId, active, isVat = true }: { period:
           <button onClick={genPnd} disabled={busy} className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-on-brand disabled:opacity-50">สร้าง ภงด.3/53</button>
         </div>
       </div>
+
+      {/* D88 — ชำระภาษี: กดจ่ายแล้วบันทึกรายจ่ายให้เลย */}
+      <TaxPayCard
+        period={period}
+        entityId={realEntity}
+        accounts={accounts}
+        expenseCats={expenseCats}
+        contacts={contacts}
+        canConfig={canConfig}
+        canWrite={canWrite}
+        reloadKey={payReload}
+      />
 
       {/* tax_summaries management */}
       <div className={box}>

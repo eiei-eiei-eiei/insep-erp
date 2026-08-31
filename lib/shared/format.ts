@@ -101,3 +101,18 @@ export function formatBranch(branch: string | null | undefined): BranchInfo {
   }
   return { isHQ: false, text: b };
 }
+
+/**
+ * เดือนภาษาไทยจาก 'yyyy-MM' → "ส.ค. 2569" (ปี พ.ศ. เต็ม)
+ *
+ * ★ ใช้ในข้อความที่ผู้ใช้อ่าน (คำอธิบายบิลจ่ายภาษี · ข้อความเตือนใน LINE) — D88
+ *   เลขงวดแบบ '2026-08' อ่านแล้วต้องแปลงในหัวทุกครั้งว่าเป็นเดือนอะไร พ.ศ. อะไร
+ * ⚠️ แกะสตริงตรง ๆ ไม่ผ่าน `new Date()` ด้วยเหตุผลเดียวกับ `formatDateThai`
+ */
+export function formatMonthThai(period: string | null | undefined): string {
+  const m = String(period ?? "").match(/^(\d{4})-(\d{2})/);
+  if (!m) return "-";
+  const mon = TH_MONTHS_ABBR[parseInt(m[2], 10) - 1];
+  if (!mon) return "-";
+  return `${mon} ${parseInt(m[1], 10) + 543}`;
+}

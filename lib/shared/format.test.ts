@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { thaiBaht, formatTaxId, formatBranch } from "./format";
+import { thaiBaht, formatTaxId, formatBranch, formatMonthThai } from "./format";
 
 /**
  * Golden tests — ค่า expected ทั้งหมดสร้างจากการรันฟังก์ชัน "ระบบเดิม"
@@ -85,5 +85,24 @@ describe("formatBranch (A12)", () => {
 
   it.each(cases)("formatBranch(%j) = %j", (input, expected) => {
     expect(formatBranch(input)).toEqual(expected);
+  });
+});
+
+/** D88 — เดือนไทยในข้อความที่ผู้ใช้อ่าน (คำอธิบายบิลจ่ายภาษี · ข้อความเตือน LINE) */
+describe("formatMonthThai", () => {
+  it("แปลง yyyy-MM เป็นเดือนย่อ + ปี พ.ศ.", () => {
+    expect(formatMonthThai("2026-08")).toBe("ส.ค. 2569");
+    expect(formatMonthThai("2026-01")).toBe("ม.ค. 2569");
+    expect(formatMonthThai("2026-12")).toBe("ธ.ค. 2569");
+  });
+
+  it("รับ yyyy-MM-dd ได้ด้วย (ตัดวันทิ้ง)", () => {
+    expect(formatMonthThai("2027-03-15")).toBe("มี.ค. 2570");
+  });
+
+  it("ค่าที่ไม่ใช่เดือน คืน - ไม่ใช่ NaN หรือ undefined โผล่บนจอ", () => {
+    expect(formatMonthThai("")).toBe("-");
+    expect(formatMonthThai(null)).toBe("-");
+    expect(formatMonthThai("2026-13")).toBe("-");
   });
 });

@@ -1,12 +1,17 @@
 "use client";
 import { IconCheck, IconSquare } from "@/lib/shared/icons";
+import { formatDateThai } from "@/lib/shared/format";
 
 /**
  * FLOW sec 6 — "เดือนนี้สร้างรายงานครบยัง"
  * อ่านจาก report_runs ที่ระบบเขียนอยู่แล้วตอนกดสร้างรายงาน (ไม่ได้เพิ่มการบันทึกใหม่)
  * ใช้ร่วม 2 ที่: แท็บเอกสารสรรพากร (บัญชี) และหน้ารายงาน ภส. (/reports)
  */
-export type ChecklistItem = { key: string; label: string };
+/**
+ * `due` = กำหนดยื่น (ISO) — ใส่เฉพาะรายงานที่มีวันครบกำหนดตามกฎหมายจริง (D88)
+ * ไม่ใส่ = แสดงเหมือนเดิมทุกอย่าง (หน้ารายงาน ภส. ไม่มีกำหนดรายเดือนแบบนี้)
+ */
+export type ChecklistItem = { key: string; label: string; due?: string };
 
 export function ReportChecklist({
   title = "เช็กลิสต์รายงานของเดือนนี้",
@@ -14,12 +19,15 @@ export function ReportChecklist({
   items,
   runs,
   note,
+  today,
 }: {
   title?: string;
   month: string;
   items: ChecklistItem[];
   runs: Record<string, string>; // report_key → วันที่สร้างล่าสุด (yyyy-MM-dd)
   note?: string;
+  /** วันนี้ (ISO) — ส่งมาจากผู้เรียกเพื่อให้เทียบกำหนดยื่นได้ */
+  today?: string;
 }) {
   const doneCount = items.filter((i) => runs[i.key]).length;
   const allDone = doneCount === items.length && items.length > 0;
@@ -44,6 +52,12 @@ export function ReportChecklist({
                 <span className="text-xs text-faint">— สร้างล่าสุด {at}</span>
               ) : (
                 <span className="text-xs text-warn">— ยังไม่ได้สร้าง</span>
+              )}
+              {/* กำหนดยื่นตามกฎหมาย — เลยกำหนดแล้วยังไม่สร้าง = แดง (D88) */}
+              {i.due && (
+                <span className={!at && today && today > i.due ? "text-xs font-medium text-crit" : "text-xs text-faint"}>
+                  {!at && today && today > i.due ? "⚠ เลยกำหนดยื่นแล้ว" : "ครบกำหนดยื่น"} {formatDateThai(i.due)}
+                </span>
               )}
             </li>
           );

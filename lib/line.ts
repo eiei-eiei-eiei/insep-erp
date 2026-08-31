@@ -71,3 +71,47 @@ export async function sendLine(supabase: SupabaseClient, text: string): Promise<
     console.error("[LINE] exception:", err);
   }
 }
+
+/**
+ * ส่งเข้ากลุ่ม LINE ของ tenant ที่ระบุ — **สำหรับงานเบื้องหลังที่ไม่มี session เท่านั้น**
+ * (ตอนนี้มีผู้เรียกรายเดียว: cron เตือนกำหนดยื่นภาษี · D88)
+ *
+ * 🚨 ข้อห้ามของ `sendLine` ที่ว่า "tenant ต้องมาจาก session เสมอ" ยังอยู่ครบสำหรับทุก
+ *    เส้นทางที่มีผู้ใช้ล็อกอิน — ตัวนี้เป็นข้อยกเว้นเดียวเพราะ cron ไม่มีใครล็อกอินให้ถาม
+ *    ★ ผู้เรียก **ต้องส่ง tenantId ที่ไล่มาจากแถวในตาราง `tenants` เอง**
+ *      ห้ามเอามาจาก query string / body / header ของคำขอที่ยิงเข้ามาเด็ดขาด
+ *      (หลุดเมื่อไหร่ = คนนอกสั่งยิงข้อความเข้ากลุ่ม LINE ของลูกค้ารายไหนก็ได้)
+ *
+ * คืน true เมื่อส่งสำเร็จจริง · false เมื่อยังไม่ตั้งค่า LINE หรือส่งไม่ผ่าน
+ * (ผู้เรียกใช้ค่านี้ตัดสินว่าจะบันทึกว่า "เตือนแล้ว" หรือยัง — ไม่งั้นเตือนหายเงียบ ๆ)
+ */
+export async function sendLineToTenant(tenantId: string, text: string): Promise<boolean> {
+  try {
+    if (!tenantId) return false;
+    const admin = createAdminClient();
+    const { data: rows } = await admin
+      .from("app_settings")
+      .select("kind, value")
+      .eq("tenant_id", tenantId)
+      .in("kind", [TOKEN_KIND, GROUP_KIND]);
+
+    const get = (k: string) => (rows ?? []).find((r) => r.kind === k)?.value as string | undefined;
+    const token = get(TOKEN_KIND)?.trim();
+    const groupId = get(GROUP_KIND)?.trim();
+    if (!token || !groupId) return false; // ยังไม่ตั้งค่า → ข้ามเงียบ ๆ (ห้าม fallback ไป env)
+
+    const res = await fetch("https://api.line.me/v2/bot/message/push", {
+      method: "POST",
+      headers: { "content-type": "application/json", Authorization: "Bearer " + token },
+      body: JSON.stringify({ to: groupId, messages: [{ type: "text", text }] }),
+    });
+    if (!res.ok) {
+      console.error(`[LINE] ส่งไม่สำเร็จ status=${res.status}`); // ห้าม log token/groupId
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("[LINE] exception:", err);
+    return false;
+  }
+}

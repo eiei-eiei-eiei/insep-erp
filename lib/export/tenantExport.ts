@@ -41,7 +41,7 @@ export const RESTORE_ORDER: readonly TenantTable[] = [
   "materials", "containers", "products", "sale_menu",
   "log_material", "log_ferment", "log_distill", "log_distill_run",
   "log_ferment_monitor", "log_dilute", "log_ferment_draw", "log_product",
-  "transactions", "transaction_items", "wht_certificates", "tax_summaries",
+  "transactions", "transaction_items", "wht_certificates", "tax_summaries", "tax_payments",
   "sales_orders", "sales_order_items", "warehouse_stock", "stock_moves",
   "pay_inputs", "pay_components", "pay_rates", "pay_variables", "pay_post_legs",
   "employees", "payroll_periods", "payroll_items",

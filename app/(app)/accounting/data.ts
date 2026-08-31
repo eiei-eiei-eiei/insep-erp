@@ -17,6 +17,7 @@ import {
   type AccountMeta,
 } from "@/lib/accounting/ledger";
 import { fetchAllRows } from "@/lib/shared/paginate";
+import { taxDueBoard } from "@/lib/accounting/taxPay";
 
 // คอลัมน์ transactions ที่ใช้ทุกรายงาน
 const TX_COLS =
@@ -566,4 +567,100 @@ function nextMonthStart(month: string): string {
   const ny = m === 12 ? y + 1 : y;
   const nm = m === 12 ? 1 : m + 1;
   return `${ny}-${String(nm).padStart(2, "0")}-01`;
+}
+
+/**
+ * D88 — กระดาน "ชำระภาษี" ของงวดที่เลือก (ภพ.30 · ภงด.3 · ภงด.53)
+ *
+ * ดึงทุกอย่างรอบเดียวแล้วส่งให้ `taxDueBoard()` ตัดสิน — **ตรรกะการตัดสินอยู่ใน lib
+ * ที่มี golden test คุม ไม่ใช่ในไฟล์นี้** (บทเรียน D81: สูตรถูกหมดแต่ `data.ts` เลือก
+ * ชุดข้อมูลผิด แล้วไม่มีเทสไหนมองเห็น)
+ *
+ * ★ `tx_status` = สถานะจริงของบิลใน `transactions` — ผู้ใช้ยกเลิกบิลจากหน้าค้นบิลได้
+ *   ตรง ๆ ถ้าไม่อ่านมาด้วย หน้าจอจะยืนยันว่า "จ่ายแล้ว" ทั้งที่เงินไม่เคยออก
+ */
+export async function getTaxPayBoard(period: string, entityId: string) {
+  const supabase = await db();
+  const [txAll, contactMap, taxAccounts, summariesRes, entityRes, runs, paysRes] = await Promise.all([
+    fetchAllTransactions(supabase),
+    loadContactMap(supabase),
+    loadTaxAccounts(supabase),
+    supabase.from("tax_summaries").select("report_month, net_payable, forwarded_vat_out, entity_id, created_at"),
+    supabase.from("entities").select("is_vat").eq("entity_id", entityId).maybeSingle(),
+    getReportRuns(period, entityId),
+    supabase
+      .from("tax_payments")
+      .select(
+        "id, kind, period, amount, surcharge, computed_amount, pay_date, tx_id, surcharge_tx_id, account_name, category, surcharge_category, contact_name, contact_id, note, status, created_at",
+      )
+      .eq("entity_id", entityId)
+      .order("created_at", { ascending: false }),
+  ]);
+
+  const txs = txAll as unknown as Tx[];
+  const summaries = (summariesRes.data ?? []) as unknown as TaxSummaryRow[];
+  const fwdIn = previousVat(period, entityId, summaries);
+  const tr = taxReport(period, entityId, fwdIn, txs, contactMap, taxAccounts);
+  const wr = whtReport(period, entityId, txs, contactMap, taxAccounts);
+
+  // ยอดที่ "แช่ไว้" ตอนกดสร้าง ภพ.30 ของงวดนี้ (แถวล่าสุด) — null = ยังไม่เคยสร้าง
+  const summaryOfPeriod = (summariesRes.data ?? [])
+    .filter((s) => String(s.report_month).replace(/^'/, "").trim() === period && (s.entity_id ?? "") === entityId)
+    .sort((a, b) => (String(a.created_at) < String(b.created_at) ? -1 : 1))
+    .pop();
+
+  const statusOf = new Map<string, string>();
+  for (const t of txs) statusOf.set(String(t.tx_id), String(t.status ?? ""));
+
+  const payments = (paysRes.data ?? []).map((p) => ({
+    kind: p.kind as string,
+    period: p.period as string,
+    amount: Number(p.amount) || 0,
+    surcharge: Number(p.surcharge) || 0,
+    computed_amount: p.computed_amount === null ? null : Number(p.computed_amount),
+    pay_date: (p.pay_date as string) ?? "",
+    tx_id: (p.tx_id as string) ?? null,
+    surcharge_tx_id: (p.surcharge_tx_id as string) ?? null,
+    account_name: (p.account_name as string) ?? null,
+    category: (p.category as string) ?? null,
+    surcharge_category: (p.surcharge_category as string) ?? null,
+    contact_name: (p.contact_name as string) ?? null,
+    contact_id: (p.contact_id as string) ?? null,
+    note: (p.note as string) ?? null,
+    status: (p.status as string) ?? "ปกติ",
+    tx_status: p.tx_id ? (statusOf.get(String(p.tx_id)) ?? null) : null,
+  }));
+
+  const rows = taxDueBoard({
+    period,
+    isVat: (entityRes.data?.is_vat ?? true) !== false,
+    summaryNetPayable: summaryOfPeriod ? Number(summaryOfPeriod.net_payable) || 0 : null,
+    summaryCarry: summaryOfPeriod ? Number(summaryOfPeriod.forwarded_vat_out) || 0 : null,
+    liveVatPayable: tr.netPayable,
+    liveVatCarry: tr.forwardedVatOut,
+    livePnd3: wr.pnd3TotalWht,
+    livePnd53: wr.pnd53TotalWht,
+    runs,
+    payments,
+  });
+
+  /**
+   * ค่าที่ใช้ครั้งก่อนของแต่ละแบบ = **ตัวแทนหน้าตั้งค่า** (D88 ข้อ 6.3)
+   * ครั้งแรกไม่มีอะไรให้จำ → ป๊อปอัพเติมค่าปริยายจาก `lib/accounting/taxPay`
+   * 🪤 เอาจากแถวล่าสุด **รวมแถวที่ถอนแล้ว** — ถอนเพราะกรอกยอดผิด ไม่ได้แปลว่า
+   *    บัญชี/หมวดที่เลือกไว้ผิดไปด้วย
+   */
+  const prefs: Record<string, Record<string, string>> = {};
+  for (const p of payments) {
+    if (prefs[p.kind]) continue;
+    prefs[p.kind] = {
+      accountName: p.account_name ?? "",
+      category: p.category ?? "",
+      surchargeCategory: p.surcharge_category ?? "",
+      contactName: p.contact_name ?? "",
+      contactId: p.contact_id ?? "",
+    };
+  }
+
+  return { rows, prefs, history: payments.slice(0, 24) };
 }
