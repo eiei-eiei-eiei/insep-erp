@@ -16,6 +16,7 @@ import { ReportChecklist } from "../../_components/ReportChecklist";
 import {
   closeStatus, monthCloseBadge, closeWarnText, pendingRecomputeText, driftSummary, recomputeResultText,
 } from "@/lib/production/monthClose";
+import { reminderHintText } from "@/lib/production/exciseReminder";
 import { can, capHolderText, type Role } from "@/lib/shared/roles";
 import { formatDateThai } from "@/lib/shared/format";
 
@@ -147,6 +148,8 @@ export function ExciseTab({ active, role }: { active: boolean; role: Role }) {
   // 🚨 ต้องรู้ทิศทาง ไม่ใช่แค่จำนวน — "จะเอาออก" กับ "จะเอากลับมาแสดง" เป็นคนละเรื่องกันคนละทาง
   const pendingN = (mc?.pending.toHide ?? 0) + (mc?.pending.toShow ?? 0);
   const pending = mc ? pendingRecomputeText(mc.pending) : null;
+  // D92 — บอกให้รู้ว่ามีการเตือนเข้า LINE อยู่ และรู้เมื่อการเตือนถูกปิดเพราะยังไม่กรอกเลขสรรพสามิต
+  const hint = reminderHintText({ hasExciseId: !!selectedExcise, closed: st.closed, period: month });
 
   async function runClose(
     fn: () => Promise<{ ok: boolean; error?: string; changed?: number; toHide?: number; toShow?: number }>,
@@ -400,6 +403,10 @@ export function ExciseTab({ active, role }: { active: boolean; role: Role }) {
               )}
               {pending && <p className="mb-2 text-sm text-warn">{pending}</p>}
             </>
+          )}
+
+          {hint && (
+            <p className={`mb-2 text-sm ${hint.warn ? "text-warn" : "text-faint"}`}>{hint.text}</p>
           )}
 
           {st.reopenedTimes > 0 && (

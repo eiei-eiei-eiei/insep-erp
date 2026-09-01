@@ -18,6 +18,7 @@
  */
 
 import { formatMonthThai } from "../shared/format";
+import { nextMonth, shiftDaysISO, thaiDay } from "../shared/period";
 
 export const TAX_KINDS = ["vat", "pnd3", "pnd53"] as const;
 export type TaxKind = (typeof TAX_KINDS)[number];
@@ -76,23 +77,11 @@ export const DEFAULT_TAX_CAT: Record<TaxKind, string> = {
 export const DEFAULT_SURCHARGE_CAT = "เบี้ยปรับ/เงินเพิ่มภาษี";
 export const DEFAULT_TAX_PAYEE = "กรมสรรพากร";
 
-/** yyyy-MM ของเดือนถัดไป */
-export function nextMonth(period: string): string {
-  const [y, m] = period.split("-").map((x) => parseInt(x, 10));
-  if (!y || !m) return period;
-  const ny = m === 12 ? y + 1 : y;
-  const nm = m === 12 ? 1 : m + 1;
-  return `${ny}-${String(nm).padStart(2, "0")}`;
-}
-
-/** yyyy-MM ของเดือนก่อนหน้า */
-export function prevMonth(period: string): string {
-  const [y, m] = period.split("-").map((x) => parseInt(x, 10));
-  if (!y || !m) return period;
-  const py = m === 1 ? y - 1 : y;
-  const pm = m === 1 ? 12 : m - 1;
-  return `${py}-${String(pm).padStart(2, "0")}`;
-}
+/**
+ * ★ ย้ายไป `lib/shared/period.ts` แล้ว (D92 — ฝั่งผลิตต้องใช้ชุดเดียวกัน
+ *   และห้ามให้ lib/production import lib/accounting) · re-export ไว้ให้ผู้เรียกเดิมไม่ต้องแก้
+ */
+export { nextMonth, prevMonth } from "../shared/period";
 
 export type DueDates = { paper: string; efiling: string };
 
@@ -115,10 +104,7 @@ export function daysBetween(aISO: string, bISO: string): number {
 
 /** วันที่ต้องยิงเตือน = กำหนดยื่น (กระดาษ) ลบ leadDays */
 export function remindDateOf(kind: TaxKind, period: string, leadDays = 3): string {
-  const due = dueDateOf(kind, period).paper;
-  const d = new Date(Date.UTC(+due.slice(0, 4), +due.slice(5, 7) - 1, +due.slice(8, 10)));
-  d.setUTCDate(d.getUTCDate() - leadDays);
-  return d.toISOString().slice(0, 10);
+  return shiftDaysISO(dueDateOf(kind, period).paper, -leadDays);
 }
 
 /**
@@ -133,11 +119,7 @@ export function reminderLine(kind: TaxKind, period: string, label?: string): str
 }
 
 /** "15 ก.ย." จาก ISO — ใช้ในข้อความเตือนเท่านั้น */
-function thaiDay(iso: string): string {
-  const TH = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
-  const mo = TH[parseInt(iso.slice(5, 7), 10) - 1] ?? "";
-  return `${parseInt(iso.slice(8, 10), 10)} ${mo}`;
-}
+
 
 /** คำอธิบายที่ไปอยู่บนบิลบัญชี */
 export function taxTxDescription(kind: TaxKind, period: string): string {
