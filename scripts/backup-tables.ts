@@ -23,7 +23,7 @@ const TABLES = [
   "sale_menu", "sales_orders", "sales_order_items", "warehouse_stock", "stock_moves",
   "pay_inputs", "pay_components", "pay_rates", "pay_variables", "pay_post_legs",
   "employees", "payroll_periods", "payroll_items",
-  "report_runs", "edit_log", "profiles",
+  "report_runs", "excise_month_close", "edit_log", "profiles",
 ];
 
 const PAGE = 1000; // limit ปริยายของ PostgREST — ต้องวนหน้า ไม่งั้นตารางใหญ่ขาดเงียบ ๆ

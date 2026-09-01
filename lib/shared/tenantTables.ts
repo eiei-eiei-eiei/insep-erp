@@ -20,7 +20,7 @@ export const TENANT_TABLES = [
   "sale_menu", "sales_orders", "sales_order_items", "warehouse_stock", "stock_moves",
   "pay_inputs", "pay_components", "pay_rates", "pay_variables", "pay_post_legs",
   "employees", "payroll_periods", "payroll_items",
-  "report_runs", "edit_log", "profiles",
+  "report_runs", "excise_month_close", "edit_log", "profiles",
 ] as const;
 
 export type TenantTable = (typeof TENANT_TABLES)[number];
@@ -65,6 +65,7 @@ export const TABLE_LABEL_TH: Partial<Record<TenantTable, string>> = {
   payroll_periods: "งวดจ่าย",
   payroll_items: "แถวงวดจ่ายรายคน",
   report_runs: "ประวัติสร้างรายงาน",
+  excise_month_close: "ปิดเดือนสรรพสามิต",
   // ★ 3 ตัวนี้ไม่เคยโผล่ให้ผู้ใช้เห็นจนกระทั่ง D82 เอาไปทำ**ชื่อชีต Excel**
   //   ไม่มีชื่อไทย = ลูกค้าเปิดไฟล์แล้วเจอชื่อตารางดิบ ๆ ซึ่งผิดกฎที่เขียนไว้หัวบล็อกนี้เอง
   counters: "เลขรันนิ่งเอกสาร",
@@ -122,5 +123,5 @@ export const ENTITY_SCOPED_TABLES: readonly TenantTable[] = [
   "log_ferment_monitor", "log_dilute", "log_ferment_draw", "log_product", "stock_product",
   "transactions", "tax_summaries", "tax_payments", "wht_certificates",
   "sale_menu", "sales_orders", "warehouse_stock", "stock_moves",
-  "employees", "payroll_periods", "report_runs",
+  "employees", "payroll_periods", "report_runs", "excise_month_close",
 ];

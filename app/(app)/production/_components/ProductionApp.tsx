@@ -105,7 +105,7 @@ export function ProductionApp({
       {visited.has("บรรจุ/จ่าย") && <div className={show("บรรจุ/จ่าย")}><ProductTab products={products} /></div>}
       {visited.has("ประวัติ/เทียบ") && <div className={show("ประวัติ/เทียบ")}><HistoryTab products={products} /></div>}
       {visited.has("สต็อก") && <div className={show("สต็อก")}><StockTab stock={stock} /></div>}
-      {visited.has("รายงานสรรพสามิต") && <div className={show("รายงานสรรพสามิต")}><ExciseTab active={tab === "รายงานสรรพสามิต"} /></div>}
+      {visited.has("รายงานสรรพสามิต") && <div className={show("รายงานสรรพสามิต")}><ExciseTab active={tab === "รายงานสรรพสามิต"} role={role} /></div>}
       {visited.has("จัดการข้อมูล") && (
         <div className={show("จัดการข้อมูล")}><MasterTab materials={materials} containers={containers} products={products} /></div>
       )}

@@ -524,7 +524,12 @@ export async function cancelOrderAction(quNo: string): Promise<SaveResult> {
   const supabase = await db();
   const { data, error } = await supabase.rpc("fn_cancel_order", { p_qu_no: quNo });
   if (error) return fail(mapDbError(error));
-  const res = data as { ok: boolean; error?: string; reversed_stock?: number };
+  // D91 — RPC บอกกลับมาด้วยว่าซ่อนคู่ จ่าย/รับ ออกจากฟอร์ม ภส. ให้หรือไม่ และติดเดือนไหนอยู่
+  //        (เดือนที่ปิดบัญชีสรรพสามิตไปแล้วต้องไม่ถูกแก้ย้อนหลัง) → หน้าจอเอาไปบอกผู้ใช้ต่อ
+  const res = data as {
+    ok: boolean; error?: string; reversed_stock?: number;
+    excise_hidden?: boolean; excise_locked_months?: string[];
+  };
   if (!res.ok) return fail(res.error ?? "ยกเลิกไม่สำเร็จ");
   revalidatePath("/sales");
   revalidatePath("/accounting");

@@ -12,6 +12,7 @@ import {
   IconBox, IconClock, IconDoc, IconEdit, IconMoney, IconPrint, IconRefresh, IconSearch, IconTrash,
 } from "@/lib/shared/icons";
 import { can, toRole } from "@/lib/shared/roles";
+import { cancelLockedText } from "@/lib/production/monthClose";
 
 const itemsCache = new Map<string, OrderItem[]>();
 async function loadItems(quNo: string): Promise<OrderItem[]> {
@@ -130,10 +131,13 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
     if (!confirm(`ยกเลิกออเดอร์ ${o.quNo}? ระบบจะย้อนรายการบัญชี/สต็อกที่เกิดแล้วให้`)) return;
     setMsg(null);
     cancelOrderAction(o.quNo).then((r) => {
-      if (r.ok) {
-        setMsg({ ok: true, text: `ยกเลิก ${o.quNo} แล้ว` });
-        refresh();
-      } else setMsg({ ok: false, text: r.error ?? "ยกเลิกไม่สำเร็จ" });
+      if (!r.ok) { setMsg({ ok: false, text: r.error ?? "ยกเลิกไม่สำเร็จ" }); return; }
+      // D91 — ยกเลิกสำเร็จ แต่ถ้าเดือนนั้นปิดบัญชีสรรพสามิตไปแล้ว คู่ จ่าย/รับ จะยังอยู่บนฟอร์ม
+      //        🚨 ต้องบอกตรง ๆ พร้อมบอกว่าใครต้องกดอะไรต่อ — ห้ามขึ้นเขียวเฉย ๆ (D83/D88)
+      const d = r.data as { excise_locked_months?: string[] } | undefined;
+      const locked = cancelLockedText(o.quNo, d?.excise_locked_months ?? []);
+      setMsg(locked ? { ok: true, warn: true, text: locked } : { ok: true, text: `ยกเลิก ${o.quNo} แล้ว` });
+      refresh();
     });
   }
 

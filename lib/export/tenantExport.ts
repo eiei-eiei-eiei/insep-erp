@@ -45,7 +45,7 @@ export const RESTORE_ORDER: readonly TenantTable[] = [
   "sales_orders", "sales_order_items", "warehouse_stock", "stock_moves",
   "pay_inputs", "pay_components", "pay_rates", "pay_variables", "pay_post_legs",
   "employees", "payroll_periods", "payroll_items",
-  "integration_log", "edit_log", "report_runs", "counters",
+  "integration_log", "edit_log", "report_runs", "excise_month_close", "counters",
 ];
 
 /** ตารางทั้งหมดที่ใส่ลงไฟล์ = ทุกตารางของ tenant (ไม่ข้ามอะไรเลย — สำรองต้องครบ) */

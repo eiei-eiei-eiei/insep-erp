@@ -41,6 +41,10 @@ export type Role = (typeof ROLES)[number];
 export const CAPS = [
   "prod.read",
   "prod.write",
+  // D91 — ปิด/ถอนปิดบัญชีสรรพสามิตรายเดือน (ระดับหัวหน้า แบบเดียวกับ sales.config = ยกเลิกออเดอร์)
+  // ★ ตอนนี้มีแต่ main ที่ได้ เพราะยังไม่มีบทบาท "หัวหน้าฝ่ายผลิต" — has_cap() ไม่ต้องแก้
+  //   (main → true ทุก cap · บทบาทอื่นไม่มีชื่อนี้ในลิสต์ = false เอง)
+  "prod.config",
   "acct.read",
   "acct.write",
   "acct.config",
@@ -136,4 +140,19 @@ export function toRole(raw: string | null | undefined): Role {
   if ((ROLES as readonly string[]).includes(v)) return v as Role;
   if (v === "sale" || v === "warehouse") return "sales";
   return "viewer";
+}
+
+/**
+ * บทบาทที่ทำสิ่งนี้ได้มีใครบ้าง — ใช้เขียนข้อความบอกผู้ใช้ตอนปุ่มถูกปิด
+ *
+ * 🚨 **ห้ามเขียนชื่อบทบาทตายตัวในข้อความบนจอ** ("ต้องเป็น main") — เพิ่ม/เปลี่ยนบทบาท
+ *    เมื่อไร ข้อความนั้นกลายเป็นคำโกหกทันทีโดยไม่มีอะไรฟ้อง (บทเรียน D85 ข้อ 3)
+ */
+export function rolesWithCap(cap: Cap): Role[] {
+  return ROLES.filter((r) => can(r, cap));
+}
+
+/** "เจ้าของกิจการ" / "หัวหน้าฝ่ายขาย หรือ เจ้าของกิจการ" — ต่อท้ายข้อความว่าใครกดได้ */
+export function capHolderText(cap: Cap): string {
+  return rolesWithCap(cap).map((r) => ROLE_LABEL[r]).join(" หรือ ");
 }
