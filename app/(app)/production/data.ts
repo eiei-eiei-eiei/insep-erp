@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { mustRead } from "@/lib/shared/dbError";
 import {
   pendingBatches,
   nextBatchNumber,
@@ -64,7 +65,9 @@ export async function getPendingBatches() {
 /** P12: เลข batch ถัดไปของวันที่ (ปี พ.ศ.) */
 export async function getNextBatchNumber(dateISO: string) {
   const supabase = await createClient();
-  const { data } = await supabase.from("log_ferment").select("batch");
+  // 🚨🚨 D89 — ว่างเพราะอ่านไม่ได้ = เลข batch วนกลับไปเริ่มที่ 1 แล้ว **ชน batch เดิม**
+  //    กติกาเหล็ก "1 batch = 1 แถว log_distill" พังทันที และฟอร์ม ภส. หักส่าซ้ำ
+  const data = mustRead(await supabase.from("log_ferment").select("batch"), "เลข batch ที่มีอยู่");
   return nextBatchNumber(dateISO, (data ?? []).map((r) => r.batch as string));
 }
 
@@ -76,9 +79,10 @@ export async function getRemainingDistillVol(productName: string) {
     supabase.from("log_distill").select("vol").eq("product_name", productName),
     supabase.from("log_dilute").select("start_vol").eq("product_name", productName),
   ]);
+  // 🚨 D89 — ว่าง = คงเหลือผิด → ปรุงเกินของที่มีจริง แล้วยอดบนฟอร์ม ภส. เพี้ยนตาม
   return remainingDistillVol(
-    (distill.data ?? []).map((d) => d.vol as number),
-    (dilute.data ?? []).map((d) => d.start_vol as number),
+    mustRead(distill, "บันทึกกลั่น").map((d) => d.vol as number),
+    mustRead(dilute, "บันทึกปรุง").map((d) => d.start_vol as number),
   );
 }
 
@@ -90,19 +94,23 @@ export async function getRemainingFermentedVol(productName: string) {
     supabase.from("log_ferment_draw").select("vol, final_vol").eq("product_name", productName),
     supabase.from("products").select("product_id, name, bottle_size_l").eq("name", productName),
   ]);
-  const ids = (prods.data ?? []).map((p) => String(p.product_id));
-  const sizeById = new Map((prods.data ?? []).map((p) => [String(p.product_id), Number(p.bottle_size_l) || 0]));
+  const prodRows = mustRead(prods, "ทะเบียนสินค้า");
+  const ids = prodRows.map((p) => String(p.product_id));
+  const sizeById = new Map(prodRows.map((p) => [String(p.product_id), Number(p.bottle_size_l) || 0]));
   let packed: number[] = [];
   if (ids.length > 0) {
-    const { data } = await supabase
-      .from("log_product")
-      .select("product_id, amount, trans_type")
-      .in("product_id", ids)
-      .eq("trans_type", "รับ");
+    const data = mustRead(
+      await supabase
+        .from("log_product")
+        .select("product_id, amount, trans_type")
+        .in("product_id", ids)
+        .eq("trans_type", "รับ"),
+      "บันทึกบรรจุ",
+    );
     packed = (data ?? []).map((r) => (Number(r.amount) || 0) * (sizeById.get(String(r.product_id)) ?? 0));
   }
   return remainingFermentedVol(
-    (draw.data ?? []).map((d) => ({ vol: d.vol as number, final_vol: d.final_vol as number | null })),
+    mustRead(draw, "บันทึกรินน้ำสุราแช่").map((d) => ({ vol: d.vol as number, final_vol: d.final_vol as number | null })),
     packed,
   );
 }

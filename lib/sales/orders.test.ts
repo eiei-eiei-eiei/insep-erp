@@ -410,19 +410,42 @@ describe("S11 — ไม่จด VAT: ห้ามได้เลขใบก�
     expect(neededSerials("SEND_TO_WH", baseOrder({ invNo: "INV1" }), false).inv).toBe(false);
   });
 
-  // 🔴 D86 — เดิม action ที่ออกใบเสร็จกินแต่เลข TAX (inv: false) พอตัด tax ทิ้งเพราะ
-  //    ไม่จด VAT จึงไม่ได้เลขอะไรเลย = ใบเสร็จรับเงินไม่มีเลขที่ และบัญชีได้ tax_invoice_no = "-"
-  it("🔴 ใบเสร็จของกิจการไม่จด VAT ต้องมีเลขที่ (ใช้ชุด INV แทนเลขใบกำกับที่ออกไม่ได้)", () => {
+  // 🔴 D86 เคยแก้ครึ่งเดียวด้วยการ "ยืมช่อง inv" ให้ใบเสร็จจ่ายเต็ม แต่ใบเสร็จมัดจำยังเลขว่าง
+  //    และใบเสร็จยอดค้างยังซ้ำเลขใบแจ้งหนี้ → D89 ให้ช่องของตัวเอง (rcpt1/rcpt2)
+  it("🔴 ใบเสร็จของกิจการไม่จด VAT ได้เลขของตัวเอง ไม่ยืมช่องใบแจ้งหนี้", () => {
     expect(neededSerials("FULL_PAYMENT_AND_SEND", baseOrder(), false)).toEqual({
-      inv: true, tax1: false, tax2: false,
+      inv: false, tax1: false, tax2: false, rcpt1: true, rcpt2: false,
     });
     expect(neededSerials("FULL_PAYMENT_LATER", baseOrder(), false)).toEqual({
-      inv: true, tax1: false, tax2: false,
+      inv: false, tax1: false, tax2: false, rcpt1: true, rcpt2: false,
     });
   });
 
-  it("มีเลข INV อยู่แล้วไม่ขอซ้ำ (ใบแจ้งหนี้กับใบเสร็จของใบเดียวกันใช้เลขเดียว)", () => {
-    expect(neededSerials("FULL_PAYMENT_AND_SEND", baseOrder({ invNo: "INV1" }), false).inv).toBe(false);
+  it("🔴 ใบเสร็จค่ามัดจำต้องมีเลข (ของเดิมว่างเปล่า) และเป็นคนละใบกับใบแจ้งหนี้", () => {
+    const s = neededSerials("DEPOSIT_AND_SEND", baseOrder(), false);
+    expect(s.inv, "ใบแจ้งหนี้ยังต้องได้เลขของตัวเอง").toBe(true);
+    expect(s.rcpt1, "ใบเสร็จค่ามัดจำต้องได้เลขด้วย").toBe(true);
+  });
+
+  it("🔴 ใบเสร็จยอดค้างใช้ช่องที่ 2 — ห้ามซ้ำกับใบแจ้งหนี้หรือใบเสร็จมัดจำ", () => {
+    const s = neededSerials("PAY_BALANCE", baseOrder({ invNo: "INV1", rcptNo1: "INV2" }), false);
+    expect(s.rcpt2).toBe(true);
+    expect(s.rcpt1).toBe(false); // ช่องแรกมีเลขแล้ว ต้องไม่ขอซ้ำ
+    expect(s.inv).toBe(false);
+  });
+
+  it("🪤 มีเลขในช่องแล้วต้องไม่ขอใหม่ — กดซ้ำไม่กินเลขรันฟรี", () => {
+    expect(neededSerials("FULL_PAYMENT_AND_SEND", baseOrder({ rcptNo1: "INV9" }), false).rcpt1).toBe(false);
+    expect(neededSerials("PAY_BALANCE", baseOrder({ rcptNo2: "INV9" }), false).rcpt2).toBe(false);
+  });
+
+  it("🚩 เลข 3 ใบของออเดอร์เดียวต้องมาจากคนละช่อง (ใบแจ้งหนี้ · มัดจำ · ยอดค้าง)", () => {
+    // ขั้น 1: ยังไม่มีอะไรเลย → ขอทั้งใบแจ้งหนี้และใบเสร็จมัดจำ
+    const step1 = neededSerials("DEPOSIT_AND_SEND", baseOrder(), false);
+    expect([step1.inv, step1.rcpt1, step1.rcpt2]).toEqual([true, true, false]);
+    // ขั้น 2: ทั้งสองช่องเต็มแล้ว เก็บยอดค้าง → ขอเฉพาะช่องที่ 2
+    const step2 = neededSerials("PAY_BALANCE", baseOrder({ invNo: "INV1", rcptNo1: "INV2" }), false);
+    expect([step2.inv, step2.rcpt1, step2.rcpt2]).toEqual([false, false, true]);
   });
 
   it("★ เส้นทางจด VAT ต้องไม่ขยับ — ยังกินแต่เลข TAX เท่าเดิม", () => {
@@ -436,6 +459,32 @@ describe("S11 — ไม่จด VAT: ห้ามได้เลขใบก�
 
   it("ไม่ส่ง isVat มา = จด VAT (พฤติกรรมเดิมต้องไม่พัง)", () => {
     expect(neededSerials("DEPOSIT_AND_SEND", baseOrder())).toEqual({ inv: true, tax1: true, tax2: false });
+  });
+
+  /**
+   * 🚩 ตารางล็อกของเส้นทางจด VAT — คัดลอกจากพฤติกรรมก่อน D89 ทุกช่อง
+   * D89 รื้อ `neededSerials` เป็นโมเดล "ช่องรับเงิน 2 ช่อง" เทสนี้คือหลักฐานว่า
+   * ฝั่งที่ผู้ใช้ใช้จริงอยู่ทุกวัน **ไม่ขยับแม้แต่ค่าเดียว**
+   */
+  it("🚩 ตารางล็อก: เส้นทางจด VAT ต้องได้ค่าเท่าเดิมครบทั้ง 7 action", () => {
+    const table: Record<string, { inv: boolean; tax1: boolean; tax2: boolean }> = {
+      DEPOSIT_AND_SEND: { inv: true, tax1: true, tax2: false },
+      FULL_PAYMENT_AND_SEND: { inv: false, tax1: true, tax2: false },
+      SEND_TO_WH: { inv: true, tax1: false, tax2: false },
+      ISSUE_INVOICE_FULL: { inv: true, tax1: false, tax2: false },
+      ISSUE_INVOICE_DEPOSIT: { inv: true, tax1: false, tax2: false },
+      PAY_BALANCE: { inv: false, tax1: false, tax2: true },
+      FULL_PAYMENT_LATER: { inv: false, tax1: true, tax2: false },
+    };
+    for (const [action, want] of Object.entries(table)) {
+      expect(neededSerials(action as never, baseOrder()), action).toEqual(want);
+    }
+    // ช่องที่มีเลขอยู่แล้วต้องไม่ขอซ้ำ — เหมือนเดิมทุกช่อง
+    const filled = baseOrder({ invNo: "INV1", taxNo1: "TAX1", taxNo2: "TAX2", depInvNo: "INV0" });
+    for (const action of Object.keys(table)) {
+      const s = neededSerials(action as never, filled);
+      expect([s.inv, s.tax1, s.tax2], action).toEqual([false, false, false]);
+    }
   });
 
   it("★★ payload บัญชีของกิจการไม่จด VAT: vat = 0 และฐานคิดจาก (1 − wht)", () => {

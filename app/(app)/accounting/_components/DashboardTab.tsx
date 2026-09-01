@@ -1,28 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { getDashboardAction } from "../actions";
-import { Card, Stat, fmt } from "./ui";
+import { Card, Stat, fmt, useRead, LoadError } from "./ui";
 
 type Dash = Awaited<ReturnType<typeof getDashboardAction>>;
 
 export function DashboardTab({ period, entityId, active }: { period: string; entityId: string; active: boolean }) {
-  const [data, setData] = useState<Dash | null>(null);
-  const [loading, setLoading] = useState(true);
-
   // โหลดเมื่อแท็บถูกเปิด (active) + refetch ทุกครั้งที่กลับมา — โชว์ข้อมูลเดิมค้างไว้ระหว่างโหลด (ไม่กระพริบ)
-  useEffect(() => {
-    if (!active) return;
-    let alive = true;
-    getDashboardAction(period, entityId).then((d) => { if (alive) { setData(d); setLoading(false); } });
-    return () => { alive = false; };
-  }, [period, entityId, active]);
+  // 🚨 D89 — useRead รับ throw จากชั้นอ่าน · ไม่งั้นแดชบอร์ดค้างที่ "กำลังโหลด…" ตลอดกาล
+  const { data, loading, err, reload } = useRead<Dash>(
+    () => getDashboardAction(period, entityId),
+    [period, entityId],
+    { skip: !active },
+  );
 
+  if (err && !data) return <LoadError err onRetry={reload} what="แดชบอร์ด" />;
   if (loading || !data) return <p className="text-faint">กำลังโหลด…</p>;
   const { netIncome, netExpense, vatOut, vatIn } = data.dash;
 
   return (
     <div className="space-y-4">
+      {/* ข้อมูลเดิมยังอยู่ แต่ต้องบอกว่ารอบล่าสุดโหลดไม่สำเร็จ — ตัวเลขอาจไม่ใช่ของตอนนี้ */}
+      <LoadError err={err} onRetry={reload} what="แดชบอร์ด" />
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="รายรับสุทธิ (เดือนนี้)" value={fmt(netIncome)} tone="green" />
         <Stat label="รายจ่ายสุทธิ (เดือนนี้)" value={fmt(netExpense)} tone="red" />

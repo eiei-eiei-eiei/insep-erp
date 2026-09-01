@@ -17,6 +17,7 @@ import {
   type AccountMeta,
 } from "@/lib/accounting/ledger";
 import { fetchAllRows } from "@/lib/shared/paginate";
+import { mustRead } from "@/lib/shared/dbError";
 import { taxDueBoard } from "@/lib/accounting/taxPay";
 
 // คอลัมน์ transactions ที่ใช้ทุกรายงาน
@@ -54,7 +55,12 @@ async function fetchAllTransactions(
 
 /** ชื่อบัญชีในระบบภาษี (app_settings kind='tax_account') — fallback บัญชีบริษัท */
 async function loadTaxAccounts(supabase: Awaited<ReturnType<typeof db>>): Promise<Set<string>> {
-  const { data } = await supabase.from("app_settings").select("value").eq("kind", "tax_account");
+  // 🚨 D89 — fallback "บัญชีบริษัท" ดูปลอดภัยแต่ไม่ใช่: โรงที่ตั้งชื่อบัญชีอื่นจะถูกกรองออกหมด
+  //    จน ภพ.30/ภงด. เหลือ 0 · "ไม่ได้ตั้งค่า" (ลิสต์ว่าง) กับ "อ่านไม่ได้" ต้องแยกกันให้ขาด
+  const data = mustRead(
+    await supabase.from("app_settings").select("value").eq("kind", "tax_account"),
+    "รายชื่อบัญชีในระบบภาษี",
+  );
   const list = (data ?? []).map((r) => r.value as string).filter(Boolean);
   if (list.length === 0) list.push("บัญชีบริษัท");
   return new Set(list);
@@ -62,7 +68,11 @@ async function loadTaxAccounts(supabase: Awaited<ReturnType<typeof db>>): Promis
 
 /** map ชื่อคู่ค้า → {tax_id, branch, address} */
 async function loadContactMap(supabase: Awaited<ReturnType<typeof db>>): Promise<ContactMap> {
-  const { data } = await supabase.from("contacts").select("contact_id, name, tax_id, branch, address");
+  // 🚨 D89 — ว่างเพราะอ่านไม่ได้ = ช่องเลขผู้เสียภาษีบน ภพ.30/ภงด. ว่างทั้งแบบ
+  const data = mustRead(
+    await supabase.from("contacts").select("contact_id, name, tax_id, branch, address"),
+    "ทะเบียนคู่ค้า",
+  );
   const map: ContactMap = {};
   // key ทั้ง contact_id (แม่นสาขา) และ name (fallback ข้อมูลเก่า — ชื่อซ้ำหลายสาขา = อันท้ายชนะ)
   for (const c of data ?? []) {
@@ -126,7 +136,8 @@ export async function getDashboard(period: string, entityId: string) {
     supabase.from("wht_certificates").select("tx_ids"),
   ]);
   const issued = new Set<string>();
-  for (const w of wht.data ?? []) for (const id of (w.tx_ids as string[]) ?? []) if (id) issued.add(id);
+  // 🚨 D89 — ว่างเพราะอ่านไม่ได้ = บิลที่ออกใบ 50ทวิ ไปแล้วโผล่ซ้ำในคิว "รอออก 50ทวิ"
+  for (const w of mustRead(wht, "ประวัติใบ 50 ทวิ")) for (const id of (w.tx_ids as string[]) ?? []) if (id) issued.add(id);
   return dashboardData(period, entityId, txAll as unknown as Tx[], taxAccounts, issued);
 }
 
@@ -227,7 +238,8 @@ export async function getBalances(upToPeriod: string, entityId: string) {
     supabase.from("bank_accounts").select("account_name, entity_ids, opening_balance"),
     loadTaxAccounts(supabase),
   ]);
-  const accounts: AccountMeta[] = (accRes.data ?? []).map((a) => ({
+  // 🚨 D89 — ว่าง = ยอดยกมาหายทั้งระบบ → ยอดคงเหลือทุกบัญชีผิด
+  const accounts: AccountMeta[] = mustRead(accRes, "ทะเบียนบัญชีเงิน").map((a) => ({
     accountName: a.account_name as string,
     openingBalance: Number(a.opening_balance) || 0,
     entityIds: (a.entity_ids as string[]) ?? [],
@@ -242,7 +254,9 @@ export async function getStatement(accountName: string, period: string) {
     fetchAllTransactions(supabase, (q) => q.eq("account_name", accountName)),
     supabase.from("bank_accounts").select("opening_balance").eq("account_name", accountName).maybeSingle(),
   ]);
-  const opening = Number(accRes.data?.opening_balance) || 0;
+  // 🚨 D89 — opening = 0 เงียบ ๆ ทำให้ running balance ทั้งคอลัมน์ผิด
+  const openRow = mustRead<{ opening_balance: number | null } | null>(accRes, "ยอดยกมาของบัญชี");
+  const opening = Number(openRow?.opening_balance) || 0;
   return accountStatement(accountName, period, txAll as unknown as LedgerTx[], opening);
 }
 
@@ -272,8 +286,9 @@ export async function searchBills(params: {
   if (params.month) {
     q = q.gte("transaction_date", `${params.month}-01`).lt("transaction_date", nextMonthStart(params.month));
   }
-  const { data } = await q;
-  let rows = (data ?? []) as unknown as Tx[];
+  // 🚨 D89 (ต้นเรื่อง) — ของเดิมทิ้ง error → query พังแล้วผู้ใช้เห็น "— ไม่มีรายการ —"
+  //    ซึ่งอ่านได้ว่า "ไม่มีบิล" ไม่ใช่ "โหลดไม่สำเร็จ" (ผู้ใช้เคยสรุปว่าบิลที่เพิ่งขายหายจริง)
+  let rows = mustRead(await q, "บิล") as unknown as Tx[];
   if (params.text) {
     const t = params.text.toLowerCase();
     rows = rows.filter(
@@ -301,18 +316,20 @@ export async function getRecentBillsByContact(contactName: string, limit = 5, en
     .order("tx_id", { ascending: false })
     .limit(limit);
   if (entityId && entityId !== "ALL") q = q.eq("entity_id", entityId);
-  const { data } = await q;
-  const rows = (data ?? []) as {
+  const rows = mustRead(await q, "บิลล่าสุดของคู่ค้า") as unknown as {
     tx_id: string; transaction_date: string | null; type: string; category: string | null; description: string | null; net_amount: number | string | null;
   }[];
   if (rows.length === 0) return [] as RecentBill[];
   // ดึง items ของบิลเหล่านี้มาพร้อมกัน (เติมรายการทั้งใบได้)
   const ids = rows.map((r) => r.tx_id);
-  const { data: itemsData } = await supabase
-    .from("transaction_items")
-    .select("tx_id, item_name, quantity, in_vat, ex_vat, total_price, discount_pct, discount_baht, item_category, item_job")
-    .in("tx_id", ids)
-    .order("item_id");
+  const itemsData = mustRead(
+    await supabase
+      .from("transaction_items")
+      .select("tx_id, item_name, quantity, in_vat, ex_vat, total_price, discount_pct, discount_baht, item_category, item_job")
+      .in("tx_id", ids)
+      .order("item_id"),
+    "รายการในบิล",
+  );
   const itemsByTx: Record<string, RecentBillItem[]> = {};
   for (const it of (itemsData ?? []) as Record<string, unknown>[]) {
     const tid = it.tx_id as string;
@@ -354,7 +371,7 @@ export async function getItemHistory(entityId?: string) {
     .select("item_name, item_category, item_job, transactions!inner(entity_id, status)")
     .limit(5000);
   if (entityId && entityId !== "ALL") q = q.eq("transactions.entity_id", entityId);
-  const { data } = await q;
+  const data = mustRead(await q, "ประวัติชื่อรายการ");
   const names = new Set<string>();
   const cats = new Set<string>();
   const jobs = new Set<string>();
@@ -393,7 +410,7 @@ export async function searchPriceHistory(params: { itemName?: string; contact?: 
   if (params.itemName) q = q.ilike("item_name", `%${params.itemName}%`);
   if (params.entityId && params.entityId !== "ALL") q = q.eq("transactions.entity_id", params.entityId);
   if (params.contact) q = q.eq("transactions.contact_name", params.contact);
-  const { data } = await q;
+  const data = mustRead(await q, "ประวัติราคา");
   type Row = {
     item_name: string;
     quantity: number;
@@ -491,10 +508,14 @@ export async function getInstallmentGroup(poGroupId: string) {
 export async function getWhtBundle(period: string, entityId: string) {
   const supabase = await db();
   const dash = await getDashboard(period, entityId);
-  const { data: certs } = await supabase
+  // 🚨 D89 — certs ว่างเพราะอ่านไม่ได้ = ออกเลข 50ทวิ ซ้ำเลขที่เคยออกไปแล้ว
+  const certs = mustRead(
+    await supabase
     .from("wht_certificates")
     .select("doc_no, issue_date, contact_name, contact_id, address, wht_amount, pnd_type, income_type, income_seq, base_amount, tx_ids, entity_id")
-    .order("doc_no");
+    .order("doc_no"),
+    "ประวัติใบ 50 ทวิ",
+  );
   const inScope = (e: string) => !entityId || entityId === "ALL" || (e || "EID01") === entityId;
   const scoped = (certs ?? []).filter((c) => inScope((c.entity_id as string) ?? ""));
   const history = scoped
@@ -533,7 +554,8 @@ export async function getReportRuns(month: string, entityId: string): Promise<Re
     .eq("month", month)
     .order("created_at", { ascending: false });
   if (entityId && entityId !== "ALL") q = q.eq("entity_id", entityId);
-  const { data } = await q;
+  // 🚨 D89 — ว่าง = บอก "ยังไม่ได้สร้างแบบ" ทั้งที่สร้างแล้ว → ปุ่มจ่ายภาษีล็อกโดยไม่มีเหตุผล
+  const data = mustRead(await q, "ประวัติการสร้างแบบยื่น");
   const out: Record<string, string> = {};
   for (const r of data ?? []) {
     const k = r.report_key as string;
@@ -553,9 +575,12 @@ export async function getTaxReportBundle(period: string, entityId: string) {
     supabase.from("entities").select("name, tax_id, branch, excise_id").eq("entity_id", entityId).maybeSingle(),
   ]);
   const txs = txAll as unknown as Tx[];
-  const fwdIn = previousVat(period, entityId, (summaries.data ?? []) as unknown as TaxSummaryRow[]);
+  // 🚨 D89 — summaries ว่าง = ภาษีซื้อยกมาหายทั้งก้อน → ยอดที่ยื่นใน ภพ.30 ผิด
+  const fwdIn = previousVat(period, entityId, mustRead(summaries, "ยอดภาษียกมา") as unknown as TaxSummaryRow[]);
   return {
-    entity: entity.data ?? { name: "", tax_id: "", branch: "", excise_id: "" },
+    entity: mustRead<{ name: string; tax_id: string; branch: string; excise_id: string } | null>(
+      entity, "ข้อมูลกิจการบนแบบยื่น",
+    ) ?? { name: "", tax_id: "", branch: "", excise_id: "" },
     taxReport: taxReport(period, entityId, fwdIn, txs, contactMap, taxAccounts),
     whtReport: whtReport(period, entityId, txs, contactMap, taxAccounts),
     forwardedVatIn: fwdIn,
@@ -598,13 +623,15 @@ export async function getTaxPayBoard(period: string, entityId: string) {
   ]);
 
   const txs = txAll as unknown as Tx[];
-  const summaries = (summariesRes.data ?? []) as unknown as TaxSummaryRow[];
+  // 🚨 D89 — ว่าง = ป้าย "ยังไม่ได้สร้างแบบ" ทั้งที่สร้างแล้ว และยอดยกไปเพี้ยน
+  const summaryRows = mustRead(summariesRes, "ยอดภาษีที่ยื่นไว้");
+  const summaries = summaryRows as unknown as TaxSummaryRow[];
   const fwdIn = previousVat(period, entityId, summaries);
   const tr = taxReport(period, entityId, fwdIn, txs, contactMap, taxAccounts);
   const wr = whtReport(period, entityId, txs, contactMap, taxAccounts);
 
   // ยอดที่ "แช่ไว้" ตอนกดสร้าง ภพ.30 ของงวดนี้ (แถวล่าสุด) — null = ยังไม่เคยสร้าง
-  const summaryOfPeriod = (summariesRes.data ?? [])
+  const summaryOfPeriod = summaryRows
     .filter((s) => String(s.report_month).replace(/^'/, "").trim() === period && (s.entity_id ?? "") === entityId)
     .sort((a, b) => (String(a.created_at) < String(b.created_at) ? -1 : 1))
     .pop();
@@ -612,7 +639,9 @@ export async function getTaxPayBoard(period: string, entityId: string) {
   const statusOf = new Map<string, string>();
   for (const t of txs) statusOf.set(String(t.tx_id), String(t.status ?? ""));
 
-  const payments = (paysRes.data ?? []).map((p) => ({
+  // 🚨🚨 D89 — ว่างเพราะอ่านไม่ได้ = canPay กลับเป็น true → **จ่ายภาษีซ้ำรอบสอง**
+  //    (DB ยังกันด้วย partial unique index อยู่ แต่หน้าจอจะโกหกว่า "ยังไม่เคยจ่าย")
+  const payments = mustRead(paysRes, "ประวัติการชำระภาษี").map((p) => ({
     kind: p.kind as string,
     period: p.period as string,
     amount: Number(p.amount) || 0,

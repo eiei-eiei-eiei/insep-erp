@@ -44,6 +44,9 @@ export type OrderState = {
   taxNo2: string;
   /** D45 — เลขใบแจ้งหนี้ค่ามัดจำ (ว่าง = ยังไม่เคยออก) */
   depInvNo?: string;
+  /** D89 — เลขใบเสร็จของกิจการที่ไม่จด VAT (คู่ขนานกับ taxNo1/taxNo2) */
+  rcptNo1?: string;
+  rcptNo2?: string;
 };
 
 export type ActionPayload = {
@@ -55,7 +58,14 @@ export type ActionPayload = {
 };
 
 /** เลขเอกสารที่ generate มาแล้ว (caller สร้างจาก next_serial เฉพาะที่ needed) */
-export type GeneratedSerials = { invNo?: string; taxNo1?: string; taxNo2?: string };
+export type GeneratedSerials = {
+  invNo?: string;
+  taxNo1?: string;
+  taxNo2?: string;
+  /** D89 — เลขใบเสร็จ (ชุด INV) ของกิจการที่ไม่จด VAT */
+  rcptNo1?: string;
+  rcptNo2?: string;
+};
 
 /** ฟิลด์คู่ค้า (จาก contacts) สำหรับแนบ payload บัญชี */
 /** contactId = สาขาที่แน่นอนของลูกค้า (multi-branch D30) — ว่าง = ข้อมูลเก่า fallback ชื่อ */
@@ -91,6 +101,9 @@ export type OrderUpdate = {
   depInvDate?: string;
   depInvAmount?: number;
   depDueDate?: string;
+  // D89 — เลขใบเสร็จของกิจการที่ไม่จด VAT
+  rcptNo1?: string;
+  rcptNo2?: string;
 };
 
 export type RevenuePayload = {
@@ -155,44 +168,57 @@ export function formatThaiDate(iso: string): string {
  *    เลข INV (ใบแจ้งหนี้/ใบส่งของ/ใบเสร็จรับเงิน) ยังออกได้ปกติ
  *    ★ ตรงนี้เป็นแค่ด่านแรก — ด่านจริงอยู่ที่ DB (migration 0036) เพราะยิงตรงผ่าน API ได้
  */
-export function neededSerials(action: OrderAction, order: OrderState, isVat = true): {
+export type NeededSerials = {
   inv: boolean;
   tax1: boolean;
   tax2: boolean;
-} {
-  if (!isVat) {
-    // ไม่จด VAT: ให้เฉพาะเลข INV ตามที่ action นั้นต้องการ · ตัด tax1/tax2 ทิ้งเสมอ
-    const base = neededSerials(action, order, true);
-    // 🔴 D86 — action ที่ "ออกใบเสร็จ" ของเส้นทางจด VAT กินแต่เลข TAX (inv: false)
-    //    พอตัด tax ทิ้งเพราะไม่จด VAT จึงไม่ได้เลขอะไรเลยสักชุด →
-    //    ใบเสร็จรับเงินไม่มีเลขที่ และ taxDocNo() คืน "-" ลง transactions.tax_invoice_no
-    //    (บั๊กมาตั้งแต่ D55 · ไม่มีใครเจอเพราะกิจการของผู้ใช้จด VAT · POS ชนเต็ม ๆ)
-    //    → ให้ใช้เลขชุด INV เป็นเลขใบเสร็จแทน เฉพาะตอนที่ยังไม่มีเลข INV ในใบนั้น
-    // ⚠️ PAY_BALANCE ของใบที่มี invNo แล้ว ยังใช้เลขซ้ำกับใบแจ้งหนี้อยู่ —
-    //    ต้องมีช่องเลขที่ 2 (schema) ถึงจะแก้จริงได้ · ไม่ใช่เส้นทางของ POS
-    const issuesReceipt = action === "FULL_PAYMENT_AND_SEND" || action === "FULL_PAYMENT_LATER";
-    return { inv: base.inv || (issuesReceipt && !order.invNo), tax1: false, tax2: false };
-  }
+  /**
+   * D89 — ช่องเลขใบเสร็จของกิจการที่**ไม่จด VAT** (คู่ขนานกับ tax1/tax2)
+   * ★ ไม่ใส่คีย์นี้เลยในเส้นทางจด VAT โดยตั้งใจ — `rcpt*` ไม่มีความหมายในโลกที่ออกใบกำกับภาษีได้
+   *   เหมือนที่ `tax*` ไม่มีความหมายในโลกที่ออกไม่ได้
+   */
+  rcpt1?: boolean;
+  rcpt2?: boolean;
+};
+
+export function neededSerials(action: OrderAction, order: OrderState, isVat = true): NeededSerials {
   const noInv = !order.invNo;
-  const noTax1 = !order.taxNo1;
-  const noTax2 = !order.taxNo2;
+  /**
+   * ช่องรับเงินมี 2 ช่องเสมอ ไม่ว่าจดหรือไม่จด VAT — ต่างแค่คอลัมน์ที่ไปลง
+   *   ครั้งแรก (มัดจำ/จ่ายเต็ม) → tax_no1 | rcpt_no1
+   *   ยอดค้าง                   → tax_no2 | rcpt_no2
+   * 🪤 ฝั่งไม่จด VAT **ต้องดู `rcptNo*` ไม่ใช่ `taxNo*`** — `taxNo*` ว่างเสมอ (trigger 0036 ห้ามใส่)
+   *    ถ้าเผลอดู `taxNo*` จะ "ยังไม่มีเลข" ตลอดกาล = ขอเลขใหม่ทุกครั้งที่กด กินเลขรันฟรี
+   */
+  const noSlot1 = isVat ? !order.taxNo1 : !order.rcptNo1;
+  const noSlot2 = isVat ? !order.taxNo2 : !order.rcptNo2;
+
+  let inv = false;
+  let slot1 = false;
+  let slot2 = false;
   switch (action) {
     case "DEPOSIT_AND_SEND":
-      return { inv: noInv, tax1: noTax1, tax2: false };
+      inv = noInv; slot1 = noSlot1; break;
     case "FULL_PAYMENT_AND_SEND":
-      return { inv: false, tax1: noTax1, tax2: false };
+      slot1 = noSlot1; break;
     case "SEND_TO_WH":
-      return { inv: noInv, tax1: false, tax2: false };
+      inv = noInv; break;
     case "ISSUE_INVOICE_FULL":
-      return { inv: noInv, tax1: false, tax2: false };
+      inv = noInv; break;
     case "ISSUE_INVOICE_DEPOSIT":
       // ใช้เลขชุด INV เดียวกัน แต่เก็บคนละช่อง (ใบแจ้งหนี้มัดจำ 1 ใบ / ออเดอร์)
-      return { inv: !order.depInvNo, tax1: false, tax2: false };
+      inv = !order.depInvNo; break;
     case "PAY_BALANCE":
-      return { inv: false, tax1: false, tax2: noTax2 };
+      slot2 = noSlot2; break;
     case "FULL_PAYMENT_LATER":
-      return { inv: false, tax1: noTax1, tax2: false };
+      slot1 = noSlot1; break;
   }
+
+  // 🚨 ไม่จด VAT ห้ามได้เลขใบกำกับภาษีเด็ดขาด (ประมวลรัษฎากร ม.86/13) —
+  //    เลขใบเสร็จไปลงช่อง rcpt แทน · ด่านจริงคือ trigger ใน 0036 ตรงนี้เป็นด่านแรก
+  return isVat
+    ? { inv, tax1: slot1, tax2: slot2 }
+    : { inv, tax1: false, tax2: false, rcpt1: slot1, rcpt2: slot2 };
 }
 
 /**
@@ -224,13 +250,26 @@ export function processOrder(
 
   let dateField: "docDate1" | "docDate2" | null = null;
 
+  /**
+   * D89 — เขียนเลขลง "ช่องรับเงิน" ที่ถูกฝั่ง
+   * gen จะมีมาแค่ฝั่งเดียวเสมอ (caller สร้างตาม neededSerials) → เส้นทางจด VAT ได้ผลเท่าเดิมทุกตัว
+   */
+  const fillSlot1 = () => {
+    if (!order.taxNo1 && gen.taxNo1) update.taxNo1 = gen.taxNo1;
+    if (!order.rcptNo1 && gen.rcptNo1) update.rcptNo1 = gen.rcptNo1;
+  };
+  const fillSlot2 = () => {
+    if (!order.taxNo2 && gen.taxNo2) update.taxNo2 = gen.taxNo2;
+    if (!order.rcptNo2 && gen.rcptNo2) update.rcptNo2 = gen.rcptNo2;
+  };
+
   if (action === "DEPOSIT_AND_SEND") {
     update.status = "รอคลังจัดส่ง";
     update.deposit = (Number(order.deposit) || 0) + Number(payload.amount);
     update.outstandingBalance = outstandingBalance - Number(payload.amount);
     update.paymentMethod = payload.method;
     if (!order.invNo && gen.invNo) update.invNo = gen.invNo;
-    if (!order.taxNo1 && gen.taxNo1) update.taxNo1 = gen.taxNo1;
+    fillSlot1();
     update.dueDate = dueDateISO(payload.docDate!, payload.creditDays ?? 0);
     update.docToPrint = "invoice,tax-invoice-deposit";
     update.nextStatus = "ส่งของแล้วรอชำระยอดค้าง";
@@ -239,7 +278,7 @@ export function processOrder(
     update.status = "รอคลังจัดส่ง";
     update.outstandingBalance = 0;
     update.paymentMethod = payload.method;
-    if (!order.taxNo1 && gen.taxNo1) update.taxNo1 = gen.taxNo1;
+    fillSlot1();
     update.docToPrint = "tax-invoice-receipt-do";
     update.nextStatus = "ปิดการขาย";
     dateField = currentStatus === "รอชำระเงิน (จ่ายเต็ม)" ? "docDate2" : "docDate1"; // 23 vs 22
@@ -272,10 +311,10 @@ export function processOrder(
     update.paymentMethod = payload.method;
     update.outstandingBalance = 0;
     if (action === "PAY_BALANCE") {
-      if (!order.taxNo2 && gen.taxNo2) update.taxNo2 = gen.taxNo2;
+      fillSlot2();
       update.docToPrint = "tax-invoice-balance"; // DECISION: แก้ bug เดิม (เดิมไม่ตั้ง)
     } else {
-      if (!order.taxNo1 && gen.taxNo1) update.taxNo1 = gen.taxNo1;
+      fillSlot1();
       update.docToPrint = "tax-invoice-receipt"; // DECISION: แก้ bug เดิม (เดิมไม่ตั้ง)
     }
     dateField = "docDate2"; // 23
@@ -327,8 +366,8 @@ export function processOrder(
       : [];
 
     const docNo = taxDocNo(
-      { taxNo2: update.taxNo2, taxNo1: update.taxNo1, invNo: update.invNo },
-      { taxNo2: order.taxNo2, taxNo1: order.taxNo1, invNo: order.invNo },
+      { taxNo2: update.taxNo2, rcptNo2: update.rcptNo2, taxNo1: update.taxNo1, rcptNo1: update.rcptNo1, invNo: update.invNo },
+      { taxNo2: order.taxNo2, rcptNo2: order.rcptNo2, taxNo1: order.taxNo1, rcptNo1: order.rcptNo1, invNo: order.invNo },
     );
 
     const orderRefForKey = order.orderNo || order.quNo;

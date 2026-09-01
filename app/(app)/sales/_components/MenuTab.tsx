@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Card, Msg, NumBox, NumInput, Select, TextInput, useSaver, fmt } from "./ui";
+import { Card, Msg, NumBox, NumInput, Select, TextInput, useSaver, fmt, LoadError } from "./ui";
 import { getSaleMenuAction, getMenuLinkOptionsAction, saveSaleMenuAction, deleteSaleMenuAction } from "../actions";
 import type { SaleMenuRow } from "../data";
 
@@ -14,16 +14,25 @@ export function MenuTab({ active }: { active: boolean }) {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<{ id: number; menuName: string; price: number; category: string; productId: string; multiplier: number }>({ ...EMPTY });
   const { pending, msg, run, setMsg } = useSaver();
+  const [err, setErr] = useState(false);
   const firstLoad = useRef(true);
 
   function refresh() {
     if (firstLoad.current) setLoading(true);
-    Promise.all([getSaleMenuAction(), getMenuLinkOptionsAction()]).then(([m, o]) => {
-      setRows(m);
-      setOpts(o as LinkOpts);
-      setLoading(false);
-      firstLoad.current = false;
-    });
+    setErr(false);
+    Promise.all([getSaleMenuAction(), getMenuLinkOptionsAction()])
+      .then(([m, o]) => {
+        setRows(m);
+        setOpts(o as LinkOpts);
+        setLoading(false);
+        firstLoad.current = false;
+      })
+      .catch(() => {
+        // 🚨 D89 — ต้องจบสถานะโหลดเสมอ ไม่งั้นค้างที่ "กำลังโหลด…" ตลอดกาล
+        setErr(true);
+        setLoading(false);
+        firstLoad.current = false;
+      });
   }
   useEffect(() => {
     if (active) refresh();
@@ -58,6 +67,8 @@ export function MenuTab({ active }: { active: boolean }) {
       <Card title="เมนูขาย (sale_menu)">
         {loading ? (
           <div className="py-8 text-center text-faint">กำลังโหลด…</div>
+        ) : err ? (
+          <LoadError err onRetry={refresh} what="เมนูขาย" />
         ) : (
           <div className="overflow-x-auto">
             <table className="tbl min-w-[560px]">

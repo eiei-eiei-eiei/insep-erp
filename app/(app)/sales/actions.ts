@@ -240,7 +240,7 @@ async function applyOrderActionCore(
   action: OrderAction,
   payload: ActionPayload,
 ): Promise<
-  | { ok: true; newStatus: string; duplicate: boolean; lineMsg: string | null; invNo: string; taxNo1: string; taxNo2: string }
+  | { ok: true; newStatus: string; duplicate: boolean; lineMsg: string | null; invNo: string; taxNo1: string; taxNo2: string; rcptNo1: string; rcptNo2: string }
   | { ok: false; error: string }
 > {
   const order = await getOrderState(quNo);
@@ -288,6 +288,15 @@ async function applyOrderActionCore(
     const { data } = await supabase.rpc("fn_next_sales_doc", { p_prefix: "TAX" });
     gen.taxNo2 = data as string;
   }
+  // D89 — กิจการไม่จด VAT: ใบเสร็จได้เลข **ชุด INV** (ออกเลขชุด TAX ไม่ได้ตาม ม.86/13)
+  if (need.rcpt1) {
+    const { data } = await supabase.rpc("fn_next_sales_doc", { p_prefix: "INV" });
+    gen.rcptNo1 = data as string;
+  }
+  if (need.rcpt2) {
+    const { data } = await supabase.rpc("fn_next_sales_doc", { p_prefix: "INV" });
+    gen.rcptNo2 = data as string;
+  }
 
   // ★ ส่ง isVat ที่อ่านจาก DB ฝั่ง server เข้าไปกับ config — payload บัญชีจะได้ vat = 0
   //   และฐานคิดจาก (1 − wht) เมื่อกิจการไม่จด VAT
@@ -311,6 +320,8 @@ async function applyOrderActionCore(
     invNo: result.update.invNo || order.invNo || "",
     taxNo1: result.update.taxNo1 || order.taxNo1 || "",
     taxNo2: result.update.taxNo2 || order.taxNo2 || "",
+    rcptNo1: result.update.rcptNo1 || order.rcptNo1 || "",
+    rcptNo2: result.update.rcptNo2 || order.rcptNo2 || "",
   };
 }
 
@@ -468,6 +479,7 @@ export async function posSaleAction(input: PosSalePayload): Promise<SaveResult> 
       orderNo: saved.orderNo,
       invNo: paid.invNo,
       taxNo1: paid.taxNo1,
+      rcptNo1: paid.rcptNo1,
       docDate,
       summary,
       // 🚨 ขายและลงบัญชีสำเร็จแล้วแต่สต็อกยังไม่ขยับ = ต้องขึ้นเหลือง ไม่ใช่เขียว

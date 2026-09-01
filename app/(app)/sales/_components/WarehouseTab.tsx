@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { WarehouseOrder, StockItem } from "./types";
-import { Badge, Card, Msg, NumInput, Select, TextInput, fmt, useSaver } from "./ui";
+import { Badge, Card, Msg, NumInput, Select, TextInput, fmt, useSaver, LoadError } from "./ui";
 import { getPendingWarehouseAction, getWarehouseStockAction, confirmFulfillmentAction, manualStockMoveAction } from "../actions";
 import { printSalesDocs, type CompanyInfo, type OrderLike } from "./print";
 import { can, toRole } from "@/lib/shared/roles";
@@ -31,15 +31,24 @@ function PendingOrders({ canWrite, company, active }: { canWrite: boolean; compa
   const [loading, setLoading] = useState(true);
   const { msg, setMsg } = useSaver();
   const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState(false);
   const firstLoad = useRef(true);
 
   function refresh() {
     if (firstLoad.current) setLoading(true);
-    getPendingWarehouseAction().then((d) => {
-      setOrders(d);
-      setLoading(false);
-      firstLoad.current = false;
-    });
+    setErr(false);
+    getPendingWarehouseAction()
+      .then((d) => {
+        setOrders(d);
+        setLoading(false);
+        firstLoad.current = false;
+      })
+      .catch(() => {
+        // 🚨 D89 — ต้องจบสถานะโหลดเสมอ ไม่งั้นค้างที่ "กำลังโหลด…" ตลอดกาล
+        setErr(true);
+        setLoading(false);
+        firstLoad.current = false;
+      });
   }
   useEffect(() => {
     if (active) refresh();
@@ -64,6 +73,7 @@ function PendingOrders({ canWrite, company, active }: { canWrite: boolean; compa
   }
 
   if (loading) return <div className="py-10 text-center text-faint">กำลังโหลด…</div>;
+  if (err) return <LoadError err onRetry={refresh} what="คิวออเดอร์รอจัดส่ง" />;
 
   return (
     <div className="space-y-3">
@@ -123,15 +133,24 @@ function StockPanel({ canWrite, active }: { canWrite: boolean; active: boolean }
   const [form, setForm] = useState({ itemCode: "", actionType: "IN" as "IN" | "OUT" | "ADJUST", qty: 1, refNo: "", remarks: "" });
   const { msg, setMsg } = useSaver();
   const [pending, setPending] = useState(false);
+  const [err, setErr] = useState(false);
   const firstLoad = useRef(true);
 
   function refresh() {
     if (firstLoad.current) setLoading(true);
-    getWarehouseStockAction().then((d) => {
-      setStock(d);
-      setLoading(false);
-      firstLoad.current = false;
-    });
+    setErr(false);
+    getWarehouseStockAction()
+      .then((d) => {
+        setStock(d);
+        setLoading(false);
+        firstLoad.current = false;
+      })
+      .catch(() => {
+        // 🚨 D89 — สต็อกที่โหลดไม่สำเร็จต้องไม่โชว์เป็น 0 เงียบ ๆ
+        setErr(true);
+        setLoading(false);
+        firstLoad.current = false;
+      });
   }
   useEffect(() => {
     if (active) refresh();
@@ -188,6 +207,8 @@ function StockPanel({ canWrite, active }: { canWrite: boolean; active: boolean }
         <TextInput placeholder="ค้นหา" value={search} onChange={(e) => setSearch(e.target.value)} className="mb-3 max-w-xs" />
         {loading ? (
           <div className="py-8 text-center text-faint">กำลังโหลด…</div>
+        ) : err ? (
+          <LoadError err onRetry={refresh} what="สต็อก" />
         ) : (
           <div className="overflow-x-auto">
             <table className="tbl min-w-[560px]">

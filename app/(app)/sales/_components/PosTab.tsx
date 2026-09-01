@@ -95,6 +95,7 @@ export function PosTab({ boot, canWrite }: { boot: SalesBoot; canWrite: boolean 
         orderNo: string;
         invNo: string;
         taxNo1: string;
+        rcptNo1: string;
         docDate: string;
         warning: string;
       };
@@ -105,6 +106,9 @@ export function PosTab({ boot, canWrite }: { boot: SalesBoot; canWrite: boolean 
           invNo: d.invNo,
           taxNo1: d.taxNo1,
           taxNo2: "",
+          // D89 — กิจการไม่จด VAT ได้เลขใบเสร็จช่องนี้แทนเลขใบกำกับ
+          rcptNo1: d.rcptNo1,
+          rcptNo2: "",
           subTotal: t.subTotal,
           discount: t.discountEx, // เอกสารคิด subDiscount = subTotal − discount (รูปก่อน VAT)
           vatAmount: t.vatAmount,

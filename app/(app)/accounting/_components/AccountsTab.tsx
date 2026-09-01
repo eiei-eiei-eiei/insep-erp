@@ -3,13 +3,12 @@
 import { useEffect, useState } from "react";
 import { getBalancesAction, getStatementAction, saveTransferAction } from "../actions";
 import type { Bootstrap } from "./types";
-import { Badge, Card, Field, Msg, NumBox, SaveButton, Select, TextInput, fmt, todayISO, useSaver } from "./ui";
+import { Badge, Card, Field, Msg, NumBox, SaveButton, Select, TextInput, fmt, todayISO, useSaver, useRead, LoadError } from "./ui";
 
 type Balances = Awaited<ReturnType<typeof getBalancesAction>>;
 type Statement = Awaited<ReturnType<typeof getStatementAction>>;
 
 export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstrap; period: string; entityId: string; active: boolean }) {
-  const [bal, setBal] = useState<Balances | null>(null);
   const [stmt, setStmt] = useState<Statement | null>(null);
   const [openAcc, setOpenAcc] = useState<string | null>(null);
   const { pending, msg, run, setMsg } = useSaver();
@@ -24,16 +23,16 @@ export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstra
   // บัญชีที่เลือกได้ในหน้าโอน = เฉพาะที่ผูกกับกิจการนี้ (ว่าง = ใช้ร่วมทุกกิจการ)
   const accountOptions = boot.accounts.filter((a) => entityId === "ALL" || (a.entity_ids ?? []).length === 0 || (a.entity_ids ?? []).includes(entityId));
 
-  function reload() {
-    getBalancesAction(period, entityId).then(setBal);
-  }
+  // 🚨 D89 — ยอดคงเหลือทุกบัญชีมาจากที่นี่ · อ่านไม่ได้ต้องฟ้อง ไม่ใช่โชว์ยอดที่ขาดยอดยกมา
+  const { data: bal, err, reload } = useRead<Balances>(
+    () => getBalancesAction(period, entityId),
+    [period, entityId],
+    { skip: !active },
+  );
   useEffect(() => {
     if (!active) return;
-    let alive = true;
-    getBalancesAction(period, entityId).then((d) => { if (alive) setBal(d); });
     setStmt(null);
     setOpenAcc(null);
-    return () => { alive = false; };
   }, [period, entityId, active]);
 
   function openStatement(acc: string) {
@@ -50,7 +49,8 @@ export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstra
   return (
     <div className="space-y-4">
       <Card title={`ยอดคงเหลือทุกบัญชี ณ สิ้นเดือน ${period}`}>
-        {!bal ? <p className="text-faint">กำลังโหลด…</p> : (
+        <LoadError err={err} onRetry={reload} what="ยอดคงเหลือ" />
+        {!bal ? <p className="text-faint">{err ? "— โหลดไม่สำเร็จ —" : "กำลังโหลด…"}</p> : (
           <div className="overflow-x-auto">
             <table className="tbl">
               <thead><tr className="text-left text-faint"><th>บัญชี</th><th className="num">ยอดยกมา</th><th className="num">เข้า</th><th className="num">ออก</th><th className="num">คงเหลือ</th><th></th></tr></thead>

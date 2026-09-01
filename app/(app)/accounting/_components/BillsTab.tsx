@@ -5,7 +5,7 @@ import { searchBillsAction, getBillDetailAction, voidTransactionAction, updateTr
 import { entryCalc, itemTotal } from "@/lib/accounting/calc";
 import { qn, emptyItem, makeItemHandlers, buildItemInputs, useBillAmounts, type BillItem } from "./billItems";
 import type { Bootstrap } from "./types";
-import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, fmt, useSaver, EscToClose } from "./ui";
+import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, fmt, useSaver, EscToClose, useRead, LoadError } from "./ui";
 import { can, toRole } from "@/lib/shared/roles";
 
 type Bills = Awaited<ReturnType<typeof searchBillsAction>>;
@@ -17,13 +17,11 @@ const canEdit = (r: BillRow) =>
   r.status !== "ยกเลิก" && (r.type === "รายรับ" || r.type === "รายจ่าย") && !r.po_group_id && !r.transfer_id;
 
 export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; period: string; entityId: string; active: boolean }) {
-  const [rows, setRows] = useState<Bills>([]);
   const [text, setText] = useState("");
   const [type, setType] = useState("");
   const [contact, setContact] = useState("");
   const [useMonth, setUseMonth] = useState(true);
   const [includeVoid, setIncludeVoid] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -32,15 +30,13 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
   const readOnly = !can(toRole(boot.role), "acct.write");
 
   // ดึงข้อมูลใหม่เมื่อฟิลเตอร์เปลี่ยน/กลับเข้าแท็บ — โชว์ผลเดิมค้างระหว่างโหลด (loading เฉพาะครั้งแรก)
-  const firstLoad = useRef(true);
-  useEffect(() => {
-    if (!active) return;
-    let alive = true;
-    if (firstLoad.current) setLoading(true);
-    searchBillsAction({ entityId, month: useMonth ? period : undefined, type: type || undefined, contact: contact || undefined, includeVoid })
-      .then((r) => { if (alive) { setRows(r); setLoading(false); firstLoad.current = false; } });
-    return () => { alive = false; };
-  }, [entityId, period, type, contact, useMonth, includeVoid, reloadKey, active]);
+  // 🚨 D89 — ผ่าน useRead เพื่อให้ query ที่พังกลายเป็น "แถบแดง" ไม่ใช่ตารางว่างที่อ่านว่า "ไม่มีบิล"
+  const { data, loading, err, reload } = useRead(
+    () => searchBillsAction({ entityId, month: useMonth ? period : undefined, type: type || undefined, contact: contact || undefined, includeVoid }),
+    [entityId, period, type, contact, useMonth, includeVoid, reloadKey],
+    { skip: !active },
+  );
+  const rows: Bills = useMemo(() => data ?? [], [data]);
 
   // กรอง live จากรายละเอียดบิล (พิมพ์แล้วกรองทันที ไม่ต้องกดค้นหา)
   const shown = useMemo(() => {
@@ -52,7 +48,7 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
   async function openDetail(txId: string) { setDetail(null); setDetail(await getBillDetailAction(txId)); }
   function doVoid(txId: string) {
     if (!confirm("ยกเลิกบิลนี้? (soft-delete ทั้งกลุ่มถ้าเป็นงวด/โอน)")) return;
-    run(() => voidTransactionAction(txId), "ยกเลิกเรียบร้อย", () => { setDetail(null); setRows((p) => p.map((r) => r.tx_id === txId ? { ...r, status: "ยกเลิก" } : r)); });
+    run(() => voidTransactionAction(txId), "ยกเลิกเรียบร้อย", () => { setDetail(null); reload(); });
   }
 
   // ปุ่มต่อบิล (ใช้ร่วมทั้งตาราง desktop และการ์ด mobile)
@@ -84,8 +80,12 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
       </Card>
 
       <Card title={`ผลลัพธ์ (${shown.length})`}>
+        <LoadError err={err} onRetry={reload} what="บิล" />
         {rows.length >= 500 && <p className="mb-2 text-xs text-warn">แสดง 500 รายการแรก — ถ้าไม่เจอที่ต้องการ ให้แคบด้วยเดือน/คู่ค้า/ประเภท</p>}
-        {loading ? <p className="text-faint">กำลังโหลด…</p> : shown.length === 0 ? <p className="text-sm text-faint">— ไม่มีรายการ —</p> : (
+        {loading ? <p className="text-faint">กำลังโหลด…</p> : shown.length === 0 ? (
+          // ★ อ่านไม่ได้ = แถบแดงด้านบนอธิบายไปแล้ว · ตรงนี้พูดได้แค่ตอนที่ "ไม่มีข้อมูลจริง ๆ"
+          <p className="text-sm text-faint">{err ? "— โหลดไม่สำเร็จ —" : "— ไม่มีรายการ —"}</p>
+        ) : (
           <>
             {/* Desktop: ตาราง */}
             <div className="hidden overflow-x-auto md:block">

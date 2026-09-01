@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { SalesBoot, OrderRow, OrderItem } from "./types";
-import { Card, Msg, StatusBadge, TextInput, useSaver, fmt } from "./ui";
+import { Card, Msg, StatusBadge, TextInput, useSaver, fmt, LoadError } from "./ui";
 import { todayISO } from "./ui";
 import { getOrdersAction, getOrderItemsAction, processOrderActionAction, cancelOrderAction, voidDepositInvoiceAction } from "../actions";
 import type { OrderAction, ActionPayload } from "@/lib/sales/orders";
@@ -32,16 +32,25 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
   const [search, setSearch] = useState("");
   const [dialog, setDialog] = useState<{ order: OrderRow; action: OrderAction } | null>(null);
   const { msg, setMsg } = useSaver();
+  const [err, setErr] = useState(false);
 
   const firstLoad = useRef(true);
   function refresh() {
     itemsCache.clear(); // ล้าง cache รายการสินค้า → พิมพ์หลังแก้ใบเสนอราคาได้รายการล่าสุด (#9)
     if (firstLoad.current) setLoading(true);
-    getOrdersAction().then((data) => {
-      setOrders(data);
-      setLoading(false);
-      firstLoad.current = false;
-    });
+    setErr(false);
+    getOrdersAction()
+      .then((data) => {
+        setOrders(data);
+        setLoading(false);
+        firstLoad.current = false;
+      })
+      .catch(() => {
+        // 🚨 D89 — ต้องจบสถานะโหลดเสมอ ไม่งั้นค้างที่ "กำลังโหลด…" ตลอดกาล
+        setErr(true);
+        setLoading(false);
+        firstLoad.current = false;
+      });
   }
   // โหลด/รีเฟรชเมื่อเข้าแท็บ (active) — ครอบคลุมกรณีสร้าง/แก้ใบเสนอราคาแล้วกลับมา
   useEffect(() => {
@@ -202,6 +211,8 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
 
       {loading ? (
         <div className="py-10 text-center text-faint">กำลังโหลด…</div>
+      ) : err && filtered.length === 0 ? (
+        <LoadError err onRetry={refresh} what="ออเดอร์" />
       ) : filtered.length === 0 ? (
         <div className="p-8 text-center text-faint">ไม่พบออเดอร์</div>
       ) : (

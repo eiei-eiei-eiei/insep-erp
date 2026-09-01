@@ -154,16 +154,28 @@ export function toAccItem(name: string, qty: number, priceIncl: number, isVat = 
  * เลขเอกสารภาษีที่ส่งไปบัญชี: taxNo2(ใหม่) → taxNo1(ใหม่) → invNo(ใหม่)
  *   → taxNo2(เดิม) → taxNo1(เดิม) → invNo(เดิม) → "-"
  */
-export function taxDocNo(
-  updated: { taxNo2?: string; taxNo1?: string; invNo?: string },
-  existing: { taxNo2?: string; taxNo1?: string; invNo?: string },
-): string {
+export type DocNoSlots = {
+  taxNo2?: string;
+  taxNo1?: string;
+  /** D89 — ช่องใบเสร็จของกิจการที่ไม่จด VAT (คู่ขนานกับ taxNo1/taxNo2) */
+  rcptNo2?: string;
+  rcptNo1?: string;
+  invNo?: string;
+};
+
+export function taxDocNo(updated: DocNoSlots, existing: DocNoSlots): string {
+  // ★ ใบหนึ่งเป็นได้แค่ฝั่งเดียว (จด VAT มีแต่ taxNo · ไม่จดมีแต่ rcptNo)
+  //   ลำดับจึงเป็น "ช่อง 2 ก่อนช่อง 1" เหมือนเดิม แค่แทรก rcpt ไว้ข้างคู่ของมัน
   return (
     updated.taxNo2 ||
+    updated.rcptNo2 ||
     updated.taxNo1 ||
+    updated.rcptNo1 ||
     updated.invNo ||
     existing.taxNo2 ||
+    existing.rcptNo2 ||
     existing.taxNo1 ||
+    existing.rcptNo1 ||
     existing.invNo ||
     "-"
   );

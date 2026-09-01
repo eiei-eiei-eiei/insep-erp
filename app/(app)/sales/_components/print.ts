@@ -290,6 +290,9 @@ export type OrderLike = {
   depInvAmount?: number;
   depDueDate?: string;
   depositPercent?: number;
+  /** D89 — เลขใบเสร็จของกิจการที่ไม่จด VAT (คู่ขนานกับ taxNo1/taxNo2) */
+  rcptNo1?: string;
+  rcptNo2?: string;
 };
 
 type PreparedDoc = Record<string, unknown> & { docType: string; copyType: string };
@@ -373,7 +376,8 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
     doc.receiptTitle = isVat ? "ใบกำกับภาษี/ใบเสร็จรับเงิน" : "ใบเสร็จรับเงิน";
     doc.receiptTitleEng = isVat ? "Tax Invoice / Receipt" : "Receipt";
     doc.receiptAmount = order.deposit;
-    doc.docNo = order.taxNo1;
+    // 🔴 D89 — เดิมอ่าน taxNo1 อย่างเดียว ผู้ไม่จด VAT จึงได้ "เลขที่" ว่างบนใบเสร็จค่ามัดจำ
+    doc.docNo = order.taxNo1 || order.rcptNo1 || "";
     const v = reverseCalcPrint(order.deposit, whtPercent);
     doc.receiptPreVat = v.preVat;
     doc.receiptVat = v.vat;
@@ -386,7 +390,9 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
     doc.receiptAmount = roundTo2(netPayable - (order.deposit || 0));
     // 🔴 D86 — กิจการไม่จด VAT ออกเลขใบกำกับ (TAX) ไม่ได้ → ใบเสร็จใช้เลขชุด INV แทน
     //    เส้นทางจด VAT ไม่ขยับ เพราะ taxNo มีเสมอ `||` จึงไม่เคยตกไปข้างขวา
-    doc.docNo = order.taxNo2 || order.invNo;
+    // 🔴 D89 — เดิม fallback ไป invNo ตรง ๆ = ใบเสร็จยอดค้างใช้เลขซ้ำกับใบแจ้งหนี้
+    //    ตอนนี้มีช่องของตัวเอง · คง || invNo ท้ายสุดไว้ให้ใบเก่าที่ออกก่อน D89 พิมพ์ซ้ำได้เหมือนเดิม
+    doc.docNo = order.taxNo2 || order.rcptNo2 || order.invNo;
     const v = reverseCalcPrint(doc.receiptAmount as number, whtPercent);
     doc.receiptPreVat = v.preVat;
     doc.receiptVat = v.vat;
@@ -399,7 +405,7 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
     doc.receiptTitleEng = isVat ? "Tax Invoice / Receipt" : "Receipt";
     // 🔴 D86 — กิจการไม่จด VAT ออกเลขใบกำกับ (TAX) ไม่ได้ → ใบเสร็จใช้เลขชุด INV แทน
     //    เส้นทางจด VAT ไม่ขยับ เพราะ taxNo มีเสมอ `||` จึงไม่เคยตกไปข้างขวา
-    doc.docNo = order.taxNo1 || order.invNo;
+    doc.docNo = order.taxNo1 || order.rcptNo1 || order.invNo;
     doc.outstandingBalance = 0;
   } else if (docType === "tax-invoice-receipt-do") {
     doc.documentDate = docDate2_th;
@@ -407,7 +413,7 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
     doc.receiptTitleEng = isVat ? "Tax Invoice / Receipt / Delivery Order" : "Receipt / Delivery Order";
     // 🔴 D86 — กิจการไม่จด VAT ออกเลขใบกำกับ (TAX) ไม่ได้ → ใบเสร็จใช้เลขชุด INV แทน
     //    เส้นทางจด VAT ไม่ขยับ เพราะ taxNo มีเสมอ `||` จึงไม่เคยตกไปข้างขวา
-    doc.docNo = order.taxNo1 || order.invNo;
+    doc.docNo = order.taxNo1 || order.rcptNo1 || order.invNo;
     doc.outstandingBalance = 0;
   }
   return doc;

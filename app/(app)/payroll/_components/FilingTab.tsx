@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Card, Field, Select, NumBox, TextInput, Empty, Stat, RowBtn, SaveButton, Msg, useSaver, fmt, EscToClose,
+  Card, Field, Select, NumBox, TextInput, Empty, Stat, RowBtn, SaveButton, Msg, useSaver, fmt, EscToClose, LoadError,
 } from "@/lib/shared/ui";
 import {
   pnd1Rows, sso110Rows, pnd1kRows, wht50Totals, yearBEfromCE, empDisplayName, countsForFiling,
@@ -56,6 +56,7 @@ export function FilingTab({ periods, active }: { periods: PeriodRow[]; active: b
   const [period, setPeriod] = useState<PeriodRow | null>(null);
   const [draftPeriodIds, setDraftPeriodIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState(false);
   /** ข้อมูลที่ถืออยู่ตอนนี้เป็นของอะไร — เซ็ตพร้อมข้อมูลเสมอ (ดู `ready` ข้างล่าง) */
   const [loadedKey, setLoadedKey] = useState("");
 
@@ -77,11 +78,16 @@ export function FilingTab({ periods, active }: { periods: PeriodRow[]; active: b
           setDraftPeriodIds(d.draftPeriodIds);
           return d;
         });
+    setErr(false);
     p.then((d) => {
       setEntity(d.entity);
       setItems(d.items);
       setEmps(d.emps);
       setLoadedKey(monthly ? `p:${periodId}` : `y:${year}`);
+      setLoading(false);
+    }).catch(() => {
+      // 🚨 D89 — เอกสารพวกนี้ยื่นสรรพากร/ประกันสังคม · โหลดไม่ครบต้องไม่ปล่อยให้กดพิมพ์
+      setErr(true);
       setLoading(false);
     });
   }, [monthly, periodId, year]);
@@ -140,6 +146,8 @@ export function FilingTab({ periods, active }: { periods: PeriodRow[]; active: b
       </Card>
 
       {loading && <p className="text-sm text-faint">กำลังโหลด…</p>}
+      {/* 🚨 D89 — เอกสารยื่นราชการ · โหลดไม่ครบแล้วพิมพ์ = ยื่นขาดคน/ยอดผิด */}
+      <LoadError err={err} onRetry={load} what="ข้อมูลเอกสารยื่น" />
 
       {!loading && !monthly && <DraftNote periodIds={draftPeriodIds} />}
 

@@ -1,5 +1,23 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { mustRead } from "@/lib/shared/dbError";
+
+/**
+ * แถว log_product ที่ **นับในฟอร์มสรรพสามิต** (D90)
+ *
+ * 🚨 ตัดเฉพาะคู่ จ่าย/รับ ของออเดอร์ที่ถูกยกเลิกก่อนออกรายงาน (`excise_hidden = true`)
+ *    ตัดสินไปแล้วตั้งแต่ตอนกดยกเลิกใน `fn_cancel_order` — ที่นี่แค่เชื่อค่าที่แช่ไว้
+ *    **ห้ามย้ายตรรกะตัดสินมาไว้ที่นี่** ไม่งั้นฟอร์มจะเปลี่ยนย้อนหลังเมื่อสถานะรายงานเปลี่ยน
+ *
+ * ★ กรองเฉพาะฝั่ง "ฟอร์ม" เท่านั้น — `stock_product` และหน้าสต็อก/ประวัติในแอป
+ *   ยังคิดจากทุกแถวตามจริง (ของออกจากโรงจริงแล้วกลับมาจริง ต้องเห็นในระบบ)
+ */
+function exciseLogProduct(supabase: Awaited<ReturnType<typeof createClient>>) {
+  return supabase
+    .from("log_product")
+    .select("doc_date, trans_type, product_id, amount, note")
+    .eq("excise_hidden", false);
+}
 import {
   materialReport,
   productReport,
@@ -15,11 +33,11 @@ async function loadEntity(
   supabase: Awaited<ReturnType<typeof createClient>>,
   entityId: string,
 ): Promise<Entity> {
-  const { data } = await supabase
-    .from("entities")
-    .select("name, excise_id")
-    .eq("entity_id", entityId)
-    .single();
+  // 🚨 D89 — อ่านไม่ได้แล้วปล่อยผ่าน = หัวฟอร์มที่ยื่นสรรพสามิตไม่มีชื่อกิจการ/เลขสรรพสามิต
+  const data = mustRead<{ name: string | null; excise_id: string | null }>(
+    await supabase.from("entities").select("name, excise_id").eq("entity_id", entityId).single(),
+    "ข้อมูลกิจการสำหรับหัวฟอร์ม",
+  );
   return { company: data?.name ?? "", exciseId: data?.excise_id ?? "" };
 }
 
@@ -86,14 +104,17 @@ export async function reportData(
       supabase.from("materials").select("material_id, name, unit"),
       supabase.from("products").select("product_id, name, degree, bottle_size_l, liquor_type, liquor_kind"),
     ]);
-    return materialReport(month, id, entity, lm.data ?? [], mats.data ?? [], prods.data ?? []);
+    return materialReport(
+      month, id, entity,
+      mustRead(lm, "บันทึกวัตถุดิบ"), mustRead(mats, "ทะเบียนวัตถุดิบ"), mustRead(prods, "ทะเบียนสินค้า"),
+    );
   }
   if (kind === "0702_2") {
     const [lp, prods] = await Promise.all([
-      supabase.from("log_product").select("doc_date, trans_type, product_id, amount, note"),
+      exciseLogProduct(supabase),
       supabase.from("products").select("product_id, name, degree, bottle_size_l, liquor_type, liquor_kind"),
     ]);
-    return productReport(month, id, entity, lp.data ?? [], prods.data ?? []);
+    return productReport(month, id, entity, mustRead(lp, "บันทึกสินค้า"), mustRead(prods, "ทะเบียนสินค้า"));
   }
   if (kind === "0702_1") {
     const [prods, ferm, dist, dilu, pack] = await Promise.all([
@@ -101,9 +122,13 @@ export async function reportData(
       supabase.from("log_ferment").select("ferment_date, product_name, batch, container_qty, material_amounts"),
       supabase.from("log_distill").select("distill_date, product_name, batch, vol, abv"),
       supabase.from("log_dilute").select("dilute_date, product_name, start_vol, final_vol, final_abv"),
-      supabase.from("log_product").select("doc_date, trans_type, product_id, amount, note"),
+      exciseLogProduct(supabase),
     ]);
-    return productionReport(month, id, entity, prods.data ?? [], ferm.data ?? [], dist.data ?? [], dilu.data ?? [], pack.data ?? []);
+    return productionReport(
+      month, id, entity,
+      mustRead(prods, "ทะเบียนสินค้า"), mustRead(ferm, "บันทึกลงหมัก"), mustRead(dist, "บันทึกกลั่น"),
+      mustRead(dilu, "บันทึกปรุง"), mustRead(pack, "บันทึกบรรจุ/จ่าย"),
+    );
   }
   if (kind === "0702_1_chae") {
     // D78 สุราแช่: ไม่มี log_distill / log_dilute — น้ำหมัก → รินน้ำสุราแช่ → บรรจุ
@@ -111,17 +136,25 @@ export async function reportData(
       supabase.from("products").select("product_id, name, degree, bottle_size_l, liquor_type, liquor_kind"),
       supabase.from("log_ferment").select("ferment_date, product_name, batch, container_qty, material_amounts, container_id"),
       supabase.from("log_ferment_draw").select("draw_date, product_name, batch, vol, abv, adjust_date, water, final_vol, final_abv, note"),
-      supabase.from("log_product").select("doc_date, trans_type, product_id, amount, note"),
+      exciseLogProduct(supabase),
       supabase.from("containers").select("container_id, capacity_l"),
     ]);
-    return fermentedReport(month, id, entity, prods.data ?? [], ferm.data ?? [], draw.data ?? [], pack.data ?? [], conts.data ?? []);
+    return fermentedReport(
+      month, id, entity,
+      mustRead(prods, "ทะเบียนสินค้า"), mustRead(ferm, "บันทึกลงหมัก"), mustRead(draw, "บันทึกรินน้ำสุราแช่"),
+      mustRead(pack, "บันทึกบรรจุ/จ่าย"), mustRead(conts, "ทะเบียนภาชนะ"),
+    );
   }
   // 0704
   const [mats, prods, lm, lp] = await Promise.all([
     supabase.from("materials").select("material_id, name, unit"),
     supabase.from("products").select("product_id, name, degree, bottle_size_l, liquor_type, liquor_kind"),
     supabase.from("log_material").select("doc_date, trans_type, material_id, amount, doc_ref"),
-    supabase.from("log_product").select("doc_date, trans_type, product_id, amount, note"),
+    exciseLogProduct(supabase),
   ]);
-  return summaryReport(month, entity, mats.data ?? [], prods.data ?? [], lm.data ?? [], lp.data ?? []);
+  return summaryReport(
+    month, entity,
+    mustRead(mats, "ทะเบียนวัตถุดิบ"), mustRead(prods, "ทะเบียนสินค้า"),
+    mustRead(lm, "บันทึกวัตถุดิบ"), mustRead(lp, "บันทึกสินค้า"),
+  );
 }

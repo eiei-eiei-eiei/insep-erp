@@ -11,7 +11,7 @@
  *    ที่นี่แค่วาด — server action ตรวจซ้ำด้วยฟังก์ชันตัวเดียวกันก่อนเรียก RPC
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   canPay,
   canUnpay,
@@ -40,6 +40,8 @@ import {
   TextInput,
   todayISO,
   useSaver,
+  useRead,
+  LoadError,
 } from "./ui";
 
 type Board = Awaited<ReturnType<typeof getTaxPayBoardAction>>;
@@ -65,20 +67,16 @@ export function TaxPayCard({
   /** เปลี่ยนค่าเมื่อกดสร้างแบบในการ์ดข้างบน → โหลดกระดานใหม่ (สถานะ "สร้างแล้ว" เปลี่ยน) */
   reloadKey: number;
 }) {
-  const [board, setBoard] = useState<Board | null>(null);
   const [open, setOpen] = useState<TaxDueRow | null>(null);
   const { pending, msg, run, setMsg } = useSaver();
 
-  function load() {
-    if (!entityId) return;
-    getTaxPayBoardAction(period, entityId).then(setBoard);
-  }
-  useEffect(() => {
-    if (!entityId) { setBoard(null); return; }
-    let alive = true;
-    getTaxPayBoardAction(period, entityId).then((d) => { if (alive) setBoard(d); });
-    return () => { alive = false; };
-  }, [period, entityId, reloadKey]);
+  // 🚨🚨 D89 — ถ้าอ่าน tax_payments ไม่ได้แล้วปล่อยผ่าน กระดานจะบอกว่า "ยังไม่เคยจ่าย"
+  //    ทั้งที่จ่ายไปแล้ว → ผู้ใช้กดจ่ายซ้ำ · ต้องขึ้นแถบแดงและอย่าให้ตัดสินใจจากจอนี้
+  const { data: board, err, reload: load } = useRead<Board>(
+    () => getTaxPayBoardAction(period, entityId),
+    [period, entityId, reloadKey],
+    { skip: !entityId },
+  );
 
   function doUnpay(r: TaxDueRow) {
     if (!window.confirm(
@@ -93,6 +91,8 @@ export function TaxPayCard({
   return (
     <div className={box}>
       <h3 className="mb-1 font-semibold text-ink">ชำระภาษี</h3>
+      {/* 🚨 D89 — อ่านประวัติจ่ายไม่ได้ = กระดานอาจบอกว่า "ยังไม่เคยจ่าย" ทั้งที่จ่ายแล้ว */}
+      <LoadError err={err} onRetry={load} what="สถานะการชำระภาษี" />
       <p className="mb-3 text-xs text-faint">
         กดจ่ายแล้วระบบบันทึกเป็น <b>รายจ่าย</b> ให้เลย (เงินออกจากบัญชีที่เลือก) — ไม่ต้องไปคีย์ที่แท็บบันทึกรายการอีก
         · ภงด.1 และ ประกันสังคม อยู่ที่หน้าเงินเดือน (ขาลงบัญชี) ไม่ได้อยู่ในนี้

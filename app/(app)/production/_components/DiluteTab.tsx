@@ -72,9 +72,14 @@ export function DiluteTab({ products }: { products: Product[] }) {
       return;
     }
     let active = true;
-    getRemainingDistillVolAction(productName).then((r) => {
-      if (active) setRemaining(r);
-    });
+    // 🚨 D89 — อ่านไม่ได้ = ต้องแสดงว่า "ไม่รู้" ไม่ใช่แสดง 0 ให้เข้าใจว่าไม่มีของเหลือ
+    getRemainingDistillVolAction(productName)
+      .then((r) => {
+        if (active) setRemaining(r);
+      })
+      .catch(() => {
+        if (active) setRemaining(null);
+      });
     return () => {
       active = false;
     };

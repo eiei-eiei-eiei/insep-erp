@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Card, Field, NumBox, Empty, fmt } from "@/lib/shared/ui";
+import { Card, Field, NumBox, Empty, fmt, LoadError } from "@/lib/shared/ui";
 import { buildPayrollReport, type PayrollReport } from "@/lib/payroll/report";
 import { getPayrollReportAction } from "../read-actions";
 
@@ -15,13 +15,21 @@ export function ReportTab({ active }: { active: boolean }) {
   const [year, setYear] = useState(new Date().getFullYear());
   const [report, setReport] = useState<PayrollReport | null>(null);
   const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState(false);
 
   const load = useCallback((y: number) => {
     setLoading(true);
-    getPayrollReportAction(y).then((src) => {
-      setReport(buildPayrollReport(src));
-      setLoading(false);
-    });
+    setErr(false);
+    getPayrollReportAction(y)
+      .then((src) => {
+        setReport(buildPayrollReport(src));
+        setLoading(false);
+      })
+      .catch(() => {
+        // 🚨 D89 — ยอดทั้งปีที่โหลดไม่ครบต้องไม่ขึ้นจอเหมือนของจริง
+        setErr(true);
+        setLoading(false);
+      });
   }, []);
 
   useEffect(() => { if (active) load(year); }, [active, year, load]);
@@ -43,6 +51,7 @@ export function ReportTab({ active }: { active: boolean }) {
       </Card>
 
       {loading && <p className="text-sm text-faint">กำลังโหลด…</p>}
+      <LoadError err={err} onRetry={() => load(year)} what="รายงานเงินเดือน" />
 
       {!loading && report && report.rows.length === 0 && (
         <Empty>— ปี {year} ยังไม่มีงวดที่บันทึกไว้ —</Empty>

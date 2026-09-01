@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { nextWhtDocNo } from "@/lib/accounting/wht";
 import { previousVat, type InstallmentRow, type TaxReport, type TaxSummaryRow } from "@/lib/accounting/calc";
-import { mapDbError } from "@/lib/shared/dbError";
+import { mapDbError, mustRead } from "@/lib/shared/dbError";
 import { canPay, taxTxDescription, surchargeTxDescription, type TaxKind } from "@/lib/accounting/taxPay";
 import {
   getDashboard,
@@ -242,7 +242,12 @@ export async function voidTransactionAction(txId: string): Promise<SaveResult> {
 // ── A9 เลข 50ทวิ ถัดไป (รันแยกต่อกิจการ ต่อปี พ.ศ.) — สำหรับ prefill ในฟอร์ม ──
 export async function nextWhtDocNoAction(entityId: string): Promise<string> {
   const supabase = await db();
-  const { data: certs } = await supabase.from("wht_certificates").select("doc_no").eq("entity_id", entityId);
+  // 🚨🚨 D89 — ว่างเพราะอ่านไม่ได้ = ออกเลข 50ทวิ ซ้ำเลขที่เคยออกให้คู่ค้าไปแล้ว
+  //    (ใบอยู่ในมือคู่ค้าจริง แก้ย้อนหลังไม่ได้) → ยอมพังดีกว่าออกเลขซ้ำ
+  const certs = mustRead(
+    await supabase.from("wht_certificates").select("doc_no").eq("entity_id", entityId),
+    "ประวัติเลขใบ 50 ทวิ",
+  );
   return nextWhtDocNo((certs ?? []).map((c) => c.doc_no as string));
 }
 
@@ -373,14 +378,17 @@ export async function listTaxSummariesAction(entityId: string) {
     .order("report_month", { ascending: false })
     .order("created_at", { ascending: false });
   if (entityId && entityId !== "ALL") q = q.eq("entity_id", entityId);
-  const { data } = await q;
-  return data ?? [];
+  return mustRead(await q, "ประวัติแบบที่ยื่น") ?? [];
 }
 
 /** ยอดภาษีซื้อยกมา (forwarded VAT) ของเดือน = forwarded_vat_out เดือนก่อน (ให้ผู้ใช้เช็ค) */
 export async function getForwardedVatAction(period: string, entityId: string): Promise<number> {
   const supabase = await db();
-  const { data } = await supabase.from("tax_summaries").select("report_month, forwarded_vat_out, entity_id, created_at");
+  // 🚨 D89 — ว่าง = ภาษีซื้อยกมาเป็น 0 → ยอดที่ยื่นใน ภพ.30 ผิด
+  const data = mustRead(
+    await supabase.from("tax_summaries").select("report_month, forwarded_vat_out, entity_id, created_at"),
+    "ยอดภาษียกมา",
+  );
   return previousVat(period, entityId, (data ?? []) as unknown as TaxSummaryRow[]);
 }
 

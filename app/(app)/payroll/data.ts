@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { mustRead } from "@/lib/shared/dbError";
 import type { ReportSource } from "@/lib/payroll/report";
 import { countsForFiling, keepFiledItems } from "@/lib/payroll/filings";
 import type { FilingItem, FilingEmployee, PeriodFilingStatus } from "@/lib/payroll/filings";
@@ -314,9 +315,12 @@ export async function getPayrollReportSource(year: number): Promise<ReportSource
       .order("period_id"),
     supabase.from("employees").select("emp_id, name"),
   ]);
-  const nameNow = new Map((emps.data ?? []).map((e: any) => [e.emp_id as string, e.name as string]));
+  // 🚨 D89 — ยอดทั้งปีหายเงียบ ๆ = รายงานเงินเดือนผิดโดยไม่มีอะไรฟ้อง
+  const nameNow = new Map(
+    mustRead<any[]>(emps, "ทะเบียนพนักงาน").map((e: any) => [e.emp_id as string, e.name as string]),
+  );
 
-  return (rows.data ?? []).map((r: any) => ({
+  return mustRead<any[]>(rows, "รายการงวดเงินเดือน").map((r: any) => ({
     periodId: r.period_id,
     empId: r.emp_id,
     empName: nameNow.get(r.emp_id) || r.emp_name || "",
@@ -347,7 +351,8 @@ async function filingEntity(entityId: string | null): Promise<FilingEntity> {
   const supabase = await createClient();
   let q = supabase.from("entities").select("entity_id, name, tax_id, branch, address, sso_employer_no");
   q = entityId ? q.eq("entity_id", entityId) : q.eq("is_default", true);
-  const { data } = await q.maybeSingle();
+  // 🚨 D89 — อ่านไม่ได้ = ชื่อ/เลขผู้เสียภาษี/เลขนายจ้าง สปส. ว่างบนแบบที่ยื่นราชการ
+  const data = mustRead<any>(await q.maybeSingle(), "ข้อมูลกิจการสำหรับเอกสารยื่น");
   return {
     entityId: data?.entity_id ?? "",
     name: data?.name ?? "",
@@ -415,8 +420,9 @@ export async function getFilingPeriod(
   return {
     period,
     entity: await filingEntity(period?.entityId ?? null),
-    items: filed ? (it.data ?? []).map(toFilingItem) : [],
-    emps: (em.data ?? []).map(toFilingEmployee),
+    // 🚨 D89 — อ่านไม่ได้แล้วปล่อยผ่าน = ยื่น ภงด.1/สปส.1-10 ขาดพนักงาน
+    items: filed ? mustRead<any[]>(it, "รายการเงินเดือนของงวด").map(toFilingItem) : [],
+    emps: mustRead<any[]>(em, "ทะเบียนพนักงาน").map(toFilingEmployee),
   };
 }
 
@@ -449,7 +455,7 @@ export async function getFilingYear(
   ]);
 
   type PeriodStatusRow = { period_id: string; entity_id: string; status: PeriodFilingStatus };
-  const periods = (per.data ?? []) as PeriodStatusRow[];
+  const periods = mustRead<PeriodStatusRow[]>(per, "รายชื่องวดของปีนี้");
   const filed = periods.filter((p) => countsForFiling(p.status));
   const draftPeriodIds = periods.filter((p) => !countsForFiling(p.status)).map((p) => p.period_id);
 
@@ -458,10 +464,11 @@ export async function getFilingYear(
 
   return {
     entity: await filingEntity(entityId),
-    items: keepFiledItems((it.data ?? []).map(toFilingItem), filed.map((p) => p.period_id)),
-    emps: (em.data ?? []).map(toFilingEmployee),
+    items: keepFiledItems(mustRead<any[]>(it, "รายการเงินเดือนทั้งปี").map(toFilingItem), filed.map((p) => p.period_id)),
+    emps: mustRead<any[]>(em, "ทะเบียนพนักงาน").map(toFilingEmployee),
     draftPeriodIds,
-    certs: (ct.data ?? []).map((r: any) => ({
+    // 🚨 D89 — certs ว่างเพราะอ่านไม่ได้ = ออกเลข 50ทวิ ซ้ำเลขเดิมที่เคยออกไปแล้ว
+    certs: mustRead<any[]>(ct, "ประวัติใบ 50 ทวิ").map((r: any) => ({
       docNo: r.doc_no,
       issueDate: r.issue_date,
       empId: r.emp_id,

@@ -26,7 +26,7 @@ import { ReportChecklist } from "../../_components/ReportChecklist";
 import { TaxPayCard } from "./TaxPayCard";
 import { dueDateOf } from "@/lib/accounting/taxPay";
 import type { AccountRow, Contact } from "./types";
-import { Field, Select, TextInput, fmt, todayISO, useSaver } from "./ui";
+import { Field, Select, TextInput, fmt, todayISO, useSaver, LoadError } from "./ui";
 
 /** ★ กำหนดยื่นเติมตอน render (ขึ้นกับเดือนที่เลือก) — ดู `dueDateOf` ใน lib/accounting/taxPay */
 const TAX_CHECKLIST = [
@@ -80,6 +80,8 @@ export function TaxDocsTab({
   const [wht, setWht] = useState<WhtBundle | null>(null);
   const [summaries, setSummaries] = useState<Summaries>([]);
   const [runs, setRuns] = useState<Record<string, string>>({});
+  // 🚨 D89 — โหลดข้อมูลของเอกสารยื่นไม่สำเร็จ ต้องบอก ไม่ใช่โชว์ยอดที่ขาดข้อมูล
+  const [loadErr, setLoadErr] = useState(false);
   // ★ กดสร้างแบบแล้วสถานะ "สร้างแล้ว" ของการ์ดชำระภาษีต้องเปลี่ยนตาม (เงื่อนไขปุ่มจ่าย)
   const [payReload, setPayReload] = useState(0);
   const assetCache = useRef<Record<string, Uint8Array>>({});
@@ -107,10 +109,20 @@ export function TaxDocsTab({
     if (!active) return;
     if (!realEntity) { setWht(null); setFwd(null); setSummaries([]); setRuns({}); return; }
     let alive = true;
-    getWhtBundleAction(period, realEntity).then((d) => { if (alive) setWht(d); });
-    getForwardedVatAction(period, realEntity).then((d) => { if (alive) setFwd(d); });
-    listTaxSummariesAction(realEntity).then((d) => { if (alive) setSummaries(d); });
-    getReportRunsAction(period, realEntity).then((d) => { if (alive) setRuns(d); });
+    // 🚨 D89 — 4 ก้อนนี้ป้อนเอกสารที่ยื่นสรรพากร · อ่านไม่ได้ต้องขึ้นแถบแดง
+    //    ไม่ใช่ปล่อยให้หน้าจอโชว์ยอดที่ขาดข้อมูลแล้วผู้ใช้กดพิมพ์
+    setLoadErr(false);
+    Promise.all([
+      getWhtBundleAction(period, realEntity),
+      getForwardedVatAction(period, realEntity),
+      listTaxSummariesAction(realEntity),
+      getReportRunsAction(period, realEntity),
+    ])
+      .then(([w, f, s, r]) => {
+        if (!alive) return;
+        setWht(w); setFwd(f); setSummaries(s); setRuns(r);
+      })
+      .catch(() => { if (alive) setLoadErr(true); });
     return () => { alive = false; };
   }, [period, realEntity, active]);
 
@@ -189,6 +201,8 @@ export function TaxDocsTab({
   return (
     <div className="space-y-4">
       {msg && <div className={`rounded-lg px-3 py-2 text-sm ${msg.warn ? "bg-warn-bg text-warn" : msg.ok ? "bg-ok-bg text-ok" : "bg-crit-bg text-crit"}`}>{msg.text}</div>}
+      {/* 🚨 D89 — เอกสารชุดนี้ยื่นสรรพากร · โหลดไม่ครบแล้วพิมพ์ออกไป = ยอดที่ยื่นผิด */}
+      <LoadError err={loadErr} what="ข้อมูลเอกสารสรรพากร" />
 
       <ReportChecklist
         month={period}

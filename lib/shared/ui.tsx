@@ -11,7 +11,7 @@
  *   ห้ามเขียน bg-slate-800 / text-red-500 ตรง ๆ — ดู docs/DESIGN_SYSTEM.md
  */
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 
 import { missingText, type FieldCheck } from "./forms";
 
@@ -78,6 +78,80 @@ export function useSaver<R extends SaveResultLike = SaveResultLike>() {
     });
   }
   return { pending, msg, run, setMsg };
+}
+
+// ── โหลดข้อมูลเข้าแท็บ (D89) ─────────────────────────────────────────────────
+/**
+ * ดึงข้อมูลเข้าแท็บพร้อม **ที่รับ error** — แทนแพตเทิร์น `action().then(setRows)` ที่ไม่มี `.catch`
+ *
+ * 🚨 ทำไมต้องมี: ชั้นอ่านถูกเปลี่ยนให้ `throw` เมื่อ query พัง (ดู `mustRead`) —
+ *    ถ้าผู้เรียกไม่มี `.catch` จะกลายเป็น unhandled rejection แล้ว `setLoading(false)`
+ *    ไม่ทำงาน = **ค้างที่ "กำลังโหลด…" ตลอดกาล ซึ่งแย่กว่าลิสต์ว่างเดิม**
+ *
+ * ★ เก็บข้อมูลก้อนล่าสุดไว้ **ไม่ล้างทิ้งตอน error** — คนที่กำลังดูอยู่ต้องไม่เสียของ
+ * ★ `loading` เป็น true เฉพาะครั้งแรก · รอบถัดไปโชว์ของเดิมค้างระหว่างโหลด (พฤติกรรมเดิมของทุกแท็บ)
+ * 🪤 Next.js ปิดบังข้อความ error ของ server action ใน production (เหลือแต่ digest)
+ *    → `<LoadError>` จึงแสดงข้อความไทยของเราเอง ไม่พยายามโชว์ข้อความจากเซิร์ฟเวอร์
+ */
+export function useRead<T>(
+  fetcher: () => Promise<T>,
+  deps: unknown[],
+  opts: { skip?: boolean } = {},
+): { data: T | null; loading: boolean; err: boolean; reload: () => void } {
+  const [data, setData] = useState<T | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState(false);
+  const [tick, setTick] = useState(0);
+  const first = useRef(true);
+  const skip = opts.skip ?? false;
+  // fetcher เป็น arrow ใหม่ทุก render — ผูก effect กับ deps ที่ผู้เรียกระบุเท่านั้น
+  const fnRef = useRef(fetcher);
+  fnRef.current = fetcher;
+
+  useEffect(() => {
+    if (skip) return;
+    let alive = true; // กัน race ตอนสลับ deps เร็ว ๆ (แพตเทิร์นเดิมของทุกแท็บ)
+    if (first.current) setLoading(true);
+    setErr(false);
+    fnRef
+      .current()
+      .then((r) => {
+        if (!alive) return;
+        setData(r);
+        setLoading(false);
+        first.current = false;
+      })
+      .catch(() => {
+        if (!alive) return;
+        setErr(true);
+        setLoading(false); // 🚨 ต้องจบสถานะโหลดเสมอ ไม่งั้นค้าง "กำลังโหลด…"
+        first.current = false;
+      });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [...deps, skip, tick]);
+
+  const reload = useCallback(() => setTick((n) => n + 1), []);
+  return { data, loading, err, reload };
+}
+
+/** แถบแดง "โหลดไม่สำเร็จ" + ปุ่มลองใหม่ — ไม่ขึ้นอะไรเลยเมื่อไม่มี error */
+export function LoadError({ err, onRetry, what }: { err: boolean; onRetry?: () => void; what?: string }) {
+  if (!err) return null;
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-crit-line bg-crit-bg px-3 py-2 text-sm text-crit">
+      <span>
+        โหลด{what ?? "ข้อมูล"}ไม่สำเร็จ — <b>ตัวเลขที่เห็นอาจไม่ครบ</b> อย่าเพิ่งใช้ตัดสินใจหรือยื่นเอกสาร
+      </span>
+      {onRetry && (
+        <button onClick={onRetry} className="ml-auto rounded border border-crit-line px-3 py-1 font-medium hover:bg-crit-bg">
+          ลองใหม่
+        </button>
+      )}
+    </div>
+  );
 }
 
 // ── layout ───────────────────────────────────────────────────────────────────

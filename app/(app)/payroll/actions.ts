@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { mapDbError } from "@/lib/shared/dbError";
+import { mapDbError, mustRead } from "@/lib/shared/dbError";
 import { calcPayrollLine } from "@/lib/payroll/calc";
 import { ssoEmployerContribution, ratesOn } from "@/lib/payroll/sso";
 import { legAmount } from "@/lib/payroll/legs";
@@ -504,7 +504,11 @@ export async function nextEmpWhtDocNoAction(entityId: string): Promise<string> {
   // 🚨 ต้องผ่าน RPC — ตั้งแต่ D85 ฝ่ายเงินเดือนเห็นแถวใน wht_certificates เฉพาะใบของ
   //    **พนักงาน** (policy กรอง emp_id) · select ตรง ๆ จะเห็นแค่ครึ่งเดียวแล้วออกเลขซ้ำ
   //    กับใบของคู่ค้า ซึ่งเป็นเอกสารที่ยื่นสรรพากรไปแล้ว (เลขชุดเดียวกันต่อกิจการ — D69)
-  const { data } = await supabase.rpc("fn_wht_doc_nos", { p_entity_id: entityId });
+  // 🚨🚨 D89 — RPC พังแล้วปล่อยผ่าน = ออกเลข 50ทวิ ซ้ำกับใบที่ยื่นสรรพากรไปแล้ว
+  const data = mustRead(
+    await supabase.rpc("fn_wht_doc_nos", { p_entity_id: entityId }),
+    "ประวัติเลขใบ 50 ทวิ",
+  );
   return nextWhtDocNo(((data ?? []) as string[]).map((d) => String(d)));
 }
 

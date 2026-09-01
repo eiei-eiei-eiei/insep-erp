@@ -22,6 +22,8 @@ export function FermentTab({
   const [date, setDate] = useState(todayISO());
   const [productName, setProductName] = useState("");
   const [batch, setBatch] = useState("");
+  /** อ่านเลข batch เดิมไม่สำเร็จ — ห้ามเดาเลขให้ (D89) */
+  const [batchErr, setBatchErr] = useState(false);
   const [containerId, setContainerId] = useState("");
   const [volPerTank, setVolPerTank] = useState(""); // ปริมาณต่อถัง (ล.) — เติมจากความจุภาชนะ แก้ได้
   const [containerQty, setContainerQty] = useState("");
@@ -47,9 +49,18 @@ export function FermentTab({
   // เลข batch อัตโนมัติจากวันที่ (ปรับได้)
   useEffect(() => {
     let active = true;
-    getNextBatchNumberAction(date).then((b) => {
-      if (active) setBatch(b);
-    });
+    setBatchErr(false);
+    getNextBatchNumberAction(date)
+      .then((b) => {
+        if (active) setBatch(b);
+      })
+      .catch(() => {
+        // 🚨 D89 — อ่านเลข batch เดิมไม่ได้แล้วปล่อยผ่าน = เลขวนกลับไป 1 แล้วชน batch เดิม
+        //    (กติกาเหล็ก "1 batch = 1 แถว log_distill") → ล้างช่องแล้วบอกให้ผู้ใช้ตรวจเอง
+        if (!active) return;
+        setBatch("");
+        setBatchErr(true);
+      });
     return () => {
       active = false;
     };
@@ -101,6 +112,11 @@ export function FermentTab({
         </Field>
         <Field label="รหัส Batch (อัตโนมัติ ปรับได้)">
           <TextInput value={batch} onChange={(e) => setBatch(e.target.value)} />
+          {batchErr && (
+            <p className="mt-1 text-xs text-crit">
+              อ่านเลข batch เดิมไม่สำเร็จ — ระบบไม่เดาเลขให้ <b>ตรวจเลขล่าสุดแล้วกรอกเอง</b> (เลขซ้ำจะทำให้ฟอร์ม ภส. หักส่าซ้ำ)
+            </p>
+          )}
         </Field>
         <Field label="ภาชนะ">
           <Select value={containerId} onChange={(e) => {

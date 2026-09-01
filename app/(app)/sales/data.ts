@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { formatThaiDate, type OrderState } from "@/lib/sales/orders";
 import { companyFromEntity, pickDocEntity, type EntityDocRow } from "@/lib/sales/company";
 import { fetchAllRows } from "@/lib/shared/paginate";
+import { mustRead } from "@/lib/shared/dbError";
 
 async function db() {
   return createClient();
@@ -66,11 +67,11 @@ export async function getSalesBootstrap() {
   }
 
   const liveMap = new Map<string, number>();
-  for (const s of stockP.data ?? []) liveMap.set(s.product_id as string, Number(s.balance) || 0);
+  for (const s of mustRead(stockP, "สต็อกสุรา")) liveMap.set(s.product_id as string, Number(s.balance) || 0);
   const whMap = new Map<string, number>();
-  for (const s of whStock.data ?? []) whMap.set(s.item_code as string, Number(s.qty) || 0);
+  for (const s of mustRead(whStock, "สต็อกคลัง")) whMap.set(s.item_code as string, Number(s.qty) || 0);
 
-  const menuList: MenuRow[] = (menu.data ?? []).map((m) => {
+  const menuList: MenuRow[] = mustRead(menu, "เมนูขาย").map((m) => {
     const itemCode = (m.product_id as string)?.trim() ?? "";
     const category = (m.category as string)?.trim() ?? "";
     const multiplier = Number(m.multiplier) || 1;
@@ -89,7 +90,7 @@ export async function getSalesBootstrap() {
     if (roles.includes("ลูกค้า")) return true;
     return type !== "ผู้ขาย";
   };
-  const customers: CustomerRow[] = (contacts.data ?? []).filter(isCustomer).map((c) => ({
+  const customers: CustomerRow[] = mustRead(contacts, "ทะเบียนลูกค้า").filter(isCustomer).map((c) => ({
     id: c.contact_id as string,
     name: c.name as string,
     address: (c.address as string) ?? "",
@@ -102,10 +103,12 @@ export async function getSalesBootstrap() {
   }));
 
   // หัวเอกสารการค้า = ข้อมูลกิจการจาก DB (D44) — ไม่ hardcode แล้ว
-  const st = docSettings.data ?? [];
+  const st = mustRead(docSettings, "ค่าตั้งของหน้าขาย") ?? [];
   const wantedEntity =
     st.find((r) => r.kind === "sales_doc_entity")?.value ?? st.find((r) => r.kind === "sales_revenue_entity")?.value ?? "";
-  const docEntity = pickDocEntity((entities.data ?? []) as EntityDocRow[], wantedEntity);
+  // 🚨 D89 — ว่าง = หัวเอกสารการค้าไม่มีชื่อ/เลขภาษีผู้ขาย และ isVat เด้งเป็น true
+  //    → กิจการที่ไม่จด VAT จะโชว์บรรทัด VAT บนใบเสนอราคา
+  const docEntity = pickDocEntity(mustRead(entities, "ข้อมูลกิจการ") as EntityDocRow[], wantedEntity);
   const company = companyFromEntity(docEntity);
 
   // 4.3 — กิจการที่ออกเอกสารจด VAT ไหม · ใช้ซ่อนบรรทัด VAT ในตะกร้าและเปลี่ยนชื่อเอกสาร
@@ -164,10 +167,13 @@ export type OrderRow = {
   depInvDate: string;
   depInvAmount: number;
   depDueDate: string;
+  // D89 — เลขใบเสร็จของกิจการที่ไม่จด VAT (คู่ขนานกับ taxNo1/taxNo2)
+  rcptNo1: string;
+  rcptNo2: string;
 };
 
 const ORDER_COLS =
-  "qu_no, order_no, created_at, customer_id, customer_name, sale_name, sub_total, discount, sub_discount, vat_amount, grand_total, status, deposit, outstanding_balance, due_date, payment_method, inv_no, tax_no1, tax_no2, remarks, doc_date1, doc_date2, check_detail1, check_detail2, wht_percent, wht_amount, net_payable, doc_to_print, next_status, category, is_deposit, deposit_percent, dep_inv_no, dep_inv_date, dep_inv_amount, dep_due_date";
+  "qu_no, order_no, created_at, customer_id, customer_name, sale_name, sub_total, discount, sub_discount, vat_amount, grand_total, status, deposit, outstanding_balance, due_date, payment_method, inv_no, tax_no1, tax_no2, remarks, doc_date1, doc_date2, check_detail1, check_detail2, wht_percent, wht_amount, net_payable, doc_to_print, next_status, category, is_deposit, deposit_percent, dep_inv_no, dep_inv_date, dep_inv_amount, dep_due_date, rcpt_no1, rcpt_no2";
 
 type SoRow = Record<string, unknown>;
 function mapOrder(r: SoRow, contactMap: Map<string, { address: string; taxId: string; branch: string }>): OrderRow {
@@ -212,11 +218,14 @@ function mapOrder(r: SoRow, contactMap: Map<string, { address: string; taxId: st
     depInvDate: (r.dep_inv_date as string) ?? "",
     depInvAmount: Number(r.dep_inv_amount) || 0,
     depDueDate: (r.dep_due_date as string) ?? "",
+    rcptNo1: (r.rcpt_no1 as string) ?? "",
+    rcptNo2: (r.rcpt_no2 as string) ?? "",
   };
 }
 
 async function contactInfoMap(supabase: Awaited<ReturnType<typeof db>>) {
-  const { data } = await supabase.from("contacts").select("contact_id, address, tax_id, branch");
+  // 🚨 D89 — ว่าง = ใบกำกับภาษีออกโดยไม่มีที่อยู่/เลขผู้เสียภาษีของลูกค้า
+  const data = mustRead(await supabase.from("contacts").select("contact_id, address, tax_id, branch"), "ทะเบียนลูกค้า");
   const map = new Map<string, { address: string; taxId: string; branch: string }>();
   for (const c of data ?? [])
     map.set(c.contact_id as string, { address: (c.address as string) ?? "", taxId: (c.tax_id as string) ?? "", branch: (c.branch as string) ?? "" });
@@ -254,7 +263,11 @@ export async function getOrders(): Promise<OrderRow[]> {
 
 export async function getOrderItems(quNo: string) {
   const supabase = await db();
-  const { data } = await supabase.from("sales_order_items").select("item_name, qty, price").eq("qu_no", quNo).order("id");
+  // 🚨 D89 — ว่าง = พิมพ์ใบกำกับภาษี/ใบเสร็จที่ไม่มีรายการสินค้าสักบรรทัด
+  const data = mustRead(
+    await supabase.from("sales_order_items").select("item_name, qty, price").eq("qu_no", quNo).order("id"),
+    "รายการสินค้าในออเดอร์",
+  );
   return (data ?? []).map((i) => ({ name: i.item_name as string, qty: Number(i.qty) || 0, price: Number(i.price) || 0 }));
 }
 
@@ -265,11 +278,14 @@ export async function getPendingWarehouse() {
     supabase.from("sales_orders").select(ORDER_COLS).eq("status", "รอคลังจัดส่ง").order("created_at"),
     contactInfoMap(supabase),
   ]);
-  const list = (orders.data ?? []).map((r) => mapOrder(r as SoRow, cmap));
+  const list = mustRead(orders, "คิวออเดอร์รอจัดส่ง").map((r) => mapOrder(r as SoRow, cmap));
   const quNos = list.map((o) => o.quNo);
   const itemsByQu = new Map<string, { name: string; qty: number; price: number }[]>();
   if (quNos.length) {
-    const { data: items } = await supabase.from("sales_order_items").select("qu_no, item_name, qty, price").in("qu_no", quNos);
+    const items = mustRead(
+      await supabase.from("sales_order_items").select("qu_no, item_name, qty, price").in("qu_no", quNos),
+      "รายการสินค้าในออเดอร์",
+    );
     for (const it of items ?? []) {
       const arr = itemsByQu.get(it.qu_no as string) ?? [];
       arr.push({ name: it.item_name as string, qty: Number(it.qty) || 0, price: Number(it.price) || 0 });
@@ -288,8 +304,9 @@ export async function getWarehouseStock() {
     supabase.from("warehouse_stock").select("item_code, item_name, unit, qty").order("item_code"),
   ]);
   const nameMap = new Map<string, string>();
-  for (const p of prods.data ?? []) nameMap.set(p.product_id as string, p.name as string);
-  const liquor = (stockP.data ?? []).map((s) => ({
+  for (const p of mustRead(prods, "ทะเบียนสินค้า")) nameMap.set(p.product_id as string, p.name as string);
+  // 🚨 D89 — สต็อกโชว์ 0 เพราะอ่านไม่ได้ = ตัดสินใจสั่งผลิต/รับออเดอร์ผิด
+  const liquor = mustRead(stockP, "สต็อกสุรา").map((s) => ({
     itemCode: s.product_id as string,
     itemName: nameMap.get(s.product_id as string) ?? (s.product_id as string),
     category: "สุรา",
@@ -297,7 +314,7 @@ export async function getWarehouseStock() {
     currentStock: Number(s.balance) || 0,
     isLive: true,
   }));
-  const general = (wh.data ?? []).map((s) => ({
+  const general = mustRead(wh, "สต็อกคลัง").map((s) => ({
     itemCode: s.item_code as string,
     itemName: (s.item_name as string) ?? (s.item_code as string),
     category: "ทั่วไป",
@@ -311,12 +328,15 @@ export async function getWarehouseStock() {
 /** ประวัติเชื่อมระบบ (integration_log) — แทนหน้าคิว sync เดิม */
 export async function getSyncHistory() {
   const supabase = await db();
-  const { data } = await supabase
-    .from("integration_log")
-    .select("id, action, idempotency_key, status, message, created_at")
-    .in("action", ["SELL_PRODUCT", "RECEIVE_REVENUE"])
-    .order("created_at", { ascending: false })
-    .limit(200);
+  const data = mustRead(
+    await supabase
+      .from("integration_log")
+      .select("id, action, idempotency_key, status, message, created_at")
+      .in("action", ["SELL_PRODUCT", "RECEIVE_REVENUE"])
+      .order("created_at", { ascending: false })
+      .limit(200),
+    "ประวัติเชื่อมระบบ",
+  );
   return (data ?? []).map((r) => ({
     id: r.id as number,
     action: r.action as string,
@@ -330,11 +350,16 @@ export async function getSyncHistory() {
 /** สถานะออเดอร์ปัจจุบัน (สำหรับ processOrder ฝั่ง action) */
 export async function getOrderState(quNo: string): Promise<OrderState | null> {
   const supabase = await db();
-  const { data } = await supabase
-    .from("sales_orders")
-    .select("qu_no, order_no, status, deposit, outstanding_balance, sub_total, discount, wht_percent, category, customer_name, customer_id, inv_no, tax_no1, tax_no2, dep_inv_no")
-    .eq("qu_no", quNo)
-    .maybeSingle();
+  // 🚨 D89 — อ่านไม่ได้แล้วคืน null = ฝั่ง action อ่านว่า "ไม่พบออเดอร์" ทั้งที่มีอยู่
+  //    (และถ้าคืนแถวว่างจะกลายเป็น "ยังไม่มีเลขเอกสาร" → ขอเลขใหม่ซ้ำของเดิม)
+  const data = mustRead<SoRow | null>(
+    await supabase
+      .from("sales_orders")
+      .select("qu_no, order_no, status, deposit, outstanding_balance, sub_total, discount, wht_percent, category, customer_name, customer_id, inv_no, tax_no1, tax_no2, dep_inv_no, rcpt_no1, rcpt_no2")
+      .eq("qu_no", quNo)
+      .maybeSingle(),
+    "สถานะออเดอร์",
+  );
   if (!data) return null;
   return {
     quNo: data.qu_no as string,
@@ -351,12 +376,17 @@ export async function getOrderState(quNo: string): Promise<OrderState | null> {
     taxNo1: (data.tax_no1 as string) ?? "",
     taxNo2: (data.tax_no2 as string) ?? "",
     depInvNo: (data.dep_inv_no as string) ?? "",
+    rcptNo1: (data.rcpt_no1 as string) ?? "",
+    rcptNo2: (data.rcpt_no2 as string) ?? "",
   };
 }
 
 export async function getCustomerId(quNo: string): Promise<string | null> {
   const supabase = await db();
-  const { data } = await supabase.from("sales_orders").select("customer_id").eq("qu_no", quNo).maybeSingle();
+  const data = mustRead<SoRow | null>(
+    await supabase.from("sales_orders").select("customer_id").eq("qu_no", quNo).maybeSingle(),
+    "ลูกค้าของออเดอร์",
+  );
   return (data?.customer_id as string) ?? null;
 }
 
@@ -372,7 +402,10 @@ export type SaleMenuRow = {
 
 export async function getSaleMenuFull(): Promise<SaleMenuRow[]> {
   const supabase = await db();
-  const { data } = await supabase.from("sale_menu").select("id, menu_name, price, category, product_id, multiplier").order("menu_name");
+  const data = mustRead(
+    await supabase.from("sale_menu").select("id, menu_name, price, category, product_id, multiplier").order("menu_name"),
+    "เมนูขาย",
+  );
   return (data ?? []).map((m) => ({
     id: m.id as number,
     menuName: m.menu_name as string,
@@ -391,7 +424,7 @@ export async function getMenuLinkOptions() {
     supabase.from("warehouse_stock").select("item_code, item_name").order("item_code"),
   ]);
   return {
-    products: (prods.data ?? []).map((p) => ({ id: p.product_id as string, name: p.name as string })),
-    warehouse: (wh.data ?? []).map((w) => ({ id: w.item_code as string, name: (w.item_name as string) ?? "" })),
+    products: mustRead(prods, "ทะเบียนสินค้า").map((p) => ({ id: p.product_id as string, name: p.name as string })),
+    warehouse: mustRead(wh, "รหัสสต็อกคลัง").map((w) => ({ id: w.item_code as string, name: (w.item_name as string) ?? "" })),
   };
 }

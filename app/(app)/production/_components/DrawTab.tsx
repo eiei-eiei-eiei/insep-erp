@@ -73,7 +73,10 @@ export function DrawTab({
   useEffect(() => {
     if (!productName) { setRemaining(null); return; }
     let alive = true;
-    getRemainingFermentedVolAction(productName).then((r) => { if (alive) setRemaining(r); });
+    // 🚨 D89 — อ่านไม่ได้ = คืน null (ไม่รู้) ไม่ใช่ 0 ที่อ่านว่า "ของหมด"
+    getRemainingFermentedVolAction(productName)
+      .then((r) => { if (alive) setRemaining(r); })
+      .catch(() => { if (alive) setRemaining(null); });
     return () => { alive = false; };
   }, [productName]);
 

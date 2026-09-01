@@ -78,7 +78,7 @@ export function validateSubscription(input: SubscriptionInput): string | null {
  * — ต้องเห็นว่าใครตกหล่น ไม่ใช่ซ่อนทิ้ง
  */
 export async function listBilling(db: SupabaseClient): Promise<BillingRow[]> {
-  const [{ data: tenants, error: tErr }, { data: subs }, { data: entities }, { data: payments }] =
+  const [{ data: tenants, error: tErr }, subsRes, entRes, payRes] =
     await Promise.all([
       db
         .from("tenants")
@@ -93,6 +93,14 @@ export async function listBilling(db: SupabaseClient): Promise<BillingRow[]> {
         .order("id", { ascending: false }),
     ]);
   if (tErr) fail(`อ่านรายชื่อลูกค้า: ${tErr.message}`);
+  // 🚨 D89 — ของเดิมเช็คแต่ `tErr` · 3 ก้อนที่เหลือเงียบ →
+  //    ลูกค้าที่จ่ายเงินแล้วขึ้นว่า "ยังไม่ได้ตั้งค่างวด" บนหน้าที่ใช้ตัดสินใจทวงเงิน
+  if (subsRes.error) fail(`อ่านค่างวด: ${subsRes.error.message}`);
+  if (entRes.error) fail(`อ่านรายชื่อกิจการ: ${entRes.error.message}`);
+  if (payRes.error) fail(`อ่านประวัติการชำระ: ${payRes.error.message}`);
+  const subs = subsRes.data;
+  const entities = entRes.data;
+  const payments = payRes.data;
 
   const rows: BillingRow[] = (tenants ?? []).map((t) => {
     const id = t.id as string;
@@ -151,11 +159,14 @@ export async function saveSubscription(
   const bad = validateSubscription(input);
   if (bad) fail(bad);
 
-  const { data: existing } = await db
+  // 🚨 D89 — อ่านไม่ได้แล้วปล่อยผ่าน = periods_paid เด้งกลับเป็น 1
+  //    → จำนวนรอบที่ลูกค้าจ่ายมาแล้วถูกรีเซ็ต แล้ววันตัดรอบ (anniversary) เพี้ยนถาวร (D59)
+  const { data: existing, error: exErr } = await db
     .from("subscriptions")
     .select("periods_paid")
     .eq("tenant_id", tenantId)
     .maybeSingle();
+  if (exErr) fail(`อ่านค่างวดเดิม: ${exErr.message}`);
 
   const periodsPaid = Number(existing?.periods_paid) || 1;
   const row = {

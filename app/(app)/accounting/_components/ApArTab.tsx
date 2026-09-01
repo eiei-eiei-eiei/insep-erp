@@ -1,31 +1,26 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useState } from "react";
 import { getApArAction, settleApArAction, voidTransactionAction } from "../actions";
 import type { Bootstrap } from "./types";
-import { Card, Field, Msg, Select, TextInput, fmt, todayISO, useSaver } from "./ui";
+import { Card, Field, Msg, Select, TextInput, fmt, todayISO, useSaver, useRead, LoadError } from "./ui";
 
 type ApAr = Awaited<ReturnType<typeof getApArAction>>;
 
 export function ApArTab({ boot, entityId, active }: { boot: Bootstrap; entityId: string; active: boolean }) {
-  const [data, setData] = useState<ApAr | null>(null);
-  const [loading, setLoading] = useState(true);
+
   const { pending, msg, run, setMsg } = useSaver();
   const [settleId, setSettleId] = useState<string | null>(null);
   const [acc, setAcc] = useState("");
   const [payDate, setPayDate] = useState(todayISO());
   const accountOptions = boot.accounts.filter((a) => entityId === "ALL" || (a.entity_ids ?? []).length === 0 || (a.entity_ids ?? []).includes(entityId));
 
-  function reload() {
-    setLoading(true);
-    getApArAction(entityId).then((d) => { setData(d); setLoading(false); });
-  }
-  useEffect(() => {
-    if (!active) return;
-    let alive = true;
-    getApArAction(entityId).then((d) => { if (alive) { setData(d); setLoading(false); } });
-    return () => { alive = false; };
-  }, [entityId, active]);
+  // 🚨 D89 — รับ throw จากชั้นอ่าน ไม่งั้นหน้าลูกหนี้-เจ้าหนี้ค้างที่ "กำลังโหลด…"
+  const { data, loading, err, reload } = useRead<ApAr>(
+    () => getApArAction(entityId),
+    [entityId],
+    { skip: !active },
+  );
 
   function doSettle(txId: string) {
     if (!acc) { setMsg({ ok: false, text: "เลือกบัญชีที่ใช้ชำระ" }); return; }
@@ -36,6 +31,7 @@ export function ApArTab({ boot, entityId, active }: { boot: Bootstrap; entityId:
     run(() => voidTransactionAction(txId), "ยกเลิกเรียบร้อย", reload);
   }
 
+  if (err && !data) return <LoadError err onRetry={reload} what="ยอดลูกหนี้-เจ้าหนี้" />;
   if (loading || !data) return <p className="text-faint">กำลังโหลด…</p>;
 
   const table = (title: string, rows: ApAr["payable"], total: number, tone: string) => (

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { SyncRow } from "./types";
-import { Card } from "./ui";
+import { Card, LoadError } from "./ui";
 import { getSyncHistoryAction } from "../actions";
 import { IconRefresh } from "@/lib/shared/icons";
 
@@ -14,15 +14,24 @@ const ACTION_LABEL: Record<string, string> = {
 export function SyncHistoryTab({ active }: { active: boolean }) {
   const [rows, setRows] = useState<SyncRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(false);
   const firstLoad = useRef(true);
 
   function refresh() {
     if (firstLoad.current) setLoading(true);
-    getSyncHistoryAction().then((d) => {
-      setRows(d);
-      setLoading(false);
-      firstLoad.current = false;
-    });
+    setErr(false);
+    getSyncHistoryAction()
+      .then((d) => {
+        setRows(d);
+        setLoading(false);
+        firstLoad.current = false;
+      })
+      .catch(() => {
+        // 🚨 D89 — ต้องจบสถานะโหลดเสมอ ไม่งั้นค้างที่ "กำลังโหลด…" ตลอดกาล
+        setErr(true);
+        setLoading(false);
+        firstLoad.current = false;
+      });
   }
   useEffect(() => {
     if (active) refresh();
@@ -39,6 +48,8 @@ export function SyncHistoryTab({ active }: { active: boolean }) {
       </div>
       {loading ? (
         <div className="py-8 text-center text-faint">กำลังโหลด…</div>
+      ) : err ? (
+        <LoadError err onRetry={refresh} what="ประวัติเชื่อมระบบ" />
       ) : (
         <div className="overflow-x-auto">
           <table className="tbl min-w-[640px]">

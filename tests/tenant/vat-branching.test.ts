@@ -98,6 +98,20 @@ describe("เลขใบกำกับภาษี (ม.86/13)", () => {
     expect(error, error?.message).toBeNull();
   });
 
+  // ── D89: ช่องเลขใบเสร็จของผู้ไม่จด VAT ─────────────────────────────────────
+  it("🔴 กิจการไม่จด VAT: ตั้ง rcpt_no1/rcpt_no2 (เลขใบเสร็จ) ต้อง **ได้**", async () => {
+    const { error } = await asA.from("sales_orders")
+      .update({ rcpt_no1: "INV-RCPT-001", rcpt_no2: "INV-RCPT-002" }).eq("qu_no", "QU-NOVAT-002");
+    expect(error, "ผู้ไม่จด VAT ต้องออกใบเสร็จรับเงินที่มีเลขที่ได้ — ไม่งั้นเอกสารไม่มีเลข").toBeNull();
+  });
+
+  it("🚨 ช่องใบเสร็จต้องไม่กลายเป็นทางลัดออกใบกำกับ — tax_no ยังถูกบล็อกเหมือนเดิม", async () => {
+    const { error } = await asA.from("sales_orders")
+      .update({ tax_no1: "TAX-ลัดผ่าน-001" }).eq("qu_no", "QU-NOVAT-002");
+    expect(error, "เพิ่มคอลัมน์ใหม่แล้วด่าน ม.86/13 รั่ว").not.toBeNull();
+    expect(error!.message).toMatch(/ออกใบกำกับภาษีไม่ได้/);
+  });
+
   it("★ อัปเดตออเดอร์เดิมที่ไม่ได้แตะเลขภาษี ต้องไม่โดนบล็อก (กัน trigger ดักกว้างเกิน)", async () => {
     const { error } = await asA.from("sales_orders")
       .update({ status: "ปิดการขาย" }).eq("qu_no", "QU-NOVAT-002");
