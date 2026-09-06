@@ -60,7 +60,11 @@ export function BillingNotice({ dueOn, todayISO }: { dueOn: string | null; today
                 ครบกำหนดเมื่อ <strong className="text-ink">{dateText}</strong> —
                 กรุณาติดต่อผู้ดูแลระบบเพื่อชำระค่าบริการ
               </p>
-              <p className="mt-2 text-xs text-faint">ถ้าโอนแล้วข้ามข้อความนี้ได้เลย</p>
+              {/* โทนเดียวกับหน้า /suspended — คนที่จ่ายแล้วต้องรู้ว่าทำอะไรต่อ
+                  ไม่ใช่ถูกบอกให้ "ข้ามข้อความนี้" ซึ่งอ่านเหมือนระบบไม่สนใจ */}
+              <p className="mt-2 text-xs text-faint">
+                ถ้าชำระแล้ว อาจเป็นเพราะยังบันทึกรายการไม่ทัน — แจ้งผู้ดูแลระบบพร้อมหลักฐานการโอนได้
+              </p>
             </div>
           </div>
           <button
@@ -81,7 +85,8 @@ export function BillingNotice({ dueOn, todayISO }: { dueOn: string | null; today
       <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-2 text-sm text-warn">
         <IconAlert size={16} className="shrink-0" />
         <span className="flex-1">
-          ค่าบริการรอบถัดไปครบกำหนด <strong>{dateText}</strong> · ถ้าโอนแล้วข้ามข้อความนี้ได้เลย
+          ค่าบริการรอบถัดไปครบกำหนด <strong>{dateText}</strong> ·
+          ชำระแล้วข้อความนี้จะหายเองเมื่อผู้ดูแลระบบบันทึกรายการ
         </span>
         <button
           type="button"

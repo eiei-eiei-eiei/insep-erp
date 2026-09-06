@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requirePlatformAdmin } from "@/lib/platform/auth";
 import {
   addEntityToTenant,
+  setEntityVat,
   createTenant,
   logPlatformAction,
   resetUserPassword,
@@ -136,6 +137,38 @@ export const addEntityAction = guard(
     await logPlatformAction(db, {
       actor: adminId,
       action: "add_entity",
+      tenantSlug: input.slug,
+      detail: { entity_id: input.entityId.trim().toUpperCase(), is_vat: input.isVat },
+    });
+
+    refresh();
+    return { ok: true };
+  },
+);
+
+/**
+ * เปลี่ยนสถานะจด VAT ของกิจการที่มีอยู่แล้ว
+ *
+ * 🚨 **จงใจอยู่ที่นี่ ไม่ใช่หน้าตั้งค่าของลูกค้า** — D55 กำหนดว่าการจด VAT เป็นข้อเท็จจริง
+ *    ทางกฎหมายที่ trigger ฝั่ง DB ใช้ตัดสินว่าออกใบกำกับภาษีได้ไหม ปล่อยให้ลูกค้าติ๊กเอง
+ *    = ติ๊กผิดแล้วออกใบกำกับภาษีทั้งที่ไม่มีสิทธิ์ (ผิด ม.86/13)
+ *
+ * 🪤 ก่อนหน้านี้ `is_vat` **ไม่มีทางแก้ได้เลยทั้งระบบหลังรับลูกค้าแล้ว** — `update` บน
+ *    `entities` มีที่เดียวคือ `saveEntityInfoAction` ซึ่งไม่มีคอลัมน์นี้ (เจอ 2026-09-05)
+ */
+export const setEntityVatAction = guard(
+  async (input: {
+    tenantId: string;
+    slug: string;
+    entityId: string;
+    isVat: boolean;
+  }): Promise<ActionResult> => {
+    const { adminId, db } = await requirePlatformAdmin();
+    await setEntityVat(db, input.tenantId, input.entityId, input.isVat);
+
+    await logPlatformAction(db, {
+      actor: adminId,
+      action: "set_entity_vat",
       tenantSlug: input.slug,
       detail: { entity_id: input.entityId.trim().toUpperCase(), is_vat: input.isVat },
     });

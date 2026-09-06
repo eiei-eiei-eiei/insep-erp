@@ -22,6 +22,7 @@ import type { TenantRow } from "@/lib/platform/provision";
 import {
   addEntityAction,
   createTenantAction,
+  setEntityVatAction,
   resetPasswordAction,
   setModulesAction,
   setQuotaAction,
@@ -161,6 +162,7 @@ function NewTenantForm({
     entityId: string;
     maxEntities: number;
     modules: string[];
+    isVat: boolean;
   }) => void;
 }) {
   const [slug, setSlug] = useState("");
@@ -169,12 +171,14 @@ function NewTenantForm({
   const [entityId, setEntityId] = useState("EID01");
   const [maxEntities, setMaxEntities] = useState(1);
   const [modules, setModules] = useState<string[]>([...MODULES]);
+  // ค่าปริยาย "จด VAT" — ตรงกับพฤติกรรมเดิมของระบบ ลูกค้าส่วนใหญ่จด
+  const [isVat, setIsVat] = useState(true);
 
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit({ slug, name, color, entityId, maxEntities, modules });
+        onSubmit({ slug, name, color, entityId, maxEntities, modules, isVat });
       }}
       className="space-y-4"
     >
@@ -229,6 +233,25 @@ function NewTenantForm({
       <div>
         <div className="mb-1 text-xs font-medium tracking-wide text-muted">โมดูลที่ลูกค้าซื้อ</div>
         <ModulePicker value={modules} onChange={setModules} idPrefix="new" />
+
+        {/* 🚨 ต้องถามตั้งแต่ตอนรับลูกค้า — ตั้งผิดแล้วเดิมแก้ไม่ได้เลย (ตอนนี้แก้ได้ที่การ์ดจัดการ) */}
+        <div>
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              type="checkbox"
+              checked={isVat}
+              onChange={(e) => setIsVat(e.target.checked)}
+              className="h-4 w-4"
+            />
+            กิจการแรกจดทะเบียน VAT
+          </label>
+          {!isVat && (
+            <p className="mt-1 text-xs text-warn">
+              ไม่จด VAT = ออกใบกำกับภาษีไม่ได้ (ระบบบล็อกที่ฐานข้อมูลตาม ม.86/13) ·
+              เอกสารขายเป็น &ldquo;ใบเสร็จรับเงิน&rdquo; · ไม่มี ภพ.30 ให้ยื่น
+            </p>
+          )}
+        </div>
         <p className="mt-1 text-xs text-faint">
           ต้องเลือกอย่างน้อย 1 โมดูล — ไม่เลือกเลยระบบจะถือว่าเปิดทุกโมดูล (ค่า fail-open ตาม D53)
         </p>
@@ -254,6 +277,7 @@ function TenantPanel({
   onModules,
   onQuota,
   onAddEntity,
+  onSetVat,
   onReset,
 }: {
   t: TenantRow;
@@ -261,6 +285,7 @@ function TenantPanel({
   onModules: (modules: string[]) => void;
   onQuota: (n: number) => void;
   onAddEntity: (e: { entityId: string; name: string; isVat: boolean }) => void;
+  onSetVat: (entityId: string, isVat: boolean) => void;
   onReset: (userId: string, username: string) => void;
 }) {
   const [modules, setModules] = useState<string[]>(t.modules.length ? t.modules : [...MODULES]);
@@ -331,6 +356,7 @@ function TenantPanel({
                 <th>ชื่อ</th>
                 <th>VAT</th>
                 <th>ค่าเริ่มต้น</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -340,6 +366,31 @@ function TenantPanel({
                   <td>{e.name}</td>
                   <td>{e.isVat ? "จด VAT" : <span className="text-warn">ไม่จด VAT</span>}</td>
                   <td>{e.isDefault ? "✓" : ""}</td>
+                  <td>
+                    {/* 🚨 จุดเดียวที่แก้ is_vat ได้ — หน้าตั้งค่าฝั่งลูกค้าจงใจไม่มี (D55) */}
+                    <button
+                      type="button"
+                      disabled={pending}
+                      onClick={() => {
+                        const to = !e.isVat;
+                        const warn = to
+                          ? "จะออกใบกำกับภาษีได้ และมี ภพ.30 ให้ยื่น"
+                          : "จะออกใบกำกับภาษีไม่ได้อีก (ระบบบล็อกที่ฐานข้อมูลตาม ม.86/13) เอกสารขายจะเป็นใบเสร็จรับเงินแทน";
+                        const ask = [
+                          `เปลี่ยน ${e.entityId} เป็น "${to ? "จด VAT" : "ไม่จด VAT"}"?`,
+                          "",
+                          warn,
+                          "",
+                          "เอกสารที่ออกไปแล้วไม่ถูกแก้ย้อนหลัง",
+                        ].join("\n");
+                        if (!confirm(ask)) return;
+                        onSetVat(e.entityId, to);
+                      }}
+                      className="rounded border border-line px-2 py-1 text-xs text-muted hover:border-brand disabled:opacity-50"
+                    >
+                      {e.isVat ? "เปลี่ยนเป็นไม่จด VAT" : "เปลี่ยนเป็นจด VAT"}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -569,6 +620,12 @@ export function PlatformManager({ tenants }: { tenants: TenantRow[] }) {
             run(
               () => addEntityAction({ tenantId: open.id, slug: open.slug, ...e }),
               `เพิ่มกิจการ ${e.entityId} แล้ว`,
+            )
+          }
+          onSetVat={(entityId, isVat) =>
+            run(
+              () => setEntityVatAction({ tenantId: open.id, slug: open.slug, entityId, isVat }),
+              `${entityId} เปลี่ยนเป็น ${isVat ? "จด VAT" : "ไม่จด VAT"} แล้ว`,
             )
           }
           onReset={(userId, username) => {

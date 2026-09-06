@@ -9,6 +9,8 @@ import {
   saveDistillReadingAction,
   startDistillRunAction,
   deleteDistillRunAction,
+  getClosedBatchesAction,
+  reopenDistillBatchAction,
 } from "../actions";
 import { Card, Field, Msg, NumInput, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import { LineChart } from "./LineChart";
@@ -30,6 +32,14 @@ type RunRow = {
   /** D80 — น้ำหมักที่เข้าหม้อ (มีเฉพาะแถว "เริ่มกลั่น") · ฐานของ Yield */
   ferm_charge: number | null;
   note: string | null;
+};
+
+type ClosedBatch = {
+  batch: string;
+  productName: string;
+  distillDate: string;
+  vol: number;
+  abv: number;
 };
 
 export function DistillTab({
@@ -384,6 +394,114 @@ export function DistillTab({
           </div>
         </Card>
       )}
+
+      <ReopenCard onDone={onBatchChange} />
     </div>
+  );
+}
+
+/**
+ * ถอนการปิด batch — ทางแก้เมื่อกรอกปริมาณ/ดีกรีผิดแล้วกดปิดไปแล้ว
+ *
+ * 🚨 ทำไมต้องมี: `log_distill` เคยไม่มีทาง แก้/ลบ จากแอปเลย ทั้งที่ตัวเลขในนั้น
+ *    พิมพ์ลงฟอร์ม ภส.๐๗-๐๒/๑(๑) ที่ยื่นสรรพสามิต — ผิดแล้วต้องยิง SQL อย่างเดียว
+ * 🪤 และพอปิด batch แล้ว batch หายจากดร็อปดาวน์ด้านบน → ตารางค่าที่บันทึก
+ *    (ซึ่งมีปุ่มลบรายแถวอยู่แล้ว) ก็หายตามไปด้วย = แก้อะไรไม่ได้เลยสักทาง
+ */
+function ReopenCard({ onDone }: { onDone: (batch: string) => void }) {
+  const { pending, msg, run } = useSaver();
+  const [rows, setRows] = useState<ClosedBatch[]>([]);
+  const [open, setOpen] = useState(false);
+
+  const load = useCallback(() => {
+    getClosedBatchesAction()
+      .then((r) => setRows(r as ClosedBatch[]))
+      .catch(() => setRows([]));
+  }, []);
+  useEffect(() => {
+    if (open) load();
+  }, [open, load]);
+
+  function doReopen(r: ClosedBatch) {
+    // 🪤 ปรุง/บรรจุ ไม่มีคอลัมน์อ้าง batch เลย → เช็คให้ไม่ได้จริง ต้องให้คนตัดสิน
+    if (
+      !confirm(
+        [
+          `ถอนการปิด batch ${r.batch}?`,
+          "",
+          `ค่าที่บันทึกไว้ตอนนี้: ${r.vol.toLocaleString()} ล. · ${r.abv}%`,
+          "",
+          "batch จะกลับเข้าคิวกลั่นให้แก้ค่าแล้วปิดใหม่",
+          "ถ้าปรุง/บรรจุจาก batch นี้ไปแล้ว ตัวเลขพวกนั้นไม่ถูกแตะ — ต้องไล่แก้เอง",
+        ].join(String.fromCharCode(10)),
+      )
+    ) {
+      return;
+    }
+    run(() => reopenDistillBatchAction(r.batch), `ถอนการปิด ${r.batch} แล้ว`, () => {
+      load();
+      onDone(r.batch);
+    });
+  }
+
+  return (
+    <Card title="แก้ batch ที่ปิดไปแล้ว">
+      <Msg msg={msg} />
+      {!open ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="rounded-lg border border-line px-3 py-1.5 text-sm text-muted hover:border-brand"
+        >
+          กรอกค่ากลั่นผิด? — ถอนการปิด batch
+        </button>
+      ) : (
+        <>
+          <p className="mb-2 text-xs text-muted">
+            ถอนแล้ว batch จะกลับเข้าคิวกลั่นด้านบน แก้ค่าแล้วปิดใหม่ได้ ·
+            ค่าเดิมถูกเก็บไว้ที่ <b>ตั้งค่า → ประวัติการแก้ไข</b> เสมอ
+          </p>
+          {rows.length === 0 ? (
+            <p className="text-sm text-faint">— ยังไม่มี batch ที่ปิดแล้ว —</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>วันที่</th>
+                    <th>Batch</th>
+                    <th>ชื่อสุรา</th>
+                    <th>ปริมาณ (ล.)</th>
+                    <th>ดีกรี@20</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.batch}>
+                      <td>{r.distillDate}</td>
+                      <td className="font-medium text-ink">{r.batch}</td>
+                      <td>{r.productName}</td>
+                      <td className="num">{r.vol.toLocaleString()}</td>
+                      <td className="num">{r.abv}</td>
+                      <td>
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={() => doReopen(r)}
+                          className="rounded border border-line px-2 py-1 text-xs text-muted hover:border-brand disabled:opacity-50"
+                        >
+                          ถอนการปิด
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </Card>
   );
 }

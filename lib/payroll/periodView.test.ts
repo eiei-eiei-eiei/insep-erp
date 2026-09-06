@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { shownLine, differsFromStored, round2, employeeForCalc } from "./periodView";
+import { shownLine, differsFromStored, round2, employeeForCalc, tableCaption } from "./periodView";
 import type { PayrollLine } from "./types";
 
 const L = (net: number, gross = net): PayrollLine =>
@@ -96,5 +96,36 @@ describe("employeeForCalc — ตัวประกอบเดียวขอ�
     });
     expect(e.baseWage).toBe(51980);
     expect(e.whtFixed).toBe(1585);
+  });
+});
+
+// ── คำกำกับใต้ตาราง ต้องพูดตรงกับตัวเลขที่ `shownLine()` เลือกมาแสดง ─────────────
+//
+// 🚩 เจอตอนเทสในเบราว์เซอร์ (2026-09-05): ประโยค "ผลคำนวณสด" ถูกแสดงทุกกรณี
+//    แม้บนงวดที่ลงบัญชีแล้วซึ่งโชว์ค่าที่แช่ไว้ → คนที่แก้เกณฑ์แล้วมาเปิดงวดที่ยื่นไปแล้ว
+//    จะสรุปผิดว่า "เกณฑ์ใหม่ให้ผลเท่าเดิม" ทั้งที่ตัวเลขถูกแช่ไว้ต่างหาก
+describe("tableCaption — ประโยคต้องตรงกับเลขเวอร์ชันที่โชว์อยู่", () => {
+  it("งวดร่าง = บอกว่าคิดสด", () => {
+    const c = tableCaption(false);
+    expect(c).toContain("ผลคำนวณสด");
+    expect(c).not.toContain("ค่าที่บันทึกไว้");
+  });
+
+  it("งวดที่ลงบัญชีแล้ว = บอกว่าเป็นค่าที่บันทึกไว้ ไม่ใช่ค่าสด", () => {
+    const c = tableCaption(true);
+    expect(c).toContain("ค่าที่บันทึกไว้");
+    expect(c).toContain("ไม่ใช่ผลคำนวณสด");
+  });
+
+  // 🚨 ข้อที่จับบั๊กตัวจริง: ประโยคกับ `shownLine()` ต้องตัดสินด้วยธงเดียวกัน
+  //    หลุดจากกันเมื่อไหร่ = ตัวเลขถูกแต่คำอธิบายผิด ซึ่ง TypeScript มองไม่เห็นเลย
+  it("🚩 locked ที่ทำให้โชว์ค่าที่แช่ไว้ ต้องเป็น locked ตัวเดียวกับที่เปลี่ยนประโยค", () => {
+    const stored = L(10000);
+    const live = L(12000);
+    for (const locked of [true, false]) {
+      const usesStored = shownLine(locked, stored, live)?.net === stored.net;
+      const saysStored = tableCaption(locked).includes("ค่าที่บันทึกไว้");
+      expect(saysStored).toBe(usesStored);
+    }
   });
 });

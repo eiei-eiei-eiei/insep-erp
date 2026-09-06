@@ -16,6 +16,7 @@ import {
   getRecentDilutes,
   getRecentProducts,
   getRecentFerments,
+  getClosedBatches,
   getRecentDraws,
   getRemainingFermentedVol,
 } from "./data";
@@ -176,6 +177,26 @@ export async function deleteFermentBatchAction(batch: string): Promise<SaveResul
   if (error) return fail(mapDbError(error));
   const res = data as { ok: boolean; error?: string };
   if (!res.ok) return fail(res.error ?? "ลบ batch ไม่สำเร็จ");
+  revalidatePath("/production");
+  return { ok: true, data: res };
+}
+
+// ── ถอนการปิด batch กลั่น (0060) ──────────────────────────────────────────────
+//
+// 🚨 ปิดช่องสุดท้ายของกติกา "ทุกจุดที่บันทึกได้ต้องแก้/ลบได้จากแอป" —
+//    `log_distill` เคยไม่มีทั้ง update และ delete เลยทั้งโค้ดเบส ทั้งที่ตัวเลขในนั้น
+//    พิมพ์ลงฟอร์ม ภส.๐๗-๐๒/๑(๑) ที่ยื่นสรรพสามิต (เจอตอนเทสลูกค้าใหม่ 2026-09-06)
+// 🪤 อาการซ้อน: ปิด batch แล้ว batch หายจากดร็อปดาวน์ → ตารางค่าที่บันทึกซึ่ง**มี**
+//    ปุ่มลบรายแถวอยู่แล้วไม่ถูก render อีก = ปุ่มที่มีอยู่กดไม่ถึง (ตระกูล D74/D77)
+// ★ ค่าเดิมไม่หาย — trigger `audit_log_distill` (0005) เก็บลง edit_log
+//   ดูย้อนได้ที่ ตั้งค่า → ประวัติการแก้ไข
+export async function getClosedBatchesAction() { return getClosedBatches(); }
+export async function reopenDistillBatchAction(batch: string): Promise<SaveResult> {
+  const supabase = await db();
+  const { data, error } = await supabase.rpc("fn_reopen_distill_batch", { p_batch: batch });
+  if (error) return fail(mapDbError(error));
+  const res = data as { ok: boolean; error?: string };
+  if (!res.ok) return fail(res.error ?? "ถอนการปิด batch ไม่สำเร็จ");
   revalidatePath("/production");
   return { ok: true, data: res };
 }

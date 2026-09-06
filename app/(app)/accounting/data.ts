@@ -17,6 +17,7 @@ import {
   type AccountMeta,
 } from "@/lib/accounting/ledger";
 import { fetchAllRows } from "@/lib/shared/paginate";
+import { effectiveTaxAccounts } from "@/lib/accounting/taxAccounts";
 import { mustRead } from "@/lib/shared/dbError";
 import { taxDueBoard } from "@/lib/accounting/taxPay";
 
@@ -53,17 +54,25 @@ async function fetchAllTransactions(
   );
 }
 
-/** ชื่อบัญชีในระบบภาษี (app_settings kind='tax_account') — fallback บัญชีบริษัท */
+/**
+ * ชื่อบัญชีในระบบภาษี (`app_settings` kind='tax_account')
+ *
+ * 🚨 ของเดิม fallback เป็นชื่อตายตัว "บัญชีบริษัท" — D89 เขียนเตือนไว้แล้วว่าอันตราย
+ *    แต่ยังไม่ได้แก้ · ผลจริงที่เจอตอนเทสลูกค้าใหม่ (2026-09-05): ลูกค้าตั้งชื่อบัญชีเอง
+ *    → บิลถูกกรองออกหมด → **แดชบอร์ด 0.00 ทุกช่อง และ ภพ.30 = 0 ทั้งที่ขายจริง**
+ *    ตอนนี้ "ยังไม่ได้ตั้ง = นับทุกบัญชีเงินในระบบ" (ดู lib/accounting/taxAccounts)
+ * ★ กิจการที่ตั้งไว้แล้วไม่ขยับ — เส้นทางนั้นไม่แตะค่าปริยายเลย
+ */
 async function loadTaxAccounts(supabase: Awaited<ReturnType<typeof db>>): Promise<Set<string>> {
-  // 🚨 D89 — fallback "บัญชีบริษัท" ดูปลอดภัยแต่ไม่ใช่: โรงที่ตั้งชื่อบัญชีอื่นจะถูกกรองออกหมด
-  //    จน ภพ.30/ภงด. เหลือ 0 · "ไม่ได้ตั้งค่า" (ลิสต์ว่าง) กับ "อ่านไม่ได้" ต้องแยกกันให้ขาด
-  const data = mustRead(
-    await supabase.from("app_settings").select("value").eq("kind", "tax_account"),
-    "รายชื่อบัญชีในระบบภาษี",
+  // "ไม่ได้ตั้งค่า" (ลิสต์ว่าง) กับ "อ่านไม่ได้" ต้องแยกกันให้ขาด (D89)
+  const [saved, banks] = await Promise.all([
+    supabase.from("app_settings").select("value").eq("kind", "tax_account"),
+    supabase.from("bank_accounts").select("account_name"),
+  ]);
+  return effectiveTaxAccounts(
+    mustRead(saved, "รายชื่อบัญชีในระบบภาษี").map((r) => r.value as string),
+    mustRead(banks, "รายชื่อบัญชีเงิน").map((r) => r.account_name as string),
   );
-  const list = (data ?? []).map((r) => r.value as string).filter(Boolean);
-  if (list.length === 0) list.push("บัญชีบริษัท");
-  return new Set(list);
 }
 
 /** map ชื่อคู่ค้า → {tax_id, branch, address} */
@@ -106,7 +115,10 @@ export async function getBootstrap() {
 
   const s = settings.data ?? [];
   const byKind = (k: string) => s.filter((x) => x.kind === k).map((x) => x.value as string);
-  const taxAccounts = byKind("tax_account");
+  // D80 — ค่าปริยายที่คำนวณในโค้ด **ห้ามแสดงปนกับค่าที่บันทึกไว้จริงในช่องที่แก้ได้**
+  //        (ของเดิมโชว์ "บัญชีบริษัท" เป็น chip ที่มีปุ่ม ✕ ทั้งที่ไม่มีแถวใน DB →
+  //         กดลบขึ้น "ลบแล้ว" สีเขียว แล้วรีเฟรชมันกลับมา)
+  const taxAccountsSet = byKind("tax_account");
   // D80: หมวดที่จุดชนวนรับวัตถุดิบเข้าสต็อกผลิต — ตั้งเองได้ ไม่ตั้ง = ค่าปริยายในโค้ด
   const forwardCatsSet = byKind(FORWARD_CAT_KIND);          // ที่ลูกค้าตั้งเองจริง ๆ (อาจว่าง)
   const forwardCats = forwardCatsOf(forwardCatsSet);        // ที่มีผลจริง (ว่าง = ค่าปริยาย)
@@ -120,7 +132,7 @@ export async function getBootstrap() {
     expenseCats: byKind("expense_cat"),
     incomeCats: byKind("income_cat"),
     whtRates: byKind("wht_rate"),
-    taxAccounts: taxAccounts.length ? taxAccounts : ["บัญชีบริษัท"],
+    taxAccountsSet,
     forwardCats,
     forwardCatsSet,
     // ★ แบรนด์ / กิจการบนเอกสาร / LINE ไม่อยู่ที่นี่แล้ว — ย้ายไป app/(app)/settings/settings-data.ts (D63)

@@ -19,12 +19,16 @@ import {
 import { reminderHintText } from "@/lib/production/exciseReminder";
 import { can, capHolderText, type Role } from "@/lib/shared/roles";
 import { formatDateThai } from "@/lib/shared/format";
+import { visibleExciseForms } from "@/lib/production/calc";
 
 // report_key ของ report_runs ↔ ฟอร์ม ภส. (FLOW sec 6 — "เดือนนี้สร้างครบยัง")
-const EXCISE_CHECKLIST = [
+// 🚨 `needs` ต้องตรงกับเงื่อนไขที่ซ่อนกล่องเลือกรายการด้านล่าง (จำนวนสินค้าต่อประเภท)
+//    หลุดจากกันเมื่อไหร่ = เช็กลิสต์นับใบที่หน้าจอเดียวกันไม่ยอมให้ออก
+//    → โรงกลั่นล้วนขึ้น "ยังไม่ครบ" ตลอดกาล (เจอตอนเทสลูกค้าใหม่ 2026-09-06)
+const EXCISE_CHECKLIST: { key: string; label: string; needs?: "distilled" | "fermented" }[] = [
   { key: "phor_so_07_01", label: "ภส.๐๗-๐๑/๑ บัญชีวัตถุดิบ" },
-  { key: "phor_so_07_02_1", label: "ภส.๐๗-๐๒/๑(๑) บัญชีผลิตสุรากลั่น" },
-  { key: "phor_so_07_02_1_chae", label: "ภส.๐๗-๐๒/๑(๑) บัญชีผลิตสุราแช่" },
+  { key: "phor_so_07_02_1", label: "ภส.๐๗-๐๒/๑(๑) บัญชีผลิตสุรากลั่น", needs: "distilled" },
+  { key: "phor_so_07_02_1_chae", label: "ภส.๐๗-๐๒/๑(๑) บัญชีผลิตสุราแช่", needs: "fermented" },
   { key: "phor_so_07_02_2", label: "ภส.๐๗-๐๒/๑(๒) บัญชีสุราบรรจุขวด" },
   { key: "phor_so_07_04", label: "ภส.๐๗-๐๔ งบเดือน" },
 ];
@@ -144,7 +148,12 @@ export function ExciseTab({ active, role }: { active: boolean; role: Role }) {
   const badge = monthCloseBadge(st);
   const mayClose = can(role, "prod.config");
   const drift = driftSummary(st.active?.totals ?? null, mc?.currentTotals ?? null);
-  const doneRuns = EXCISE_CHECKLIST.filter((i) => runs[i.key]).length;
+  // ใบที่โรงนี้ออกได้จริง — สัญญาณเดียวกับกล่องเลือกรายการด้านล่าง
+  const checklist = visibleExciseForms(EXCISE_CHECKLIST, {
+    distilled: options.productNamesDistilled.length > 0,
+    fermented: options.productNamesFermented.length > 0,
+  });
+  const doneRuns = checklist.filter((i) => runs[i.key]).length;
   // 🚨 ต้องรู้ทิศทาง ไม่ใช่แค่จำนวน — "จะเอาออก" กับ "จะเอากลับมาแสดง" เป็นคนละเรื่องกันคนละทาง
   const pendingN = (mc?.pending.toHide ?? 0) + (mc?.pending.toShow ?? 0);
   const pending = mc ? pendingRecomputeText(mc.pending) : null;
@@ -330,7 +339,7 @@ export function ExciseTab({ active, role }: { active: boolean; role: Role }) {
         <ReportChecklist
           title="เช็กลิสต์ฟอร์มสรรพสามิตของเดือนนี้"
           month={month}
-          items={EXCISE_CHECKLIST}
+          items={checklist}
           runs={runs}
           note="ติ๊กอัตโนมัติเมื่อกดสร้าง PDF ฟอร์มนั้น (แยกตามกิจการ) — เอกสารสรรพากร (ภพ.30/ภงด./50ทวิ) อยู่ที่ บัญชี → แท็บเอกสารสรรพากร"
         />
@@ -398,8 +407,8 @@ export function ExciseTab({ active, role }: { active: boolean; role: Role }) {
             </>
           ) : (
             <>
-              {closeWarnText(doneRuns, EXCISE_CHECKLIST.length) && (
-                <p className="mb-2 text-sm text-warn">{closeWarnText(doneRuns, EXCISE_CHECKLIST.length)}</p>
+              {closeWarnText(doneRuns, checklist.length) && (
+                <p className="mb-2 text-sm text-warn">{closeWarnText(doneRuns, checklist.length)}</p>
               )}
               {pending && <p className="mb-2 text-sm text-warn">{pending}</p>}
             </>

@@ -207,3 +207,24 @@ export function processesOf(liquorTypes: (string | null | undefined)[]): string[
   }
   return [...out];
 }
+
+/**
+ * ฟอร์ม ภส. ที่โรงนี้ **ต้องออกจริง** — ตัดใบของเส้นทางที่ไม่มีสินค้าออก (D78)
+ *
+ * 🚨 ต้องตัดสินด้วย**สัญญาณเดียวกับกล่องเลือกรายการ**ในหน้าเดียวกัน (จำนวนสินค้าต่อประเภท)
+ *    ของเดิมเช็กลิสต์เป็นลิสต์ตายตัว 5 ใบ แต่กล่องเลือกกรองตามประเภทสินค้า
+ *    → โรงที่ทำแต่สุรากลั่นเห็น "0/5 ยังไม่ครบ" ตลอดกาล เพราะนับใบสุราแช่
+ *      ที่หน้าจอเดียวกันไม่ยอมให้ออก (เจอตอนเทสลูกค้าใหม่ 2026-09-06)
+ *
+ * 🪤 ไม่มีสินค้าสักประเภท (ลูกค้าใหม่ที่ยังไม่คีย์สินค้า) = **โชว์ครบ**
+ *    ตรงกับกติกา D78 ที่ว่า "เซตว่าง = ยังไม่รู้ ห้ามซ่อน" — การซ่อนก็คือการเดา
+ */
+export function visibleExciseForms<T extends { needs?: "distilled" | "fermented" }>(
+  items: T[],
+  has: { distilled: boolean; fermented: boolean },
+): T[] {
+  if (!has.distilled && !has.fermented) return items;
+  return items.filter((i) =>
+    i.needs === "distilled" ? has.distilled : i.needs === "fermented" ? has.fermented : true,
+  );
+}

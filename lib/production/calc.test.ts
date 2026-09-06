@@ -12,6 +12,7 @@ import {
   isFermented,
   productionFormKind,
   processesOf,
+  visibleExciseForms,
   drawnVol,
   drawnAbv,
   remainingFermentedVol,
@@ -193,5 +194,38 @@ describe("D78 processesOf — ประเภทที่มีสินค้�
   });
   it("ค่าว่าง/ไม่รู้จัก ไม่นับ (ไม่ทำให้แท็บโผล่มั่ว)", () => {
     expect(processesOf([null, "", "เบียร์", undefined])).toEqual([]);
+  });
+});
+
+// ── เช็กลิสต์ฟอร์ม ภส. ต้องนับเฉพาะใบที่โรงนี้ออกได้จริง ────────────────────────
+//
+// 🚩 ต้นเรื่อง: เช็กลิสต์เป็นลิสต์ตายตัว 5 ใบ แต่กล่องเลือกรายการในหน้าเดียวกัน
+//    กรองตามประเภทสินค้า → โรงกลั่นล้วนขึ้น "0/5 ยังไม่ครบ" ตลอดกาล
+describe("D78 visibleExciseForms — เช็กลิสต์ต้องตรงกับใบที่ออกได้จริง", () => {
+  const ITEMS = [
+    { key: "0701" },
+    { key: "0702_1", needs: "distilled" as const },
+    { key: "0702_1_chae", needs: "fermented" as const },
+    { key: "0702_2" },
+    { key: "0704" },
+  ];
+  const keys = (has: { distilled: boolean; fermented: boolean }) =>
+    visibleExciseForms(ITEMS, has).map((i) => i.key);
+
+  it("🚩 โรงกลั่นล้วน — ตัดใบสุราแช่ออก เหลือ 4 ใบ", () => {
+    expect(keys({ distilled: true, fermented: false })).toEqual(["0701", "0702_1", "0702_2", "0704"]);
+  });
+
+  it("โรงแช่ล้วน — ตัดใบสุรากลั่นออก", () => {
+    expect(keys({ distilled: false, fermented: true })).toEqual(["0701", "0702_1_chae", "0702_2", "0704"]);
+  });
+
+  it("ทำทั้งสองอย่าง — ครบ 5 ใบ", () => {
+    expect(keys({ distilled: true, fermented: true })).toHaveLength(5);
+  });
+
+  // 🪤 ยังไม่มีสินค้าเลย = ยังไม่รู้ ห้ามซ่อน (กติกาเดียวกับการซ่อนแท็บ D78)
+  it("ยังไม่มีสินค้าสักประเภท — โชว์ครบ ไม่เดา", () => {
+    expect(keys({ distilled: false, fermented: false })).toHaveLength(5);
   });
 });

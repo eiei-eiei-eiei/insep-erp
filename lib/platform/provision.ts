@@ -30,6 +30,14 @@ export type NewTenantInput = {
   entityId: string;
   maxEntities: number;
   modules: string[];
+  /**
+   * กิจการแรกจด VAT ไหม
+   *
+   * 🚨 เดิมฮาร์ดโค้ด `true` แล้ว **ไม่มีทางแก้ทีหลังได้เลยทั้งระบบ** (เจอ 2026-09-05)
+   *    → ลูกค้าที่ไม่จด VAT ทุกรายถูกตรึงเป็น "จด VAT" ⇒ trigger ม.86/13 ของ D55
+   *    ไม่มีวันทำงาน และลูกค้าถูกเตือนให้ยื่น ภพ.30 ที่ตัวเองไม่มีหน้าที่ยื่น
+   */
+  isVat: boolean;
 };
 
 export type NewTenantResult = {
@@ -156,6 +164,7 @@ export function normalizeNewTenant(raw: NewTenantInput): NewTenantInput {
     entityId: raw.entityId.trim().toUpperCase(),
     maxEntities: raw.maxEntities,
     modules: raw.modules.map((m) => m.trim()).filter(Boolean),
+    isVat: raw.isVat,
   };
 }
 
@@ -191,11 +200,12 @@ export async function createTenant(
   const tenantId = t!.id as string;
 
   // ── 2. กิจการแรก (is_default → my_default_entity() ใช้ตัวนี้) ──
+  // 🚨 `is_vat` ต้องมาจาก input — ฮาร์ดโค้ดเมื่อไหร่ ลูกค้าไม่จด VAT จะตั้งค่าไม่ได้อีกเลย
   const { error: eErr } = await db.from("entities").insert({
     tenant_id: tenantId,
     entity_id: input.entityId,
     name: input.name,
-    is_vat: true,
+    is_vat: input.isVat,
     is_default: true,
   });
   if (eErr) fail(`สร้างกิจการแรก: ${eErr.message}`);
@@ -392,4 +402,47 @@ export async function logPlatformAction(
       detail: entry.detail ?? null,
     })
     .then(undefined, () => undefined);
+}
+
+/**
+ * เปลี่ยนสถานะจด VAT ของกิจการที่มีอยู่แล้ว
+ *
+ * ★ **จุดเดียวในทั้งระบบที่ `entities.is_vat` ถูกแก้ได้** — `saveEntityInfoAction`
+ *   ฝั่งลูกค้าจงใจไม่มีคอลัมน์นี้ (D55: การจด VAT เป็นข้อเท็จจริงทางกฎหมาย
+ *   ไม่ใช่ค่าที่ผู้ใช้ติ๊กเล่นได้ เพราะติ๊กผิด = ออกใบกำกับภาษีได้ทั้งที่ไม่ควร)
+ *
+ * 🚨 ก่อนหน้านี้ไม่มีฟังก์ชันนี้เลย และคอมเมนต์ในโค้ดชี้ให้ไปใช้สคริปต์
+ *   `provision:add-entity --no-vat` ซึ่ง **เพิ่มกิจการใหม่อย่างเดียว แก้ของเดิมไม่ได้**
+ *   ⇒ ทางออกที่เอกสารบอกไว้ไม่มีอยู่จริง (เจอตอนเทสลูกค้าใหม่จากศูนย์ 2026-09-05)
+ *
+ * 🪤 **ไม่บล็อกเมื่อกิจการเคยออกใบกำกับภาษีไปแล้ว** — คนที่กดคือเจ้าของระบบที่กำลัง
+ *   *แก้ข้อมูลให้ตรงความจริง* การบล็อกจะทำให้ลูกค้าที่ตั้งผิดตั้งแต่วันแรกติดกับถาวร
+ *   (กติกาเดียวกับทั้งแอป: เตือนแล้วให้คนตัดสิน) → ฝั่ง UI เป็นคนเตือน
+ */
+export async function setEntityVat(
+  db: SupabaseClient,
+  tenantId: string,
+  entityId: string,
+  isVat: boolean,
+): Promise<void> {
+  const id = entityId.trim().toUpperCase();
+  if (!id) fail("ไม่ได้ระบุกิจการ");
+
+  const { data: e, error: readErr } = await db
+    .from("entities")
+    .select("entity_id, is_vat")
+    .eq("tenant_id", tenantId)
+    .eq("entity_id", id)
+    .maybeSingle();
+  // 🚨 อ่านไม่สำเร็จ ≠ ไม่มีกิจการ (D89) — เงียบแล้วเขียนต่อ = แก้ผิดลูกค้าได้
+  if (readErr) fail(`อ่านข้อมูลกิจการ: ${readErr.message}`);
+  if (!e) fail(`ไม่พบกิจการ "${id}" ของลูกค้ารายนี้`);
+  if (e!.is_vat === isVat) return; // ไม่มีอะไรเปลี่ยน — ไม่ต้องเขียนและไม่ต้อง error
+
+  const { error } = await db
+    .from("entities")
+    .update({ is_vat: isVat })
+    .eq("tenant_id", tenantId)
+    .eq("entity_id", id);
+  if (error) fail(`เปลี่ยนสถานะ VAT: ${error.message}`);
 }

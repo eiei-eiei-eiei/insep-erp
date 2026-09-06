@@ -402,3 +402,32 @@ export async function getDistillRun(batch: string) {
     .order("created_at");
   return data ?? [];
 }
+
+/**
+ * batch ที่ **ปิดกลั่นไปแล้ว** — ไว้ให้หน้าจอถอนการปิดได้เมื่อกรอกผิด
+ *
+ * 🚨 ก่อนหน้านี้ `log_distill` เป็นตารางเดียวของแอปผลิตที่ไม่มีทาง แก้/ลบ จากแอปเลย
+ *    และพอปิด batch แล้ว batch ก็หายจากดร็อปดาวน์แท็บกลั่น → ตารางค่าที่บันทึก
+ *    (ซึ่งมีปุ่มลบรายแถวอยู่แล้ว) ไม่ถูก render อีก = ปุ่มที่มีอยู่กดไม่ถึง
+ *
+ * ★ เอาเฉพาะที่ปิดล่าสุด — คนที่จะถอนคือคนที่เพิ่งกดผิด ไม่ใช่คนขุดของปีที่แล้ว
+ */
+export async function getClosedBatches(limit = 20) {
+  const supabase = await createClient();
+  const data = mustRead(
+    await supabase
+      .from("log_distill")
+      .select("batch, product_name, distill_date, vol, abv")
+      .order("distill_date", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(limit),
+    "batch ที่ปิดกลั่นแล้ว",
+  );
+  return data.map((r) => ({
+    batch: r.batch as string,
+    productName: r.product_name as string,
+    distillDate: String(r.distill_date).slice(0, 10),
+    vol: Number(r.vol) || 0,
+    abv: Number(r.abv) || 0,
+  }));
+}

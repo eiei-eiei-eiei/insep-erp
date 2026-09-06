@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   normalizeNewTenant,
   validateModules,
@@ -18,6 +20,7 @@ const ok: NewTenantInput = {
   color: "copper",
   entityId: "EID01",
   maxEntities: 1,
+  isVat: true,
   modules: ["production", "accounting", "sales"],
 };
 
@@ -125,5 +128,46 @@ describe("validateNewEntity", () => {
     expect(validateNewEntity({ entityId: "EID02", name: "สมชาย", isVat: false })).toBeNull();
     expect(validateNewEntity({ entityId: "EID02", name: "  ", isVat: true })).not.toBeNull();
     expect(validateNewEntity({ entityId: "e2", name: "สมชาย", isVat: true })).not.toBeNull();
+  });
+});
+
+// ── สถานะจด VAT ต้องตั้งได้และแก้ได้ (เจอตอนเทสลูกค้าใหม่จากศูนย์ 2026-09-05) ────
+//
+// 🚨 บั๊กต้นเรื่อง: `provisionTenant` ฮาร์ดโค้ด `is_vat: true` และ **ไม่มี `update`
+//    บน `entities` ที่แตะคอลัมน์นี้อยู่เลยทั้งโค้ดเบส** → ลูกค้าไม่จด VAT ทุกราย
+//    ถูกตรึงเป็น "จด VAT" ตลอดกาล ⇒ trigger ม.86/13 ของ D55 ไม่มีวันทำงาน
+//
+// 🪤 เทสนี้ **อ่านซอร์สจริงมาตรวจ** เพราะกฎอยู่คนละไฟล์กับที่บังคับใช้
+//    (ชั้นเดียวกับ tenantTables.test.ts / rolesSql.test.ts / exciseHidden.test.ts)
+describe("is_vat — ตั้งตอนรับลูกค้าได้ และแก้ทีหลังได้ที่เดียว", () => {
+  const provisionSrc = readFileSync(join(process.cwd(), "lib/platform/provision.ts"), "utf8");
+  const settingsSrc = readFileSync(
+    join(process.cwd(), "app/(app)/settings/actions.ts"),
+    "utf8",
+  );
+
+  it("normalizeNewTenant ต้องส่ง isVat ต่อ ไม่กลืนหาย", () => {
+    const raw: NewTenantInput = {
+      slug: " ABC ", name: " ก ", color: "steel", entityId: " eid01 ",
+      maxEntities: 1, modules: ["production"], isVat: false,
+    };
+    expect(normalizeNewTenant(raw).isVat).toBe(false);
+    expect(normalizeNewTenant({ ...raw, isVat: true }).isVat).toBe(true);
+  });
+
+  it("🚩 provisionTenant ต้องไม่ฮาร์ดโค้ด is_vat", () => {
+    expect(provisionSrc).not.toMatch(/is_vat:\s*true/);
+    expect(provisionSrc).toMatch(/is_vat:\s*input\.isVat/);
+  });
+
+  it("🚩 มีทางแก้ is_vat ของกิจการที่มีอยู่แล้วจริง (ไม่ใช่มีแต่ insert)", () => {
+    expect(provisionSrc).toContain("export async function setEntityVat");
+    expect(provisionSrc).toMatch(/\.update\(\{\s*is_vat:\s*isVat\s*\}\)/);
+  });
+
+  // 🚨 ทิศตรงข้าม: หน้าตั้งค่าฝั่ง**ลูกค้า**ต้องแก้ไม่ได้ (D55 — ติ๊กผิด = ออกใบกำกับภาษี
+  //    ทั้งที่ไม่มีสิทธิ์) · เผลอเติม is_vat เข้าไปในฟอร์มนั้นเมื่อไหร่ เทสนี้ต้องแดง
+  it("🚩 saveEntityInfoAction (ฝั่งลูกค้า) ต้องไม่แตะ is_vat", () => {
+    expect(settingsSrc).not.toMatch(/is_vat:/);
   });
 });

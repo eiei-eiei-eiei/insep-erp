@@ -7,7 +7,7 @@ import { calcPayrollLine } from "@/lib/payroll/calc";
 import { ratesOn } from "@/lib/payroll/sso";
 import { printSlips, type SlipData } from "@/lib/payroll/slip";
 import { legCoverage, legTotal, suggestLegDate } from "@/lib/payroll/legs";
-import { shownLine, differsFromStored, employeeForCalc } from "@/lib/payroll/periodView";
+import { shownLine, differsFromStored, employeeForCalc, tableCaption } from "@/lib/payroll/periodView";
 import { notInPeriodReason } from "@/lib/payroll/employment";
 import type { PayrollLine } from "@/lib/payroll/types";
 import {
@@ -418,7 +418,7 @@ export function PeriodTab({
                 className="rounded-lg border border-line px-4 py-2 text-sm text-muted hover:bg-raised disabled:opacity-50">
                 พิมพ์สลิปทั้งงวด
               </button>
-              <span className="text-xs text-faint">ตัวเลขบนตารางคือผลคำนวณสด — กดบันทึกเพื่อแช่ค่าไว้ก่อนลงบัญชี</span>
+              <span className="text-xs text-faint">{tableCaption(locked)}</span>
             </div>
           </Card>
 

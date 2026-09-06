@@ -275,7 +275,10 @@ export function PosTab({ boot, canWrite }: { boot: SalesBoot; canWrite: boolean 
                 <button
                   onClick={() => saveWalkin(custId)}
                   disabled={!custId || custId === walkinId}
-                  title={custId === walkinId ? "รายนี้เป็นลูกค้าทั่วไปอยู่แล้ว" : undefined}
+                  // 🪤 ต้องเช็ค custId ก่อน — ตอนยังไม่เลือกใครและยังไม่เคยตั้ง ทั้งคู่เป็น ""
+                  //    แล้ว "" === "" เป็น true → ปุ่มบอกว่า "รายนี้เป็นลูกค้าทั่วไปอยู่แล้ว"
+                  //    ทั้งที่เหตุผลจริงคือยังไม่ได้เลือกใคร (คนละเหตุผลกับที่ปุ่มถูกปิด)
+                  title={custId && custId === walkinId ? "รายนี้เป็นลูกค้าทั่วไปอยู่แล้ว" : undefined}
                   className={`flex-1 rounded-lg py-1.5 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50 ${
                     setupMode
                       ? "bg-brand font-bold text-on-brand hover:opacity-90"

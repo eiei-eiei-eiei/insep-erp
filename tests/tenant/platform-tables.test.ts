@@ -167,6 +167,7 @@ describe("createTenant / listTenants (lib/platform/provision)", () => {
       color: "copper",
       entityId: "EID01",
       maxEntities: 1,
+      isVat: true,
       modules: ["production"],
     });
 
@@ -193,7 +194,7 @@ describe("createTenant / listTenants (lib/platform/provision)", () => {
   it("สร้าง slug ซ้ำไม่ได้", async () => {
     await expect(
       createTenant(admin(), {
-        slug, name: "ซ้ำ", color: "steel", entityId: "EID01", maxEntities: 1, modules: ["sales"],
+        slug, name: "ซ้ำ", color: "steel", entityId: "EID01", maxEntities: 1, modules: ["sales"], isVat: true,
       }),
     ).rejects.toThrow();
   });

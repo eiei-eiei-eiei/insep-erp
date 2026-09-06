@@ -25,11 +25,13 @@ async function main() {
     entityId: argOf("entity") || "EID01",
     maxEntities: Number(argOf("max-entities") || "1"),
     modules: (argOf("modules") || MODULES.join(",")).split(",").map((m) => m.trim()).filter(Boolean),
+    // ★ ชื่อธงเดียวกับ scripts/add-entity.ts เพื่อไม่ต้องจำ 2 แบบ
+    isVat: !process.argv.slice(2).includes("--no-vat"),
   };
 
   const { db, ref } = adminFromEnv(envFile);
   console.log(`\n🏗️  สร้างลูกค้าใหม่ที่ project: ${ref}`);
-  console.log(`   slug=${input.slug} · โมดูล=${input.modules.join(",")} · โควตากิจการ=${input.maxEntities}\n`);
+  console.log(`   slug=${input.slug} · โมดูล=${input.modules.join(",")} · โควตากิจการ=${input.maxEntities} · ${input.isVat ? "จด VAT" : "ไม่จด VAT"}\n`);
 
   const { username, password } = await createTenant(db, input);
 

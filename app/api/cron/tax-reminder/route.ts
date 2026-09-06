@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { sendLineToTenant } from "@/lib/line";
 import { taxRemindersFor, reminderMessage, type TaxReminder } from "@/lib/accounting/taxReminder";
 import { nextMonth, prevMonth } from "@/lib/accounting/taxPay";
+import { effectiveTaxAccounts } from "@/lib/accounting/taxAccounts";
 import {
   EXCISE_REMINDER_ACTION,
   exciseRemindersFor,
@@ -96,16 +97,18 @@ export async function GET(req: NextRequest) {
 
   // ── งานที่ 1: ภาษีสรรพากร (D88) — ตรรกะเดิมทั้งดุ้น ห่อเป็นฟังก์ชันเท่านั้น ──────
   async function taxPart(t: Tn, entities: Ent[]) {
-    const [setRes, runRes] = await Promise.all([
+    const [setRes, bankRes, runRes] = await Promise.all([
       admin.from("app_settings").select("value").eq("tenant_id", t.id).eq("kind", "tax_account"),
+      admin.from("bank_accounts").select("account_name").eq("tenant_id", t.id),
       admin.from("report_runs").select("report_key, month, entity_id").eq("tenant_id", t.id).in("month", months),
     ]);
 
-    // บัญชีในระบบภาษี — เกณฑ์เดียวกับ `passesTaxGuard` ในรายงาน (ไม่งั้นเตือนเดือนที่ไม่ต้องยื่น)
-    const taxAccounts = new Set<string>(
-      (setRes.data ?? []).map((r) => String(r.value)).filter(Boolean),
+    // บัญชีในระบบภาษี — 🚨 ต้องใช้กฎ **ตัวเดียวกับแอป** (`effectiveTaxAccounts`)
+    //    หลุดจากกันเมื่อไหร่ = เตือนเดือนที่ไม่ต้องยื่น หรือเงียบในเดือนที่ต้องยื่น
+    const taxAccounts = effectiveTaxAccounts(
+      (setRes.data ?? []).map((r) => String(r.value)),
+      (bankRes.data ?? []).map((r) => String(r.account_name)),
     );
-    if (taxAccounts.size === 0) taxAccounts.add("บัญชีบริษัท");
 
     const filedSet = new Set(
       (runRes.data ?? []).map((r) => `${r.entity_id ?? ""}|${r.report_key}|${r.month}`),

@@ -33,7 +33,13 @@ export function SettingsTab({ boot }: { boot: Bootstrap }) {
         <ChipList kind="expense_cat" title="หมวดหมู่รายจ่าย" initial={boot.expenseCats} />
         <ChipList kind="income_cat" title="หมวดหมู่รายรับ" initial={boot.incomeCats} />
         <ChipList kind="wht_rate" title="อัตรา WHT (%)" initial={boot.whtRates} placeholder="เช่น 3" />
-        <ChipList kind="tax_account" title="บัญชีในระบบภาษี (ชื่อต้องตรงบัญชีเงิน)" initial={boot.taxAccounts} />
+        <ChipList
+          kind="tax_account"
+          title="บัญชีในระบบภาษี (ชื่อต้องตรงบัญชีเงิน)"
+          initial={boot.taxAccountsSet}
+          emptyHint="ยังไม่ได้ตั้ง — ระบบนับทุกบัญชีเงินในระบบให้ก่อน · เพิ่มเองแล้วจะนับเฉพาะที่เพิ่ม"
+          note="บิลที่ลงบัญชีนอกรายการนี้จะไม่เข้า ภพ.30 / ภงด. / แดชบอร์ด — ใช้คัดบัญชีส่วนตัวออกจากงบ"
+        />
         {/* D80: เดิมฮาร์ดโค้ด "ต้นทุนสุรา" ไว้ในหน้าจอ — ผังบัญชีจริงของลูกค้าไม่มีคำนั้น
             🪤 ส่ง `forwardCatsSet` (ที่ตั้งเองจริง) ไม่ใช่ `forwardCats` (ที่มีผลจริง) —
                โชว์ค่าปริยายเป็น chip เมื่อไหร่ ผู้ใช้จะนึกว่าบันทึกไว้แล้ว พอเพิ่มตัวที่ 2
