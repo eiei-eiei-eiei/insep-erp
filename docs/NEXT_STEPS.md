@@ -992,3 +992,22 @@ financial gain of **anyone** involved in **any part of the production** of the p
 
 > 💡 **เตือนในแอปทำไปแล้วในเฟส 2** (แถบ/ป๊อปอัพ) ซึ่งถึงตัวลูกค้ากลุ่มนี้ดีกว่าอีเมลอยู่แล้ว
 > → เฟส 3 มีค่าเฉพาะตอนลูกค้าเยอะจนไล่เองไม่ไหว หรือมีลูกค้าที่ไม่ค่อยเปิดแอป
+
+---
+
+## 🪤 ค้าง: ไฟล์ seed รุ่นเก่ารันใน SQL Editor ไม่ได้ (เจอตอนเทส D94 · 2026-09-07)
+
+`seed_test.sql` · `seed_accounting.sql` · `seed_sales.sql` · `seed_pos.sql` · `seed_fermented.sql`
+insert โดย**ไม่ระบุ `tenant_id`/`entity_id`** อาศัย default ของตาราง ซึ่งเป็น
+`my_tenant()` / `my_default_entity()` — ทั้งคู่อ่านจาก `auth.uid()` ของ JWT
+
+🚨 **Supabase SQL Editor รันเป็น role `postgres` ไม่มี JWT** → คืน `null` → ชน `not null` ทันที
+(ยืนยันแล้วด้วย service role: `select my_tenant()` = `null`)
+
+และ `on conflict (material_id)` / `(product_id)` ก็ผิดตั้งแต่ **0027 ผ่าตัด PK เป็น composite** —
+ต้องเป็น `(tenant_id, material_id)` ไม่งั้นได้ `42P10 no unique constraint matching`
+
+★ `seed_redistill.sql` (D94) แก้แล้วด้วย `do $$` block ที่ resolve tenant จาก slug — **ใช้เป็นแม่แบบ**
+
+> ทำไมยังไม่แก้ทั้งหมดในรอบนี้: ไฟล์เหล่านี้ไม่ได้อยู่ในขอบเขต D94 และการแก้ต้องเทสรันจริง
+> ทีละไฟล์กับ tenant จริง — ควรทำเป็นงานของตัวเองพร้อมรันยืนยันครบทุกไฟล์

@@ -16,6 +16,8 @@ import { ReportChecklist } from "../../_components/ReportChecklist";
 import {
   closeStatus, monthCloseBadge, closeWarnText, pendingRecomputeText, driftSummary, recomputeResultText,
 } from "@/lib/production/monthClose";
+import { lotsPendingAtMonthEnd, type RedistillLot, type RedistillRound } from "@/lib/production/redistill";
+import { getRedistillLotsAction } from "../actions";
 import { reminderHintText } from "@/lib/production/exciseReminder";
 import { can, capHolderText, type Role } from "@/lib/shared/roles";
 import { formatDateThai } from "@/lib/shared/format";
@@ -129,6 +131,10 @@ export function ExciseTab({ active, role }: { active: boolean; role: Role }) {
   useEffect(() => { loadRuns(); }, [loadRuns]);
 
   // ── ปิดเดือนสรรพสามิต (D91) ────────────────────────────────────────────────
+  // D94 — ล็อตกลั่นซ้ำที่กลั่นเสร็จแล้วแต่ยังไม่ปรับดีกรี ณ สิ้นเดือนที่กำลังจะปิด
+  //   🚨 ช่วงนี้คือช่วงเดียวที่บัญชีห่างจากของจริง (ฟอร์มบอกว่ายกไปปรุงหมดแล้ว แต่ยอดที่จะ
+  //      กลายเป็นสุราปรุงยังไม่เข้าบัญชี) → ต้องบอกก่อนกดปิด ไม่ใช่ให้ไปเจอตอนเจ้าหน้าที่มาตรวจ
+  const [lots, setLots] = useState<{ lots: RedistillLot[]; rounds: RedistillRound[] } | null>(null);
   const [mc, setMc] = useState<MonthCloseView | null>(null);
   const [mcErr, setMcErr] = useState<string | null>(null);
   const [mcMsg, setMcMsg] = useState<{ text: string; tone: "ok" | "warn" | "err" } | null>(null);
@@ -143,6 +149,16 @@ export function ExciseTab({ active, role }: { active: boolean; role: Role }) {
       .catch((e: unknown) => setMcErr(e instanceof Error ? e.message : "อ่านสถานะปิดเดือนไม่สำเร็จ"));
   }, [month, entityId]);
   useEffect(() => { loadClose(); setMcMsg(null); setMcNote(""); }, [loadClose]);
+  // ★ อ่านครั้งเดียวตอนเปิดแท็บ — ล็อตกลั่นซ้ำเปลี่ยนที่แท็บอื่น สลับแท็บกลับมาก็โหลดใหม่
+  useEffect(() => {
+    if (!active) return;
+    getRedistillLotsAction()
+      .then((r) => setLots({
+        lots: r.lots as unknown as RedistillLot[],
+        rounds: r.rounds as unknown as RedistillRound[],
+      }))
+      .catch(() => setLots(null));
+  }, [active]);
 
   const st = closeStatus(mc?.rows ?? []);
   const badge = monthCloseBadge(st);
@@ -382,6 +398,34 @@ export function ExciseTab({ active, role }: { active: boolean; role: Role }) {
             การกดสร้าง PDF <b>ไม่ล็อกอะไร</b> — พิมพ์บัญชีประจำวันให้เจ้าหน้าที่ตรวจได้ตลอด ·
             ปิดเดือนคือการบอกระบบว่า <b>ยื่นงบเดือนไปแล้ว</b> หลังจากนั้นการยกเลิกบิลจะไม่เปลี่ยนตัวเลขบนฟอร์มของเดือนนี้
           </p>
+
+          {/* D94 — ล็อตกลั่นซ้ำที่ค้างระหว่างทาง ณ สิ้นเดือนนี้ */}
+          {(() => {
+            if (!lots) return null;
+            const byLot: Record<string, RedistillRound[]> = {};
+            for (const r of lots.rounds) (byLot[r.lot_no] = byLot[r.lot_no] ?? []).push(r);
+            const stuck = lotsPendingAtMonthEnd(lots.lots, byLot, month);
+            if (stuck.length === 0) return null;
+            return (
+              <div className="mb-3 rounded-lg border border-warn-line bg-warn-bg px-3 py-2 text-sm text-warn">
+                <p className="font-medium">
+                  มีล็อตกลั่นซ้ำที่กลั่นเสร็จแล้วแต่ยังไม่ได้ปรับดีกรี {stuck.length} ล็อต
+                </p>
+                <ul className="mt-1 space-y-0.5 text-xs">
+                  {stuck.map((l) => (
+                    <li key={l.lotNo}>
+                      {l.lotNo} · {l.productName} — {l.vol.toFixed(2)} ล. {l.abv} ดีกรี
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-1 text-xs">
+                  ยอดพวกนี้ออกจากถังสุรากลั่นไปแล้ว (ฟอร์มหักออกตั้งแต่วันยกออก) แต่ยังไม่เข้าช่องสุราปรุง
+                  ⇒ <b>ยอดคงเหลือบนฟอร์มสิ้นเดือนนี้จะต่ำกว่าของที่มีอยู่จริงในโรง</b> ·
+                  ถ้าปรับดีกรีทันในเดือนนี้ ให้ไปปิดล็อตที่แท็บ <b>กลั่นซ้ำ</b> ก่อนแล้วค่อยกดปิดเดือน
+                </p>
+              </div>
+            );
+          })()}
 
           {st.closed && st.active ? (
             <>

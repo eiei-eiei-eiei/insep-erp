@@ -165,7 +165,8 @@ export async function getRecentDilutes() {
   const supabase = await createClient();
   const { data } = await supabase
     .from("log_dilute")
-    .select("id, dilute_date, product_name, bottle_size, start_vol, start_abv, water, final_vol, final_abv, note")
+    // D94 — redistill_lot/leg: แถวที่มาจากล็อตกลั่นซ้ำต้องอ่านอย่างเดียว แก้ที่ล็อตทางเดียว
+    .select("id, dilute_date, product_name, bottle_size, start_vol, start_abv, water, final_vol, final_abv, note, redistill_lot, redistill_leg")
     .order("dilute_date", { ascending: false })
     .order("id", { ascending: false })
     .limit(30);
@@ -268,7 +269,7 @@ export async function getBatchBoard(): Promise<BatchCard[]> {
 
   const [monitors, runs, distills, draws, prods] = await Promise.all([
     supabase.from("log_ferment_monitor").select("batch, measure_date, measure_time, ph, brix, temp").in("batch", batches),
-    supabase.from("log_distill_run").select("batch, pot_no, phase").in("batch", batches),
+    supabase.from("log_distill_run").select("batch, pot_no, phase").eq("is_redistill", false).in("batch", batches),
     supabase.from("log_distill").select("batch, distill_date, vol, abv").in("batch", batches),
     supabase.from("log_ferment_draw").select("batch, draw_date, vol, abv, final_vol, final_abv").in("batch", batches),
     supabase.from("products").select("name, liquor_type"),
@@ -340,10 +341,14 @@ export async function getBatchBoard(): Promise<BatchCard[]> {
 /** รายชื่อ batch สำหรับหน้าประวัติ: หมัก (มีค่าวัด) / กลั่น (มี run) + startDate/ชื่อสุรา */
 export async function getHistoryBatches() {
   const supabase = await createClient();
-  const [ferments, monitors, runs] = await Promise.all([
+  const [ferments, monitors, runs, lotRuns, lots] = await Promise.all([
     supabase.from("log_ferment").select("batch, ferment_date, product_name"),
     supabase.from("log_ferment_monitor").select("batch"),
-    supabase.from("log_distill_run").select("batch"),
+    // 🔴 D94 — ตรงนี้ดึง batch จาก log_distill_run ตรง ๆ ไม่มีเงื่อนไข ⇒ ล็อตกลั่นซ้ำจะโผล่
+    //    ปนกับ batch หมักทันทีที่บันทึกรอบแรก (ชื่อสุราว่างเพราะไม่มีแถวใน log_ferment)
+    supabase.from("log_distill_run").select("batch").eq("is_redistill", false),
+    supabase.from("log_distill_run").select("batch").eq("is_redistill", true),
+    supabase.from("log_redistill").select("lot_no, product_name, draw_date"),
   ]);
   const info: Record<string, { startDate: string; productName: string }> = {};
   for (const f of ferments.data ?? []) {
@@ -354,9 +359,24 @@ export async function getHistoryBatches() {
   const monBatches = [...new Set((monitors.data ?? []).map((m) => m.batch as string))];
   const runBatches = [...new Set((runs.data ?? []).map((r) => r.batch as string))];
   const mk = (b: string) => ({ batch: b, startDate: info[b]?.startDate ?? null, productName: info[b]?.productName ?? "" });
+
+  // D94 — ล็อตกลั่นซ้ำเป็น **กลุ่มของตัวเอง** ไม่ปนกับ batch หมัก
+  //   ชื่อสุรา/วันที่มาจาก log_redistill (ล็อตไม่มีแถวใน log_ferment จึงไม่มีใน `info`)
+  const lotInfo: Record<string, { startDate: string; productName: string }> = {};
+  for (const l of lots.data ?? []) {
+    lotInfo[l.lot_no as string] = {
+      startDate: l.draw_date as string,
+      productName: (l.product_name as string) ?? "",
+    };
+  }
+  const lotBatches = [...new Set((lotRuns.data ?? []).map((r) => r.batch as string))];
+
   return {
     ferment: monBatches.map(mk).sort((a, b) => a.batch.localeCompare(b.batch)),
     distill: runBatches.map(mk).sort((a, b) => a.batch.localeCompare(b.batch)),
+    redistill: lotBatches
+      .map((b) => ({ batch: b, startDate: lotInfo[b]?.startDate ?? null, productName: lotInfo[b]?.productName ?? "" }))
+      .sort((a, b) => a.batch.localeCompare(b.batch)),
   };
 }
 
@@ -375,13 +395,14 @@ export async function getFermentMulti(batches: string[]) {
 }
 
 /** reading กลั่นหลาย batch + ค่าหัวใจสุดท้ายจาก log_distill (สำหรับ overlay + yield) */
-export async function getDistillMulti(batches: string[]) {
+/** ★ D94 — พารามิเตอร์ redistill เลือกว่าจะเอาเส้นของ batch หมัก หรือของล็อตกลั่นซ้ำ (ปนกันไม่ได้) */
+export async function getDistillMulti(batches: string[], redistill = false) {
   const data: Record<string, unknown[]> = {};
   for (const b of batches) data[b] = [];
   if (batches.length === 0) return { data, final: {} as Record<string, { vol: number; abv: number }> };
   const supabase = await createClient();
   const [runs, distills] = await Promise.all([
-    supabase.from("log_distill_run").select("batch, pot_no, phase, minute, abv20, cum_vol, vapor_temp, ferm_charge").in("batch", batches),
+    supabase.from("log_distill_run").select("batch, pot_no, phase, minute, abv20, cum_vol, vapor_temp, ferm_charge").eq("is_redistill", redistill).in("batch", batches),
     supabase.from("log_distill").select("batch, vol, abv").in("batch", batches),
   ]);
   for (const r of runs.data ?? []) (data[r.batch as string] = data[r.batch as string] || []).push(r);
@@ -391,12 +412,13 @@ export async function getDistillMulti(batches: string[]) {
 }
 
 /** ประวัติการกลั่นของ batch (Log_DistillRun) เรียงตามหม้อ+เวลา */
-export async function getDistillRun(batch: string) {
+export async function getDistillRun(batch: string, redistill = false) {
   if (!batch) return [];
   const supabase = await createClient();
   const { data } = await supabase
     .from("log_distill_run")
     .select("*")
+    .eq("is_redistill", redistill)
     .eq("batch", batch)
     .order("pot_no")
     .order("created_at");
@@ -430,4 +452,65 @@ export async function getClosedBatches(limit = 20) {
     vol: Number(r.vol) || 0,
     abv: Number(r.abv) || 0,
   }));
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  D94 — กลั่นหลายรอบ (ล็อตกลั่นซ้ำ)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** ล็อตกลั่นซ้ำล่าสุด + รอบของแต่ละล็อต (หน้าจอเดียวใช้ทั้งคู่ → อ่านทีเดียว) */
+export async function getRedistillLots() {
+  const supabase = await createClient();
+  const lots = mustRead(
+    await supabase
+      .from("log_redistill")
+      .select("id, lot_no, product_name, draw_date, draw_vol, draw_abv, dilute_date, water, final_vol, final_abv, note")
+      .order("draw_date", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(50),
+    "ล็อตกลั่นซ้ำ",
+  );
+  const lotNos = lots.map((l) => l.lot_no as string);
+  let rounds: Record<string, unknown>[] = [];
+  if (lotNos.length > 0) {
+    rounds = mustRead(
+      await supabase
+        .from("log_redistill_round")
+        .select("id, lot_no, round_no, soak_date, distill_date, start_vol, start_abv, end_vol, end_abv, note")
+        .in("lot_no", lotNos)
+        .order("lot_no")
+        .order("round_no"),
+      "รอบกลั่นซ้ำ",
+    );
+  }
+  return { lots, rounds };
+}
+
+/** เลขล็อตทั้งหมด (ไว้ให้ nextLotNumber หาเลขถัดไป) */
+export async function getRedistillLotNos() {
+  const supabase = await createClient();
+  // 🚨 D89 — อ่านไม่ได้แล้วเซตว่าง = เลขล็อตวนกลับไป S1 แล้วชนล็อตเดิม (แนวเดียวกับ batch)
+  const data = mustRead(await supabase.from("log_redistill").select("lot_no"), "เลขล็อตที่มีอยู่");
+  return (data ?? []).map((r) => r.lot_no as string);
+}
+
+/** วัตถุดิบ (สมุนไพร) ที่ตัดไว้ของแต่ละรอบ — อ่านกลับมาเติมฟอร์มตอนกดแก้ */
+export async function getRedistillMaterials(docRefs: string[]) {
+  const out: Record<string, { material_id: string; amount: number }[]> = {};
+  for (const r of docRefs) out[r] = [];
+  if (docRefs.length === 0) return out;
+  const supabase = await createClient();
+  const data = mustRead(
+    await supabase
+      .from("log_material")
+      .select("material_id, amount, doc_ref")
+      .eq("trans_type", "จ่าย")
+      .in("doc_ref", docRefs),
+    "วัตถุดิบของรอบกลั่นซ้ำ",
+  );
+  for (const r of data ?? []) {
+    const k = String(r.doc_ref);
+    (out[k] = out[k] ?? []).push({ material_id: String(r.material_id), amount: Number(r.amount) || 0 });
+  }
+  return out;
 }

@@ -215,13 +215,35 @@ export function DiluteTab({ products }: { products: Product[] }) {
                 ) : (
                   <tr key={r.id as number}>
                     <td className="whitespace-nowrap">{String(r.dilute_date).slice(0, 10)}</td>
-                    <td>{r.product_name as string}</td>
+                    <td>
+                      {r.product_name as string}
+                      {r.redistill_lot ? (
+                        <span className="ml-1 whitespace-nowrap text-xs text-brand">
+                          ล็อต {r.redistill_lot as string} · {r.redistill_leg as string}
+                        </span>
+                      ) : null}
+                    </td>
                     <td className="whitespace-nowrap num">{(r.start_vol as number) ?? "—"} → {(r.final_vol as number) ?? "—"}</td>
                     <td className="whitespace-nowrap num">{(r.start_abv as number) ?? "—"}° → {(r.final_abv as number) ?? "—"}°</td>
                     <td className="text-faint">{(r.note as string) ?? ""}</td>
                     <td className="whitespace-nowrap">
-                      <button onClick={() => startEdit(r)} disabled={pending} className="text-muted hover:text-ink" title="แก้ไข"><IconEdit size={16} /></button>
-                      <button onClick={() => del(r)} disabled={pending} className="ml-2 text-crit hover:text-crit" title="ลบ"><IconTrash size={16} /></button>
+                      {/*
+                        🚨 D94 — แถวที่ระบบสร้างจากล็อตกลั่นซ้ำ **แก้/ลบที่นี่ไม่ได้**
+                        เปิดให้แก้สองทาง = วันหนึ่งจะมีคนแก้ 240 เป็น 180 ตรงนี้ แล้วเลขในล็อต
+                        กับเลขบนฟอร์ม ภส. เถียงกันโดยไม่มีอะไรฟ้อง (ตระกูล D81/D88)
+                        🪤 ปุ่มยัง render อยู่แต่ปิดไว้ + title บอกว่าต้องไปกดที่ไหน —
+                           ซ่อนปุ่มแย่กว่าปุ่มเทา (D86) และทุกครั้งที่ปิดปุ่มต้องตอบได้ว่าให้กดอะไรแทน
+                      */}
+                      <button onClick={() => startEdit(r)} disabled={pending || !!r.redistill_lot}
+                        className="text-muted hover:text-ink disabled:opacity-40"
+                        title={r.redistill_lot ? "แถวนี้มาจากล็อตกลั่นซ้ำ — แก้ที่แท็บ กลั่นซ้ำ" : "แก้ไข"}>
+                        <IconEdit size={16} />
+                      </button>
+                      <button onClick={() => del(r)} disabled={pending || !!r.redistill_lot}
+                        className="ml-2 text-crit hover:text-crit disabled:opacity-40"
+                        title={r.redistill_lot ? "แถวนี้มาจากล็อตกลั่นซ้ำ — ลบล็อตที่แท็บ กลั่นซ้ำ" : "ลบ"}>
+                        <IconTrash size={16} />
+                      </button>
                     </td>
                   </tr>
                 )
@@ -229,6 +251,12 @@ export function DiluteTab({ products }: { products: Product[] }) {
             </tbody>
           </table>
           <p className="mt-1 text-xs text-faint">แสดง 30 รายการล่าสุด · แก้/ลบแล้วปริมาณคงเหลือรอปรุงปรับให้อัตโนมัติ</p>
+          {recent.some((r) => r.redistill_lot) && (
+            <p className="mt-1 text-xs text-warn">
+              แถวที่ติดป้าย <b>ล็อต …</b> ถูกสร้างจากแท็บ <b>กลั่นซ้ำ</b> — แก้หรือลบได้ที่แท็บนั้นทางเดียว
+              เพื่อไม่ให้ตัวเลขในล็อตกับตัวเลขบนฟอร์ม ภส. ไม่ตรงกัน
+            </p>
+          )}
         </div>
       )}
     </Card>

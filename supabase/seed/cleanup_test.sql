@@ -12,6 +12,9 @@ delete from log_ferment         where product_name like '%ทดสอบ%';
 delete from log_distill         where product_name like '%ทดสอบ%';
 delete from log_dilute          where product_name like '%ทดสอบ%';
 delete from log_ferment_draw    where product_name like '%ทดสอบ%';   -- D78 สุราแช่
+-- D94 กลั่นซ้ำ — ★ ต้องมาก่อน log_dilute/log_material ไม่ได้ (ไม่มี FK ถึงกัน) แต่ต้องมี
+--    ไม่งั้นล็อตทดสอบค้างถาวร · รอบถูกลบตาม on delete cascade
+delete from log_redistill       where product_name like '%ทดสอบ%';
 delete from log_ferment_monitor where product_name like '%ทดสอบ%';
 delete from log_distill_run     where product_name like '%ทดสอบ%';
 delete from stock_product       where product_id like 'T-%';

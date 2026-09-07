@@ -49,6 +49,9 @@ export type LogDilute = {
   start_vol: number | string | null;
   final_vol: number | string | null;
   final_abv: number | string | null;
+  /** D94: แถวที่มาจากล็อตกลั่นซ้ำ — พกหมายเหตุของตัวเองมา (ดู diluNote ใน productionReport) */
+  redistill_lot?: string | null;
+  note?: string | null;
 };
 export type LogProduct = {
   doc_date: string;
@@ -334,7 +337,15 @@ export function productionReport(
       monthDiluStart += startVol;
       daily[day].diluStartVol += startVol;
       daily[day].diluFinalVol += finalVol;
-      daily[day].diluNote.push("ปรุงปรับดีกรี " + finalAbv + " ได้ปริมาณ " + finalVol.toFixed(2) + " ลิตร");
+      // D94 — แถวจากล็อตกลั่นซ้ำพกหมายเหตุของตัวเองมา (lotNoteText) เพราะข้อความอัตโนมัติ
+      //   ด้านล่างอธิบายไม่ได้ว่าสุราหายไปไหนระหว่างแถว "ยกไปปรุง" กับ "ปรุงเสร็จ"
+      //   ★ แถวที่ไม่มี redistill_lot เดินทางเดิมทุกประการ → golden test เดิมไม่ขยับ
+      if (row.redistill_lot) {
+        const lotNote = String(row.note ?? "").trim();
+        if (lotNote) daily[day].diluNote.push(lotNote);
+      } else {
+        daily[day].diluNote.push("ปรุงปรับดีกรี " + finalAbv + " ได้ปริมาณ " + finalVol.toFixed(2) + " ลิตร");
+      }
     }
   }
 
@@ -367,8 +378,14 @@ export function productionReport(
     curSaa = curSaa + dData.fermSaa - dData.distSaa;
     curDist = curDist + dData.distVol - dData.diluStartVol;
     curDilu = curDilu + dData.diluFinalVol - dData.packVol;
+    // 🔴 D94 — `diluFinalVol` เพิ่งถูกเติมเข้าลิสต์นี้ ก่อนหน้านี้ตกหล่นมาตลอด
+    //   เดิมไปไม่ถึงเพราะ final_vol > 0 แปลว่า start_vol > 0 เสมอ (ปรุง 1 แถวจบ)
+    //   พอ D94 แยกแถวปรุงเป็น 2 ท่อน ท่อน "ปรุงเสร็จ" มีแต่ final_vol → **วันนั้นจะถูก
+    //   ข้ามทั้งวัน** แล้วยอด "คงเหลือสุราปรุง" กระโดดขึ้นบนบรรทัดวันหลังโดยไม่มีอะไรอธิบาย
+    //   ★ ข้อมูลเก่าทุกแถวที่ final_vol>0 ก็มี start_vol>0 ⇒ ค่าไม่เปลี่ยนสักแถว
+    //     = golden test เดิมผ่านโดยไม่แก้ไฟล์เทส (หลักฐานเดียวกับ D55/D69/D70)
     const hasActivity = dData.fermBatch.length || dData.distBatch.length ||
-      dData.fermQty || dData.distVol || dData.diluStartVol || dData.packVol;
+      dData.fermQty || dData.distVol || dData.diluStartVol || dData.diluFinalVol || dData.packVol;
     if (!hasActivity) continue;
     const avgFermVol = dData.fermQty > 0 ? dData.fermSaa / dData.fermQty : 0;
     const avgDistFermVol = dData.distFermVolAvg.length > 0 ? dData.distFermVolAvg.reduce((a, b) => a + b, 0) / dData.distFermVolAvg.length : 0;

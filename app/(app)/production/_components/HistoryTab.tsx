@@ -44,7 +44,9 @@ function BatchPicker({ list, sel, onToggle }: { list: BatchInfo[]; sel: string[]
 }
 
 export function HistoryTab({ products }: { products: Product[] }) {
-  const [lists, setLists] = useState<{ ferment: BatchInfo[]; distill: BatchInfo[] }>({ ferment: [], distill: [] });
+  const [lists, setLists] = useState<{ ferment: BatchInfo[]; distill: BatchInfo[]; redistill: BatchInfo[] }>(
+    { ferment: [], distill: [], redistill: [] },
+  );
   const degreeMap = useMemo(() => {
     const m: Record<string, number> = {};
     for (const p of products) if (p.name && p.degree != null) m[p.name] = Number(p.degree);
@@ -57,6 +59,13 @@ export function HistoryTab({ products }: { products: Product[] }) {
     <div className="space-y-6">
       <FermentCompare list={lists.ferment} />
       <DistillCompare list={lists.distill} degreeMap={degreeMap} />
+      {/*
+        D94 — ล็อตกลั่นซ้ำเป็นการ์ดของตัวเอง **ไม่ปนกับ batch หมัก**
+        (ปนแล้วจะเทียบเส้นข้ามชนิดกันมั่ว และล็อตไม่มีแถวใน log_distill = Yield ว่างเสมอ)
+      */}
+      {lists.redistill.length > 0 && (
+        <DistillCompare list={lists.redistill} degreeMap={degreeMap} redistill />
+      )}
     </div>
   );
 }
@@ -133,7 +142,12 @@ const D_METRICS: { key: "abv20" | "vapor_temp" | "cum_vol"; label: string }[] = 
   { key: "cum_vol", label: "ปริมาณสะสม" },
 ];
 
-function DistillCompare({ list, degreeMap }: { list: BatchInfo[]; degreeMap: Record<string, number> }) {
+function DistillCompare({ list, degreeMap, redistill = false }: {
+  list: BatchInfo[];
+  degreeMap: Record<string, number>;
+  /** D94 — true = รายการนี้คือ **ล็อตกลั่นซ้ำ** (ค่าระหว่างกลั่นอยู่คนละชุดกับ batch หมัก) */
+  redistill?: boolean;
+}) {
   const [sel, setSel] = useState<string[]>([]);
   const [data, setData] = useState<Record<string, DistillRead[]>>({});
   const [final, setFinal] = useState<Record<string, { vol: number; abv: number }>>({});
@@ -143,11 +157,11 @@ function DistillCompare({ list, degreeMap }: { list: BatchInfo[]; degreeMap: Rec
 
   useEffect(() => {
     if (sel.length === 0) { setData({}); setFinal({}); return; }
-    getDistillMultiAction(sel).then((res) => {
+    getDistillMultiAction(sel, redistill).then((res) => {
       setData(res.data as Record<string, DistillRead[]>);
       setFinal(res.final as Record<string, { vol: number; abv: number }>);
     });
-  }, [sel]);
+  }, [sel, redistill]);
 
   const toggle = (b: string) => setSel((s) => (s.includes(b) ? s.filter((x) => x !== b) : [...s, b]));
 
@@ -176,7 +190,7 @@ function DistillCompare({ list, degreeMap }: { list: BatchInfo[]; degreeMap: Rec
   const hasData = series.length > 0;
 
   return (
-    <Card title="เทียบการกลั่น (overlay ต่อหม้อ) + สรุปหัวใจ/Yield">
+    <Card title={redistill ? "เทียบการกลั่นซ้ำ (overlay ต่อหม้อ)" : "เทียบการกลั่น (overlay ต่อหม้อ) + สรุปหัวใจ/Yield"}>
       <BatchPicker list={list} sel={sel} onToggle={toggle} />
       {sel.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-3 text-sm">

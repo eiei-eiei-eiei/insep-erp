@@ -121,7 +121,8 @@ export async function reportData(
       supabase.from("products").select("product_id, name, degree, bottle_size_l, liquor_type, liquor_kind"),
       supabase.from("log_ferment").select("ferment_date, product_name, batch, container_qty, material_amounts"),
       supabase.from("log_distill").select("distill_date, product_name, batch, vol, abv"),
-      supabase.from("log_dilute").select("dilute_date, product_name, start_vol, final_vol, final_abv"),
+      // D94: redistill_lot + note — แถวจากล็อตกลั่นซ้ำพกหมายเหตุของตัวเองมาพิมพ์ลงฟอร์ม
+      supabase.from("log_dilute").select("dilute_date, product_name, start_vol, final_vol, final_abv, redistill_lot, note"),
       exciseLogProduct(supabase),
     ]);
     return productionReport(

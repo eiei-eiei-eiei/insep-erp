@@ -7,6 +7,7 @@ import { MaterialTab } from "./MaterialTab";
 import { FermentTab } from "./FermentTab";
 import { MonitorTab } from "./MonitorTab";
 import { DistillTab } from "./DistillTab";
+import { RedistillTab } from "./RedistillTab";
 import { DiluteTab } from "./DiluteTab";
 import { DrawTab } from "./DrawTab";
 import { ProductTab } from "./ProductTab";
@@ -98,6 +99,9 @@ export function ProductionApp({
       )}
       {visited.has("ติดตามหมัก") && <div className={show("ติดตามหมัก")}><MonitorTab pending={pending} batch={batch} onBatchChange={setBatch} /></div>}
       {visited.has("กลั่น") && <div className={show("กลั่น")}><DistillTab pending={pending} batch={batch} onBatchChange={setBatch} /></div>}
+      {visited.has("กลั่นซ้ำ") && (
+        <div className={show("กลั่นซ้ำ")}><RedistillTab products={products} materials={materials} /></div>
+      )}
       {visited.has("ปรุง/ปรับดีกรี") && <div className={show("ปรุง/ปรับดีกรี")}><DiluteTab products={products} /></div>}
       {visited.has("รินน้ำสุราแช่") && (
         <div className={show("รินน้ำสุราแช่")}><DrawTab products={products} pending={pending} batch={batch} onBatchChange={setBatch} /></div>

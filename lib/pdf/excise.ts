@@ -9,6 +9,7 @@ import { PDFDocument, rgb, type PDFPage } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 
 import type { ExciseKind } from "./keys";
+import { fitNote, noteBaselines } from "./noteFit";
 
 // ★ ExciseKind + EXCISE_TEMPLATE_KEY ย้ายไป ./keys แล้ว (component จะได้ import ค่าคงที่
 //   โดยไม่ลาก pdf-lib + fontkit เข้า bundle) — re-export ไว้ให้ผู้เรียกเดิมใช้ได้เหมือนเดิม
@@ -171,8 +172,20 @@ async function fillProductionForm(cfg: any, data: any, templateBytes: Uint8Array
       else s = val == null || val === "" ? "-" : String(val);
       if (col.align === "C") center(s, col.x, y, col.size);
       else if (col.align === "R" || col.align === "RT") rightText(s, col.x, y, col.size);
+      else if (col.maxW) wrapped(s, col.x, y, col.size || S, col);
       else txt(s, col.x, y, col.size);
     };
+    // D94 — ช่องหมายเหตุ: **ขึ้นบรรทัดที่ 2 แทนการตัดประโยค** (ต่างจากฟอร์มสุราแช่ที่ตัดท้ายด้วย …)
+    //   ★ ข้อความที่พอดีอยู่แล้วในบรรทัดเดียว ได้ขนาด + baseline เดิมเป๊ะ ⇒ แถวที่เคยพิมพ์ถูกไม่ขยับ
+    //   🔴 ก่อนหน้านี้คอลัมน์นี้ไม่มี maxW เลย ข้อความอัตโนมัติเดิม (69.0 pt) ทะลุเส้นออกไป 8.6 pt
+    function wrapped(s: any, x: number, y: number, size: number, col: any) {
+      const str = String(s ?? "");
+      if (str === "" || str === "-") { if (str === "-") txt(str, x, y, size); return; }
+      const box = { maxW: col.maxW, size, minSize: 5, maxLines: 2, above: col.above, below: col.below };
+      const fit = fitNote(str, (t, sz) => f.widthOfTextAtSize(t, sz), box);
+      const ys = noteBaselines(y, fit.lines.length, fit.size, col.above, col.below);
+      fit.lines.forEach((line, i) => page.drawText(line, { x, y: ys[i], size: fit.size, font: f }));
+    }
 
     if (cfg.header) cfg.header.forEach((h: any) => {
       const v = typeof h.text === "function" ? h.text(data) : h.text;
@@ -285,7 +298,15 @@ const CFG_0702_1: any = {
     distFermQty: { x: 304.7, align: "R" }, avgDistFermVol: { x: 346.7, align: "R" }, distSaa: { x: 379.7, align: "R" },
     curSaa: { x: 430.7, align: "R", keepZero: true }, avgAbv: { x: 451.7, align: "R" }, distVol: { x: 483.7, align: "R" },
     diluStartVol: { x: 527.7, align: "R" }, curDist: { x: 565.7, align: "R", keepZero: true }, packSize: { x: 598.7, align: "RT" },
-    packQty: { x: 624.7, align: "R" }, packVol: { x: 710.7, align: "R" }, curDilu: { x: 751.7, align: "R", keepZero: true }, note: { x: 758.7, align: "L", size: 6.5 },
+    packQty: { x: 624.7, align: "R" }, packVol: { x: 710.7, align: "R" }, curDilu: { x: 751.7, align: "R", keepZero: true },
+    // D94 · กรอบช่องหมายเหตุ ดึงจาก content stream ของ template ทั้ง 3 ค่า:
+    //   maxW  = เส้นแบ่งคอลัมน์ขวาสุด 819.1 − จุดเริ่มข้อความ 758.7 = **60.4 pt**
+    //           (ห้ามใช้ขอบกระดาษ 841.8 เป็นขอบช่อง — ผิดไป 22.7 pt)
+    //   above/below = เส้นตารางบน 382.39 / ล่าง 369.91 เทียบ baseline แถวแรก 372.5
+    //           🪤 **baseline สูงจากเส้นล่างแค่ 2.59 pt** → จัด 2 บรรทัดกึ่งกลาง baseline
+    //              จะดันบรรทัดล่างทะลุเส้นตารางเสมอ (เจอจริงตอนพิมพ์ดู)
+    //   🔴 ก่อนมี maxW: ข้อความอัตโนมัติ "ปรุงปรับดีกรี …" = 69.0 pt ทะลุเส้นออกไปทุกแถว
+    note: { x: 758.7, align: "L", size: 6.5, maxW: 60.4, above: 9.89, below: 2.59 },
   },
   totals: {
     month: [

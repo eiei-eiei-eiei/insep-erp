@@ -19,7 +19,17 @@ import {
   getClosedBatches,
   getRecentDraws,
   getRemainingFermentedVol,
+  getRedistillLots,
+  getRedistillLotNos,
+  getRedistillMaterials,
 } from "./data";
+import {
+  nextLotNumber,
+  materialDocRef,
+  lotNoteText,
+  type RedistillLot,
+  type RedistillRound,
+} from "@/lib/production/redistill";
 
 export type SaveResult = { ok: boolean; error?: string; data?: unknown };
 
@@ -32,8 +42,8 @@ export async function getRemainingDistillVolAction(
 ): Promise<number> {
   return getRemainingDistillVol(productName);
 }
-export async function getDistillRunsAction(batch: string) {
-  return getDistillRun(batch);
+export async function getDistillRunsAction(batch: string, redistill = false) {
+  return getDistillRun(batch, redistill);
 }
 export async function getFermentMonitorAction(batch: string) {
   return getFermentMonitor(batch);
@@ -47,8 +57,8 @@ export async function getBatchBoardAction() {
 export async function getFermentMultiAction(batches: string[]) {
   return getFermentMulti(batches);
 }
-export async function getDistillMultiAction(batches: string[]) {
-  return getDistillMulti(batches);
+export async function getDistillMultiAction(batches: string[], redistill = false) {
+  return getDistillMulti(batches, redistill);
 }
 
 function fail(error: string): SaveResult {
@@ -252,12 +262,15 @@ export async function startDistillRunAction(input: {
   batch: string;
   productName: string;
   fermCharge?: number | null;
+  /** D94 — true = batch คือ lot_no ของล็อตกลั่นซ้ำ (ค่าระหว่างกลั่นแยกชุดกับ batch หมัก) */
+  isRedistill?: boolean;
 }): Promise<SaveResult> {
   const supabase = await db();
   // potNo ถัดไป = max ของ batch + 1 (P8)
   const { data: rows } = await supabase
     .from("log_distill_run")
     .select("pot_no")
+    .eq("is_redistill", input.isRedistill ?? false)
     .eq("batch", input.batch);
   const maxPot = (rows ?? []).reduce(
     (m, r) => Math.max(m, Number(r.pot_no) || 0),
@@ -274,6 +287,7 @@ export async function startDistillRunAction(input: {
     minute: 0,
     phase: "เริ่มกลั่น",
     ferm_charge: input.fermCharge ?? null,
+    is_redistill: input.isRedistill ?? false,
   });
   if (error) return fail(error.message);
   revalidatePath("/production");
@@ -285,6 +299,7 @@ export async function saveDistillReadingAction(input: {
   potNo: number;
   batch: string;
   productName: string;
+  isRedistill?: boolean;
   minute?: number | null;
   phase: string;
   abvObs?: number | null;
@@ -314,6 +329,7 @@ export async function saveDistillReadingAction(input: {
     pot_temp: input.potTemp ?? null,
     cool_temp: input.coolTemp ?? null,
     note: input.note ?? null,
+    is_redistill: input.isRedistill ?? false,
   });
   if (error) return fail(error.message);
   revalidatePath("/production");
@@ -503,4 +519,168 @@ export async function deleteDrawLogAction(id: number): Promise<SaveResult> {
   if (error) return fail(mapDbError(error));
   revalidatePath("/production");
   return { ok: true };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  D94 — กลั่นหลายรอบ (ล็อตกลั่นซ้ำ)
+//
+//  🚨 ทุกตัวเรียก RPC เพราะเขียนข้ามตาราง (ล็อต + log_dilute + log_material)
+//     ต้องอยู่ใน transaction เดียว — ล้มกลางทาง = ยอดบนฟอร์ม ภส. ค้างครึ่ง ๆ กลาง ๆ
+//  🚨 ข้อความหมายเหตุที่จะพิมพ์ลงฟอร์ม สร้างจาก `lotNoteText()` ฝั่ง lib ที่มีเทสคุม
+//     **ห้ามประกอบข้อความใน SQL หรือในคอมโพเนนต์** (D84/D88)
+// ══════════════════════════════════════════════════════════════════════════════
+export async function getRedistillLotsAction() { return getRedistillLots(); }
+export async function getRedistillMaterialsAction(docRefs: string[]) {
+  return getRedistillMaterials(docRefs);
+}
+export async function getNextLotNumberAction(dateISO: string): Promise<string> {
+  return nextLotNumber(dateISO, await getRedistillLotNos());
+}
+
+/** เปิดล็อต = ยกสุราออกจากถัง (RPC เขียนแถว "ยกไปปรุง" ลงฟอร์มให้ทันทีในตัว) */
+export async function openRedistillLotAction(input: {
+  lotNo: string;
+  productName: string;
+  drawDate: string;
+  drawVol: number;
+  drawAbv: number;
+  note?: string | null;
+}): Promise<SaveResult> {
+  const supabase = await db();
+  const lot: RedistillLot = {
+    lot_no: input.lotNo, product_name: input.productName,
+    draw_date: input.drawDate, draw_vol: input.drawVol, draw_abv: input.drawAbv,
+  };
+  const { data, error } = await supabase.rpc("fn_open_redistill_lot", {
+    p_lot_no: input.lotNo,
+    p_product_name: input.productName,
+    p_draw_date: input.drawDate,
+    p_draw_vol: input.drawVol,
+    p_draw_abv: input.drawAbv,
+    p_leg_note: lotNoteText(lot, []).draw,
+    p_note: input.note ?? null,
+  });
+  if (error) return fail(mapDbError(error));
+  const res = data as { ok: boolean; error?: string };
+  if (!res.ok) return fail(res.error ?? "เปิดล็อตไม่สำเร็จ");
+  revalidatePath("/production");
+  return { ok: true, data: res };
+}
+
+/** บันทึก/แก้รอบกลั่นซ้ำ + ตัดสมุนไพรเข้าบัญชีวัตถุดิบ (ภส.๐๗-๐๑/๑) */
+export async function saveRedistillRoundAction(input: {
+  /** ★ ล็อต + รอบ **หลังรวมรอบที่กำลังบันทึกแล้ว** — ใช้คิดหมายเหตุที่จะพิมพ์ลงฟอร์ม */
+  lot: RedistillLot;
+  rounds: RedistillRound[];
+  lotNo: string;
+  roundNo: number;
+  soakDate?: string | null;
+  distillDate?: string | null;
+  startVol?: number | null;
+  startAbv?: number | null;
+  endVol?: number | null;
+  endAbv?: number | null;
+  note?: string | null;
+  materials: { material_id: string; amount: number }[];
+}): Promise<SaveResult> {
+  const supabase = await db();
+  const { data, error } = await supabase.rpc("fn_save_redistill_round", {
+    p_lot_no: input.lotNo,
+    p_round_no: input.roundNo,
+    // ★ รูปแบบเดียวกับที่ RPC ตรวจซ้ำ — ประกอบที่ lib จุดเดียว
+    p_doc_ref: materialDocRef(input.lotNo, input.roundNo),
+    p_soak_date: input.soakDate || null,
+    p_distill_date: input.distillDate || null,
+    p_start_vol: input.startVol ?? null,
+    p_start_abv: input.startAbv ?? null,
+    p_end_vol: input.endVol ?? null,
+    p_end_abv: input.endAbv ?? null,
+    p_note: input.note ?? null,
+    p_materials: input.materials,
+    // 🔴 หมายเหตุบนฟอร์มต้องตามทัน — แช่แล้วต้องขึ้นว่าแช่ (0062)
+    p_draw_note: lotNoteText(input.lot, input.rounds).draw,
+  });
+  if (error) return fail(mapDbError(error));
+  const res = data as { ok: boolean; error?: string };
+  if (!res.ok) return fail(res.error ?? "บันทึกรอบไม่สำเร็จ");
+  revalidatePath("/production");
+  return { ok: true, data: res };
+}
+
+export async function deleteRedistillRoundAction(input: {
+  lot: RedistillLot;
+  /** รอบที่ **เหลืออยู่หลังลบแล้ว** — ลบรอบที่แช่รอบเดียวออก หมายเหตุต้องกลับเป็น "ยกไปกลั่นซ้ำ" */
+  rounds: RedistillRound[];
+  roundNo: number;
+}): Promise<SaveResult> {
+  const supabase = await db();
+  const lotNo = input.lot.lot_no;
+  const { data, error } = await supabase.rpc("fn_delete_redistill_round", {
+    p_lot_no: lotNo, p_round_no: input.roundNo, p_doc_ref: materialDocRef(lotNo, input.roundNo),
+    p_draw_note: lotNoteText(input.lot, input.rounds).draw,
+  });
+  if (error) return fail(mapDbError(error));
+  const res = data as { ok: boolean; error?: string };
+  if (!res.ok) return fail(res.error ?? "ลบรอบไม่สำเร็จ");
+  revalidatePath("/production");
+  return { ok: true, data: res };
+}
+
+/** ปิดล็อต = ปรับดีกรีเสร็จ → เขียนแถว "ปรุงเสร็จ" ลงฟอร์ม */
+export async function closeRedistillLotAction(input: {
+  lot: RedistillLot;
+  rounds: RedistillRound[];
+  diluteDate: string;
+  water?: number | null;
+  finalVol: number;
+  finalAbv: number;
+}): Promise<SaveResult> {
+  const supabase = await db();
+  const close = {
+    diluteDate: input.diluteDate, water: input.water ?? null,
+    finalVol: input.finalVol, finalAbv: input.finalAbv,
+  };
+  const notes = lotNoteText(input.lot, input.rounds, close);
+  const { data, error } = await supabase.rpc("fn_close_redistill_lot", {
+    p_lot_no: input.lot.lot_no,
+    p_dilute_date: input.diluteDate,
+    p_water: input.water ?? null,
+    p_final_vol: input.finalVol,
+    p_final_abv: input.finalAbv,
+    p_draw_note: notes.draw,
+    p_final_note: notes.final,
+  });
+  if (error) return fail(mapDbError(error));
+  const res = data as { ok: boolean; error?: string };
+  if (!res.ok) return fail(res.error ?? "ปิดล็อตไม่สำเร็จ");
+  revalidatePath("/production");
+  return { ok: true, data: res };
+}
+
+/** ถอนการปิดล็อต — ลบแถว "ปรุงเสร็จ" ออกจากฟอร์ม แล้วคืนหมายเหตุท่อนแรก */
+export async function reopenRedistillLotAction(input: {
+  lot: RedistillLot;
+  rounds: RedistillRound[];
+}): Promise<SaveResult> {
+  const supabase = await db();
+  const { data, error } = await supabase.rpc("fn_reopen_redistill_lot", {
+    p_lot_no: input.lot.lot_no,
+    p_draw_note: lotNoteText(input.lot, input.rounds).draw,
+  });
+  if (error) return fail(mapDbError(error));
+  const res = data as { ok: boolean; error?: string };
+  if (!res.ok) return fail(res.error ?? "ถอนการปิดล็อตไม่สำเร็จ");
+  revalidatePath("/production");
+  return { ok: true, data: res };
+}
+
+/** ลบล็อตทั้งก้อน — RPC เก็บกวาด log_dilute / log_material / log_distill_run ให้ครบ */
+export async function deleteRedistillLotAction(lotNo: string): Promise<SaveResult> {
+  const supabase = await db();
+  const { data, error } = await supabase.rpc("fn_delete_redistill_lot", { p_lot_no: lotNo });
+  if (error) return fail(mapDbError(error));
+  const res = data as { ok: boolean; error?: string };
+  if (!res.ok) return fail(res.error ?? "ลบล็อตไม่สำเร็จ");
+  revalidatePath("/production");
+  return { ok: true, data: res };
 }

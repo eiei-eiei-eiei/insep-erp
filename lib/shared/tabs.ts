@@ -35,6 +35,9 @@ export const PRODUCTION_TABS: SubTab[] = [
   { slug: "ferment", label: "ลงหมัก" },
   { slug: "monitor", label: "ติดตามหมัก" },
   { slug: "distill", label: "กลั่น", process: "สุรากลั่น" },
+  // D94 — โรงที่กลั่นรอบเดียวไม่ต้องใช้ แต่ **ไม่ซ่อน** เพราะไม่มีธงไหนบอกได้ว่าโรงนี้กลั่นซ้ำไหม
+  //   (การซ่อนก็คือการเดา — หลักเดียวกับ liquor_type ว่างใน D78/D80)
+  { slug: "redistill", label: "กลั่นซ้ำ", process: "สุรากลั่น" },
   { slug: "dilute", label: "ปรุง/ปรับดีกรี", process: "สุรากลั่น" },
   { slug: "draw", label: "รินน้ำสุราแช่", process: "สุราแช่" },
   { slug: "pack", label: "บรรจุ/จ่าย" },
