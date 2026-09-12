@@ -44,9 +44,55 @@ describe("D92 — ใครได้รับการเตือน", () => {
   });
 
   it("วันอื่นต้องไม่เตือน", () => {
-    for (const d of ["2026-09-11", "2026-09-13", "2026-09-15", "2026-09-30"]) {
+    // ★ D95 — 15 และ 16 ก.ย. ถูกย้ายไปเป็นจังหวะ due/late แล้ว (ดู describe ด้านล่าง)
+    for (const d of ["2026-09-11", "2026-09-13", "2026-09-17", "2026-09-30"]) {
       expect(exciseRemindersFor({ ...base, todayISO: d }), d).toEqual([]);
     }
+  });
+
+  /**
+   * D95 — 3 จังหวะ: จังหวะเดียวแบบ D92 แปลว่า **พลาดวันนั้น = งวดนั้นเงียบตลอดกาล**
+   * (เพราะ key ถูกจดใน integration_log ไปแล้ว ไม่มีรอบสอง)
+   * 🚨 งบเดือนสรรพสามิต **ไม่มีกำหนดยื่นออนไลน์** → วันสุดท้ายคือ 15 เสมอ ไม่มีตัวเลือกวิธียื่น
+   */
+  describe("D95 — 3 จังหวะ", () => {
+    const stageOn = (d: string) => exciseRemindersFor({ ...base, todayISO: d }).map((r) => r.stage);
+
+    it("12 = ล่วงหน้า · 15 = วันสุดท้าย · 16 = เลยกำหนด (ครั้งเดียว)", () => {
+      expect(stageOn("2026-09-12")).toEqual(["pre"]);
+      expect(stageOn("2026-09-15")).toEqual(["due"]);
+      expect(stageOn("2026-09-16")).toEqual(["late"]);
+      expect(stageOn("2026-09-17")).toEqual([]);
+    });
+
+    it("🚨 key ของจังหวะ pre ต้องเป็นรูปแบบเดิมของ D92 เป๊ะ (ไม่งั้นส่งซ้ำทั้งชุด)", () => {
+      expect(exciseRemindersFor({ ...base, todayISO: "2026-09-12" })[0].key).toBe("EID01-excise-2026-08");
+    });
+
+    it("จังหวะใหม่ต่อท้ายชื่อจังหวะ — ไม่ชนกับ key ที่จดไว้แล้ว", () => {
+      expect(exciseRemindersFor({ ...base, todayISO: "2026-09-15" })[0].key).toBe("EID01-excise-2026-08-due");
+      expect(exciseRemindersFor({ ...base, todayISO: "2026-09-16" })[0].key).toBe("EID01-excise-2026-08-late");
+    });
+
+    it("ปิดเดือนแล้วเงียบทุกจังหวะ", () => {
+      for (const d of ["2026-09-12", "2026-09-15", "2026-09-16"]) {
+        expect(exciseRemindersFor({ ...base, todayISO: d, closed: () => true }), d).toEqual([]);
+      }
+    });
+
+    it("หัวข้อความต้องตรงกับจังหวะ (ไม่งั้นโกหกบรรทัดที่อยู่ข้างใน)", () => {
+      const blocks = [{ entityName: "A", lines: ["• x"] }];
+      expect(exciseReminderMessage(blocks, { multiEntity: false, stage: "pre", leadDays: 3 })).toContain("อีก 3 วัน");
+      expect(exciseReminderMessage(blocks, { multiEntity: false, stage: "due" })).toContain("วันนี้วันสุดท้าย");
+      expect(exciseReminderMessage(blocks, { multiEntity: false, stage: "late" })).toContain("เลยกำหนด");
+    });
+
+    it("ทุกจังหวะยังบอกว่าต้องไปกด 'ปิดเดือน' ถึงจะหยุดเตือน (D83)", () => {
+      const blocks = [{ entityName: "A", lines: ["• x"] }];
+      for (const stage of ["pre", "due", "late"] as const) {
+        expect(exciseReminderMessage(blocks, { multiEntity: false, stage }), stage).toContain("ปิดเดือน");
+      }
+    });
   });
 
   it("ปิดเดือนไปแล้ว = ไม่เตือน", () => {
@@ -159,14 +205,30 @@ describe("D92 — โครงของ cron route", () => {
   });
 
   it("🚨 ส่งก่อน แล้วค่อยจด — จดก่อนแล้วส่งพลาด = เตือนหายตลอดกาล", () => {
-    // ★ ต้องดูเฉพาะ **ในตัว excisePart** — ดูทั้งไฟล์จะเจอบรรทัด import ก่อน แล้วผ่านโดยไม่ได้ตรวจอะไร
-    const a = src.indexOf("async function excisePart(");
+    /**
+     * ★ D95 ย้ายการส่ง+จดไปที่ `sendByStage` ซึ่งใช้ร่วมกันทั้ง 2 งาน → ตรวจในฟังก์ชันนั้น
+     * 🪤 ต้องตัดเฉพาะตัวฟังก์ชันมาตรวจ ห้ามค้นทั้งไฟล์ — บทเรียน D92: ค้นทั้งไฟล์แล้วเจอ
+     *    บรรทัด import ก่อน ทำให้ลำดับถูก "โดยบังเอิญ" = เทสที่ผ่านโดยไม่ได้ตรวจอะไร
+     */
+    const a = src.indexOf("async function sendByStage");
+    expect(a, "ไม่พบ sendByStage").toBeGreaterThan(-1);
     const fn = src.slice(a);
-    const insert = fn.indexOf("action: EXCISE_REMINDER_ACTION,");
+    const insert = fn.indexOf('.from("integration_log").insert(');
     const send = fn.indexOf("await sendLineToTenant(");
-    expect(a, "ไม่พบ excisePart").toBeGreaterThan(-1);
-    expect(insert, "ไม่พบ insert integration_log ของงานสรรพสามิต").toBeGreaterThan(-1);
+    expect(insert, "ไม่พบ insert integration_log").toBeGreaterThan(-1);
     expect(send, "ไม่พบการส่ง LINE").toBeGreaterThan(-1);
     expect(send, "insert ต้องอยู่หลัง sendLineToTenant").toBeLessThan(insert);
+  });
+
+  it("🚨 ทั้ง 2 งานต้องส่งผ่านตัวเดียวกัน — 1 ข้อความต่อ 1 จังหวะ (หัวข้อความต้องตรงกับเนื้อ)", () => {
+    const part = (name: string) => {
+      const i = src.indexOf(`async function ${name}(`);
+      const j = src.indexOf("\n  }\n", i);
+      return src.slice(i, j);
+    };
+    expect(part("taxPart")).toContain("sendByStage(");
+    expect(part("excisePart")).toContain("sendByStage(");
+    // จัดกลุ่มตามจังหวะจริง ไม่ใช่ส่งรวมแล้วเดาหัวข้อความ
+    expect(src).toMatch(/for \(const stage of DUE_STAGES\)/);
   });
 });

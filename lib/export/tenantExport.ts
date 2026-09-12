@@ -43,7 +43,7 @@ export const RESTORE_ORDER: readonly TenantTable[] = [
   "log_ferment_monitor", "log_dilute", "log_ferment_draw", "log_product",
   // ★ D94 — ล็อตก่อนรอบ (insert แม่ก่อนลูก · FK lrr_lot_fk)
   "log_redistill", "log_redistill_round",
-  "transactions", "transaction_items", "wht_certificates", "tax_summaries", "tax_payments",
+  "transactions", "transaction_items", "wht_certificates", "tax_summaries", "tax_payments", "tax_filings",
   "sales_orders", "sales_order_items", "warehouse_stock", "stock_moves",
   // ★ D96 — บาร์: แม่ก่อนลูก (category/item/customer → menu → recipe/fav · sale → sale_item)
   "bar_category", "bar_item", "bar_customer", "bar_menu", "bar_recipe", "bar_customer_fav",

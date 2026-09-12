@@ -20,6 +20,7 @@ import { fetchAllRows } from "@/lib/shared/paginate";
 import { effectiveTaxAccounts } from "@/lib/accounting/taxAccounts";
 import { mustRead } from "@/lib/shared/dbError";
 import { taxDueBoard } from "@/lib/accounting/taxPay";
+import { toFilingMethod, type TaxFilingRow } from "@/lib/accounting/taxFiling";
 
 // คอลัมน์ transactions ที่ใช้ทุกรายงาน
 const TX_COLS =
@@ -618,12 +619,12 @@ function nextMonthStart(month: string): string {
  */
 export async function getTaxPayBoard(period: string, entityId: string) {
   const supabase = await db();
-  const [txAll, contactMap, taxAccounts, summariesRes, entityRes, runs, paysRes] = await Promise.all([
+  const [txAll, contactMap, taxAccounts, summariesRes, entityRes, runs, paysRes, filesRes] = await Promise.all([
     fetchAllTransactions(supabase),
     loadContactMap(supabase),
     loadTaxAccounts(supabase),
     supabase.from("tax_summaries").select("report_month, net_payable, forwarded_vat_out, entity_id, created_at"),
-    supabase.from("entities").select("is_vat").eq("entity_id", entityId).maybeSingle(),
+    supabase.from("entities").select("is_vat, filing_method").eq("entity_id", entityId).maybeSingle(),
     getReportRuns(period, entityId),
     supabase
       .from("tax_payments")
@@ -632,6 +633,12 @@ export async function getTaxPayBoard(period: string, entityId: string) {
       )
       .eq("entity_id", entityId)
       .order("created_at", { ascending: false }),
+    // D95 — ประกาศ "ยื่นแล้ว" ต่อแบบต่องวด (คนละเรื่องกับ report_runs ที่แปลว่ากดพิมพ์แล้ว)
+    supabase
+      .from("tax_filings")
+      .select("id, kind, period, filed_at, filed_on, source, note, reopened_at")
+      .eq("entity_id", entityId)
+      .order("filed_at", { ascending: false }),
   ]);
 
   const txs = txAll as unknown as Tx[];
@@ -672,9 +679,25 @@ export async function getTaxPayBoard(period: string, entityId: string) {
     tx_status: p.tx_id ? (statusOf.get(String(p.tx_id)) ?? null) : null,
   }));
 
+  /**
+   * 🚨🚨 D89/D95 — อ่าน `tax_filings` ไม่ได้แล้วปล่อยผ่าน = กระดานบอกว่า "ยังไม่ได้ยื่น"
+   *    ทั้งที่ยื่นแล้ว → ผู้ใช้กดยื่นซ้ำ (DB กันด้วย unique index อยู่ แต่หน้าจอโกหก)
+   */
+  const filings: TaxFilingRow[] = mustRead(filesRes, "สถานะการยื่นแบบ").map((f) => ({
+    id: Number(f.id),
+    kind: String(f.kind),
+    period: String(f.period),
+    filedAt: String(f.filed_at ?? ""),
+    filedOn: (f.filed_on as string) ?? null,
+    source: String(f.source ?? "manual"),
+    note: (f.note as string) ?? null,
+    reopenedAt: (f.reopened_at as string) ?? null,
+  }));
+
   const rows = taxDueBoard({
     period,
     isVat: (entityRes.data?.is_vat ?? true) !== false,
+    filings,
     summaryNetPayable: summaryOfPeriod ? Number(summaryOfPeriod.net_payable) || 0 : null,
     summaryCarry: summaryOfPeriod ? Number(summaryOfPeriod.forwarded_vat_out) || 0 : null,
     liveVatPayable: tr.netPayable,
@@ -703,5 +726,16 @@ export async function getTaxPayBoard(period: string, entityId: string) {
     };
   }
 
-  return { rows, prefs, history: payments.slice(0, 24) };
+  return {
+    rows,
+    prefs,
+    history: payments.slice(0, 24),
+    /**
+     * วิธียื่นของกิจการ — null = ยังไม่ได้ตั้ง
+     * 🚨 ส่ง null ตามจริง **ห้ามเติมค่าปริยายที่นี่** หน้าจอต้องรู้ว่ายังไม่ตั้งเพื่อบอกผู้ใช้
+     *    (ค่าปริยายที่มองไม่เห็น = กับดัก D80)
+     */
+    filingMethod: toFilingMethod(entityRes.data?.filing_method),
+    filings,
+  };
 }

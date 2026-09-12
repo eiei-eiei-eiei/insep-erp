@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { mapDbError } from "@/lib/shared/dbError";
+import { toFilingMethod } from "@/lib/accounting/taxFiling";
 
 /**
  * server action ของหน้าตั้งค่ากลาง — ย้ายมาจาก accounting/actions.ts (D63)
@@ -63,6 +64,14 @@ export async function saveEntityInfoAction(input: {
   bankLine: string;
   exciseId: string;
   ssoEmployerNo: string;
+  /**
+   * วิธียื่นแบบภาษีของกิจการนี้ (D95) — "" = ยังไม่ได้ตั้ง
+   * ★ อยู่ในฟอร์มเดียวกับข้อมูลกิจการได้ เพราะเป็น **ข้อมูลของกิจการที่กำลังแก้** จริง ๆ
+   *   (ต่างจาก `sales_doc_entity` ที่เป็นค่าระดับระบบ ซึ่ง D63 แยก action ออกไป)
+   * 🚨 ห้ามเอา `is_vat` มาไว้ในนี้ — เจตนา D55/D93 คือให้ตั้งได้จากฝั่งแพลตฟอร์มเท่านั้น
+   *   (มีเทสทิศตรงข้ามล็อกไว้ใน `tests/`)
+   */
+  filingMethod: string;
 }): Promise<SaveResult> {
   const supabase = await createClient();
   const entityId = input.entityId.trim();
@@ -81,6 +90,7 @@ export async function saveEntityInfoAction(input: {
       bank_line: input.bankLine.trim() || null,
       excise_id: input.exciseId.trim() || null,
       sso_employer_no: input.ssoEmployerNo.trim() || null,
+      filing_method: toFilingMethod(input.filingMethod),
     })
     .eq("entity_id", entityId);
   if (error) return fail(mapDbError(error));

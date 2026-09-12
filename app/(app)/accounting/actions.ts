@@ -565,6 +565,62 @@ export async function payTaxAction(input: PayTaxInput): Promise<SaveResult> {
   return { ok: true, data: res };
 }
 
+// ── D95 ประกาศว่า "ยื่นแล้ว" (คนละเหตุการณ์กับการกดพิมพ์แบบ) ──────────────────
+
+/**
+ * บันทึกว่ายื่นแบบของงวดนี้แล้ว → ปิดการเตือนเข้ากลุ่ม LINE ของงวดนั้น
+ *
+ * 🚨 **ไม่บังคับว่าต้องกดสร้างแบบในแอปก่อน** — ผู้ใช้จำนวนมากกรอกในเว็บ e-Filing เอง (D69)
+ *    หน้าจอเตือนว่ายังไม่ได้สร้างแบบ แต่ไม่บล็อก (เตือนไม่บล็อก — กติกาเดิมของ D67/D91)
+ * ★ ไม่แตะยอดเงินหรือบิลใด ๆ ทั้งสิ้น — เป็นการบันทึก "เหตุการณ์" ล้วน ๆ
+ */
+export async function fileTaxAction(input: {
+  kind: TaxKind;
+  period: string;
+  entityId: string;
+  filedOn?: string;
+  note?: string;
+}): Promise<SaveResult> {
+  if (!input.entityId) return fail("เลือกกิจการก่อน");
+  const supabase = await db();
+  const { data, error } = await supabase.rpc("fn_file_tax", {
+    p_kind: input.kind,
+    p_period: input.period,
+    p_entity: input.entityId,
+    p_filed_on: input.filedOn || null,
+    p_note: input.note ?? "",
+  });
+  if (error) return fail(mapDbError(error));
+  const res = data as { ok: boolean; error?: string };
+  if (!res.ok) return fail(res.error ?? "บันทึกการยื่นไม่สำเร็จ");
+  revalidatePath("/accounting");
+  return { ok: true, data: res };
+}
+
+/**
+ * ถอนการบันทึกยื่น — งวดนั้นกลับมาถูกเตือนอีกครั้ง
+ * 🚨 ถอนไม่ได้ถ้ายังมีการบันทึกจ่ายค้างอยู่ (RPC เป็นคนบล็อกและบอกว่าต้องกดอะไรก่อน)
+ */
+export async function unfileTaxAction(
+  kind: TaxKind,
+  period: string,
+  entityId: string,
+  note?: string,
+): Promise<SaveResult> {
+  const supabase = await db();
+  const { data, error } = await supabase.rpc("fn_unfile_tax", {
+    p_kind: kind,
+    p_period: period,
+    p_entity: entityId,
+    p_note: note ?? "",
+  });
+  if (error) return fail(mapDbError(error));
+  const res = data as { ok: boolean; error?: string };
+  if (!res.ok) return fail(res.error ?? "ถอนการบันทึกยื่นไม่สำเร็จ");
+  revalidatePath("/accounting");
+  return { ok: true, data: res };
+}
+
 /** ถอนการบันทึกจ่าย — บิลกลายเป็น 'ยกเลิก' (ไม่ลบ) · ต้องมีสิทธิ์ acct.config */
 export async function unpayTaxAction(kind: TaxKind, period: string, entityId: string): Promise<SaveResult> {
   const supabase = await db();
