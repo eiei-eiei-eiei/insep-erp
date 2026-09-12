@@ -24,6 +24,8 @@ export type SettingsEntity = {
   address: string | null;
   phone: string | null;
   bank_line: string | null;
+  /** วิธียื่นแบบภาษี (D95) — 'paper' | 'efiling' · null = ยังไม่ได้ตั้ง (ระบบใช้กำหนดกระดาษ) */
+  filing_method: string | null;
 };
 
 /** กิจการ + กิจการที่ใช้ออกเอกสารการค้า (คิวรีชุดเดียวกับที่ getBootstrap เคยใช้) */
@@ -39,7 +41,7 @@ export async function getCompanySettings(): Promise<{
   const [entities, settings, accounts] = await Promise.all([
     supabase
       .from("entities")
-      .select("entity_id, name, excise_id, sso_employer_no, is_vat, name_eng, tax_id, branch, address, phone, bank_line")
+      .select("entity_id, name, excise_id, sso_employer_no, is_vat, name_eng, tax_id, branch, address, phone, bank_line, filing_method")
       .order("entity_id"),
     supabase
       .from("app_settings")

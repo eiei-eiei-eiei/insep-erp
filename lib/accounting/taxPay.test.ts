@@ -219,7 +219,7 @@ describe("กระดานชำระภาษี — กิจการท�
 
   it("🪤 ยังไม่ได้สร้างแบบ = ยังไม่มียอดที่ยื่นไว้ → ห้ามติดธง drifted (จะกลายเป็นคำโกหก)", () => {
     const r = find(taxDueBoard(make({ liveVatPayable: 391.54 })), "vat");
-    expect(r.filed).toBe(false);
+    expect(r.formCreated).toBe(false);
     expect(r.drifted).toBe(false);
     expect(r.badge).toBe("unfiled");
     expect(r.liveAmount).toBe(391.54);
@@ -227,7 +227,7 @@ describe("กระดานชำระภาษี — กิจการท�
 
   it("กดสร้างแบบแล้วแต่ยังไม่มีแถวยอดที่แช่ไว้ = ยังไม่ถือว่าสร้าง (ผู้ใช้ลบแถวยอดทิ้งได้)", () => {
     const r = find(taxDueBoard(make({ runs: { phor_por_30: "2026-09-01" }, summaryNetPayable: null })), "vat");
-    expect(r.filed).toBe(false);
+    expect(r.formCreated).toBe(false);
     expect(canPay(r)).toBe(false);
   });
 });

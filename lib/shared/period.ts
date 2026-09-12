@@ -37,6 +37,46 @@ export function shiftDaysISO(iso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * จังหวะการเตือนรอบกำหนดยื่น — ใช้ร่วมกัน **ทั้งสรรพากรและสรรพสามิต** (D95)
+ *
+ * · pre  ล่วงหน้า N วัน  — "เตรียมตัว"
+ * · due  วันสุดท้ายจริง  — "วันนี้วันสุดท้าย"
+ * · late วันถัดมา ครั้งเดียว ไม่วนซ้ำ — "เลยกำหนดแล้ว"
+ *
+ * 🚨 อยู่บ้านกลางเพราะ **ห้ามให้ `lib/production` import `lib/accounting`**
+ *    (กติกาเดียวกับที่ทำให้ nextMonth/prevMonth ย้ายมาที่นี่ตอน D92)
+ * 🚨 จังหวะเดียวแบบเดิม = พลาดวันนั้นแล้วงวดนั้นเงียบตลอดกาล (เพราะจดกันซ้ำไว้แล้ว)
+ */
+export const DUE_STAGES = ["pre", "due", "late"] as const;
+export type DueStage = (typeof DUE_STAGES)[number];
+
+export type StageDate = { stage: DueStage; date: string };
+
+/**
+ * วันของแต่ละจังหวะจากวันครบกำหนด — เรียงตามเวลา
+ *
+ * 🪤 `leadDays = 0` ทำให้ pre ชนกับ due → ตัดตัวซ้ำ เก็บจังหวะที่ **หนักกว่า** ไว้
+ *    (ยิง 2 ข้อความวันเดียวกันเรื่องเดียวกัน = สแปมที่ระบบสร้างขึ้นเอง)
+ */
+export function stageDatesFromDue(dueISO: string, leadDays = 3): StageDate[] {
+  const all: StageDate[] = [
+    { stage: "pre", date: shiftDaysISO(dueISO, -Math.abs(leadDays)) },
+    { stage: "due", date: dueISO },
+    { stage: "late", date: shiftDaysISO(dueISO, 1) },
+  ];
+  const seen = new Map<string, DueStage>();
+  for (const s of all) seen.set(s.date, s.stage); // ตัวหลังทับตัวหน้า = จังหวะหนักกว่าชนะ
+  return [...seen.entries()]
+    .map(([date, stage]) => ({ stage, date }))
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+}
+
+/** จังหวะของวันนี้ (null = วันนี้ไม่ต้องเตือน) */
+export function stageOnDate(todayISO: string, dueISO: string, leadDays = 3): DueStage | null {
+  return stageDatesFromDue(dueISO, leadDays).find((s) => s.date === todayISO)?.stage ?? null;
+}
+
 /** "15 ก.ย." — วันที่แบบสั้นสำหรับข้อความเตือน (ไม่ใส่ปี เพราะเป็นวันในอนาคตอันใกล้เสมอ) */
 export function thaiDay(iso: string): string {
   const TH = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];

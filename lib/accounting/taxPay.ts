@@ -18,24 +18,32 @@
  */
 
 import { formatMonthThai } from "../shared/format";
-import { nextMonth, shiftDaysISO, thaiDay } from "../shared/period";
+import { shiftDaysISO, thaiDay } from "../shared/period";
+import {
+  dueDateOf,
+  filingStateOf,
+  TAX_KIND_FULL,
+  TAX_KIND_LABEL,
+  type DueDates,
+  type FilingState,
+  type TaxFilingRow,
+  type TaxKind,
+} from "./taxFiling";
 
-export const TAX_KINDS = ["vat", "pnd3", "pnd53"] as const;
-export type TaxKind = (typeof TAX_KINDS)[number];
-
-/** ชื่อสั้นบนปุ่ม/ตาราง */
-export const TAX_KIND_LABEL: Record<TaxKind, string> = {
-  vat: "ภพ.30",
-  pnd3: "ภงด.3",
-  pnd53: "ภงด.53",
-};
-
-/** ชื่อเต็มในข้อความเตือน/คำอธิบายบิล */
-export const TAX_KIND_FULL: Record<TaxKind, string> = {
-  vat: "ภพ.30 — ภาษีมูลค่าเพิ่ม",
-  pnd3: "ภงด.3 — หัก ณ ที่จ่าย (บุคคลธรรมดา)",
-  pnd53: "ภงด.53 — หัก ณ ที่จ่าย (นิติบุคคล)",
-};
+/**
+ * ★ นิยามชนิดภาษี + กำหนดยื่น ย้ายไป `taxFiling.ts` แล้ว (D95 — ไฟล์นั้น import ที่นี่ไม่ได้
+ *   เพราะจะวนกลับ) · re-export ต่อเพื่อให้ผู้เรียกเดิมทั้งหมดไม่ต้องแก้ — แพตเทิร์นเดียวกับที่
+ *   `nextMonth/prevMonth` ทำตอน D92 · **ห้ามเขียนตัวใหม่ที่นี่**
+ */
+export {
+  TAX_KINDS,
+  TAX_KIND_LABEL,
+  TAX_KIND_FULL,
+  TAX_DUE_DAY,
+  dueDateOf,
+  type TaxKind,
+  type DueDates,
+} from "./taxFiling";
 
 /**
  * ปุ่มสร้างแบบในแท็บเดียวกันเขียน `report_runs` ด้วย key พวกนี้
@@ -45,21 +53,6 @@ export const TAX_REPORT_KEY: Record<TaxKind, string> = {
   vat: "phor_por_30",
   pnd3: "pnd_3_53",
   pnd53: "pnd_3_53",
-};
-
-/**
- * กำหนดยื่น = วันที่ N ของ **เดือนถัดจากงวด**
- * · ยื่นกระดาษ: ภพ.30 วันที่ 15 · ภงด.3/53 วันที่ 7
- * · ยื่นออนไลน์ (e-Filing): ขยายให้อีก 8 วัน → 23 และ 15 ตามลำดับ
- *
- * 🚨 **ไม่เลื่อนวันหยุดให้** — ระบบไม่มีปฏิทินวันหยุดราชการไทย และการ "เดา" ว่าเลื่อนไป
- *    วันทำการถัดไปแล้วเตือนช้าลง อันตรายกว่าการเตือนเร็วไป 1-2 วัน
- *    (กติกาเดียวกับ D78: ไม่รู้ ≠ เดาให้)
- */
-export const TAX_DUE_DAY: Record<TaxKind, { paper: number; efiling: number }> = {
-  vat: { paper: 15, efiling: 23 },
-  pnd3: { paper: 7, efiling: 15 },
-  pnd53: { paper: 7, efiling: 15 },
 };
 
 /** หมวดรายจ่ายที่เติมให้ในป๊อปอัพครั้งแรก (ครั้งต่อไปใช้ค่าที่เคยเลือก) */
@@ -82,18 +75,6 @@ export const DEFAULT_TAX_PAYEE = "กรมสรรพากร";
  *   และห้ามให้ lib/production import lib/accounting) · re-export ไว้ให้ผู้เรียกเดิมไม่ต้องแก้
  */
 export { nextMonth, prevMonth } from "../shared/period";
-
-export type DueDates = { paper: string; efiling: string };
-
-/** กำหนดยื่นของงวด `period` (yyyy-MM) — คืนเป็น ISO ทั้งคู่ */
-export function dueDateOf(kind: TaxKind, period: string): DueDates {
-  const nm = nextMonth(period);
-  const day = TAX_DUE_DAY[kind];
-  return {
-    paper: `${nm}-${String(day.paper).padStart(2, "0")}`,
-    efiling: `${nm}-${String(day.efiling).padStart(2, "0")}`,
-  };
-}
 
 /** ต่างกันกี่วัน (b − a) — คิดจากสตริง ISO ล้วน ไม่แตะ timezone ของเครื่อง */
 export function daysBetween(aISO: string, bISO: string): number {
@@ -160,8 +141,16 @@ export type TaxDueRow = {
   liveAmount: number;
   /** ยอดที่แช่ไว้ตอนกดสร้างแบบต่างจากยอดสด → ต้องโชว์ทั้งคู่ ห้ามเลือกข้างให้ (D75) */
   drifted: boolean;
-  /** กดสร้างแบบของเดือนนี้แล้วหรือยัง (report_runs) */
-  filed: boolean;
+  /**
+   * กด **สร้างแบบ** ของเดือนนี้แล้วหรือยัง (`report_runs` = เช็กลิสต์ว่ากดพิมพ์แล้ว)
+   * 🚨 **ไม่ใช่ "ยื่นแล้ว"** — เดิมชื่อ `filed` ซึ่งอ่านแล้วเข้าใจผิดว่าแปลว่ายื่น
+   *    และนั่นคือต้นเหตุที่ D88 เอาตารางนี้ไปใช้ปิดการเตือน (D95 แยกออกเป็น `submitted`)
+   */
+  formCreated: boolean;
+  /** ประกาศว่า **ยื่นแล้ว** ของงวดนี้ (`tax_filings`) — ตัวที่ปิดการเตือนเข้า LINE */
+  submitted: boolean;
+  /** ระบบติ๊กยื่นให้เองตอนบันทึกจ่าย (ไม่ได้กดปุ่มยื่นเอง) */
+  submittedBySystem: boolean;
   payment: TaxPaymentRow | null;
   /**
    * บิลของการจ่ายถูกยกเลิกจากหน้าค้นบิลไปแล้ว แต่แถว `tax_payments` ยังเป็น 'ปกติ'
@@ -201,6 +190,11 @@ export type TaxBoardInput = {
   /** report_key → วันที่สร้างล่าสุด */
   runs: Record<string, string>;
   payments: TaxPaymentRow[];
+  /**
+   * แถว `tax_filings` ของกิจการนี้ (ทุกงวด) — D95
+   * ★ ไม่ใส่ = ถือว่ายังไม่เคยประกาศยื่น (ค่าปริยายปลอดภัย: เตือนดีกว่าเงียบ)
+   */
+  filings?: readonly TaxFilingRow[];
 };
 
 const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
@@ -217,19 +211,21 @@ export function taxDueBoard(inp: TaxBoardInput): TaxDueRow[] {
   const out: TaxDueRow[] = [];
   const payOf = (k: TaxKind) =>
     inp.payments.find((p) => p.kind === k && p.period === inp.period && p.status === "ปกติ") ?? null;
+  const fileOf = (k: TaxKind) => filingStateOf(inp.filings ?? [], k, inp.period);
 
   // ── ภพ.30 — กิจการที่ไม่ได้จด VAT ไม่มีแถวนี้เลย (ไม่ใช่โชว์แล้วเทา) ──
   //    ไม่มีหน้าที่ยื่นจริง ๆ ตาม D55 → โชว์ไว้ = ชวนให้เข้าใจผิดว่าลืมทำอะไรอยู่
   if (inp.isVat) {
-    const filed = !!inp.runs[TAX_REPORT_KEY.vat] && inp.summaryNetPayable !== null;
+    const formCreated = !!inp.runs[TAX_REPORT_KEY.vat] && inp.summaryNetPayable !== null;
     const amount = r2(Math.max(inp.summaryNetPayable ?? 0, 0));
     const live = r2(Math.max(inp.liveVatPayable, 0));
     out.push(
       row("vat", inp, {
-        filed,
+        formCreated,
+        filing: fileOf("vat"),
         amount,
         live,
-        blocked: !filed
+        blocked: !formCreated
           ? 'ต้องกดปุ่ม "สร้าง ภพ.30" ของเดือนนี้ก่อน (ยอดที่จ่ายต้องเป็นยอดที่ยื่นจริง)'
           : amount <= 0
             ? `เดือนนี้ไม่มีภาษีต้องชำระ — ภาษีซื้อมากกว่าภาษีขาย ยกไปเดือนหน้า ${fmtNum(inp.summaryCarry ?? inp.liveVatCarry)} บาท`
@@ -240,14 +236,15 @@ export function taxDueBoard(inp: TaxBoardInput): TaxDueRow[] {
   }
 
   for (const k of ["pnd3", "pnd53"] as const) {
-    const filed = !!inp.runs[TAX_REPORT_KEY[k]];
+    const formCreated = !!inp.runs[TAX_REPORT_KEY[k]];
     const live = r2(k === "pnd3" ? inp.livePnd3 : inp.livePnd53);
     out.push(
       row(k, inp, {
-        filed,
+        formCreated,
+        filing: fileOf(k),
         amount: live,
         live,
-        blocked: !filed
+        blocked: !formCreated
           ? 'ต้องกดปุ่ม "สร้าง ภงด.3/53" ของเดือนนี้ก่อน'
           : live <= 0
             ? "เดือนนี้ไม่มีการหักภาษี ณ ที่จ่ายของประเภทนี้ — ไม่ต้องยื่นและไม่ต้องจ่าย"
@@ -263,7 +260,14 @@ export function taxDueBoard(inp: TaxBoardInput): TaxDueRow[] {
 function row(
   kind: TaxKind,
   inp: TaxBoardInput,
-  x: { filed: boolean; amount: number; live: number; blocked: string | null; payment: TaxPaymentRow | null },
+  x: {
+    formCreated: boolean;
+    filing: FilingState;
+    amount: number;
+    live: number;
+    blocked: string | null;
+    payment: TaxPaymentRow | null;
+  },
 ): TaxDueRow {
   const billVoided = !!x.payment && x.payment.tx_status === "ยกเลิก";
 
@@ -289,13 +293,18 @@ function row(
     liveAmount: x.live,
     // 🪤 ยังไม่ได้สร้างแบบ = ยังไม่มี "ยอดที่ยื่นไว้" ให้เทียบ → ห้ามบอกว่าต่างจากยอดที่ยื่น
     //    (เคยขึ้นข้อความ "ต่างจากยอดที่ยื่นไว้" ทั้งที่ยังไม่เคยกดสร้างแบบเลยสักครั้ง)
-    drifted: x.filed && Math.abs(r2(x.amount) - r2(x.live)) >= 0.005,
-    filed: x.filed,
+    drifted: x.formCreated && Math.abs(r2(x.amount) - r2(x.live)) >= 0.005,
+    formCreated: x.formCreated,
+    submitted: x.filing.submitted,
+    submittedBySystem: x.filing.active?.source === "pay",
     payment: x.payment,
     billVoided,
+    // ★ ป้ายนี้ตอบคำถาม **"จ่ายแล้วหรือยัง"** อย่างเดียว (ไม่เปลี่ยนจาก D88)
+    //   คำถาม "ยื่นแล้วหรือยัง" เป็นคนละแกน มีป้ายของตัวเองที่ `filingBadge()` —
+    //   🚨 ยัดสองคำถามลงป้ายเดียว = ป้ายที่ตอบไม่ตรงคำถามใดคำถามหนึ่งเสมอ (ตระกูล D84)
     badge: x.payment && !billVoided ? "paid"
       : billVoided ? "voided"
-      : !x.filed ? "unfiled"
+      : !x.formCreated ? "unfiled"
       : x.amount > 0 ? "due"
       : "none",
     blocked,

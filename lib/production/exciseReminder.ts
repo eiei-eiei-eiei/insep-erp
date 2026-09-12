@@ -20,7 +20,15 @@
  */
 
 import { formatMonthThai } from "../shared/format";
-import { nextMonth, prevMonth, shiftDaysISO, thaiDay } from "../shared/period";
+import {
+  nextMonth,
+  prevMonth,
+  shiftDaysISO,
+  stageDatesFromDue,
+  stageOnDate,
+  thaiDay,
+  type DueStage,
+} from "../shared/period";
 
 /** งบเดือน ภส.๐๗-๐๔ ยื่นภายในวันที่ 15 ของเดือนถัดจากงวด */
 export const EXCISE_DUE_DAY = 15;
@@ -30,10 +38,21 @@ export const EXCISE_REMINDER_ACTION = "EXCISE_REMINDER";
 
 export type ExciseReminder = {
   period: string;
+  stage: DueStage;
   /** key กันส่งซ้ำ (ต่อกิจการ) — เก็บใน integration_log · 🚨 **ห้ามเปลี่ยนรูปแบบ** */
   key: string;
   line: string;
 };
+
+/**
+ * key กันส่งซ้ำ
+ * 🚨 จังหวะ `pre` ต้องคงรูปแบบเดิมของ D92 เป๊ะ — ลูกค้ามีแถวจดไว้แล้วใน `integration_log`
+ *    เปลี่ยนรูปแบบ = งวดที่เคยเตือนไปแล้วถูกส่งซ้ำทั้งชุด (จังหวะใหม่ต่อท้ายชื่อจังหวะ)
+ */
+export function exciseReminderKey(entityId: string, period: string, stage: DueStage): string {
+  const base = `${entityId}-excise-${period}`;
+  return stage === "pre" ? base : `${base}-${stage}`;
+}
 
 export type ExciseReminderInput = {
   /** วันนี้ตามเวลาไทย (yyyy-MM-dd) */
@@ -76,11 +95,16 @@ export function exciseRemindersFor(inp: ExciseReminderInput): ExciseReminder[] {
   const out: ExciseReminder[] = [];
 
   for (const period of candidatePeriods(inp.todayISO)) {
-    if (exciseRemindDate(period, lead) !== inp.todayISO) continue;
+    // ★ D95 — 3 จังหวะ (ล่วงหน้า / วันสุดท้าย / เลยกำหนด 1 วัน) แทนจังหวะเดียวของ D92
+    //   งบเดือนสรรพสามิต **ไม่มีกำหนดยื่นออนไลน์** → วันสุดท้ายคือวันที่ 15 เสมอ
+    //   (ไม่มีตัวเลือกวิธียื่นแบบฝั่งสรรพากร เพราะไม่รู้ **และไม่เดา** — กติกา D92)
+    const stage = stageOnDate(inp.todayISO, exciseDueDate(period), lead);
+    if (!stage) continue;
     if (inp.closed(period)) continue;
     out.push({
       period,
-      key: `${inp.entityId}-excise-${period}`,
+      stage,
+      key: exciseReminderKey(inp.entityId, period, stage),
       line: exciseReminderLine(period),
     });
   }
@@ -93,16 +117,25 @@ export function exciseRemindersFor(inp: ExciseReminderInput): ExciseReminder[] {
  * ★ ใส่ชื่อกิจการนำหน้าเฉพาะตอนมีหลายกิจการ — กิจการเดียวแล้วใส่ = รกเปล่า ๆ (แบบเดียวกับ D88)
  * ★ จำนวนวันในหัวข้อความคิดจาก `leadDays` **ห้ามฮาร์ดโค้ด** — เปลี่ยนค่าแล้วหัวข้อความต้องขยับตาม
  */
+export function exciseStageHeadText(stage: DueStage, leadDays = 3): string {
+  if (stage === "pre") return `⏰ เตือนกำหนดยื่นงบเดือนสรรพสามิต (อีก ${leadDays} วัน)`;
+  if (stage === "due") return "⏰ วันนี้วันสุดท้ายของกำหนดยื่นงบเดือนสรรพสามิต";
+  return "🔴 เลยกำหนดยื่นงบเดือนสรรพสามิตแล้ว";
+}
+
 export function exciseReminderMessage(
   blocks: { entityName: string; lines: string[] }[],
-  opts: { multiEntity: boolean; leadDays?: number },
+  opts: { multiEntity: boolean; leadDays?: number; stage?: DueStage },
 ): string {
-  const head = `⏰ เตือนกำหนดยื่นงบเดือนสรรพสามิต (อีก ${opts.leadDays ?? 3} วัน)`;
+  const stage = opts.stage ?? "pre";
+  const head = exciseStageHeadText(stage, opts.leadDays ?? 3);
   const body = blocks
     .filter((b) => b.lines.length > 0)
     .map((b) => (opts.multiEntity ? `[${b.entityName}]\n${b.lines.join("\n")}` : b.lines.join("\n")))
     .join("\n");
-  return `${head}\n${body}\n\nยื่นแล้วกด "ปิดเดือน" ในแอป (ผลิต → รายงานสรรพสามิต) เพื่อปิดการเตือน`;
+  const how = 'ยื่นแล้วกด "ปิดเดือน" ในแอป (ผลิต → รายงานสรรพสามิต) เพื่อปิดการเตือน';
+  const foot = stage === "late" ? `ยิ่งยื่นช้ายิ่งเสี่ยงค่าปรับ · ${how}` : how;
+  return `${head}\n${body}\n\n${foot}`;
 }
 
 /**
@@ -124,8 +157,13 @@ export function reminderHintText(o: {
     };
   }
   if (o.closed) return null; // ปิดแล้วไม่มีอะไรต้องเตือน
+  // ★ D95 — บอกให้ครบทุกจังหวะ ผู้ใช้จะได้รู้ล่วงหน้าว่าจะได้ข้อความวันไหนบ้าง
+  //   (บอกวันเดียวทั้งที่ระบบยิง 3 วัน = ข้อความบนจอไม่ตรงกับสิ่งที่ระบบทำ)
+  const days = stageDatesFromDue(exciseDueDate(o.period), o.leadDays ?? 3)
+    .map((s) => thaiDay(s.date))
+    .join(" · ");
   return {
-    text: `ถ้ายังไม่ปิดเดือน ระบบจะเตือนเข้ากลุ่ม LINE วันที่ ${thaiDay(exciseRemindDate(o.period, o.leadDays ?? 3))} (ครบกำหนดยื่น ${thaiDay(exciseDueDate(o.period))})`,
+    text: `ถ้ายังไม่ปิดเดือน ระบบจะเตือนเข้ากลุ่ม LINE วันที่ ${days} (ครบกำหนดยื่น ${thaiDay(exciseDueDate(o.period))})`,
     warn: false,
   };
 }

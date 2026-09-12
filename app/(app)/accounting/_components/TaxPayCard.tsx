@@ -23,8 +23,21 @@ import {
   type TaxDueRow,
   type TaxKind,
 } from "@/lib/accounting/taxPay";
+import {
+  filingBadge,
+  filingHintText,
+  fileWithoutFormWarn,
+  stagesDescText,
+  type FilingMethod,
+} from "@/lib/accounting/taxFiling";
 import { formatDateThai } from "@/lib/shared/format";
-import { payTaxAction, unpayTaxAction, getTaxPayBoardAction } from "../actions";
+import {
+  payTaxAction,
+  unpayTaxAction,
+  getTaxPayBoardAction,
+  fileTaxAction,
+  unfileTaxAction,
+} from "../actions";
 import type { AccountRow, Contact } from "./types";
 import {
   Badge,
@@ -82,7 +95,31 @@ export function TaxPayCard({
     if (!window.confirm(
       `ถอนการบันทึกจ่าย ${r.label} งวดนี้?\n\nบิล ${r.payment?.tx_id ?? ""} จะกลายเป็น "ยกเลิก" (ไม่ถูกลบ) และยอดเงินในบัญชีจะกลับไปเท่าก่อนจ่าย`,
     )) return;
+    // ★ D95 — จงใจไม่ถอน "ยื่นแล้ว" ตามไปด้วย: ถอนจ่ายเพราะกรอกยอดผิด ไม่ได้แปลว่าไม่ได้ยื่น
     run(() => unpayTaxAction(r.kind, r.period, entityId), "ถอนการบันทึกจ่ายแล้ว — บิลถูกยกเลิก", load);
+  }
+
+  // ── D95 "ยื่นแล้ว" ── ปุ่มนี้ไม่แตะเงินหรือบิลใด ๆ เป็นการบันทึกเหตุการณ์ล้วน ๆ
+  function doFile(r: TaxDueRow) {
+    const warn = fileWithoutFormWarn(r.formCreated);
+    if (
+      !window.confirm(
+        `บันทึกว่ายื่น ${r.label} งวด ${r.period} แล้ว?\n\n` +
+          `ระบบจะหยุดเตือนงวดนี้เข้ากลุ่ม LINE (ไม่เกี่ยวกับการจ่ายเงิน)` +
+          (warn ? `\n\n⚠ ${warn}` : ""),
+      )
+    ) return;
+    run(
+      () => fileTaxAction({ kind: r.kind, period: r.period, entityId, filedOn: todayISO() }),
+      "บันทึกว่ายื่นแล้ว — ปิดการเตือนของงวดนี้",
+      load,
+    );
+  }
+  function doUnfile(r: TaxDueRow) {
+    if (!window.confirm(
+      `ถอนการบันทึกยื่น ${r.label} งวด ${r.period}?\n\nระบบจะกลับมาเตือนงวดนี้เข้ากลุ่ม LINE อีกครั้ง`,
+    )) return;
+    run(() => unfileTaxAction(r.kind, r.period, entityId), "ถอนการบันทึกยื่นแล้ว — ระบบจะเตือนงวดนี้อีกครั้ง", load);
   }
 
   const box = "rounded-lg border border-line bg-card p-4";
@@ -90,12 +127,25 @@ export function TaxPayCard({
 
   return (
     <div className={box}>
-      <h3 className="mb-1 font-semibold text-ink">ชำระภาษี</h3>
+      <h3 className="mb-1 font-semibold text-ink">ยื่นและชำระภาษี</h3>
       {/* 🚨 D89 — อ่านประวัติจ่ายไม่ได้ = กระดานอาจบอกว่า "ยังไม่เคยจ่าย" ทั้งที่จ่ายแล้ว */}
       <LoadError err={err} onRetry={load} what="สถานะการชำระภาษี" />
       <p className="mb-3 text-xs text-faint">
         กดจ่ายแล้วระบบบันทึกเป็น <b>รายจ่าย</b> ให้เลย (เงินออกจากบัญชีที่เลือก) — ไม่ต้องไปคีย์ที่แท็บบันทึกรายการอีก
         · ภงด.1 และ ประกันสังคม อยู่ที่หน้าเงินเดือน (ขาลงบัญชี) ไม่ได้อยู่ในนี้
+      </p>
+      {/*
+        D95 — "ยื่นแล้ว" กับ "จ่ายแล้ว" เป็นคนละเรื่อง และหน้าจอต้องพูดให้ชัดว่าอันไหนคุมอะไร
+        🚨 เดือนที่ยอดเป็นศูนย์ยัง **ต้องยื่น** — ปุ่มยื่นจึงกดได้เสมอ แม้ปุ่มจ่ายจะเทา
+      */}
+      <p className="mb-3 rounded-lg bg-raised px-3 py-2 text-xs text-muted">
+        <b>ยื่นแล้ว</b> = บอกระบบว่าส่งแบบให้สรรพากรแล้ว → หยุดเตือนเข้ากลุ่ม LINE ·
+        <b> จ่ายแล้ว</b> = เงินออกจากบัญชีจริง (ระบบลงบิลให้)
+        · เดือนที่ไม่มียอดต้องชำระก็ยังต้องยื่น ภพ.30 → กด <b>ยื่นแล้ว</b> อย่างเดียวได้
+        · บันทึกจ่ายสำเร็จ ระบบติ๊ก <b>ยื่นแล้ว</b> ให้เอง
+        {board?.filingMethod
+          ? ""
+          : " · ยังไม่ได้ตั้งวิธียื่นของกิจการนี้ — ระบบใช้กำหนดของกระดาษ (ตั้งได้ที่ ตั้งค่า → กิจการ)"}
       </p>
       <Msg msg={msg} />
 
@@ -110,8 +160,11 @@ export function TaxPayCard({
               canWrite={canWrite}
               canConfig={canConfig}
               pending={pending}
+              method={board.filingMethod}
               onPay={() => { setMsg(null); setOpen(r); }}
               onUnpay={() => doUnpay(r)}
+              onFile={() => { setMsg(null); doFile(r); }}
+              onUnfile={() => { setMsg(null); doUnfile(r); }}
             />
           ))}
         </div>
@@ -168,13 +221,20 @@ export function TaxPayCard({
 }
 
 function TaxRow({
-  row, canWrite, canConfig, pending, onPay, onUnpay,
+  row, canWrite, canConfig, pending, method, onPay, onUnpay, onFile, onUnfile,
 }: {
   row: TaxDueRow; canWrite: boolean; canConfig: boolean; pending: boolean;
-  onPay: () => void; onUnpay: () => void;
+  method: FilingMethod | null;
+  onPay: () => void; onUnpay: () => void; onFile: () => void; onUnfile: () => void;
 }) {
   const p = row.payment;
   const done = row.badge === "paid";
+  // ★ ป้าย/ข้อความของการยื่นตัดสินใน lib ที่มีเทสคุม — ที่นี่แค่วาด (D84/D88)
+  const fBadge = filingBadge(row.submitted);
+  const fHint = filingHintText(
+    { submitted: row.submitted, bySystem: row.submittedBySystem },
+    stagesDescText(row.kind, row.period, method),
+  );
   // ★ ป้ายสถานะตัดสินใน lib (มีเทสคุม) — ที่นี่แค่แปลงเป็นสีกับคำ
   const BADGE = {
     paid: ["ok", "จ่ายแล้ว"],
@@ -190,9 +250,15 @@ function TaxRow({
     <div className="rounded-lg border border-line p-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="font-medium text-ink">{TAX_KIND_FULL[row.kind]}</span>
+        {/* 🚨 2 ป้ายเพราะเป็น 2 คำถาม — ยื่นแล้วยัง / จ่ายแล้วยัง (D95) */}
+        <Badge tone={fBadge.tone}>{fBadge.text}</Badge>
         <Badge tone={tone}>{badgeText}</Badge>
         <span className="text-xs text-faint">
-          กำหนดยื่น {formatDateThai(row.due.paper)} · ยื่นออนไลน์ถึง {formatDateThai(row.due.efiling)}
+          {method === "efiling"
+            ? `กำหนดยื่นออนไลน์ ${formatDateThai(row.due.efiling)}`
+            : method === "paper"
+              ? `กำหนดยื่นกระดาษ ${formatDateThai(row.due.paper)}`
+              : `กำหนดยื่น ${formatDateThai(row.due.paper)} · ยื่นออนไลน์ถึง ${formatDateThai(row.due.efiling)}`}
         </span>
       </div>
 
@@ -232,6 +298,20 @@ function TaxRow({
       )}
 
       <div className="mt-2 flex flex-wrap gap-2">
+        {/* ★ ปุ่มยื่นมาก่อนปุ่มจ่ายตามลำดับงานจริง (ยื่น → จ่าย) และกดได้แม้ไม่มียอด */}
+        {!row.submitted ? (
+          <RowBtn tone="brand" onClick={onFile} disabled={!canWrite || pending}>
+            ยื่นแล้ว
+          </RowBtn>
+        ) : (
+          <RowBtn
+            onClick={onUnfile}
+            disabled={!canConfig || pending}
+            title={canConfig ? undefined : "ถอนได้เฉพาะผู้ที่ตั้งค่าหน้าบัญชีได้ (หัวหน้าบัญชี/เจ้าของกิจการ)"}
+          >
+            ถอนการบันทึกยื่น
+          </RowBtn>
+        )}
         <RowBtn tone="brand" onClick={onPay} disabled={!canWrite || pending || !canPay(row)}>
           บันทึกจ่าย
         </RowBtn>
@@ -259,6 +339,8 @@ function TaxRow({
           prefix="ยังกดจ่ายไม่ได้"
         />
       )}
+      {/* สถานะการยื่น + วันที่จะถูกเตือน — ★ ข้อความมาจาก lib ที่มีเทสคุม */}
+      <p className={`mt-1 text-xs ${row.submitted ? "text-faint" : "text-warn"}`}>{fHint}</p>
     </div>
   );
 }

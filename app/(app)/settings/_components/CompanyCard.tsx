@@ -6,6 +6,7 @@ import { saveEntityInfoAction, saveDocEntityAction, saveSalesRevenueAction } fro
 import type { SettingsEntity } from "../settings-data";
 import { Card, Field, MissingHint, Msg, SaveButton, Select, TextArea, TextInput, useSaver } from "@/lib/shared/ui";
 import { companyFromEntity } from "@/lib/sales/company";
+import { FILING_METHODS, FILING_METHOD_LABEL, toFilingMethod } from "@/lib/accounting/taxFiling";
 import { companyHeaderPreviewHtml } from "../../sales/_components/print";
 
 /**
@@ -142,6 +143,24 @@ export function CompanyCard({
                 : "พิมพ์ขีดคั่นได้ตามใบจริง — ระบบแยกลงช่อง 13-1-3 (17 ตัวเลข) ให้เอง"}
             </span>
           </Field>
+          {/*
+            D95 — วิธียื่นแบบตัดสิน **วันสุดท้ายจริง** ของกิจการนี้ ซึ่งเป็นวันที่ระบบใช้
+            ยิงเตือนเข้ากลุ่ม LINE · ไม่ตั้ง = ใช้กำหนดของกระดาษ (เร็วกว่า) แล้วบอกในข้อความ
+            🚨 บอกวันของทั้ง 2 แบบไว้ตรงนี้ด้วย เพราะเป็นจุดที่ผู้ใช้ต้องตัดสินใจ
+          */}
+          <Field label="วิธียื่นแบบภาษี (ใช้คิดวันเตือนกำหนดยื่น)">
+            <Select value={form.filingMethod} onChange={set("filingMethod")}>
+              <option value="">— ยังไม่ได้ตั้ง (ระบบใช้กำหนดของกระดาษ) —</option>
+              {FILING_METHODS.map((m) => (
+                <option key={m} value={m}>{FILING_METHOD_LABEL[m]}</option>
+              ))}
+            </Select>
+            <span className="mt-1 block text-xs text-faint">
+              ยื่นกระดาษ: ภพ.30 ภายในวันที่ 15 · ภงด.3/53 วันที่ 7 —
+              ยื่นออนไลน์ (e-Filing) ได้ถึงวันที่ 23 และ 15 ตามลำดับ
+              {form.filingMethod === "" && " · ยังไม่ตั้ง = เตือนตามกำหนดกระดาษ ซึ่งเร็วกว่าเสมอ"}
+            </span>
+          </Field>
           <Field label="เลขที่บัญชีนายจ้าง ประกันสังคม (ขึ้นหัว สปส.1-10)">
             <TextInput
               value={form.ssoEmployerNo}
@@ -266,6 +285,7 @@ type FormState = {
   bankLine: string;
   exciseId: string;
   ssoEmployerNo: string;
+  filingMethod: string;
 };
 
 function toForm(e: SettingsEntity | undefined): FormState {
@@ -279,5 +299,7 @@ function toForm(e: SettingsEntity | undefined): FormState {
     bankLine: e?.bank_line ?? "",
     exciseId: e?.excise_id ?? "",
     ssoEmployerNo: e?.sso_employer_no ?? "",
+    // ★ ค่าที่ระบบไม่รู้จักถือว่า "ยังไม่ได้ตั้ง" ไม่ใช่เดาให้เป็นกระดาษเงียบ ๆ
+    filingMethod: toFilingMethod(e?.filing_method) ?? "",
   };
 }

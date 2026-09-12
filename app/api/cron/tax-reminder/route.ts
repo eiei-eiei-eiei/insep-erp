@@ -3,6 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { sendLineToTenant } from "@/lib/line";
 import { taxRemindersFor, reminderMessage, type TaxReminder } from "@/lib/accounting/taxReminder";
 import { nextMonth, prevMonth } from "@/lib/accounting/taxPay";
+import { toFilingMethod } from "@/lib/accounting/taxFiling";
+import { DUE_STAGES, type DueStage } from "@/lib/shared/period";
 import { effectiveTaxAccounts } from "@/lib/accounting/taxAccounts";
 import {
   EXCISE_REMINDER_ACTION,
@@ -61,12 +63,18 @@ type Ent = {
   name: string | null;
   is_vat: boolean | null;
   excise_id: string | null;
+  /** D95 — วิธียื่นแบบ (null = ยังไม่ตั้ง → ใช้กำหนดกระดาษ และบอกในข้อความ) */
+  filing_method: string | null;
 };
 type Tn = { id: string; slug: string };
+/** รายการเตือน 1 รายการพร้อมชื่อกิจการที่มันสังกัด */
+type Item<R> = { entityName: string; r: R };
 type ReportRow = {
   tenant: string;
   job: "tax" | "excise";
   sent: boolean;
+  /** จังหวะที่ยิง — dry-run ใช้ตรวจว่าวันนี้เป็นจังหวะไหนของงวดไหน */
+  stage?: DueStage;
   keys: string[];
   lines: string[];
 };
@@ -97,10 +105,20 @@ export async function GET(req: NextRequest) {
 
   // ── งานที่ 1: ภาษีสรรพากร (D88) — ตรรกะเดิมทั้งดุ้น ห่อเป็นฟังก์ชันเท่านั้น ──────
   async function taxPart(t: Tn, entities: Ent[]) {
-    const [setRes, bankRes, runRes] = await Promise.all([
+    const [setRes, bankRes, fileRes] = await Promise.all([
       admin.from("app_settings").select("value").eq("tenant_id", t.id).eq("kind", "tax_account"),
       admin.from("bank_accounts").select("account_name").eq("tenant_id", t.id),
-      admin.from("report_runs").select("report_key, month, entity_id").eq("tenant_id", t.id).in("month", months),
+      /**
+       * 🚨 D95 — ตัวปิดเสียงคือ `tax_filings` (ประกาศว่ายื่นแล้ว) **ไม่ใช่ `report_runs`**
+       *    `report_runs` แปลว่า *กดพิมพ์แล้ว* — กดดูตัวเลขกลางเดือนแล้วการเตือนหายตลอดกาล
+       *    (ความผิดพลาดตัวเดียวกับที่ D90/D91 แก้ไปแล้วฝั่งสรรพสามิต)
+       */
+      admin
+        .from("tax_filings")
+        .select("kind, period, entity_id")
+        .eq("tenant_id", t.id)
+        .in("period", months)
+        .is("reopened_at", null),
     ]);
 
     // บัญชีในระบบภาษี — 🚨 ต้องใช้กฎ **ตัวเดียวกับแอป** (`effectiveTaxAccounts`)
@@ -110,8 +128,13 @@ export async function GET(req: NextRequest) {
       (bankRes.data ?? []).map((r) => String(r.account_name)),
     );
 
+    // 🚨 อ่านไม่ได้ ≠ ยังไม่ยื่น — เดาว่ายังไม่ยื่นแล้วส่ง = สแปมเตือนงวดที่ยื่นไปแล้ว (D89)
+    if (fileRes.error) {
+      report.push({ tenant: t.slug, job: "tax", sent: false, keys: [], lines: [`ERROR: อ่านสถานะการยื่นแบบไม่สำเร็จ — ${fileRes.error.message}`] });
+      return;
+    }
     const filedSet = new Set(
-      (runRes.data ?? []).map((r) => `${r.entity_id ?? ""}|${r.report_key}|${r.month}`),
+      (fileRes.data ?? []).map((r) => `${r.entity_id ?? ""}|${r.kind}|${r.period}`),
     );
 
     // มีการหัก ณ ที่จ่ายในงวดไหนบ้าง (ต่อกิจการ)
@@ -142,60 +165,28 @@ export async function GET(req: NextRequest) {
       whtSet.add(`${tx.entity_id ?? ""}|${String(tx.transaction_date ?? "").slice(0, 7)}`);
     }
 
-    const blocks: { entityName: string; lines: string[] }[] = [];
-    const all: TaxReminder[] = [];
+    const items: Item<TaxReminder>[] = [];
     for (const e of entities) {
       const rs = taxRemindersFor({
         todayISO: today,
         entityId: e.entity_id,
         isVat: (e.is_vat ?? true) !== false,
         hasWht: (p) => whtSet.has(`${e.entity_id}|${p}`),
-        filed: (key, p) => filedSet.has(`${e.entity_id}|${key}|${p}`),
+        // 🚨 D95 — ถามว่า "ยื่นแล้วหรือยัง" (tax_filings) ไม่ใช่ "กดพิมพ์แล้วหรือยัง"
+        submitted: (kind, p) => filedSet.has(`${e.entity_id}|${kind}|${p}`),
+        method: toFilingMethod(e.filing_method),
       });
-      if (rs.length === 0) continue;
-      all.push(...rs);
-      blocks.push({ entityName: e.name ?? e.entity_id, lines: rs.map((r) => r.line) });
-    }
-    if (all.length === 0) return;
-
-    // กันส่งซ้ำ — key ที่เคยจดไว้แล้วตัดทิ้งก่อน
-    const { data: done } = await admin
-      .from("integration_log")
-      .select("idempotency_key")
-      .eq("tenant_id", t.id)
-      .eq("action", "TAX_REMINDER")
-      .eq("status", "ok")
-      .in("idempotency_key", all.map((r) => r.key));
-    const sentKeys = new Set((done ?? []).map((d) => String(d.idempotency_key)));
-    const fresh = all.filter((r) => !sentKeys.has(r.key));
-    if (fresh.length === 0) return;
-
-    const freshBlocks = blocks
-      .map((b) => ({
-        entityName: b.entityName,
-        lines: b.lines.filter((l) => fresh.some((f) => f.line === l)),
-      }))
-      .filter((b) => b.lines.length > 0);
-    const text = reminderMessage(freshBlocks, { multiEntity: entities.length > 1 });
-
-    if (dry) {
-      report.push({ tenant: t.slug, job: "tax", sent: false, keys: fresh.map((f) => f.key), lines: freshBlocks.flatMap((b) => b.lines) });
-      return;
+      for (const r of rs) items.push({ entityName: e.name ?? e.entity_id, r });
     }
 
-    const sent = await sendLineToTenant(t.id, text);
-    if (sent) {
-      await admin.from("integration_log").insert(
-        fresh.map((r) => ({
-          tenant_id: t.id,
-          action: "TAX_REMINDER",
-          idempotency_key: r.key,
-          status: "ok",
-          message: r.line,
-        })),
-      );
-    }
-    report.push({ tenant: t.slug, job: "tax", sent, keys: fresh.map((f) => f.key), lines: freshBlocks.flatMap((b) => b.lines) });
+    await sendByStage({
+      tenant: t,
+      job: "tax",
+      action: "TAX_REMINDER",
+      items,
+      multiEntity: entities.length > 1,
+      render: (blocks, stage) => reminderMessage(blocks, { multiEntity: entities.length > 1, stage }),
+    });
   }
 
   // ── งานที่ 2: งบเดือนสรรพสามิต (D92) ────────────────────────────────────────
@@ -218,8 +209,7 @@ export async function GET(req: NextRequest) {
     }
     const closedSet = new Set((closeRows ?? []).map((r) => `${r.entity_id ?? ""}|${r.month}`));
 
-    const blocks: { entityName: string; lines: string[] }[] = [];
-    const all: ExciseReminder[] = [];
+    const items: Item<ExciseReminder>[] = [];
     for (const e of factories) {
       const rs = exciseRemindersFor({
         todayISO: today,
@@ -227,46 +217,82 @@ export async function GET(req: NextRequest) {
         hasExciseId: true,
         closed: (p) => closedSet.has(`${e.entity_id}|${p}`),
       });
-      if (rs.length === 0) continue;
-      all.push(...rs);
-      blocks.push({ entityName: e.name ?? e.entity_id, lines: rs.map((r) => r.line) });
+      for (const r of rs) items.push({ entityName: e.name ?? e.entity_id, r });
     }
-    if (all.length === 0) return;
+
+    await sendByStage({
+      tenant: t,
+      job: "excise",
+      action: EXCISE_REMINDER_ACTION,
+      items,
+      multiEntity: factories.length > 1,
+      render: (blocks, stage) =>
+        exciseReminderMessage(blocks, { multiEntity: factories.length > 1, stage }),
+    });
+  }
+
+  /**
+   * ส่ง + จดกันซ้ำ — ใช้ร่วมกันทั้ง 2 งาน
+   *
+   * 🚨 **1 ข้อความต่อ 1 จังหวะ** — หัวข้อความ ("อีก 3 วัน" / "วันนี้วันสุดท้าย" /
+   *    "เลยกำหนดแล้ว") ต้องตรงกับทุกบรรทัดที่อยู่ในข้อความนั้น · ยัดคนละจังหวะไว้ด้วยกัน
+   *    = หัวข้อความโกหกบรรทัดใดบรรทัดหนึ่งเสมอ (ตระกูล D91/0059)
+   *
+   * 🪤 ลำดับ **ส่งก่อน แล้วค่อยจด** ยกมาจาก D88 ทั้งดุ้น — จดก่อนแล้วส่งพลาด =
+   *    เตือนหายไปเลยตลอดกาล (วันนั้นผ่านไปแล้ว ไม่มีรอบสอง)
+   */
+  async function sendByStage<R extends { key: string; line: string; stage: DueStage }>(o: {
+    tenant: Tn;
+    job: "tax" | "excise";
+    action: string;
+    items: Item<R>[];
+    multiEntity: boolean;
+    render: (blocks: { entityName: string; lines: string[] }[], stage: DueStage) => string;
+  }) {
+    if (o.items.length === 0) return;
 
     const { data: done } = await admin
       .from("integration_log")
       .select("idempotency_key")
-      .eq("tenant_id", t.id)
-      .eq("action", EXCISE_REMINDER_ACTION)
+      .eq("tenant_id", o.tenant.id)
+      .eq("action", o.action)
       .eq("status", "ok")
-      .in("idempotency_key", all.map((r) => r.key));
+      .in("idempotency_key", o.items.map((i) => i.r.key));
     const sentKeys = new Set((done ?? []).map((d) => String(d.idempotency_key)));
-    const fresh = all.filter((r) => !sentKeys.has(r.key));
+    const fresh = o.items.filter((i) => !sentKeys.has(i.r.key));
     if (fresh.length === 0) return;
 
-    const freshBlocks = blocks
-      .map((b) => ({ entityName: b.entityName, lines: b.lines.filter((l) => fresh.some((f) => f.line === l)) }))
-      .filter((b) => b.lines.length > 0);
-    const text = exciseReminderMessage(freshBlocks, { multiEntity: factories.length > 1 });
+    for (const stage of DUE_STAGES) {
+      const group = fresh.filter((i) => i.r.stage === stage);
+      if (group.length === 0) continue;
 
-    if (dry) {
-      report.push({ tenant: t.slug, job: "excise", sent: false, keys: fresh.map((f) => f.key), lines: freshBlocks.flatMap((b) => b.lines) });
-      return;
-    }
+      // รวมบรรทัดตามกิจการ โดยคงลำดับกิจการที่พบครั้งแรก
+      const byEntity = new Map<string, string[]>();
+      for (const i of group) byEntity.set(i.entityName, [...(byEntity.get(i.entityName) ?? []), i.r.line]);
+      const blocks = [...byEntity.entries()].map(([entityName, lines]) => ({ entityName, lines }));
+      const text = o.render(blocks, stage);
+      const keys = group.map((i) => i.r.key);
+      const lines = group.map((i) => i.r.line);
 
-    const sent = await sendLineToTenant(t.id, text);
-    if (sent) {
-      await admin.from("integration_log").insert(
-        fresh.map((r) => ({
-          tenant_id: t.id,
-          action: EXCISE_REMINDER_ACTION,
-          idempotency_key: r.key,
-          status: "ok",
-          message: r.line,
-        })),
-      );
+      if (dry) {
+        report.push({ tenant: o.tenant.slug, job: o.job, sent: false, stage, keys, lines });
+        continue;
+      }
+
+      const sent = await sendLineToTenant(o.tenant.id, text);
+      if (sent) {
+        await admin.from("integration_log").insert(
+          group.map((i) => ({
+            tenant_id: o.tenant.id,
+            action: o.action,
+            idempotency_key: i.r.key,
+            status: "ok",
+            message: i.r.line,
+          })),
+        );
+      }
+      report.push({ tenant: o.tenant.slug, job: o.job, sent, stage, keys, lines });
     }
-    report.push({ tenant: t.slug, job: "excise", sent, keys: fresh.map((f) => f.key), lines: freshBlocks.flatMap((b) => b.lines) });
   }
 
   const { data: tenants, error } = await admin
@@ -281,7 +307,7 @@ export async function GET(req: NextRequest) {
 
     const entRes = await admin
       .from("entities")
-      .select("entity_id, name, is_vat, excise_id")
+      .select("entity_id, name, is_vat, excise_id, filing_method")
       .eq("tenant_id", t.id)
       .order("entity_id");
     // 🚨 อ่านกิจการไม่ได้ = ทำอะไรต่อไม่ได้ทั้ง 2 งาน ต้องดังให้เห็น ไม่ใช่ข้ามเงียบ ๆ
