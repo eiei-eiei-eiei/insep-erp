@@ -88,7 +88,7 @@ describe("has_cap() ใน SQL ต้องตรงกับ ROLE_CAPS ใน T
   });
 });
 
-describe("CHECK constraint ของ profiles.role ต้องมีครบ 9 บทบาท", () => {
+describe("CHECK constraint ของ profiles.role ต้องมีครบทุกบทบาทใน ROLES", () => {
   it("รายชื่อใน check ตรงกับ ROLES", () => {
     const sql = latestHasCapSql();
     const i = sql.indexOf("add constraint profiles_role_check");

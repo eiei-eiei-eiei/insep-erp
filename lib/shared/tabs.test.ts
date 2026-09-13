@@ -219,6 +219,8 @@ describe("ทุก workspace ต้องกรองแท็บผ่าน t
     ["accounting", "app/(app)/accounting/_components/AccountingApp.tsx"],
     ["sales", "app/(app)/sales/_components/SalesApp.tsx"],
     ["payroll", "app/(app)/payroll/_components/PayrollApp.tsx"],
+    // D96 — workspace ที่ 5 ต้องอยู่ในด่านเดียวกันตั้งแต่วันแรก
+    ["bar", "app/(app)/bar/_components/BarApp.tsx"],
   ];
 
   it.each(APPS)("%s เรียก tabsFor()", (_key, file) => {
@@ -226,7 +228,7 @@ describe("ทุก workspace ต้องกรองแท็บผ่าน t
   });
 
   it.each(APPS)("%s ไม่ map จากทะเบียนดิบ (ข้ามตัวกรองสิทธิ์)", (_key, file) => {
-    const raw = ["PRODUCTION", "ACCOUNTING", "SALES", "PAYROLL"].some((k) =>
+    const raw = ["PRODUCTION", "ACCOUNTING", "SALES", "PAYROLL", "BAR"].some((k) =>
       src(file).includes(k + "_TABS.map"),
     );
     expect(raw, `${file} map จาก *_TABS ตรง ๆ = ข้ามการกรองสิทธิ์`).toBe(false);

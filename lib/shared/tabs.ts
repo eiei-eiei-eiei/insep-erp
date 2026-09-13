@@ -85,9 +85,30 @@ export const PAYROLL_TABS: SubTab[] = [
   { slug: "config", label: "ตั้งค่าการคำนวณ", cap: "pay.config" },
 ];
 
+/**
+ * บาร์/POS (D96)
+ *
+ * ★ ตอนนี้มี 2 แท็บ — แท็บที่เหลือ (สต็อก · เมนู&สูตร · ลูกค้า · ประวัติบิล · แดชบอร์ด)
+ *   มาในเฟสถัดไป · **จงใจยังไม่ลงทะเบียนแท็บที่ยังไม่มีหน้าจอ** ไม่งั้นกดแล้วว่างเปล่า
+ *
+ * 🚨 `settings` ต้องมาพร้อม `pos` ตั้งแต่เฟสแรก — ไม่มีหน้าตั้งค่า =
+ *    ตั้งเลขพร้อมเพย์ไม่ได้ = ปุ่ม QR ปิดตายตลอดกาล และเทสกับแอปธนาคารจริงไม่ได้เลย
+ */
+export const BAR_TABS: SubTab[] = [
+  { slug: "pos", label: "ขาย", cap: "bar.write" },
+  { slug: "stock", label: "สต็อก" },
+  { slug: "menu", label: "เมนู & สูตร" },
+  { slug: "history", label: "ประวัติบิล" },
+  { slug: "customer", label: "ลูกค้า" },
+  // 🚨 แดชบอร์ดโชว์ **ต้นทุนและกำไร** → ต้อง `bar.config` · พนักงานบาร์ต้องไม่เห็น
+  { slug: "dashboard", label: "แดชบอร์ด", cap: "bar.config" },
+  { slug: "settings", label: "ตั้งค่าบาร์", cap: "bar.config" },
+];
+
 export const WORKSPACE_TABS: Record<string, SubTab[]> = {
   production: PRODUCTION_TABS,
   accounting: ACCOUNTING_TABS,
+  bar: BAR_TABS,
   sales: SALES_TABS,
   payroll: PAYROLL_TABS,
 };

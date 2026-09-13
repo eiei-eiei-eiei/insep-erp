@@ -45,6 +45,9 @@ export const RESTORE_ORDER: readonly TenantTable[] = [
   "log_redistill", "log_redistill_round",
   "transactions", "transaction_items", "wht_certificates", "tax_summaries", "tax_payments",
   "sales_orders", "sales_order_items", "warehouse_stock", "stock_moves",
+  // ★ D96 — บาร์: แม่ก่อนลูก (category/item/customer → menu → recipe/fav · sale → sale_item)
+  "bar_category", "bar_item", "bar_customer", "bar_menu", "bar_recipe", "bar_customer_fav",
+  "bar_receive", "bar_sale", "bar_sale_item", "bar_move", "bar_post",
   "pay_inputs", "pay_components", "pay_rates", "pay_variables", "pay_post_legs",
   "employees", "payroll_periods", "payroll_items",
   "integration_log", "edit_log", "report_runs", "excise_month_close", "counters",

@@ -10,6 +10,13 @@ import {
   exciseReminderMessage,
   type ExciseReminder,
 } from "@/lib/production/exciseReminder";
+import {
+  BAR_POST_REMINDER_ACTION,
+  barReminderKey,
+  barReminderMessage,
+} from "@/lib/bar/reminder";
+import { unpostedDays } from "@/lib/bar/posting";
+import { businessDate } from "@/lib/bar/businessDate";
 
 /**
  * cron — เตือนกำหนดยื่นเข้ากลุ่ม LINE ล่วงหน้า 3 วัน (D88 ภาษีสรรพากร · D92 งบเดือนสรรพสามิต)
@@ -65,7 +72,7 @@ type Ent = {
 type Tn = { id: string; slug: string };
 type ReportRow = {
   tenant: string;
-  job: "tax" | "excise";
+  job: "tax" | "excise" | "bar";
   sent: boolean;
   keys: string[];
   lines: string[];
@@ -85,7 +92,8 @@ export async function GET(req: NextRequest) {
   }
 
   const url = new URL(req.url);
-  const today = url.searchParams.get("date") || todayBangkok();
+  const dateOverride = url.searchParams.get("date");
+  const today = dateOverride || todayBangkok();
   const dry = url.searchParams.get("dry") === "1";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
     return NextResponse.json({ ok: false, error: "date ต้องเป็น yyyy-MM-dd" }, { status: 400 });
@@ -269,6 +277,107 @@ export async function GET(req: NextRequest) {
     report.push({ tenant: t.slug, job: "excise", sent, keys: fresh.map((f) => f.key), lines: freshBlocks.flatMap((b) => b.lines) });
   }
 
+  /**
+   * ── งานที่ 3: ยอดบาร์ค้างยังไม่ได้ลงบัญชี (D96 เฟส E) ──────────────────────
+   *
+   * 🚨 **แยกเป็นฟังก์ชันของตัวเอง เรียกด้วยธงโมดูล `bar` ของตัวเอง**
+   *    ห้ามเอาไปต่อท้าย `taxPart`/`excisePart` — สองตัวนั้นมี `continue` หลายจุด
+   *    งานใหม่จะถูกข้ามเงียบ ๆ และ TypeScript มองไม่เห็น (บทเรียน D92)
+   *
+   * 🚨 **ไม่บอกยอดเงิน** · **ส่งก่อนแล้วค่อยจด** · ไม่มีอะไรค้าง = เงียบ
+   */
+  async function barPart(t: Tn) {
+    // กิจการของบาร์ + รอบขาย + บัญชีรับเงิน — อยู่ใน app_settings ต่อ tenant
+    const { data: cfgRows, error: cfgErr } = await admin
+      .from("app_settings")
+      .select("kind, value")
+      .eq("tenant_id", t.id)
+      .in("kind", ["bar_entity", "bar_day_start", "bar_day_end", "bar_revenue_account"]);
+    // 🚨 อ่านค่าตั้งค่าไม่ได้ ≠ ไม่มีบาร์ — เดาว่าไม่มีแล้วเงียบ = เตือนหายโดยไม่มีใครรู้ (D89)
+    if (cfgErr) {
+      report.push({ tenant: t.slug, job: "bar", sent: false, keys: [], lines: [`ERROR: อ่านค่าตั้งค่าบาร์ไม่สำเร็จ — ${cfgErr.message}`] });
+      return;
+    }
+    const cfg = (k: string) => (cfgRows ?? []).find((r) => r.kind === k)?.value as string | undefined;
+    const entityId = (cfg("bar_entity") ?? "").trim();
+    // ★ ยังไม่ได้ตั้งกิจการของบาร์ = ยังไม่ได้เริ่มใช้โมดูลเลย → เงียบ ไม่ใช่ error
+    if (!entityId) return;
+
+    const [closed, posts] = await Promise.all([
+      admin
+        .from("bar_sale")
+        .select("business_date, grand_total")
+        .eq("tenant_id", t.id)
+        .eq("entity_id", entityId)
+        .eq("status", "ปกติ")
+        .not("business_date", "is", null),
+      admin
+        .from("bar_post")
+        .select("post_date")
+        .eq("tenant_id", t.id)
+        .eq("entity_id", entityId)
+        .eq("status", "ปกติ"),
+    ]);
+    if (closed.error || posts.error) {
+      report.push({ tenant: t.slug, job: "bar", sent: false, keys: [], lines: [`ERROR: อ่านยอดบาร์ไม่สำเร็จ — ${closed.error?.message ?? posts.error?.message}`] });
+      return;
+    }
+
+    // 🚨 "วันขายของตอนนี้" ต้องคิดจากรอบขาย ไม่ใช่วันปฏิทิน
+    //    ตี 1 ของรอบ 18:00–03:00 ยังอยู่ในวันขายของเมื่อวาน — เตือนตอนนั้น = บอกให้ปิดยอดคืนที่ยังขายอยู่
+    const days = unpostedDays(
+      (closed.data ?? []).map((x) => ({
+        businessDate: (x.business_date as string) ?? "",
+        grandTotal: Number(x.grand_total) || 0,
+      })),
+      (posts.data ?? []).map((x) => x.post_date as string),
+      // 🚨 "วันขายของตอนนี้" ต้องคิดจาก **รอบขาย** ไม่ใช่วันปฏิทิน
+      //    ตี 1 ของรอบ 18:00–03:00 ยังอยู่ในวันขายของเมื่อวาน — เตือนตอนนั้น
+      //    = บอกให้ปิดยอดคืนที่ยังขายอยู่ แล้วยอดที่ลงจะขาด
+      // ★ พารามิเตอร์ date= ใช้จำลองวันได้เหมือนอีก 2 งาน — ไม่งั้น dry-run ของงานนี้
+      //   จะตอบตามเวลาจริงเสมอ ทดสอบอะไรไม่ได้เลย (และคนอ่านผลจะเข้าใจผิดว่าไม่มีอะไรค้าง)
+      dateOverride ??
+        businessDate(new Date(), {
+          start: cfg("bar_day_start") || "00:00",
+          end: cfg("bar_day_end") || "00:00",
+        }),
+    );
+
+    const text = barReminderMessage({
+      days,
+      hasRevenueAccount: Boolean((cfg("bar_revenue_account") ?? "").trim()),
+    });
+    if (!text) return; // ไม่มีอะไรค้าง = เงียบ
+
+    const key = barReminderKey(today);
+    const { data: done } = await admin
+      .from("integration_log")
+      .select("idempotency_key")
+      .eq("tenant_id", t.id)
+      .eq("action", BAR_POST_REMINDER_ACTION)
+      .eq("status", "ok")
+      .eq("idempotency_key", key);
+    if ((done ?? []).length > 0) return; // ส่งไปแล้ววันนี้
+
+    if (dry) {
+      report.push({ tenant: t.slug, job: "bar", sent: false, keys: [key], lines: text.split("\n") });
+      return;
+    }
+
+    // 🪤 ส่งก่อน แล้วค่อยจด — จดก่อนแล้วส่งพลาด = เตือนหายตลอดกาล
+    const sent = await sendLineToTenant(t.id, text);
+    if (sent) {
+      await admin.from("integration_log").insert({
+        tenant_id: t.id,
+        action: BAR_POST_REMINDER_ACTION,
+        idempotency_key: key,
+        status: "ok",
+        message: text,
+      });
+    }
+    report.push({ tenant: t.slug, job: "bar", sent, keys: [key], lines: text.split("\n") });
+  }
+
   const { data: tenants, error } = await admin
     .from("tenants")
     .select("id, slug, name, is_active, is_platform, modules_enabled");
@@ -277,7 +386,9 @@ export async function GET(req: NextRequest) {
   for (const t of tenants ?? []) {
     if (!t.is_active || t.is_platform) continue;
     const mods = ((t.modules_enabled as string[]) ?? []);
-    if (!mods.includes("accounting") && !mods.includes("production")) continue;
+    // 🐛 D96 — เดิมเขียนแค่ accounting/production ⇒ ลูกค้าที่ซื้อ **แค่โมดูลบาร์**
+    //    ถูกข้ามตั้งแต่บรรทัดนี้ งานเตือนบาร์จะไม่มีวันทำงาน (กับดัก D92 เป๊ะ)
+    if (!mods.includes("accounting") && !mods.includes("production") && !mods.includes("bar")) continue;
 
     const entRes = await admin
       .from("entities")
@@ -295,6 +406,9 @@ export async function GET(req: NextRequest) {
     const tn: Tn = { id: t.id as string, slug: t.slug as string };
     if (mods.includes("accounting")) await taxPart(tn, entities);
     if (mods.includes("production")) await excisePart(tn, entities);
+    // ★ เตือนเรื่องลงบัญชีจะมีความหมายก็ต่อเมื่อซื้อโมดูลบัญชีด้วย —
+    //   ซื้อแค่บาร์ = ไม่มีที่ให้ลงบัญชี ไม่ต้องเตือน
+    if (mods.includes("bar") && mods.includes("accounting")) await barPart(tn);
   }
 
   return NextResponse.json({ ok: true, date: today, dry, tenants: report });

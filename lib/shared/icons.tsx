@@ -8,6 +8,8 @@
  * ไม่ได้ติดตั้ง lib ภายนอก — วาดเองเพื่อไม่เพิ่มขนาด bundle (ใช้จริงไม่กี่ตัว)
  */
 
+import type { ModuleKey } from "./workspaces";
+
 type IconProps = {
   size?: number;
   className?: string;
@@ -342,12 +344,35 @@ export function IconPeople(p: IconProps) {
   );
 }
 
-/** map จาก key ของ workspace → ไอคอน (ใช้ใน nav) */
-export const WORKSPACE_ICON: Record<string, (p: IconProps) => React.ReactElement> = {
+/** บาร์ — แก้วค็อกเทล (D96) */
+export function IconGlass(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M4.5 5h15l-7.5 8.5z" />
+      <path d="M12 13.5V20" />
+      <path d="M8.5 20h7" />
+    </Svg>
+  );
+}
+
+/**
+ * map จาก key ของ workspace → ไอคอน (ใช้ใน nav + หน้ารวมแอป)
+ *
+ * 🚨 **ประกาศเป็น `Record<IconKey, …>` โดยตั้งใจ — เพิ่ม workspace แล้วลืมใส่ไอคอนต้อง build ไม่ผ่าน**
+ *    🐛 D96 เจอมาแล้ว: ตอนเพิ่มโมดูลบาร์ ลืมเติมคีย์ `bar` ที่นี่ แต่ตัวนี้เคยเป็น
+ *       `Record<string, …>` ⇒ TS ไม่ฟ้องอะไรเลย แล้วผลลัพธ์คือ
+ *       · หน้ารวมแอปตกไป `?? IconLock` = **การ์ดบาร์ขึ้นรูปกุญแจ เหมือนยังไม่ได้ซื้อโมดูล**
+ *       · แถบเมนูบน/ล่างไม่มีไอคอนเลย (`{Icon && …}` กลืนทิ้งเงียบ ๆ)
+ *    (ตระกูลเดียวกับ D84 — ป้ายที่มนุษย์อ่านผิด ทั้งที่สิทธิ์จริงถูกมาตลอด)
+ */
+export type IconKey = ModuleKey | "settings" | "data";
+
+export const WORKSPACE_ICON: Record<IconKey, (p: IconProps) => React.ReactElement> = {
   production: IconStill,
   sales: IconCart,
   accounting: IconLedger,
   payroll: IconPeople,
+  bar: IconGlass,
   settings: IconSettings,
   data: IconDatabase,
 };

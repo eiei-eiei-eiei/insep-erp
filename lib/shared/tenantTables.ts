@@ -19,6 +19,9 @@ export const TENANT_TABLES = [
   "log_redistill", "log_redistill_round",
   "transactions", "transaction_items", "tax_summaries", "tax_payments", "wht_certificates",
   "sale_menu", "sales_orders", "sales_order_items", "warehouse_stock", "stock_moves",
+  // D96 — บาร์/POS (แยกขาดจากสต็อก/เอกสารฝั่งผลิตและขายโดยตั้งใจ)
+  "bar_category", "bar_item", "bar_customer", "bar_menu", "bar_recipe", "bar_customer_fav",
+  "bar_receive", "bar_sale", "bar_sale_item", "bar_move", "bar_post",
   "pay_inputs", "pay_components", "pay_rates", "pay_variables", "pay_post_legs",
   "employees", "payroll_periods", "payroll_items",
   "report_runs", "excise_month_close", "edit_log", "profiles",
@@ -59,6 +62,18 @@ export const TABLE_LABEL_TH: Partial<Record<TenantTable, string>> = {
   sales_order_items: "รายการในออเดอร์",
   warehouse_stock: "สต็อกคลัง",
   stock_moves: "ความเคลื่อนไหวคลัง",
+  // D96 — บาร์/POS · ★ ชื่อต้องไม่ซ้ำกับของฝั่งขาย (เมนูขาย / สต็อกคลัง / ความเคลื่อนไหวคลัง)
+  bar_category: "หมวดเมนูบาร์",
+  bar_item: "วัตถุดิบบาร์",
+  bar_customer: "ลูกค้าบาร์",
+  bar_menu: "เมนูบาร์",
+  bar_recipe: "สูตรเมนูบาร์",
+  bar_customer_fav: "เมนูโปรดของลูกค้าบาร์",
+  bar_receive: "รับของเข้าบาร์",
+  bar_sale: "บิลขายบาร์",
+  bar_sale_item: "รายการในบิลบาร์",
+  bar_move: "ความเคลื่อนไหวสต็อกบาร์",
+  bar_post: "ลงบัญชียอดขายบาร์",
   pay_inputs: "ช่องกรอกเงินเดือน",
   pay_components: "รายการคำนวณเงินเดือน",
   pay_rates: "อัตราตามกฎหมาย",
@@ -96,6 +111,10 @@ export const AUDITED_TABLES: readonly TenantTable[] = [
   // D80 — ข้อมูลหลัก + คอนฟิกเงินเดือน
   "products", "materials", "containers", "entities", "contacts", "bank_accounts",
   "pay_rates", "pay_inputs", "pay_variables", "pay_post_legs",
+  // D96 — ข้อมูลหลัก + ตัวเงินของบาร์ · ไม่ audit `bar_move` (เป็น log อยู่แล้ว)
+  //        และไม่ audit `bar_post` (เขียนผ่าน RPC ที่จดใครลง/ใครถอนไว้ในแถวตัวเอง)
+  "bar_category", "bar_item", "bar_menu", "bar_recipe", "bar_customer",
+  "bar_sale", "bar_sale_item",
 ];
 
 /**
@@ -129,4 +148,8 @@ export const ENTITY_SCOPED_TABLES: readonly TenantTable[] = [
   "transactions", "tax_summaries", "tax_payments", "wht_certificates",
   "sale_menu", "sales_orders", "warehouse_stock", "stock_moves",
   "employees", "payroll_periods", "report_runs", "excise_month_close",
+  // D96 — ทุกตารางของบาร์มี entity_id (บางตัว FK ตรงไป entities, ที่เหลือผ่านแม่ของมัน)
+  //        ⇒ ต้องถูกลบก่อน `entities` ทั้งหมด
+  "bar_category", "bar_item", "bar_customer", "bar_menu", "bar_recipe", "bar_customer_fav",
+  "bar_receive", "bar_sale", "bar_sale_item", "bar_move", "bar_post",
 ];

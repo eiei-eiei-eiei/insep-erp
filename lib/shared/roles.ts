@@ -28,6 +28,8 @@ export const ROLES = [
   "accounting",
   "payroll_manager",
   "payroll",
+  // D96 — โมดูลบาร์/POS · พนักงานยืนบาร์ ขายได้ รับของได้ แต่ไม่เห็นต้นทุน/กำไร/บัญชี
+  "bar",
 ] as const;
 export type Role = (typeof ROLES)[number];
 
@@ -54,6 +56,13 @@ export const CAPS = [
   "pay.read",
   "pay.write",
   "pay.config",
+  // D96 — บาร์/POS
+  // · read   = เปิดหน้าบาร์ · เห็นเมนู สูตร บิล ลูกค้า · **ไม่เห็นต้นทุน/กำไร**
+  // · write  = เปิด/ปิดบิล ขาย รับของ ปรับยอด เพิ่มแก้เมนู+สูตร แก้รายการก่อนออกใบเสร็จ
+  // · config = ตั้งค่า · **แดชบอร์ด (ต้นทุน/กำไร)** · ยกเลิกทั้งบิล · ลงบัญชี/ถอน
+  "bar.read",
+  "bar.write",
+  "bar.config",
   "admin",
 ] as const;
 export type Cap = (typeof CAPS)[number];
@@ -69,9 +78,10 @@ export const ROLE_LABEL: Record<Role, string> = {
   accounting: "พนักงานบัญชี",
   payroll_manager: "หัวหน้าฝ่ายบุคคล",
   payroll: "พนักงานเงินเดือน",
+  bar: "พนักงานบาร์",
 };
 
-/** คำอธิบายใต้ตัวเลือก — 9 บทบาทเยอะพอที่จะเดาผิด ต้องบอกตรง ๆ ว่าได้/ไม่ได้อะไร */
+/** คำอธิบายใต้ตัวเลือก — บทบาทเยอะพอที่จะเดาผิด ต้องบอกตรง ๆ ว่าได้/ไม่ได้อะไร */
 export const ROLE_HINT: Record<Role, string> = {
   main: "ทุกอย่าง รวมตั้งค่ากลางและจัดการผู้ใช้",
   viewer: "ดูได้ทุกหน้า ยกเว้นเงินเดือน · แก้ไม่ได้เลย",
@@ -82,6 +92,7 @@ export const ROLE_HINT: Record<Role, string> = {
   accounting: "บัญชี · ตั้งค่าไม่ได้",
   payroll_manager: "เงินเดือน + ตั้งค่าการคำนวณ",
   payroll: "เงินเดือน · ตั้งค่าไม่ได้",
+  bar: "ขายหน้าบาร์ + สต็อก + สูตร · ไม่เห็นต้นทุน/กำไร/บัญชี",
 };
 
 /**
@@ -99,7 +110,7 @@ export const ROLE_HINT: Record<Role, string> = {
  */
 export const ROLE_CAPS: Record<Role, readonly Cap[]> = {
   main: [...CAPS],
-  viewer: ["prod.read", "acct.read", "sales.read"],
+  viewer: ["prod.read", "acct.read", "sales.read", "bar.read"],
   sales_manager: ["sales.read", "sales.write", "sales.config"],
   sales: ["sales.read", "sales.write"],
   finance_manager: [
@@ -114,6 +125,10 @@ export const ROLE_CAPS: Record<Role, readonly Cap[]> = {
   accounting: ["acct.read", "acct.write"],
   payroll_manager: ["pay.read", "pay.write", "pay.config"],
   payroll: ["pay.read", "pay.write"],
+  // 🚨 **ไม่มี `bar.config` โดยตั้งใจ** — config คือประตูของแดชบอร์ดต้นทุน/กำไร
+  //    ยกเลิกทั้งบิล และการลงบัญชี ซึ่งเป็นเรื่องของเจ้าของ ไม่ใช่คนยืนบาร์
+  //    (ยึดเส้นเดียวกับ D85 ที่ให้ "ยกเลิกออเดอร์ = sales.config")
+  bar: ["bar.read", "bar.write"],
 };
 
 /** บทบาทนี้ทำสิ่งนี้ได้ไหม — ทุกที่ที่ตัดสินสิทธิ์บนหน้าจอต้องผ่านฟังก์ชันนี้ */

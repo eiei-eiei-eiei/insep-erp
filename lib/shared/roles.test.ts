@@ -13,7 +13,7 @@ import { ROLES, CAPS, ROLE_CAPS, ROLE_LABEL, ROLE_HINT, can, canAny, toRole, typ
 /** ตารางที่ตกลงกับผู้ใช้ไว้ (แผน §2) — เขียนซ้ำที่นี่เพื่อให้เทสไม่ได้อ่านจากไฟล์เดียวกับที่ตรวจ */
 const EXPECTED: Record<Role, Cap[]> = {
   main: [...CAPS],
-  viewer: ["prod.read", "acct.read", "sales.read"],
+  viewer: ["prod.read", "acct.read", "sales.read", "bar.read"],
   sales_manager: ["sales.read", "sales.write", "sales.config"],
   sales: ["sales.read", "sales.write"],
   finance_manager: ["acct.read", "acct.write", "acct.config", "pay.read", "pay.write", "pay.config"],
@@ -21,6 +21,7 @@ const EXPECTED: Record<Role, Cap[]> = {
   accounting: ["acct.read", "acct.write"],
   payroll_manager: ["pay.read", "pay.write", "pay.config"],
   payroll: ["pay.read", "pay.write"],
+  bar: ["bar.read", "bar.write"],
 };
 
 const sorted = (a: readonly string[]) => [...a].sort();
@@ -105,9 +106,27 @@ describe("เส้นแบ่งที่ห้ามหลุด", () => {
     expect(can("sales", "sales.write")).toBe(true);
   });
 
+  it("🔴 พนักงานบาร์เห็นแค่บาร์ — ไม่แตะผลิต/บัญชี/ขาย/เงินเดือนเลยสักโดเมน", () => {
+    for (const c of ["prod.read", "acct.read", "sales.read", "pay.read", "admin"] as Cap[]) {
+      expect(can("bar", c), `พนักงานบาร์ไม่ควรมี ${c}`).toBe(false);
+    }
+    expect(can("bar", "bar.read")).toBe(true);
+    expect(can("bar", "bar.write")).toBe(true);
+  });
+
+  it("🔴 พนักงานบาร์ไม่มี bar.config — แดชบอร์ดต้นทุน/กำไร · ยกเลิกทั้งบิล · ลงบัญชี เป็นของเจ้าของ", () => {
+    expect(can("bar", "bar.config")).toBe(false);
+  });
+
+  it("viewer ดูบาร์ได้แต่แตะอะไรไม่ได้ (รวมแดชบอร์ดกำไรที่อยู่หลัง bar.config)", () => {
+    expect(can("viewer", "bar.read")).toBe(true);
+    expect(can("viewer", "bar.write")).toBe(false);
+    expect(can("viewer", "bar.config")).toBe(false);
+  });
+
   it("มีสิทธิ์เขียนแล้วต้องอ่านได้เสมอ (เขียนได้แต่มองไม่เห็นคือสภาพที่ใช้งานไม่ได้)", () => {
     for (const r of ROLES) {
-      for (const domain of ["prod", "acct", "sales", "pay"] as const) {
+      for (const domain of ["prod", "acct", "sales", "pay", "bar"] as const) {
         if (can(r, `${domain}.write` as Cap)) {
           expect(can(r, `${domain}.read` as Cap), `${r} เขียน ${domain} ได้แต่อ่านไม่ได้`).toBe(true);
         }

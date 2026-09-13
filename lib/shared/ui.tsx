@@ -198,6 +198,20 @@ export function Stat({ label, value, tone }: { label: string; value: string; ton
 }
 
 // ── inputs ───────────────────────────────────────────────────────────────────
+/**
+ * 🪤 **`w-full` ตัวนี้ชนะ `className` ที่ส่งเข้ามาเสมอ — อย่าส่ง `w-*` มาให้ช่องกรอกโดยตรง**
+ *
+ * Tailwind ตัดสินว่าใครชนะจาก **ลำดับใน CSS ที่ generate ออกมา** ไม่ใช่ลำดับในสตริง class
+ * ⇒ `<NumBox className="w-24" />` ได้ผลลัพธ์เป็น `width: 100%` เงียบ ๆ ไม่มี error ไม่มี warning
+ *
+ * 🐛 เจอตอน D96: แถวสูตรในป๊อปอัพ "เมนูใหม่" ตกบรรทัดละช่อง เพราะทั้ง `<Select>` และ
+ *    `<NumBox className="w-24">` กลายเป็นเต็มความกว้างทั้งคู่
+ *    ★ ไล่ดูแล้วมี **~30 จุดในโมดูลอื่น** ที่เขียนความกว้างไว้แล้วไม่เคยมีผลเลยเหมือนกัน
+ *      (ยังไม่แก้ในรอบนี้ — ดู `docs/NEXT_STEPS.md` เพราะการแก้จะขยับหน้าจอที่ผู้ใช้เทสผ่านแล้ว)
+ *
+ * ✅ วิธีที่ได้ผล — ครอบด้วย div (แพตเทิร์นที่หน้าบัญชีใช้อยู่แล้ว):
+ *      <div className="w-24"><NumBox … /></div>
+ */
 const inputCls =
   "w-full rounded border border-line bg-input px-3 py-2 text-ink outline-none transition focus:border-brand focus:ring-2 focus:ring-brand-soft";
 
@@ -531,4 +545,88 @@ export function MissingHint({ checks, prefix }: { checks: FieldCheck[]; prefix?:
   const text = missingText(checks, prefix);
   if (!text) return null;
   return <p className="mt-1 text-xs text-warn">{text}</p>;
+}
+
+/**
+ * ── กล่องยืนยันในแอป (D96) — แทน `window.confirm()` ────────────────────────
+ *
+ * 🐛 **บั๊กที่ทำให้ต้องมีตัวนี้**: ปุ่ม *ปิดบิลนี้ทิ้ง* ในหน้าขายบาร์ใช้ `confirm()`
+ *    ผู้ใช้กดแล้ว **ไม่มีอะไรเกิดขึ้นเลย** — ไม่ใช่เพราะ RPC พัง แต่เพราะ
+ *    เบราว์เซอร์บางตัว/บางบริบท **บล็อก native dialog ทิ้งเงียบ ๆ แล้วคืน `false`**
+ *    (เบราว์เซอร์ในตัวช่วยเทสเป็นแบบนั้น · บางเบราว์เซอร์บล็อกหลังผู้ใช้ติ๊ก
+ *     "ไม่ต้องแสดงกล่องนี้อีก" ซึ่งกดครั้งเดียวแล้วปุ่มลบตายถาวรทั้งเว็บ)
+ *
+ * 🚨 อาการมันเหมือน "ปุ่มเสีย" ทุกประการ และ **build/lint/test มองไม่เห็นเลย**
+ *
+ * ★ ใช้แบบ Promise เพื่อให้ call site อ่านเหมือน `confirm()` เดิม:
+ *
+ *     const { confirmNode, ask } = useConfirm();
+ *     …
+ *     if (!(await ask({ title: "ปิดบิลทิ้ง?", detail: "สต็อกจะถูกคืน" }))) return;
+ *     …
+ *     return (<>{confirmNode}…</>);
+ *
+ * 🪤 ต้อง render `{confirmNode}` ด้วย ไม่งั้น `ask()` จะค้างรอตลอดกาลแบบไม่มี error
+ */
+export type ConfirmOpts = {
+  title: string;
+  detail?: string;
+  /** ข้อความบนปุ่มยืนยัน (ปริยาย "ยืนยัน") */
+  confirmText?: string;
+  /** true = การกระทำทำลายข้อมูล → ปุ่มเป็นระดับ danger */
+  danger?: boolean;
+};
+
+export function useConfirm() {
+  const [opts, setOpts] = useState<ConfirmOpts | null>(null);
+  const resolver = useRef<((ok: boolean) => void) | null>(null);
+
+  const ask = useCallback((o: ConfirmOpts) => {
+    setOpts(o);
+    return new Promise<boolean>((resolve) => {
+      resolver.current = resolve;
+    });
+  }, []);
+
+  const done = useCallback((ok: boolean) => {
+    setOpts(null);
+    resolver.current?.(ok);
+    resolver.current = null;
+  }, []);
+
+  const confirmNode = opts ? (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-overlay p-4"
+      onMouseDown={(e) => e.target === e.currentTarget && done(false)}
+    >
+      <EscToClose onClose={() => done(false)} />
+      <div className="w-full max-w-sm rounded-xl border border-line bg-card p-5 shadow-xl">
+        <div className="text-base font-bold text-ink">{opts.title}</div>
+        {opts.detail && <p className="mt-1 whitespace-pre-line text-sm text-muted">{opts.detail}</p>}
+        <div className="mt-4 flex gap-2">
+          <button
+            type="button"
+            autoFocus
+            onClick={() => done(true)}
+            className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium ${
+              opts.danger
+                ? "border border-crit-line bg-crit-bg text-crit"
+                : "bg-brand text-on-brand"
+            }`}
+          >
+            {opts.confirmText ?? "ยืนยัน"}
+          </button>
+          <button
+            type="button"
+            onClick={() => done(false)}
+            className="rounded-lg border border-line bg-card px-3 py-2 text-sm text-ink"
+          >
+            ยกเลิก
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  return { confirmNode, ask };
 }

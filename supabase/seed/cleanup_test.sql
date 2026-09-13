@@ -48,6 +48,33 @@ delete from contacts         where name like '%ทดสอบ%' or contact_id l
 
 -- 4) master + กิจการทดสอบ
 -- 🪤 เมนูที่ตั้งใจไม่ผูก product_id (seed_pos ข้อ ③) ต้องลบด้วยชื่อ ไม่งั้นค้างถาวร
+-- 2.7) บาร์/POS (D96) — ลูกก่อนแม่: sale_item→sale · fav/recipe→menu,item · menu→category,customer
+--      ★ ไม่ผูกกับ EID99 — seed_bar ลงที่กิจการไหนก็ได้ marker คือ id ขึ้นต้น 'T-'
+--      🚨 ต้องลบ bar_move/bar_receive ด้วย ไม่งั้น FK ของ bar_item ค้าง
+-- 🚨 **ห้ามลบด้วย `sale_no like 'B%'`** — บิลบาร์จริง**ทุกใบ**ขึ้นต้นด้วย B
+--    ต้องหาบิลทดสอบจาก "มีรายการที่อ้างเมนูทดสอบ" หรือ "ผูกลูกค้าทดสอบ" เท่านั้น
+create temp table if not exists _t_bar_sales on commit drop as
+  select distinct sale_no from bar_sale_item where menu_id like 'T-%';
+insert into _t_bar_sales
+  select sale_no from bar_sale
+   where (tab_name like '%ทดสอบ%' or customer_id like 'T-%')
+     and sale_no not in (select sale_no from _t_bar_sales);
+
+delete from bar_sale_item where sale_no in (select sale_no from _t_bar_sales);
+delete from bar_sale      where sale_no in (select sale_no from _t_bar_sales);
+-- ⚠️ **ไม่ลบ `bar_post` ที่นี่โดยตั้งใจ** — แถวนั้นผูกกับบิลใน `transactions` ที่สร้างไว้จริง
+--    ลบแถวตรง ๆ = บิลบัญชีค้างอยู่โดยไม่มีอะไรชี้ถึง (เงินหลอนอยู่ในระบบ)
+--    ที่ถูกคือกด **ถอนการลงบัญชี** ในแท็บแดชบอร์ดก่อน ซึ่ง soft-void ทั้งสองฝั่งให้
+delete from bar_move         where item_id like 'T-%';
+delete from bar_receive      where item_id like 'T-%';
+delete from bar_customer_fav where customer_id like 'T-%' or menu_id like 'T-%';
+delete from bar_recipe       where menu_id like 'T-%' or item_id like 'T-%';
+delete from bar_menu         where menu_id like 'T-%' or name like '%ทดสอบ%';
+delete from bar_customer     where customer_id like 'T-%' or name like '%ทดสอบ%';
+delete from bar_item         where item_id like 'T-%';
+delete from bar_category     where category_id like 'T-%';
+delete from app_settings     where kind like 'bar\_%';
+
 delete from sale_menu   where product_id like 'T-%' or menu_name like '%ทดสอบ%';
 delete from products    where product_id like 'T-%';
 delete from materials   where material_id like 'T-%';

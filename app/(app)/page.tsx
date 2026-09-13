@@ -44,7 +44,11 @@ export default async function HomePage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {workspaces.map((w) => {
-          const Icon = WORKSPACE_ICON[w.key] ?? IconLock;
+          // 🐛 D96 — เดิมเขียน `?? IconLock` ไว้ แล้ว `WORKSPACE_ICON` ตกคีย์ `bar`
+          //    ⇒ การ์ดบาร์ขึ้น **รูปกุญแจ** เหมือนยังไม่ได้ซื้อโมดูล ทั้งที่เปิดใช้อยู่
+          //    ตอนนี้ Record ครบทุก key แล้ว (TS บังคับ) → ไม่ต้อง fallback อีก
+          //    🚨 อย่าเอา `??` กลับมา — มันคือตัวที่กลืนความผิดพลาดนี้ไว้ 1 รอบเต็ม
+          const Icon = WORKSPACE_ICON[w.key];
 
           if (w.locked) {
             return (

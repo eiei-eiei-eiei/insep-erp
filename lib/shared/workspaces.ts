@@ -12,8 +12,12 @@ import { can, type Cap, type Role } from "./roles";
 export { ROLES, ROLE_LABEL, ROLE_HINT, ROLE_CAPS, CAPS, can, canAny, toRole } from "./roles";
 export type { Role, Cap } from "./roles";
 
-/** โมดูลที่ขายแยกกันได้ (tenants.modules_enabled) — 7 SKU ประกอบจาก 3 ตัวนี้ */
-export const MODULES = ["production", "accounting", "sales", "payroll"] as const;
+/**
+ * โมดูลที่ขายแยกกันได้ (`tenants.modules_enabled`)
+ *
+ * ★ `bar` (D96) เป็นโมดูลที่ 5 — route `/bar` มีแล้วตั้งแต่เฟส 5
+ */
+export const MODULES = ["production", "accounting", "sales", "payroll", "bar"] as const;
 export type ModuleKey = (typeof MODULES)[number];
 
 /** ค่าเริ่มต้นเมื่ออ่านค่าจาก DB ไม่ได้ — เปิดหมด (ตรงกับ default ของคอลัมน์ใน 0025)
@@ -22,10 +26,11 @@ export type ModuleKey = (typeof MODULES)[number];
 export const ALL_MODULES: ModuleKey[] = [...MODULES];
 
 export type Workspace = {
-  key: string;
+  /** ★ ผูกกับ `ModuleKey` โดยตั้งใจ — workspace 1 ตัวคู่กับโมดูล 1 ตัวเสมอ
+   *  ทำให้ `WORKSPACE_ICON[w.key]` มีไอคอนครบแน่นอนโดยไม่ต้อง fallback (D96) */
+  key: ModuleKey;
   label: string;
   href: string;
-  icon: string;
   /** ความสามารถที่ต้องมีถึงจะเห็น workspace นี้ (ดู lib/shared/roles.ts) */
   cap: Cap;
   /** โมดูลที่ต้องซื้อถึงจะเห็น workspace นี้ */
@@ -40,7 +45,6 @@ export const WORKSPACES: Workspace[] = [
     key: "production",
     label: "ผลิต",
     href: "/production",
-    icon: "🏭",
     cap: "prod.read",
     module: "production",
   },
@@ -48,7 +52,6 @@ export const WORKSPACES: Workspace[] = [
     key: "sales",
     label: "ขาย",
     href: "/sales",
-    icon: "🛒",
     cap: "sales.read",
     module: "sales",
   },
@@ -56,7 +59,6 @@ export const WORKSPACES: Workspace[] = [
     key: "accounting",
     label: "บัญชี",
     href: "/accounting",
-    icon: "📒",
     cap: "acct.read",
     module: "accounting",
   },
@@ -64,9 +66,16 @@ export const WORKSPACES: Workspace[] = [
     key: "payroll",
     label: "เงินเดือน",
     href: "/payroll",
-    icon: "👥",
     cap: "pay.read",
     module: "payroll",
+  },
+  // D96 — ★ `label` ต้องตรงกับ `MODULE_LABEL.bar` เป๊ะ (เทสบังคับไว้ กัน drift แบบ D84)
+  {
+    key: "bar",
+    label: "บาร์",
+    href: "/bar",
+    cap: "bar.read",
+    module: "bar",
   },
 ];
 
@@ -123,5 +132,8 @@ export const MODULE_LABEL: Record<ModuleKey, string> = {
   accounting: "บัญชี",
   sales: "ขาย",
   payroll: "เงินเดือน",
+  // ★ ต้องตรงกับ `label` ของ workspace `bar` ที่จะเพิ่มในเฟสถัดไปเป๊ะ
+  //   (เทส "ตรงกับชื่อ workspace ที่โมดูลนั้นเปิดให้" บังคับไว้)
+  bar: "บาร์",
 };
 

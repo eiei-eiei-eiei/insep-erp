@@ -8,7 +8,7 @@ import type { Route } from "next";
 import { signOut } from "../actions";
 import { ROLE_LABEL, type Role, type Workspace } from "@/lib/shared/workspaces";
 import { navSubItems } from "@/lib/shared/tabs";
-import { WORKSPACE_ICON, IconLogout, IconChevronDown } from "@/lib/shared/icons";
+import { WORKSPACE_ICON, IconLogout, IconChevronDown, type IconKey } from "@/lib/shared/icons";
 import type { Branding } from "@/lib/shared/branding";
 import { ModeToggle } from "./ModeToggle";
 import { can } from "@/lib/shared/roles";
@@ -32,9 +32,9 @@ export function Nav({
 
   // รายการเมนู = workspace + ตั้งค่า (ถ้า main) — ใช้ทั้ง top (desktop) และ bottom-tab (มือถือ)
   // ★ "สำรอง" ไม่ใช่เมนูแยกแล้ว — กลายเป็นแท็บหนึ่งในหน้าตั้งค่า (D63)
-  const items: { key: string; href: string; label: string }[] = [
+  const items: { key: IconKey; href: string; label: string }[] = [
     ...workspaces.map((w) => ({ key: w.key, href: w.href, label: w.label })),
-    ...(can(role, "admin") ? [{ key: "settings", href: "/settings", label: "ตั้งค่า" }] : []),
+    ...(can(role, "admin") ? [{ key: "settings" as const, href: "/settings", label: "ตั้งค่า" }] : []),
   ];
 
   const initials = displayName.trim().slice(0, 2);
@@ -115,7 +115,7 @@ export function Nav({
                 on ? "text-brand" : "text-faint"
               }`}
             >
-              {Icon && <Icon size={19} />}
+              <Icon size={19} />
               {w.label}
             </Link>
           );
@@ -140,7 +140,7 @@ function NavItem({
   currentPath,
   processes,
 }: {
-  item: { key: string; href: string; label: string };
+  item: { key: IconKey; href: string; label: string };
   role: Role;
   active: boolean;
   currentPath: string;
@@ -181,7 +181,7 @@ function NavItem({
           aria-current={active ? "page" : undefined}
           className="flex items-center gap-1.5 whitespace-nowrap py-1.5 pl-3 pr-1 text-sm font-medium"
         >
-          {Icon && <Icon size={16} />}
+          <Icon size={16} />
           {item.label}
         </Link>
         {subs.length > 0 && (

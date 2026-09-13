@@ -31,8 +31,8 @@ describe("workspacesFor — role × โมดูล", () => {
     expect(keys(workspacesFor("main", ["production"]))).toEqual(["production"]);
   });
 
-  it("ไม่มี workspace รายงานราชการแล้ว — ฟอร์ม ภส. เป็นแท็บในผลิต (D62)", () => {
-    expect(keys(WORKSPACES)).toEqual(["accounting", "payroll", "production", "sales"]);
+  it("ไม่มี workspace รายงานราชการแล้ว — ฟอร์ม ภส. เป็นแท็บในผลิต (D62) · บาร์เป็นตัวที่ 5 (D96)", () => {
+    expect(keys(WORKSPACES)).toEqual(["accounting", "bar", "payroll", "production", "sales"]);
     expect(keys(workspacesFor("main", ["accounting"]))).toEqual(["accounting"]);
   });
 
@@ -56,7 +56,9 @@ describe("workspacesFor — role × โมดูล", () => {
   it("ไม่ส่งโมดูลมา = เปิดหมด (พฤติกรรมเดิมก่อนมี 4.5 ต้องไม่พัง)", () => {
     expect(keys(workspacesFor("main"))).toEqual(keys(WORKSPACES));
     // viewer ไม่เห็นเงินเดือนแม้เปิดโมดูลครบ — เงินเดือนรายคนเป็นข้อมูลอ่อนไหว
-    expect(keys(workspacesFor("viewer"))).toEqual(["accounting", "production", "sales"]);
+    // ★ D96: viewer **เห็นบาร์** เพราะคำอธิบายบทบาทคือ "ดูได้ทุกหน้า ยกเว้นเงินเดือน"
+    //   (แดชบอร์ดต้นทุน/กำไรยังปิดอยู่ เพราะอยู่หลัง bar.config)
+    expect(keys(workspacesFor("viewer"))).toEqual(["accounting", "bar", "production", "sales"]);
   });
 });
 
@@ -79,9 +81,9 @@ describe("เงินเดือน (โมดูลที่ 4) — เปิ
 describe("workspacesWithLock — หน้าแรกโชว์ของที่ยังไม่ได้ซื้อเป็นสีเทา", () => {
   it("ไม่ตัดทิ้ง แต่ติดธง locked ให้ตัวที่ยังไม่ได้ซื้อ", () => {
     const ws = workspacesWithLock("main", ["production"]);
-    expect(ws).toHaveLength(4); // ครบทุกอัน ไม่หายไปไหน
+    expect(ws).toHaveLength(WORKSPACES.length); // ครบทุกอัน ไม่หายไปไหน
     const locked = ws.filter((w) => w.locked).map((w) => w.key).sort();
-    expect(locked).toEqual(["accounting", "payroll", "sales"]);
+    expect(locked).toEqual(["accounting", "bar", "payroll", "sales"]);
   });
 
   it("ซื้อครบ = ไม่มีอันไหน locked", () => {

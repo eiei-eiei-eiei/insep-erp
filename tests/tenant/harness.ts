@@ -94,6 +94,8 @@ export const TENANT_TABLES = [
   "log_redistill", "log_redistill_round",
   "transactions", "transaction_items", "tax_summaries", "tax_payments", "wht_certificates",
   "sale_menu", "sales_orders", "sales_order_items", "warehouse_stock", "stock_moves",
+  "bar_category", "bar_item", "bar_customer", "bar_menu", "bar_recipe", "bar_customer_fav",
+  "bar_receive", "bar_sale", "bar_sale_item", "bar_move", "bar_post",
   "pay_inputs", "pay_components", "pay_rates", "pay_variables", "pay_post_legs",
   "employees", "payroll_periods", "payroll_items",
   "report_runs", "excise_month_close", "edit_log", "profiles",
