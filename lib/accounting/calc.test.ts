@@ -9,6 +9,15 @@ import {
   exVatFromInVat,
   inVatFromExVat,
   entryCalc,
+  effectiveVatMode,
+  unitPriceOf,
+  allocateExTotals,
+  detectVatMode,
+  vatModeWarn,
+  lineTotalHeader,
+  itemsHintText,
+  VAT_MODE_LABEL,
+  type VatMode,
   reverseWht,
   splitInstallments,
   taxReport,
@@ -225,5 +234,137 @@ describe("A11 — dashboard + WHT pending", () => {
   it("ตัดที่ออก 50ทวิ แล้วออกจาก pending", () => {
     const d = dashboardData("2026-07", EID, txs, TAX_ACCOUNTS, new Set(["P1"]));
     expect(d.whtPending.map((p) => p.transactionId)).toEqual(["P2"]);
+  });
+});
+
+
+describe("A21 — โหมดกรอกราคา รวม VAT (D98)", () => {
+  const wht0 = { discount: 0, hasVat: true, hasWht: false, whtRate: 0 };
+
+  it("🚩 เคสจริงของผู้ใช้: 16 ชิ้น × 75 (รวม VAT) ต้องได้ 1,200.00 เท่าใบของผู้ขาย", () => {
+    const items = [{ quantity: 16, exVat: exVatFromInVat(75), inVat: 75, discBaht: 0 }];
+    const r = entryCalc({ items, ...wht0, vatMode: "in" });
+    expect(r.baseAmount).toBe(1121.5);
+    expect(r.vatAmount).toBe(78.5);
+    expect(r.netAmount).toBe(1200);
+  });
+
+  it("🚨 เส้นทางเดิมต้องไม่ขยับ — เคสเดียวกันในโหมด ex ยังได้เลขเดิมทุกตัว", () => {
+    const items = [{ quantity: 16, exVat: exVatFromInVat(75), inVat: 75, discBaht: 0 }];
+    const r = entryCalc({ items, ...wht0, vatMode: "ex" });
+    expect(r.baseAmount).toBe(1121.44);
+    expect(r.vatAmount).toBe(78.5);
+    expect(r.netAmount).toBe(1199.94);
+  });
+
+  it("🚨 ไม่ส่ง vatMode = ต้องเหมือนส่ง ex เป๊ะ (ค่าปริยายคือพฤติกรรมเดิม)", () => {
+    const cases = [
+      { items: [{ quantity: 16, exVat: 70.09, inVat: 75, discBaht: 0 }], discount: 0, hasVat: true, hasWht: false, whtRate: 0 },
+      { items: [{ quantity: 1, exVat: 1000, inVat: 1070, discBaht: 0 }], discount: 100, hasVat: true, hasWht: true, whtRate: 3 },
+      { items: [{ quantity: 3, exVat: 33.33, inVat: 35.66, discBaht: 10 }], discount: 5, hasVat: false, hasWht: true, whtRate: 1 },
+    ];
+    for (const c of cases) expect(entryCalc(c)).toEqual(entryCalc({ ...c, vatMode: "ex" }));
+  });
+
+  it("🚨 base + vat = ยอดที่จ่ายจริงเสมอ — ไล่ทุกจำนวน 1-60 ชิ้น × ราคาที่มีเศษ", () => {
+    for (const price of [75, 19.5, 0.99, 123.45, 7, 250]) {
+      for (let q = 1; q <= 60; q++) {
+        const r = entryCalc({ items: [{ quantity: q, exVat: exVatFromInVat(price), inVat: price, discBaht: 0 }], ...wht0, vatMode: "in" });
+        expect(round2(r.baseAmount + r.vatAmount)).toBe(round2(q * price));
+        expect(r.netAmount).toBe(round2(q * price));
+      }
+    }
+  });
+
+  it("หลายบรรทัด — ถอด VAT ที่ยอดรวมครั้งเดียว ไม่ใช่รายบรรทัด", () => {
+    const items = [
+      { quantity: 16, exVat: 70.09, inVat: 75, discBaht: 0 },
+      { quantity: 3, exVat: 18.69, inVat: 20, discBaht: 0 },
+    ];
+    const r = entryCalc({ items, ...wht0, vatMode: "in" });
+    expect(round2(r.baseAmount + r.vatAmount)).toBe(1260);
+    expect(r.netAmount).toBe(1260);
+  });
+
+  it("ส่วนลดบรรทัด + ส่วนลดบิล ในโหมด in เป็นบาทรวม VAT", () => {
+    const items = [{ quantity: 16, exVat: 70.09, inVat: 75, discBaht: 100 }];
+    const r = entryCalc({ items, discount: 100, hasVat: true, hasWht: false, whtRate: 0, vatMode: "in" });
+    expect(r.netAmount).toBe(1000);
+    // 🪤 baseAmount คือยอด *ก่อน* หักส่วนลดบิล ส่วน vatAmount คิด *หลัง* หัก — บวกกันไม่มีความหมาย
+    expect(round2(r.amountAfterDiscount + r.vatAmount)).toBe(1000);
+    expect(r.baseAmount).toBe(1028.04);
+    expect(r.amountAfterDiscount).toBe(934.58);
+    expect(r.vatAmount).toBe(65.42);
+  });
+
+  it("WHT คิดบนยอดก่อน VAT · สุทธิ = ยอดรวม VAT − WHT", () => {
+    const items = [{ quantity: 16, exVat: 70.09, inVat: 75, discBaht: 0 }];
+    const r = entryCalc({ items, discount: 0, hasVat: true, hasWht: true, whtRate: 3, vatMode: "in" });
+    expect(r.amountAfterDiscount).toBe(1121.5);
+    // round2 เดิมคือ Math.round(x*100)/100 · 1121.5×3% = 33.644999… → 33.64 (ไม่แตะสูตรปัด)
+    expect(r.whtAmount).toBe(33.64);
+    expect(r.netAmount).toBe(round2(1200 - 33.64));
+  });
+
+  it("🚨 ไม่ติ๊ก มี VAT = ตกกลับเส้นทางเดิมเสมอ (ไม่มีอะไรให้ถอด)", () => {
+    expect(effectiveVatMode("in", false)).toBe("ex");
+    expect(effectiveVatMode("in", true)).toBe("in");
+    expect(effectiveVatMode("ex", true)).toBe("ex");
+    expect(effectiveVatMode(undefined, true)).toBe("ex");
+    const items = [{ quantity: 16, exVat: 70.09, inVat: 75, discBaht: 0 }];
+    const noVat = { items, discount: 0, hasVat: false, hasWht: false, whtRate: 0 };
+    expect(entryCalc({ ...noVat, vatMode: "in" })).toEqual(entryCalc(noVat));
+  });
+
+  it("unitPriceOf — โหมดไหนอ่านช่องไหน", () => {
+    expect(unitPriceOf("in", 70.09, 75)).toBe(75);
+    expect(unitPriceOf("ex", 70.09, 75)).toBe(70.09);
+    expect(unitPriceOf("in", 70.09, undefined)).toBe(0);
+  });
+
+  it("🚨 allocateExTotals — ผลรวมรายบรรทัดต้องเท่ากับยอดก่อน VAT ของบิลเป๊ะ", () => {
+    const grosses = [1200, 60, 0.03, 999.99];
+    const base = entryCalc({
+      items: grosses.map((g) => ({ quantity: 1, exVat: 0, inVat: g, discBaht: 0 })),
+      ...wht0, vatMode: "in",
+    }).baseAmount;
+    const lines = allocateExTotals(grosses, base);
+    expect(round2(lines.reduce((a, b) => a + b, 0))).toBe(base);
+    expect(lines[0]).toBe(1121.5);
+  });
+
+  it("allocateExTotals — บิลว่าง/ยอดศูนย์ ไม่ระเบิด", () => {
+    expect(allocateExTotals([], 0)).toEqual([]);
+    expect(allocateExTotals([0, 0], 0)).toEqual([0, 0]);
+  });
+
+  it("🚨 detectVatMode — ถามว่าโหมดไหนได้ยอดที่บันทึกไว้ ไม่ใช่เดา", () => {
+    const items = [{ quantity: 16, exVat: 70.09, inVat: 75, discBaht: 0 }];
+    const base = { items, discount: 0, hasVat: true, hasWht: false, whtRate: 0 };
+    expect(detectVatMode(base, { amountAfterDiscount: 1121.5, vatAmount: 78.5, whtAmount: 0 })).toBe("in");
+    expect(detectVatMode(base, { amountAfterDiscount: 1121.44, vatAmount: 78.5, whtAmount: 0 })).toBe("ex");
+    // ไม่เข้าทั้งคู่ (บิลเจ้าอื่นปัดทศนิยมเอง) → ex เสมอ · หน้าแก้บิลเปิดโหมดแก้ยอดเองอยู่แล้ว
+    expect(detectVatMode(base, { amountAfterDiscount: 1000, vatAmount: 70, whtAmount: 0 })).toBe("ex");
+  });
+
+  it("🪤 detectVatMode — บิลที่ไม่มีเศษ เข้าได้ทั้งสองโหมด ต้องตอบ ex", () => {
+    const items = [{ quantity: 2, exVat: 100, inVat: 107, discBaht: 0 }];
+    const base = { items, discount: 0, hasVat: true, hasWht: false, whtRate: 0 };
+    expect(entryCalc({ ...base, vatMode: "in" }).amountAfterDiscount).toBe(200);
+    expect(detectVatMode(base, { amountAfterDiscount: 200, vatAmount: 14, whtAmount: 0 })).toBe("ex");
+  });
+
+  it("🚨 ประโยคบนจอตัดสินใน lib และต้องตรงกับสิ่งที่โค้ดทำ", () => {
+    expect(vatModeWarn("in", false)).toContain("มี VAT 7%");
+    expect(vatModeWarn("in", true)).toBe("");
+    expect(vatModeWarn("ex", false)).toBe("");
+    expect(vatModeWarn(undefined, false)).toBe("");
+    expect(lineTotalHeader("in")).toBe("รวม (รวม VAT)");
+    expect(lineTotalHeader("ex")).toBe("รวม (ก่อน VAT)");
+    expect(itemsHintText("in")).toContain("ถอด VAT ออกจากยอดรวมครั้งเดียว");
+    expect(itemsHintText("ex")).toContain("บวก VAT 7%");
+    expect(itemsHintText("in")).not.toBe(itemsHintText("ex"));
+    const modes: VatMode[] = ["ex", "in"];
+    expect(new Set(modes.map((m) => VAT_MODE_LABEL[m])).size).toBe(2);
   });
 });

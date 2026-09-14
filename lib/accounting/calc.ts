@@ -9,7 +9,10 @@
  * A10 whtReport      ภงด.3/53 (Reports.js generateWHTReportHTML)
  * A11 dashboardData  Dashboard + WHT pending (Reports.js getDashboardAndWhtData)
  * A13 เช็คราคา        type/account ว่าง → ไม่อยู่ใน taxAccounts → หลุดทุกจุดโดยอัตโนมัติ
+ * A21 vatMode        โหมดกรอกราคา "รวม VAT" (D98) — ค่าปริยาย "ex" = เส้นทางเดิมทุกตัวอักษร
  */
+
+import { vatFromGross } from "../shared/vat";
 
 // ── helpers ────────────────────────────────────────────────────────────────
 /** parse ตัวเลข (รองรับ string มีคอมม่า) — เหมือน num() เดิม */
@@ -83,14 +86,66 @@ export function inVatFromExVat(exVat: number): number {
   return v > 0 ? round2(v * 1.07) : 0;
 }
 
+// ── A21: โหมดกรอกราคา "รวม VAT" (D98) ──────────────────────────────────────
+/**
+ * ผู้ใช้พิมพ์ราคาลงช่องไหน — "ex" = ไม่รวม VAT (เดิม) · "in" = รวม VAT มาแล้ว
+ *
+ * 🚨 ทำไมต้องแยกเป็นโหมด แทนที่จะ "ปรับปรุง" สูตรถอด VAT เดิมให้แม่นขึ้นเฉย ๆ:
+ * ของเดิมถอด VAT **ต่อหน่วยแล้วปัด 2 ตำแหน่ง ก่อนคูณจำนวน** ⇒ 16 ชิ้น × 75 (รวม VAT)
+ * ได้ฐาน 1,121.44 + VAT 78.50 = **1,199.94** แต่เงินที่จ่ายผู้ขายจริงคือ 1,200.00
+ * (เศษที่ปัดทิ้งต่อหน่วย 0.0034579 × 16 หายไป) — บิลซื้อไม่ตรงใบกำกับของผู้ขาย
+ *
+ * ★ หลัก: **ฐานภาษีคือเงินทั้งก้อนที่จ่าย/รับจริง × 100/107** (ม.79) ราคา/หน่วยที่
+ *   ถอดออกมาเป็นเพียงค่าที่แสดง ไม่ใช่ฐาน ⇒ **ห้ามปัดก่อนคูณ** ให้ปัดครั้งเดียวที่
+ *   ยอดซึ่งปรากฏบนเอกสาร (หลักเดียวกับ ภพ.30 ที่คิด VAT จากยอดรวม ไม่ sum รายแถว)
+ *
+ * 🚨 แต่เส้นทางเดิม **ถูกอยู่แล้ว** สำหรับบิลที่ตั้งราคาแบบไม่รวม VAT (ฝั่งขายของเราเอง):
+ *   ฐานคือ qty×ราคา แล้วบวก 7% — ไม่มีอะไรให้ถอด · แก้ทับ = พังของที่ถูกอยู่
+ *   ⇒ แยกโหมด ค่าปริยาย "ex" ⇒ **golden A3/A4 เดิมผ่านโดยไม่แก้ไฟล์เทส**
+ */
+export type VatMode = "ex" | "in";
+
+export const VAT_MODE_LABEL: Record<VatMode, string> = {
+  ex: "ไม่รวม VAT",
+  in: "รวม VAT",
+};
+
+/**
+ * โหมดที่ **มีผลจริง** ต่อการคิดเงิน
+ *
+ * 🚨 ไม่ติ๊ก "มี VAT" = ไม่มีอะไรให้ถอด → ตกกลับเส้นทางเดิมเสมอ ⇒ กิจการไม่จด VAT
+ * และบิลที่ไม่มีภาษี ได้ยอดเท่าเดิมทุกบาท ไม่ขยับเพราะงานนี้
+ * 🪤 คนที่กรอกช่องรวม VAT แล้วลืมติ๊ก ต้องได้ข้อความบอก ไม่ใช่เงียบ — vatModeWarn()
+ */
+export function effectiveVatMode(mode: VatMode | undefined, hasVat: boolean): VatMode {
+  return mode === "in" && hasVat ? "in" : "ex";
+}
+
+/**
+ * ราคา/หน่วย ที่เป็นฐานของ "ยอดรวมบรรทัด" และ "ส่วนลด %" ตามโหมด
+ * ⇒ itemTotal() / itemDiscBahtFromPct() ใช้ตัวเดิมได้ทั้งสองโหมด (A4 ไม่ถูกแตะ)
+ * 🪤 โหมด "in" ผลของ itemTotal คือยอด **รวม VAT** ของบรรทัดนั้น ไม่ใช่ฐานภาษี
+ */
+export function unitPriceOf(mode: VatMode, exVat: number, inVat: number | undefined): number {
+  return mode === "in" ? num(inVat) : num(exVat);
+}
+
 // ── A3: สรุปยอดบิล (calculateSummary source='items') ─────────────────────────
-export type EntryItem = { quantity: number; exVat: number; discBaht: number };
+export type EntryItem = {
+  quantity: number;
+  exVat: number;
+  discBaht: number;
+  /** ราคา/หน่วย รวม VAT — อ่านเฉพาะ vatMode "in" (A21) · โหมดเดิมไม่แตะช่องนี้เลย */
+  inVat?: number;
+};
 export type EntryCalcInput = {
   items: EntryItem[];
   discount: number; // ส่วนลดระดับบิล
   hasVat: boolean;
   hasWht: boolean;
   whtRate: number;
+  /** A21 — ผู้ใช้กรอกราคาในช่องไหน · ไม่ส่ง = "ex" (เส้นทางเดิม) */
+  vatMode?: VatMode;
 };
 export type EntryCalcResult = {
   baseAmount: number;
@@ -103,18 +158,31 @@ export type EntryCalcResult = {
 
 /**
  * A3 — คำนวณยอดบิลจากรายการสินค้า (โหมด 'items' อัตโนมัติ)
- * base = Σ item-total (แต่ละ item ปัด 2 ตำแหน่งแล้ว) → aad = base − ส่วนลดบิล
- * vat = aad×7% (ถ้ามี) · wht = aad×rate% (ถ้ามี) · net = aad + vat − wht
+ *
+ * โหมด "ex" (เดิม · ค่าปริยาย):
+ *   base = Σ item-total (แต่ละ item ปัด 2 ตำแหน่งแล้ว) → aad = base − ส่วนลดบิล
+ *   vat = aad×7% (ถ้ามี) · wht = aad×rate% (ถ้ามี) · net = aad + vat − wht
+ *
+ * โหมด "in" (A21 · D98) — ราคาที่กรอกรวม VAT มาแล้ว:
+ *   gross = Σ (qty×ราคารวมVAT − ส่วนลดบรรทัด) → grossAfter = gross − ส่วนลดบิล
+ *   {base, vat} = vatFromGross(grossAfter) — **ลบเอา** ⇒ base+vat = grossAfter เป๊ะ
+ *   wht = base×rate% (WHT คิดบนยอดก่อน VAT เสมอ) · net = grossAfter − wht
+ *   🪤 โหมดนี้ ส่วนลดทั้งระดับบรรทัดและระดับบิลเป็น "บาทรวม VAT" (ตามใบของผู้ขาย)
  */
 export function entryCalc(input: EntryCalcInput): EntryCalcResult {
-  const base = round2(
+  const mode = effectiveVatMode(input.vatMode, input.hasVat);
+  const sub = round2(
     input.items.reduce(
-      (s, it) => s + itemTotal(it.quantity, it.exVat, it.discBaht),
+      (s, it) => s + itemTotal(it.quantity, unitPriceOf(mode, it.exVat, it.inVat), it.discBaht),
       0,
     ),
   );
-  const aad = round2(base - num(input.discount));
-  const vat = input.hasVat ? round2(aad * 0.07) : 0;
+  const subAfter = round2(sub - num(input.discount));
+  // 🚨 ถอด VAT ที่ยอดรวม **ครั้งเดียว** ไม่ใช่ต่อหน่วย — เหตุผลอยู่ที่ VatMode ข้างบน
+  const base = mode === "in" ? vatFromGross(sub).base : sub;
+  const split = mode === "in" ? vatFromGross(subAfter) : null;
+  const aad = split ? split.base : subAfter;
+  const vat = split ? split.vat : input.hasVat ? round2(aad * 0.07) : 0;
   const rate = input.hasWht ? num(input.whtRate) : 0;
   const wht = input.hasWht ? round2(aad * (rate / 100)) : 0;
   const net = round2(aad + vat - wht);
@@ -128,6 +196,75 @@ export function entryCalc(input: EntryCalcInput): EntryCalcResult {
   };
 }
 
+/**
+ * A21 — แบ่ง "ยอดก่อน VAT" ของบิลลงแต่ละบรรทัด (โหมด "in")
+ * เพื่อเก็บลง transaction_items.total_price ซึ่งการ์ด "ดู" และแท็บประวัติราคาเอาไปแสดง
+ *
+ * 🚨 ผลรวมต้องเท่ากับ base ของบิล **เป๊ะ** — ไม่งั้นผู้ใช้บวกคอลัมน์รายการแล้วได้ไม่ตรง
+ *    กับยอดก่อน VAT ในบิลใบเดียวกัน (ตระกูล D81/D88: เลข 2 ตัวที่ควรตรงกันแล้วไม่ตรง
+ *    ผู้ใช้จะสรุปว่าข้อมูลเพี้ยน)
+ * ★ เศษปัดตกที่บรรทัดยอดใหญ่ที่สุด — คลาดเป็นสัดส่วนน้อยที่สุด
+ */
+export function allocateExTotals(lineGross: number[], base: number): number[] {
+  const out = lineGross.map((g) => vatFromGross(num(g)).base);
+  if (out.length === 0) return out;
+  const diff = round2(num(base) - round2(out.reduce((a, b) => a + b, 0)));
+  if (diff === 0) return out;
+  let k = 0;
+  for (let i = 1; i < lineGross.length; i++) if (num(lineGross[i]) > num(lineGross[k])) k = i;
+  out[k] = round2(out[k] + diff);
+  return out;
+}
+
+/**
+ * A21 — บิลเก่าถูกกรอกด้วยโหมดไหน (ใช้ตอนเปิดหน้าแก้บิล)
+ *
+ * 🚨 นี่ไม่ใช่การเดา — เป็นการถามว่า "โหมดไหนคำนวณแล้วได้ยอดที่บันทึกไว้จริง"
+ * ⇒ ไม่ต้องเพิ่มคอลัมน์/ไม่ต้อง migration ลง DB ทั้ง fleet เพื่อเก็บธงตัวเดียว
+ * 🪤 เข้าทั้งคู่ (บิลที่ไม่มีเศษ เช่น 2×100) หรือไม่เข้าเลย → "ex" เสมอ
+ *    ค่าปริยายต้องเป็นพฤติกรรมเดิม · ไม่เข้าเลย = หน้าแก้บิลเปิดโหมดแก้ยอดเองอยู่แล้ว
+ */
+export function detectVatMode(
+  input: Omit<EntryCalcInput, "vatMode">,
+  stored: { amountAfterDiscount: number; vatAmount: number; whtAmount: number },
+): VatMode {
+  const hit = (m: VatMode) => {
+    const c = entryCalc({ ...input, vatMode: m });
+    return Math.abs(c.amountAfterDiscount - num(stored.amountAfterDiscount)) <= 0.005
+      && Math.abs(c.vatAmount - num(stored.vatAmount)) <= 0.005
+      && Math.abs(c.whtAmount - num(stored.whtAmount)) <= 0.005;
+  };
+  if (hit("ex")) return "ex";
+  return hit("in") ? "in" : "ex";
+}
+
+/**
+ * A21 — เตือนเมื่อกรอกช่อง "รวม VAT" แต่ยังไม่ได้ติ๊กว่าบิลมี VAT
+ * 🚨 ระบบจะคิดแบบไม่รวม VAT ให้ (effectiveVatMode) ซึ่งได้ยอดคนละตัว —
+ *    ทุกครั้งที่ระบบไม่ทำตามที่ผู้ใช้น่าจะคาด ต้องบอกว่าทำไม (D92) · ไม่บล็อก
+ * ★ คืน "" = ไม่มีอะไรต้องเตือน (หน้าจอไม่ render อะไรเลย)
+ */
+export function vatModeWarn(mode: VatMode | undefined, hasVat: boolean): string {
+  if (mode !== "in" || hasVat) return "";
+  return "กรอกราคาในช่อง รวม VAT แต่ยังไม่ได้ติ๊ก \"มี VAT 7%\" — ตอนนี้ระบบคิดยอดแบบไม่รวม VAT ให้ก่อน ถ้าบิลนี้มีภาษีให้ติ๊กช่อง มี VAT 7% ที่การ์ดสรุปยอด";
+}
+
+/** A21 — หัวคอลัมน์ "รวม" ของตารางรายการ (ความหมายต่างกันตามโหมด ต้องบอกให้ชัด) */
+export function lineTotalHeader(mode: VatMode): string {
+  return mode === "in" ? "รวม (รวม VAT)" : "รวม (ก่อน VAT)";
+}
+
+/**
+ * A21 — คำกำกับใต้ตารางรายการ
+ * 🚨 ตัดสินที่นี่ (มีเทสคุม) ห้ามแต่งประโยคในคอมโพเนนต์ — บทเรียน D84/D88/D91:
+ *    ตรรกะถูกแต่ประโยคผิด อันตรายพอกัน เพราะผู้ใช้ทำตามประโยค
+ */
+export function itemsHintText(mode: VatMode): string {
+  const head = mode === "in"
+    ? "กรอกราคาช่อง รวม VAT · ช่อง ไม่รวม VAT เป็นค่าที่ถอดให้ดูเฉย ๆ ไม่ใช่ตัวคิดยอด · ส่วนลด % ↔ บาท คิดจากราคารวม VAT × จำนวน · ยอดบิลถอด VAT ออกจากยอดรวมครั้งเดียว (ไม่ถอดต่อหน่วย)"
+    : "กรอกราคาช่อง ไม่รวม VAT · ช่อง รวม VAT คำนวณให้ · ส่วนลด % ↔ บาท คิดจากราคาไม่รวม VAT × จำนวน · ยอดบิล = ผลรวมรายการ แล้วบวก VAT 7%";
+  return head + " · พิมพ์ในช่องไหน = สลับโหมดให้อัตโนมัติ · Enter ในช่องตัวเลข = เพิ่มแถว";
+}
 /**
  * A3 (reverse) — ถอดยอดจากยอดสุทธิ + อัตรา WHT (applyReverseCalc)
  * base = round2(net / (1 − rate/100)) · wht = round2(base − net)

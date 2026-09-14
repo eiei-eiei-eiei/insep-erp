@@ -6,9 +6,14 @@ import {
   inVatFromExVat,
   reverseWht,
   splitInstallments,
+  unitPriceOf,
+  lineTotalHeader,
+  itemsHintText,
+  type VatMode,
 } from "@/lib/accounting/calc";
 // ตรรกะแถวรายการ/ยอดบิล ใช้ร่วมกับฟอร์มแก้บิล (BillsTab → EditBillModal)
-import { qn, emptyItem, makeItemHandlers, buildItemInputs, useBillAmounts, type BillItem } from "./billItems";
+import { qn, emptyItem, makeItemHandlers, buildItemInputs, useBillAmounts, hasContent, type BillItem } from "./billItems";
+import { VatModeCard } from "./VatModeCard";
 import {
   saveTransactionAction,
   saveInstallmentsAction,
@@ -32,6 +37,8 @@ type Draft = {
   txDate: string; taxInvoiceNo: string; taxInvoiceDate: string; discount: number; hasVat: boolean; hasWht: boolean;
   whtRate: number; items: Item[]; isApAr: boolean; dueDate: string; isInst: boolean; insts: Inst[]; branchId: string;
   manualAmt: boolean; ovAfterDisc: number; ovVat: number; ovWht: number;
+  /** D98 — ไม่มีใน draft เก่า = "ex" (พฤติกรรมเดิม) */
+  vatMode?: VatMode;
 };
 
 export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entityId: string; ambiguous: boolean }) {
@@ -69,6 +76,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   const amt = useBillAmounts({ items, discount, hasVat: effHasVat, hasWht, whtRate });
   const {
     calc, manualAmt, setManualAmt, ovAfterDisc, setOvAfterDisc, ovVat, setOvVat, ovWht, setOvWht,
+    vatMode, setVatMode, effVatMode,
     effAfterDisc, effVat, effWht, effNet, unlockAmounts, lockAmounts,
   } = amt;
 
@@ -125,6 +133,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
         if (Array.isArray(d.insts) && d.insts.length) setInsts(d.insts);
         if (d.branchId != null) setBranchId(d.branchId);
         if (d.manualAmt != null) setManualAmt(d.manualAmt);
+        if (d.vatMode != null) setVatMode(d.vatMode);
         if (d.ovAfterDisc != null) setOvAfterDisc(d.ovAfterDisc);
         if (d.ovVat != null) setOvVat(d.ovVat);
         if (d.ovWht != null) setOvWht(d.ovWht);
@@ -136,16 +145,16 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   }, []);
   useEffect(() => {
     if (!hydrated) return;
-    const draft: Draft = { type, category, accountName, contactName, description, txDate, taxInvoiceNo, taxInvoiceDate, discount, hasVat, hasWht, whtRate, items, isApAr, dueDate, isInst, insts, branchId, manualAmt, ovAfterDisc, ovVat, ovWht };
+    const draft: Draft = { type, category, accountName, contactName, description, txDate, taxInvoiceNo, taxInvoiceDate, discount, hasVat, hasWht, whtRate, items, isApAr, dueDate, isInst, insts, branchId, manualAmt, ovAfterDisc, ovVat, ovWht, vatMode };
     try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); } catch { /* ignore */ }
-  }, [hydrated, type, category, accountName, contactName, description, txDate, taxInvoiceNo, taxInvoiceDate, discount, hasVat, hasWht, whtRate, items, isApAr, dueDate, isInst, insts, branchId, manualAmt, ovAfterDisc, ovVat, ovWht]);
+  }, [hydrated, type, category, accountName, contactName, description, txDate, taxInvoiceNo, taxInvoiceDate, discount, hasVat, hasWht, whtRate, items, isApAr, dueDate, isInst, insts, branchId, manualAmt, ovAfterDisc, ovVat, ovWht, vatMode]);
   function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ } }
   function clearForm() {
     setType("รายจ่าย"); setCategory(""); setAccountName(""); setContactName(""); setDescription("");
     setTxDate(todayISO()); setTaxInvoiceNo(""); setTaxInvoiceDate(""); setDiscount(0); setHasVat(false);
     setHasWht(false); setWhtRate(0); setItems([emptyItem()]); setIsApAr(false); setDueDate("");
     setIsInst(false); setInsts([{ percent: 50, dueDate: "" }, { percent: 50, dueDate: "" }]); setBranchId("");
-    setManualAmt(false); setOvAfterDisc(0); setOvVat(0); setOvWht(0);
+    setManualAmt(false); setOvAfterDisc(0); setOvVat(0); setOvWht(0); setVatMode("ex");
     setRecentBills([]); setShowRecent(false); clearDraft(); setMsg(null);
   }
 
@@ -203,7 +212,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   const instSumPct = insts.reduce((s, i) => s + (Number(i.percent) || 0), 0);
 
   // แก้ราคา: in↔ex VAT สลับกัน · ส่วนลด %↔บาท (ตรรกะร่วมกับ EditBillModal — billItems.ts)
-  const { setItem, onExVat, onInVat, onQty, onDiscPct, onDiscBaht, removeItem } = makeItemHandlers(items, setItems);
+  const { setItem, onExVat, onInVat, onQty, onDiscPct, onDiscBaht, removeItem, changeVatMode } = makeItemHandlers(items, setItems, effVatMode, setVatMode);
   function addItem() { const last = items[items.length - 1]; setItems((p) => [...p, emptyItem(last?.itemCategory ?? "", last?.itemJob ?? "")]); }
   // Enter ในช่องตัวเลข (ไม่ใช่ช่องมี datalist) = เพิ่มแถวใหม่ · Ctrl+Enter = บันทึก (จับที่ระดับบน)
   function onItemsKeyDown(e: React.KeyboardEvent) {
@@ -217,7 +226,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
     if (!effEntity) return { text: "เลือกกิจการก่อน", field: "entity" };
     if (!category) return { text: "เลือกหมวดหมู่", field: "category" };
     if (!isApAr && !isInst && !accountName && type !== "รายรับ") return { text: "เลือกบัญชี (หรือติ๊กตั้งค้าง)", field: "account" };
-    if (items.every((it) => !it.itemName && !it.exVat)) return { text: "เพิ่มรายการอย่างน้อย 1 รายการ", field: "items" };
+    if (items.every((it) => !hasContent(it, effVatMode))) return { text: "เพิ่มรายการอย่างน้อย 1 รายการ", field: "items" };
     return null;
   }
   function flagError(field: ErrField) {
@@ -230,7 +239,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   function doSave() {
     const err = validate();
     if (err) { setMsg({ ok: false, text: err.text }); flagError(err.field); return; }
-    const itemInputs = buildItemInputs(items);
+    const itemInputs = buildItemInputs(items, effVatMode, calc.baseAmount);
 
     if (isInst) {
       if (Math.abs(instSumPct - 100) > 0.01) { setMsg({ ok: false, text: `ผลรวมงวด = ${instSumPct}% (ต้อง 100%)` }); return; }
@@ -252,7 +261,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
     );
   }
   // หลังบันทึก: ล้างเฉพาะรายการ/รายละเอียด/เลขใบกำกับ (คงคู่ค้า/หมวดหมู่ไว้กรอกบิลถัดไปเร็วขึ้น)
-  function resetItems() { setItems([emptyItem()]); setDescription(""); setTaxInvoiceNo(""); setHasVat(false); setManualAmt(false); setOvAfterDisc(0); setOvVat(0); setOvWht(0); setDiscount(0); }
+  function resetItems() { setItems([emptyItem()]); setDescription(""); setTaxInvoiceNo(""); setHasVat(false); setManualAmt(false); setOvAfterDisc(0); setOvVat(0); setOvWht(0); setDiscount(0); setVatMode("ex"); }
 
   // ค่ารวมสำหรับดรอปดาวน์รายการสินค้า (ประวัติ + ที่กรอกในบิลปัจจุบัน)
   const itemCatOptions = useMemo(() => [...new Set([...itemHist.itemCategories, ...items.map((it) => it.itemCategory).filter(Boolean)])], [itemHist.itemCategories, items]);
@@ -346,6 +355,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
 
       <div ref={itemsCardRef} onKeyDown={onItemsKeyDown}>
       <Card title="รายการสินค้า">
+        <VatModeCard mode={vatMode} effMode={effVatMode} hasVat={effHasVat} onChange={changeVatMode} />
         {/* Desktop: ตาราง */}
         <div className="hidden overflow-x-auto md:block">
           <table className="tbl">
@@ -359,7 +369,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
                 <th className="w-28">ไม่รวม VAT</th>
                 {showOpt && <th className="w-16">ลด %</th>}
                 {showOpt && <th className="w-24">ลด บาท</th>}
-                <th className="w-28 num">รวม</th>
+                <th className="w-28 num">{lineTotalHeader(effVatMode)}</th>
                 <th className="w-8"></th>
               </tr>
             </thead>
@@ -383,7 +393,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
                   <td><NumBox value={it.exVat} blankZero onChange={(v) => onExVat(i, v === "" ? 0 : v)} /></td>
                   {showOpt && <td><NumBox value={it.discPct} blankZero onChange={(v) => onDiscPct(i, v === "" ? 0 : v)} /></td>}
                   {showOpt && <td><NumBox value={it.discBaht} blankZero onChange={(v) => onDiscBaht(i, v === "" ? 0 : v)} /></td>}
-                  <td className="font-medium num">{fmt(itemTotal(qn(it.quantity), it.exVat, it.discBaht))}</td>
+                  <td className="font-medium num">{fmt(itemTotal(qn(it.quantity), unitPriceOf(effVatMode, it.exVat, it.inVat), it.discBaht))}</td>
                   <td><button type="button" onClick={() => removeItem(i)} title="ลบรายการนี้" className="text-crit hover:text-crit">✕</button></td>
                 </tr>
               ))}
@@ -417,7 +427,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
                 {showOpt && <label className="block"><span className="mb-0.5 block text-faint">ลด %</span><NumBox value={it.discPct} blankZero onChange={(v) => onDiscPct(i, v === "" ? 0 : v)} /></label>}
                 {showOpt && <label className="block"><span className="mb-0.5 block text-faint">ลด บาท</span><NumBox value={it.discBaht} blankZero onChange={(v) => onDiscBaht(i, v === "" ? 0 : v)} /></label>}
               </div>
-              <div className="mt-2 text-right text-sm font-medium text-muted">รวม ฿{fmt(itemTotal(qn(it.quantity), it.exVat, it.discBaht))}</div>
+              <div className="mt-2 text-right text-sm font-medium text-muted">{lineTotalHeader(effVatMode)} ฿{fmt(itemTotal(qn(it.quantity), unitPriceOf(effVatMode, it.exVat, it.inVat), it.discBaht))}</div>
             </div>
           ))}
         </div>
@@ -426,7 +436,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
         <datalist id="hist-item-cats">{itemCatOptions.map((v) => (<option key={v} value={v} />))}</datalist>
         <datalist id="hist-item-jobs">{itemJobOptions.map((v) => (<option key={v} value={v} />))}</datalist>
         <button type="button" onClick={addItem} className="mt-2 text-sm text-muted hover:text-ink">+ เพิ่มรายการ</button>
-        <p className="mt-1 text-xs text-faint">กรอกราคาช่องรวม VAT หรือ ไม่รวม VAT ช่องใดช่องหนึ่ง อีกช่องคำนวณให้ · ส่วนลด % ↔ บาท คิดจากราคาไม่รวม VAT × จำนวน · Enter ในช่องตัวเลข = เพิ่มแถว</p>
+        <p className="mt-1 text-xs text-faint">{itemsHintText(effVatMode)}</p>
       </Card>
       </div>
 

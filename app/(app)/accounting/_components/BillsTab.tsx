@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { searchBillsAction, getBillDetailAction, voidTransactionAction, updateTransactionAction, getItemHistoryAction } from "../actions";
-import { entryCalc, itemTotal } from "@/lib/accounting/calc";
-import { qn, emptyItem, makeItemHandlers, buildItemInputs, useBillAmounts, type BillItem } from "./billItems";
+import { entryCalc, itemTotal, detectVatMode, unitPriceOf, lineTotalHeader, itemsHintText } from "@/lib/accounting/calc";
+import { qn, emptyItem, makeItemHandlers, buildItemInputs, useBillAmounts, hasContent, type BillItem } from "./billItems";
+import { VatModeCard } from "./VatModeCard";
 import type { Bootstrap } from "./types";
 import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, fmt, useSaver, EscToClose, useRead, LoadError } from "./ui";
 import { can, toRole } from "@/lib/shared/roles";
@@ -185,7 +186,7 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
   const [bulkCat, setBulkCat] = useState("");
   const [bulkJob, setBulkJob] = useState("");
   const amt = useBillAmounts({ items, discount, hasVat, hasWht, whtRate });
-  const { calc, manualAmt, effAfterDisc, effVat, effWht, effNet, unlockAmounts, lockAmounts } = amt;
+  const { calc, manualAmt, vatMode, setVatMode, effVatMode, effAfterDisc, effVat, effWht, effNet, unlockAmounts, lockAmounts } = amt;
   // setter ล่าสุดสำหรับใช้ใน effect โหลดบิล (ไม่ต้องใส่ทุกตัวใน deps)
   const amtRef = useRef(amt);
   amtRef.current = amt;
@@ -221,8 +222,17 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
       // ยอดที่บันทึกไว้ (บิลเจ้าอื่นอาจมีทศนิยมไม่ตรงสูตร) — เก็บไว้เป็นค่าแก้เอง
       const sAfter = Number(tx.amount_after_discount) || 0, sVat = Number(tx.vat_amount) || 0, sWht = Number(tx.wht_amount) || 0;
       amtRef.current.setOvAfterDisc(sAfter); amtRef.current.setOvVat(sVat); amtRef.current.setOvWht(sWht);
+      /**
+       * D98 — บิลนี้ถูกกรอกด้วยโหมดไหน: ถามว่า "โหมดไหนคำนวณแล้วได้ยอดที่บันทึกไว้"
+       * 🚨 ไม่เดาและไม่ต้องมีคอลัมน์ใหม่ · เสมอกัน/ไม่เข้าเลย → "ex" (พฤติกรรมเดิม)
+       * 🪤 ต้องตัดสินโหมด **ก่อน** เช็ค odd ไม่งั้นบิลที่กรอกแบบรวม VAT จะถูกมองว่า
+       *    "ยอดไม่ตรงสูตร" แล้วเด้งเข้าโหมดแก้ยอดเองทุกครั้งที่เปิดมาแก้
+       */
+      const calcIn = { items: loadedItems.map((it) => ({ quantity: qn(it.quantity), exVat: it.exVat, inVat: it.inVat, discBaht: it.discBaht })), discount: Number(tx.discount) || 0, hasVat: sVat > 0, hasWht: sWht > 0 || (Number(tx.wht_rate) || 0) > 0, whtRate: Number(tx.wht_rate) || 0 };
+      const mode = detectVatMode(calcIn, { amountAfterDiscount: sAfter, vatAmount: sVat, whtAmount: sWht });
+      amtRef.current.setVatMode(mode);
       // ถ้ายอดที่บันทึกต่างจากสูตร (ปัดทศนิยม) → เปิดโหมดแก้เองไว้เลย เพื่อคงเลขเดิม
-      const computed = entryCalc({ items: loadedItems.map((it) => ({ quantity: qn(it.quantity), exVat: it.exVat, discBaht: it.discBaht })), discount: Number(tx.discount) || 0, hasVat: sVat > 0, hasWht: sWht > 0 || (Number(tx.wht_rate) || 0) > 0, whtRate: Number(tx.wht_rate) || 0 });
+      const computed = entryCalc({ ...calcIn, vatMode: mode });
       const odd = Math.abs(computed.amountAfterDiscount - sAfter) > 0.005 || Math.abs(computed.vatAmount - sVat) > 0.005 || Math.abs(computed.whtAmount - sWht) > 0.005;
       amtRef.current.setManualAmt(odd);
       setLoading(false);
@@ -248,15 +258,15 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
   const effBranchId = multiBranch ? (nameMatches.some((c) => c.contact_id === contactId) ? contactId : nameMatches[0].contact_id) : "";
   const resolvedContactId = nameMatches.length === 1 ? nameMatches[0].contact_id : multiBranch ? effBranchId : (contactId || undefined);
 
-  const { setItem, onExVat, onInVat, onQty, onDiscPct, onDiscBaht, removeItem } = makeItemHandlers(items, setItems);
+  const { setItem, onExVat, onInVat, onQty, onDiscPct, onDiscBaht, removeItem, changeVatMode } = makeItemHandlers(items, setItems, effVatMode, setVatMode);
   // แถวใหม่ก๊อปหมวด/งานจากแถวสุดท้าย (บิลเดียวกันมักเป็นงานเดียวกัน) — เหมือน EntryTab
   function addItem() { const last = items[items.length - 1]; setItems((p) => [...p, emptyItem(last?.itemCategory ?? "", last?.itemJob ?? "")]); }
   function fillAll(patch: Partial<BillItem>) { setItems((p) => p.map((it) => ({ ...it, ...patch }))); }
 
   function save() {
     if (!category) { setMsg({ ok: false, text: "เลือกหมวดหมู่" }); return; }
-    if (items.every((it) => !it.itemName && !it.exVat)) { setMsg({ ok: false, text: "ต้องมีรายการอย่างน้อย 1 รายการ" }); return; }
-    const itemInputs = buildItemInputs(items);
+    if (items.every((it) => !hasContent(it, effVatMode))) { setMsg({ ok: false, text: "ต้องมีรายการอย่างน้อย 1 รายการ" }); return; }
+    const itemInputs = buildItemInputs(items, effVatMode, calc.baseAmount);
     run(() => updateTransactionAction(txId, {
       transaction_date: txDate, type, account_name: accountName, category, contact_name: contactName, contact_id: resolvedContactId, description,
       base_amount: calc.baseAmount, discount, amount_after_discount: effAfterDisc, vat_amount: effVat,
@@ -294,9 +304,12 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
               <div className="col-span-2 md:col-span-3"><Field label="รายละเอียด"><TextInput value={description} onChange={(e) => setDescription(e.target.value)} /></Field></div>
             </div>
 
-            <div className="mt-3 overflow-x-auto">
+            <div className="mt-3">
+              <VatModeCard mode={vatMode} effMode={effVatMode} hasVat={hasVat} onChange={changeVatMode} />
+            </div>
+            <div className="overflow-x-auto">
               <table className="tbl">
-                <thead><tr className="text-left text-faint"><th>ชื่อรายการ</th><th className="w-28">หมวดหมู่</th><th className="w-24">งาน</th><th className="w-16">จำนวน</th><th className="w-28">รวม VAT</th><th className="w-28">ไม่รวม VAT</th><th className="w-16">ลด %</th><th className="w-24">ลด บาท</th><th className="w-28 num">รวม</th><th className="w-8"></th></tr></thead>
+                <thead><tr className="text-left text-faint"><th>ชื่อรายการ</th><th className="w-28">หมวดหมู่</th><th className="w-24">งาน</th><th className="w-16">จำนวน</th><th className="w-28">รวม VAT</th><th className="w-28">ไม่รวม VAT</th><th className="w-16">ลด %</th><th className="w-24">ลด บาท</th><th className="w-28 num">{lineTotalHeader(effVatMode)}</th><th className="w-8"></th></tr></thead>
                 <tbody>
                   {items.map((it, i) => (
                     <tr key={i}>
@@ -308,7 +321,7 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
                       <td><NumBox value={it.exVat} blankZero onChange={(v) => onExVat(i, v === "" ? 0 : v)} /></td>
                       <td><NumBox value={it.discPct} blankZero onChange={(v) => onDiscPct(i, v === "" ? 0 : v)} /></td>
                       <td><NumBox value={it.discBaht} blankZero onChange={(v) => onDiscBaht(i, v === "" ? 0 : v)} /></td>
-                      <td className="font-medium num">{fmt(itemTotal(qn(it.quantity), it.exVat, it.discBaht))}</td>
+                      <td className="font-medium num">{fmt(itemTotal(qn(it.quantity), unitPriceOf(effVatMode, it.exVat, it.inVat), it.discBaht))}</td>
                       <td><button type="button" onClick={() => removeItem(i)} title="ลบรายการนี้" className="text-crit hover:text-crit">✕</button></td>
                     </tr>
                   ))}
@@ -363,7 +376,8 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
 
             {/* 🪤 ของเดิมเขียนว่า "บันทึกใน edit_log" ซึ่งเป็นชื่อตารางใน DB ที่ผู้ใช้เปิดดูไม่ได้เลย
                 — บอกว่าเก็บไว้แต่ไม่บอกว่าดูที่ไหน · ตอนนี้มีหน้าให้ดูจริงแล้ว (D80) */}
-            <p className="mt-2 text-xs text-faint">
+            <p className="mt-2 text-xs text-faint">{itemsHintText(effVatMode)}</p>
+            <p className="mt-1 text-xs text-faint">
               * คงสถานะชำระ (AP/AR) และกลุ่มงวด/โอนไว้เดิม · ดูย้อนหลังได้ที่ <b>ตั้งค่า → ประวัติการแก้ไข</b>
             </p>
             <Msg msg={msg} />
