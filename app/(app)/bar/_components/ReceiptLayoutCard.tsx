@@ -6,9 +6,12 @@ import {
   BLOCK_LABEL,
   TEXT_BLOCKS,
   TOKENS,
+  defaultLayout,
   filledButOff,
   moveBlock,
   resolveLayout,
+  legalNameLine,
+  shopNameOf,
   type BlockKey,
   type PaperWidth,
   type ReceiptLayout,
@@ -16,7 +19,7 @@ import {
 } from "@/lib/bar/layout";
 import { buildReceipt } from "@/lib/bar/receipt";
 import { barTotals } from "@/lib/bar/totals";
-import { Card, Field, TextInput, Select } from "@/lib/shared/ui";
+import { Card, Field, TextInput, Select, useConfirm } from "@/lib/shared/ui";
 
 /** ตัวอย่างที่ใช้พรีวิว — ★ ตั้งใจให้มีครบทุกอย่างที่บล็อกต่าง ๆ ต้องใช้ */
 const SAMPLE_LINES = [
@@ -51,6 +54,7 @@ export function ReceiptLayoutCard({
   value: ReceiptLayout;
   onChange: (v: ReceiptLayout) => void;
 }) {
+  const { confirmNode, ask } = useConfirm();
   const [kind, setKind] = useState<PreviewKind>("receipt");
   const [html, setHtml] = useState("");
   const [css, setCss] = useState("");
@@ -58,6 +62,16 @@ export function ReceiptLayoutCard({
   const isVat = Boolean(boot.seller?.isVat);
   const L = useMemo(() => resolveLayout(value, { isVat }), [value, isVat]);
   const offButFilled = filledButOff(value, L);
+  /**
+   * ชื่อทะเบียนที่จะถูกพิมพ์กำกับใต้ชื่อร้าน — `null` = ไม่มี
+   * 🚨 ตัดสินด้วย `legalNameLine()` ตัวเดียวกับกระดาษ **ห้ามเขียนเงื่อนไขซ้ำที่นี่**
+   *    ไม่งั้นคำอธิบายบนจอกับสิ่งที่พิมพ์จริงหลุดจากกันได้ (ตระกูล D91/0059)
+   */
+  const legalHint = legalNameLine({
+    shopName: shopNameOf(value.shopName, boot.seller?.name ?? ""),
+    sellerName: boot.seller?.name ?? "",
+    isVat,
+  });
 
   const set = (patch: Partial<ReceiptLayout>) => onChange({ ...value, ...patch });
   const toggle = (k: BlockKey) => {
@@ -66,6 +80,24 @@ export function ReceiptLayoutCard({
     else off.add(k);
     set({ off: [...off] });
   };
+  /**
+   * คืนผังกลับเป็นค่าเริ่มต้นทั้งก้อน
+   * 🚨 **ถามก่อนเสมอ** — ล้างชื่อร้าน/ข้อความหัว-ท้าย/ลิงก์โลโก้ที่พิมพ์ไว้ทิ้งหมด
+   * 🪤 ใช้ `useConfirm()` ไม่ใช่ `window.confirm()` — เบราว์เซอร์บล็อกแล้วคืน false
+   *    เงียบ ๆ จนปุ่มกลายเป็นปุ่มที่กดแล้วไม่มีอะไรเกิดขึ้น (บั๊กที่เจอใน D96 ภาค 2)
+   * ★ ยังไม่เขียนลง DB จนกว่าจะกด "บันทึกการตั้งค่า" — บอกไว้บนป๊อปอัพด้วย
+   */
+  async function resetAll() {
+    const ok = await ask({
+      title: "คืนค่าเริ่มต้นรูปแบบบิล?",
+      detail:
+        "ชื่อร้านและข้อความที่พิมพ์ไว้จะหายไปด้วย\n" +
+        "ยังไม่บันทึกจนกว่าจะกด “บันทึกการตั้งค่า”",
+      confirmText: "คืนค่าเริ่มต้น",
+    });
+    if (ok) onChange(defaultLayout());
+  }
+
   /**
    * แทรกตัวแปรต่อท้ายข้อความ แล้ว **คืนเคอร์เซอร์ไปท้ายช่อง**
    *
@@ -101,7 +133,6 @@ export function ReceiptLayoutCard({
         totals,
         seller: boot.seller ?? { name: "ชื่อร้านของคุณ" },
         buyer: { name: "คุณลูกค้า (ตัวอย่าง)", taxId: "0105558123456" },
-        method: kind === "unpaid" ? null : "เงินสด",
         closedAt: kind === "unpaid" ? null : "13/09/2569 23:50",
         printedAt: "13/09/2569 23:51",
         // 🚨 QR ยังตัดสินที่ `receipt.ts` จุดเดียว — พรีวิวส่ง payload ปลอมมาก็ถูกทิ้ง
@@ -123,9 +154,34 @@ export function ReceiptLayoutCard({
 
   return (
     <Card title="รูปแบบบิล" className="lg:col-span-2">
+      {confirmNode}
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
         {/* ───────── ซ้าย: ตัวตั้งค่า ───────── */}
         <div>
+          {/**
+            * 🚨 **ชื่อร้านกรอกเอง ไม่ใช่ชื่อกิจการ** — ชื่อกิจการเป็นชื่อทางทะเบียน
+            *    ที่ลูกค้าหน้าบาร์ไม่รู้จัก · ปล่อยว่าง = ใช้ชื่อกิจการไปก่อน
+            *    (กระดาษต้องมีชื่อร้านเสมอ จึงไม่ปล่อยให้ว่างจริง ๆ ได้)
+            */}
+          <Field label="ชื่อร้านบนหัวบิล">
+            <TextInput
+              value={value.shopName ?? ""}
+              onChange={(e) => set({ shopName: e.target.value })}
+              placeholder={boot.seller?.name ?? "ชื่อร้านของคุณ"}
+            />
+          </Field>
+          <p className="mb-3 mt-1 text-xs text-faint">
+            ★ <b>คนละตัวกับชื่อกิจการ</b> — ปล่อยว่างจะใช้ชื่อกิจการ (
+            <b>{boot.seller?.name ?? "ยังไม่ได้ตั้งกิจการ"}</b>)
+            {legalHint && (
+              <>
+                <br />
+                🚨 กิจการนี้จด VAT — ใบกำกับภาษีอย่างย่อต้องมีชื่อผู้ประกอบการตามทะเบียน
+                ระบบจึงพิมพ์ <b>{legalHint}</b> เป็นบรรทัดเล็กใต้ชื่อร้านให้เอง
+              </>
+            )}
+          </p>
+
           <div className="mb-3 flex flex-wrap items-end gap-3">
             <Field label="ขนาดกระดาษ">
               <Select
@@ -262,6 +318,19 @@ export function ReceiptLayoutCard({
               )}
             </div>
           ))}
+
+          {/* ★ วางไว้ท้ายสุดของคอลัมน์ตั้งค่า — ปุ่มล้างค่าไม่ควรอยู่ใกล้ปุ่มที่กดบ่อย */}
+          <button
+            type="button"
+            onClick={resetAll}
+            className="mt-4 rounded-lg border border-line bg-card px-3 py-1.5 text-sm text-ink hover:bg-raised"
+          >
+            คืนค่าเริ่มต้น
+          </button>
+          <p className="mt-1 text-xs text-faint">
+            คืนทุกอย่างในการ์ดนี้กลับเป็นค่าเริ่มต้น — ยังไม่มีผลจนกว่าจะกด
+            <b> บันทึกการตั้งค่า</b>
+          </p>
         </div>
 
         {/* ───────── ขวา: พรีวิวขนาดเท่ากระดาษจริง ───────── */}

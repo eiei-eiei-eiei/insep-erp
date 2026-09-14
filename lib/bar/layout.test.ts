@@ -120,6 +120,7 @@ describe("บล็อกที่ปิดไม่ได้", () => {
  */
 describe("🐛 เหตุผลที่ปิดไม่ได้ ต้องตรงกับชุดที่ล็อกจริง", () => {
   const ALWAYS: BlockKey[] = ["shopName", "lines", "totals"];
+  // ★ `voidStamp` ก็อยู่ใน ALWAYS_ON แต่มีเหตุผลเฉพาะของตัวเอง — เทสแยกด้านล่าง
   const VAT_ONLY: BlockKey[] = ["sellerTaxId", "docNo", "printedAt", "vat"];
 
   it("🚨 กิจการจด VAT — ชื่อร้าน/รายการ/ยอดรวม ต้อง **ไม่** อ้างใบกำกับภาษี", () => {
@@ -134,6 +135,32 @@ describe("🐛 เหตุผลที่ปิดไม่ได้ ต้อ�
     const vat = resolveLayout(null, VAT);
     const no = resolveLayout(null, NO_VAT);
     for (const k of ALWAYS) expect(no.lockReason(k)).toBe(vat.lockReason(k));
+  });
+
+  /**
+   * 🚨 ค่าที่ลูกค้าบันทึกไว้ก่อน D97 ยังเขียนว่า `paidStamp`
+   *    ทิ้งคีย์เก่าเฉย ๆ = ตราบิลยกเลิกเด้งไปต่อท้ายสุด **ใต้ข้อความท้ายบิล**
+   *    ทั้งที่ลูกค้าไม่ได้สั่งให้ย้าย — การเปลี่ยนชื่อคีย์เป็นเรื่องของเรา ไม่ใช่ของเขา
+   */
+  it("🪤 ผังเก่าที่เขียนว่า paidStamp ต้องกลายเป็น voidStamp **ที่ตำแหน่งเดิม**", () => {
+    const saved = { order: ["shopName", "lines", "totals", "paidStamp", "footer"] as BlockKey[] };
+    const l = resolveLayout(saved, NO_VAT);
+    expect(l.order.indexOf("voidStamp")).toBe(3);
+    expect(l.order.indexOf("footer")).toBe(4);
+    expect(l.order).not.toContain("paidStamp" as BlockKey);
+    // ★ คีย์ที่เหลือยังถูกเติมต่อท้ายตามปกติ
+    expect(new Set(l.order).size).toBe(l.order.length);
+    expect(l.order.length).toBe(BLOCK_KEYS.length);
+  });
+
+  it("🚨 ตราบิลยกเลิกปิดไม่ได้ และเหตุผลต้องเป็นของตัวเอง (ไม่ใช่ 'ไม่ใช่บิล')", () => {
+    for (const o of [VAT, NO_VAT]) {
+      const l = resolveLayout(null, o);
+      expect(l.locked("voidStamp")).toBe(true);
+      expect(l.lockReason("voidStamp")).toContain("ยกเลิก");
+      // ★ สั่งปิดมาจากค่าที่บันทึกไว้ก็ยังเปิดอยู่
+      expect(resolveLayout({ off: ["voidStamp"] }, o).on("voidStamp")).toBe(true);
+    }
   });
 
   it("บรรทัดของกฎหมายได้เหตุผลใบกำกับภาษี **เฉพาะตอนจด VAT**", () => {

@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import type { BarBoot, BarCustomerRow } from "../data";
-import { Card, Msg, TextInput, Field, Badge, Empty, fmt, useSaver, useConfirm } from "@/lib/shared/ui";
+import { Card, Msg, TextInput, Badge, Empty, fmt, useSaver, useConfirm } from "@/lib/shared/ui";
 import {
   saveCustomerAction, deleteCustomerAction, toggleFavAction,
   customerCardAction, exportConsentedAction,
 } from "../actions";
+import { CustomerModal } from "./CustomerModal";
+import { customerNameParts } from "@/lib/bar/customerName";
 
 type CardData = {
   favMenuIds: string[];
@@ -138,9 +140,13 @@ export function CustomerTab({ boot, onReload }: { boot: BarBoot; onReload: () =>
           {shown.map((c) => (
             <div key={c.customerId} className="rounded-lg border border-line p-3">
               <div className="flex flex-wrap items-center gap-2">
+                {/* ★ ลำดับเดียวกับทุกหน้าจอ: ชื่อเล่นเป็นตัวเด่น ชื่อจริงอยู่ในวงเล็บ
+                    (เดิมที่นี่กลับด้านกับดร็อปดาวน์ในแท็บขาย — ลูกค้าคนเดียวมีชื่อ 2 แบบ) */}
                 <button type="button" onClick={() => openCard(c.customerId)} className="text-left">
-                  <span className="font-medium text-ink">{c.name}</span>
-                  {c.nickname && <span className="ml-1 text-sm text-muted">({c.nickname})</span>}
+                  <span className="font-medium text-ink">{customerNameParts(c).head}</span>
+                  {customerNameParts(c).paren && (
+                    <span className="ml-1 text-sm text-muted">({customerNameParts(c).paren})</span>
+                  )}
                 </button>
                 {c.note && <span className="text-xs text-warn">⚠ {c.note}</span>}
                 {c.taxId && <Badge tone="neutral">มีเลขภาษี</Badge>}
@@ -280,127 +286,6 @@ function CustomerCard({
             </div>
           );
         })}
-      </div>
-    </div>
-  );
-}
-
-function CustomerModal({
-  boot, customerId, busy, onClose, onSave, onDelete,
-}: {
-  boot: BarBoot;
-  customerId: string | null;
-  busy: boolean;
-  onClose: () => void;
-  onSave: (input: Parameters<typeof saveCustomerAction>[0]) => void;
-  onDelete: (id: string) => void;
-}) {
-  const cur = boot.customers.find((c) => c.customerId === customerId);
-  const [name, setName] = useState(cur?.name ?? "");
-  const [nickname, setNickname] = useState(cur?.nickname ?? "");
-  const [phone, setPhone] = useState(cur?.phone ?? "");
-  const [note, setNote] = useState(cur?.note ?? "");
-  const [taxId, setTaxId] = useState(cur?.taxId ?? "");
-  const [branch, setBranch] = useState(cur?.branch ?? "");
-  const [address, setAddress] = useState(cur?.address ?? "");
-  const [consent, setConsent] = useState(false);
-  const [showTax, setShowTax] = useState(Boolean(cur?.taxId));
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div className="w-full max-w-lg rounded-xl bg-card p-5">
-        <h3 className="mb-3 text-lg font-bold text-ink">{cur ? "แก้ข้อมูลลูกค้า" : "เพิ่มลูกค้า"}</h3>
-
-        <div className="grid gap-2 sm:grid-cols-2">
-          <Field label="ชื่อ">
-            <TextInput value={name} onChange={(e) => setName(e.target.value)} />
-          </Field>
-          <Field label="ชื่อเล่น">
-            <TextInput value={nickname} onChange={(e) => setNickname(e.target.value)} />
-          </Field>
-        </div>
-        <Field label="เบอร์โทร (ไม่บังคับ)">
-          <TextInput value={phone} onChange={(e) => setPhone(e.target.value)} />
-        </Field>
-        <Field label="โน้ตที่ต้องจำ">
-          <TextInput value={note} onChange={(e) => setNote(e.target.value)} placeholder="แพ้ถั่ว · ไม่กินหวาน · ชอบเปรี้ยวจัด" />
-        </Field>
-
-        <label className="mt-3 flex items-center gap-2 text-sm text-ink">
-          <input type="checkbox" checked={showTax} onChange={(e) => setShowTax(e.target.checked)} />
-          ขอใบเสร็จในนามบริษัท (ต้องมีเลขภาษี · ที่อยู่ · สาขา)
-        </label>
-        {showTax && (
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            <Field label="เลขประจำตัวผู้เสียภาษี">
-              <TextInput value={taxId} onChange={(e) => setTaxId(e.target.value)} />
-            </Field>
-            <Field label="สาขา">
-              <TextInput value={branch} onChange={(e) => setBranch(e.target.value)} placeholder="สำนักงานใหญ่" />
-            </Field>
-            <div className="sm:col-span-2">
-              <Field label="ที่อยู่">
-                <TextInput value={address} onChange={(e) => setAddress(e.target.value)} />
-              </Field>
-            </div>
-          </div>
-        )}
-
-        {/* 🚨 PDPA — ค่าปริยายต้องไม่ติ๊ก · ความยินยอมที่ติ๊กไว้ล่วงหน้าไม่ใช่ความยินยอม */}
-        <div className="mt-3 rounded-lg bg-raised p-3">
-          <label className="flex items-start gap-2 text-sm text-ink">
-            <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-1" />
-            <span>
-              <b>ยินยอมให้โรงกลั่นติดต่อ</b>
-              <span className="block text-xs text-faint">
-                ติ๊กเมื่อ<b>ถามลูกค้าแล้ว</b>เท่านั้น · ชื่อและเบอร์จะอยู่ในไฟล์ที่ส่งให้โรงกลั่นทำตลาด ·
-                ถอนได้ทุกเมื่อโดยติ๊กออก
-              </span>
-            </span>
-          </label>
-          {cur && !consent && (
-            <p className="mt-1 text-xs text-muted">
-              สถานะปัจจุบันโหลดเป็น &quot;ไม่ยินยอม&quot; เสมอ — ต้องติ๊กใหม่ทุกครั้งที่แก้โปรไฟล์
-              เพื่อไม่ให้ความยินยอมติดค้างโดยไม่ตั้งใจ
-            </p>
-          )}
-        </div>
-
-        <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            disabled={busy || !name.trim()}
-            onClick={() =>
-              onSave({
-                customerId,
-                name, nickname, phone, note,
-                taxId: showTax ? taxId : "",
-                branch: showTax ? branch : "",
-                address: showTax ? address : "",
-                consentMarketing: consent,
-              })
-            }
-            className="flex-1 rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
-          >
-            บันทึก
-          </button>
-          {cur && boot.canConfig && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => onDelete(cur.customerId)}
-              className="rounded-lg bg-raised px-3 py-2 text-sm text-crit disabled:opacity-50"
-            >
-              ลบ
-            </button>
-          )}
-          <button type="button" onClick={onClose} className="rounded-lg bg-raised px-3 py-2 text-sm text-ink">
-            ยกเลิก
-          </button>
-        </div>
       </div>
     </div>
   );

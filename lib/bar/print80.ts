@@ -134,8 +134,12 @@ export function receiptHtml(doc: ReceiptDoc, qrMarkup?: string | null): string {
       doc.logoUrl
         ? `<div class="c"><img class="logo" src="${esc(doc.logoUrl)}" alt=""></div>`
         : "",
+    // ★ ชื่อร้านมาจาก `doc.shopName` (ผู้ใช้ตั้งเอง) ไม่ใช่ `s.name` (ชื่อกิจการ)
+    //   🚨 กิจการจด VAT ที่ตั้งชื่อร้านต่างจากทะเบียน ต้องพิมพ์ชื่อทะเบียนกำกับด้วย
     shopName: () =>
-      `<div class="c">${line("title", esc(doc.title))}${line("b", esc(s.name))}</div>`,
+      `<div class="c">${line("title", esc(doc.title))}${line("b", esc(doc.shopName))}` +
+      (doc.legalName ? line("sm", esc(doc.legalName)) : "") +
+      `</div>`,
     sellerAddress: () => (s.address ? line("c sm", esc(s.address)) : ""),
     sellerTaxId: () =>
       s.taxId ? line("c sm", `เลขประจำตัวผู้เสียภาษี ${esc(s.taxId)}`) : "",
@@ -168,8 +172,10 @@ export function receiptHtml(doc: ReceiptDoc, qrMarkup?: string | null): string {
              <div class="sm">ยอดถูกกำหนดไว้ในคิวอาร์แล้ว</div>
            </div>`
         : "",
-    paidStamp: () =>
-      doc.paidStamp ? `<div class="c"><span class="stamp b">${esc(doc.paidStamp)}</span></div>` : "",
+    // 🚫 ไม่มีตรา "ชำระแล้ว · วิธีจ่าย · เวลา" แล้ว (ผู้ใช้สั่งตัดออก) —
+    //    เหลือเฉพาะบิลที่ถูกยกเลิก ซึ่ง **ต้องเขียนบนกระดาษเสมอ**
+    voidStamp: () =>
+      doc.voidStamp ? `<div class="c"><span class="stamp b">${esc(doc.voidStamp)}</span></div>` : "",
     footer: () => (doc.footer ? `<hr>${line("c sm", esc(doc.footer))}` : ""),
   };
 

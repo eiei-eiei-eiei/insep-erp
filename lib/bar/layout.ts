@@ -34,7 +34,7 @@ export const BLOCK_KEYS = [
   "vat",
   "compSummary",
   "qr",
-  "paidStamp",
+  "voidStamp",
   "footer",
 ] as const;
 
@@ -60,12 +60,21 @@ export const BLOCK_LABEL: Record<BlockKey, string> = {
   vat: "แยกภาษีมูลค่าเพิ่ม",
   compSummary: "สรุปของแถม",
   qr: "คิวอาร์รับเงิน",
-  paidStamp: "ตราชำระแล้ว",
+  voidStamp: "ตราบิลยกเลิก",
   footer: "ข้อความท้ายบิล",
 };
 
 /** บล็อกที่ปิดไม่ได้ไม่ว่ากรณีใด — ไม่มีสิ่งนี้บนกระดาษก็ไม่ใช่บิล */
-const ALWAYS_ON: BlockKey[] = ["shopName", "lines", "totals"];
+const ALWAYS_ON: BlockKey[] = ["shopName", "lines", "totals", "voidStamp"];
+
+/**
+ * เหตุผลเฉพาะราย สำหรับบล็อกที่ล็อกด้วยเหตุผลอื่นที่ไม่ใช่ "ไม่มีแล้วไม่ใช่บิล"
+ * 🚨 `voidStamp` ล็อกเพราะ **บิลที่ถูกยกเลิกต้องบอกบนกระดาษ** — ปิดได้เมื่อไหร่
+ *    ใบที่ถูกยกเลิกจะพิมพ์ออกมาหน้าตาเหมือนใบปกติทุกประการ
+ */
+const ALWAYS_ON_REASON: Partial<Record<BlockKey, string>> = {
+  voidStamp: "ปิดไม่ได้ — บิลที่ถูกยกเลิกต้องบอกบนกระดาษ",
+};
 
 /**
  * บล็อกที่กฎหมายบังคับเมื่อกิจการจด VAT
@@ -82,6 +91,14 @@ export type PaperWidth = 80 | 58;
 /** ค่าที่ผู้ใช้บันทึกไว้ (JSON ก้อนเดียวใน `app_settings` kind `bar_receipt_layout`) */
 export type ReceiptLayout = {
   order: BlockKey[];
+  /**
+   * ชื่อร้านบนหัวกระดาษ — ผู้ใช้กรอกเอง
+   *
+   * 🚨 **ไม่ใช่ชื่อกิจการ (entity)** — บาร์มีชื่อร้านของตัวเอง ส่วนชื่อกิจการเป็นชื่อ
+   *    ทางทะเบียนที่ลูกค้าหน้าบาร์ไม่รู้จัก · ค่าว่าง = ใช้ชื่อกิจการแทน
+   *    (กระดาษต้องมีชื่อร้านเสมอ — `shopName` อยู่ใน `ALWAYS_ON`)
+   */
+  shopName: string;
   /** คีย์ที่ถูกปิด — เก็บ "ที่ปิด" ไม่ใช่ "ที่เปิด" เพื่อให้บล็อกใหม่เปิดเองโดยปริยาย */
   off: BlockKey[];
   headText: string;
@@ -104,6 +121,8 @@ export type ReceiptLayout = {
 export type ResolvedLayout = {
   /** ลำดับที่เรนเดอร์จริง — ครบทุกคีย์เสมอ */
   order: BlockKey[];
+  /** ชื่อร้านที่ผู้ใช้กรอก (ดิบ · ค่าว่างได้) — ตัวที่พิมพ์จริงใช้ `shopNameOf()` */
+  shopName: string;
   /** เปิดอยู่ไหม (รวมกฎบังคับแล้ว) */
   on: (k: BlockKey) => boolean;
   /** ปิดไม่ได้ไหม — ใช้ทำสวิตช์เทาพร้อมเหตุผล ไม่ใช่ซ่อนสวิตช์ (D86) */
@@ -130,6 +149,24 @@ export type ResolvedLayout = {
 const isKey = (x: unknown): x is BlockKey => BLOCK_KEYS.includes(x as BlockKey);
 
 /**
+ * คีย์ที่ **เปลี่ยนชื่อ** ระหว่างทาง — ค่าที่ลูกค้าบันทึกไว้ยังเป็นชื่อเก่า
+ *
+ * 🚨 ไม่แปลงชื่อให้ = คีย์เก่าถูกทิ้ง แล้วคีย์ใหม่ไปต่อท้ายสุด ⇒ **บล็อกย้ายตำแหน่งเอง
+ *    บนกระดาษของลูกค้าที่เคยจัดผังไว้แล้ว** (ตราบิลยกเลิกไปโผล่ใต้ข้อความท้ายบิล)
+ * ★ การเปลี่ยนชื่อคีย์เป็นเรื่องของเรา ไม่ใช่การตัดสินใจของลูกค้า — ตำแหน่งต้องอยู่ที่เดิม
+ */
+const RENAMED: Record<string, BlockKey> = {
+  /** D97: เดิมเป็น "ตราชำระแล้ว" · ตอนนี้เหลือเฉพาะตราบิลยกเลิก */
+  paidStamp: "voidStamp",
+};
+
+/** อ่านคีย์จากค่าที่บันทึกไว้ (แปลงชื่อเก่าให้) — `null` = คีย์ที่ระบบไม่รู้จักแล้ว */
+const readKey = (x: unknown): BlockKey | null => {
+  const k = typeof x === "string" && x in RENAMED ? RENAMED[x] : x;
+  return isKey(k) ? k : null;
+};
+
+/**
  * ประกอบผังที่เรนเดอร์จริงจากค่าที่บันทึกไว้
  *
  * 🚨 **ทนของแปลกได้เสมอ** — ค่าที่บันทึกไว้อาจมาจากเวอร์ชันก่อนหน้า มีคีย์ที่ถูกลบไปแล้ว
@@ -139,7 +176,9 @@ export function resolveLayout(
   saved: Partial<ReceiptLayout> | null | undefined,
   opts: { isVat: boolean },
 ): ResolvedLayout {
-  const savedOrder = Array.isArray(saved?.order) ? saved!.order.filter(isKey) : [];
+  const savedOrder: BlockKey[] = Array.isArray(saved?.order)
+    ? saved!.order.map(readKey).filter((k): k is BlockKey => k !== null)
+    : [];
   // ตัดคีย์ซ้ำ แล้วเติมคีย์ที่ขาดต่อท้ายตามลำดับปริยาย (กติกาข้อ 1)
   const seen = new Set<BlockKey>();
   const order: BlockKey[] = [];
@@ -153,19 +192,22 @@ export function resolveLayout(
   }
 
   const off = new Set<BlockKey>(
-    Array.isArray(saved?.off) ? saved!.off.filter(isKey) : DEFAULT_OFF,
+    Array.isArray(saved?.off)
+      ? saved!.off.map(readKey).filter((k): k is BlockKey => k !== null)
+      : DEFAULT_OFF,
   );
   const required = new Set<BlockKey>([...ALWAYS_ON, ...(opts.isVat ? VAT_REQUIRED : [])]);
 
   // ★ `ALWAYS_ON` มาก่อนเสมอ — บล็อกที่อยู่ทั้งสองชุดต้องได้เหตุผลที่จริงกว่า
   const lockReason = (k: BlockKey): string | null => {
-    if (ALWAYS_ON.includes(k)) return "ปิดไม่ได้ — ไม่มีแล้วไม่ใช่บิล";
+    if (ALWAYS_ON.includes(k)) return ALWAYS_ON_REASON[k] ?? "ปิดไม่ได้ — ไม่มีแล้วไม่ใช่บิล";
     if (opts.isVat && VAT_REQUIRED.includes(k)) return "ปิดไม่ได้ — ใบกำกับภาษีต้องมี";
     return null;
   };
 
   return {
     order,
+    shopName: String(saved?.shopName ?? "").trim(),
     on: (k) => required.has(k) || !off.has(k),
     locked: (k) => lockReason(k) !== null,
     lockReason,
@@ -182,12 +224,40 @@ export function defaultLayout(): ReceiptLayout {
   return {
     order: [...DEFAULT_ORDER],
     off: [...DEFAULT_OFF],
+    shopName: "",
     headText: "",
     footer: "",
     paper: 80,
     fontLarge: false,
     logoUrl: "",
   };
+}
+
+/**
+ * ชื่อร้านที่พิมพ์จริงบนกระดาษ
+ * 🚨 **ไม่มีทางคืนค่าว่าง** — ยังไม่ได้ตั้งชื่อร้าน = ใช้ชื่อกิจการไปก่อน
+ *    กระดาษที่ไม่มีชื่อผู้ขายใช้ไม่ได้ทั้งในแง่ลูกค้าและในแง่กฎหมาย
+ */
+export function shopNameOf(custom: string | null | undefined, sellerName: string): string {
+  return String(custom ?? "").trim() || String(sellerName ?? "").trim();
+}
+
+/**
+ * บรรทัดชื่อทางทะเบียนที่ต้องพิมพ์กำกับใต้ชื่อร้าน — `null` = ไม่ต้องพิมพ์
+ *
+ * 🚨 **ใบกำกับภาษีอย่างย่อต้องมีชื่อผู้ประกอบการตามทะเบียน** ตั้งชื่อร้านเป็นชื่อทางการค้า
+ *    แล้วชื่อทะเบียนหายไปเลย = ใบกำกับที่ใช้ไม่ได้ทั้งคืนโดยไม่มีอะไรฟ้อง
+ * ★ กิจการที่ไม่ได้จด VAT ไม่ต้องมี (ใบเสร็จธรรมดา) · ชื่อตรงกันอยู่แล้วก็ไม่ต้องพิมพ์ซ้ำ
+ */
+export function legalNameLine(opts: {
+  shopName: string;
+  sellerName: string;
+  isVat: boolean;
+}): string | null {
+  if (!opts.isVat) return null;
+  const legal = String(opts.sellerName ?? "").trim();
+  if (!legal || legal === opts.shopName.trim()) return null;
+  return legal;
 }
 
 /** บล็อกที่เป็น "ข้อความที่ผู้ใช้พิมพ์เอง" — ชื่อฟิลด์กับชื่อบล็อกตรงกันโดยตั้งใจ */

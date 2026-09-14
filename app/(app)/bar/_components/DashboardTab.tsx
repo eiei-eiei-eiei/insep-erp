@@ -9,6 +9,7 @@ import {
 import { Card, Msg, TextInput, Field, Stat, Badge, Empty, fmt, useSaver, useConfirm, todayISO } from "@/lib/shared/ui";
 import { dashboardAction, postDayAction, unpostDayAction } from "../actions";
 import { unpostedText, unpostedTotal } from "@/lib/bar/posting";
+import { customerLabel } from "@/lib/bar/customerName";
 
 type PostRow = { post_date: string; status: string; tx_ids: string[]; totals: Record<string, unknown>; posted_at: string };
 type CustRow = { customer_id: string; name: string; last_seen: string | null; visits: number; spend_total: number };
@@ -257,7 +258,10 @@ export function DashboardTab({ boot, onReload }: { boot: BarBoot; onReload: () =
           <div className="flex flex-wrap gap-2">
             {lapsed.map((c) => (
               <Badge key={c.customer_id} tone="neutral">
-                {c.name} · {c.last_seen}
+                {/* ★ RPC คืนมาแค่ชื่อจริง — ชื่อเล่นมาจากทะเบียนที่โหลดไว้แล้วใน boot
+                    หาไม่เจอ (เพิ่งลบ) = ใช้ชื่อที่ติดมากับแถว ไม่ใช่ปล่อยว่าง */}
+                {customerLabel(boot.customers.find((x) => x.customerId === c.customer_id)) || c.name} ·{" "}
+                {c.last_seen}
               </Badge>
             ))}
           </div>

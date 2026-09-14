@@ -5,6 +5,7 @@ import type { BarBoot } from "../data";
 import type { CartLine } from "@/lib/bar/types";
 import { barTotals } from "@/lib/bar/totals";
 import { buildReceipt } from "@/lib/bar/receipt";
+import { customerLabel } from "@/lib/bar/customerName";
 import { Card, Msg, TextInput, Field, Badge, Empty, fmt, useSaver, useConfirm, todayISO } from "@/lib/shared/ui";
 import { searchSalesAction, issueReceiptAction, voidSaleAction, voidLineAction } from "../actions";
 
@@ -132,7 +133,6 @@ export function HistoryTab({ boot, onReload }: { boot: BarBoot; onReload: () => 
       totals: t,
       seller: boot.seller,
       buyer: cust ? { name: cust.name, address: cust.address, taxId: cust.taxId, branch: cust.branch } : null,
-      method: s.method,
       closedAt: s.closed_at ? new Date(s.closed_at).toLocaleString("th-TH") : null,
       printedAt: new Date().toLocaleString("th-TH"),
       footer: boot.settings.footer,
@@ -193,6 +193,7 @@ export function HistoryTab({ boot, onReload }: { boot: BarBoot; onReload: () => 
                 <th>เลขที่</th>
                 <th>วันขาย</th>
                 <th>โต๊ะ/ช่องทาง</th>
+                <th>ลูกค้า</th>
                 <th>รับเงิน</th>
                 <th className="text-right">ยอดสุทธิ</th>
                 <th>สถานะ</th>
@@ -215,6 +216,12 @@ export function HistoryTab({ boot, onReload }: { boot: BarBoot; onReload: () => 
                         {s.tab_name || "—"}
                         <div className="text-xs text-faint">{s.channel}</div>
                       </td>
+                      {/* 🔴 เดิมไม่มีคอลัมน์นี้เลย ทั้งที่บิลเก็บ customer_id ไว้ครบ
+                          ⇒ ย้อนดูว่า "คืนนั้นลูกค้าคนนี้กินอะไร" จากแท็บนี้ไม่ได้
+                          ★ ลูกค้าที่ถูกลบไปแล้ว (PDPA) จะหาไม่เจอ → ขึ้น "—" ตามจริง */}
+                      <td className="text-sm">
+                        {customerLabel(boot.customers.find((c) => c.customerId === s.customer_id)) || "—"}
+                      </td>
                       <td className="text-sm">{s.method ?? "—"}</td>
                       <td className="text-right">{fmt(Number(s.grand_total))}</td>
                       <td>
@@ -231,7 +238,7 @@ export function HistoryTab({ boot, onReload }: { boot: BarBoot; onReload: () => 
                     </tr>
                     {open === s.sale_no && (
                       <tr>
-                        <td colSpan={7}>
+                        <td colSpan={8}>
                           <div className="rounded-lg bg-raised p-3">
                             {mine.map((l) => (
                               <div key={l.line_no} className="flex items-center gap-2 py-0.5 text-sm">

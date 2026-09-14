@@ -104,7 +104,10 @@ describe("เลขปลายทาง — แปลงตามชนิด",
 describe("🚨 ไม่ได้ตั้งค่า = ไม่มี QR — ห้ามมี fallback", () => {
   it("ไม่มีเลขปลายทาง → payload เป็น null และมีข้อความไทยบอกว่าต้องไปตั้งที่ไหน", () => {
     expect(promptPayPayload({ target: null, amount: 100 })).toBeNull();
-    expect(promptPayError(null)).toContain("ตั้งค่าบาร์");
+    expect(promptPayError(null)).toContain("ยังไม่ได้ตั้งเลขพร้อมเพย์");
+    // 🚨 คำว่า "ไปตั้งที่ …" ต้องมาเมื่อขอเท่านั้น — หน้าตั้งค่าบาร์เองห้ามชี้กลับมาที่ตัวเอง
+    expect(promptPayError(null)).not.toContain("ไปตั้งที่");
+    expect(promptPayError(null, { showWhere: true })).toContain("ไปตั้งที่");
   });
 
   it("เลขผิดรูปแบบ → null + บอกว่าผิดยังไง (ไม่ใช่เงียบ)", () => {

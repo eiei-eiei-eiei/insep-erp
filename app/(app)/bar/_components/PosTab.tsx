@@ -13,6 +13,7 @@ import {
 } from "@/lib/bar/discount";
 import { customerMenuIds, applyCustomerChip, sortMenusForGrid, searchMenus } from "@/lib/bar/menuFilter";
 import { promptPayPayload, promptPayError } from "@/lib/bar/promptpay";
+import { customerLabel } from "@/lib/bar/customerName";
 import { buildReceipt } from "@/lib/bar/receipt";
 import {
   Card, Msg, TextInput, NumBox, Select, MissingHint, Badge, Empty, fmt, useSaver, useConfirm,
@@ -22,8 +23,9 @@ import {
 } from "@/lib/shared/icons";
 import {
   openSaleAction, addLinesAction, voidLineAction, closeSaleAction, voidSaleAction,
-  quickSaleAction, saveMenuAction, issueReceiptAction,
+  quickSaleAction, saveMenuAction, issueReceiptAction, saveCustomerAction,
 } from "../actions";
+import { CustomerModal } from "./CustomerModal";
 
 const METHODS = ["เงินสด", "โอนเงิน", "QR", "บัตรเครดิต"];
 
@@ -79,6 +81,14 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
   const [cardMenu, setCardMenu] = useState<string | null>(null);
   const [boothChannel, setBoothChannel] = useState("บาร์");
   const [boothCustomer, setBoothCustomer] = useState("");
+  /**
+   * เพิ่มลูกค้าจากหน้าขายเลย (ผู้ใช้สั่ง) — `pick` = เอา id ที่เพิ่งสร้างไปเลือกให้ตรงจุดที่กดมา
+   *
+   * 🚨 **ฟอร์มเป็นตัวเดียวกับแท็บลูกค้า** (`CustomerModal`) ไม่ใช่ฟอร์มย่อ —
+   *    ก๊อปฟอร์มมาวางแล้วตัดช่องความยินยอม PDPA ออก = เก็บเบอร์ลูกค้าโดยไม่มีความยินยอม
+   * ★ เก็บเป็น object ที่มีฟังก์ชันข้างใน ไม่ใช่ฟังก์ชันตรง ๆ (setState มองฟังก์ชันเป็น updater)
+   */
+  const [addCust, setAddCust] = useState<{ pick: (id: string) => void } | null>(null);
   /** บิลที่เพิ่งปิด — เก็บไว้ให้พิมพ์ซ้ำ/ออกใบเสร็จได้ทันทีที่ลูกค้าขอ */
   const [justClosed, setJustClosed] = useState<{
     sale: BarOpenSale;
@@ -131,6 +141,10 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
       setTrays((p) => ({ ...p, [k]: fn(p[k] ?? []) })),
     [],
   );
+
+  /** ชื่อลูกค้าที่ผูกกับบิล — ค่าว่างเมื่อบิลไม่ได้ระบุลูกค้า (ปกติมาก ไม่ต้องเติมคำแทน) */
+  const custOf = (id: string | null | undefined) =>
+    customerLabel(data.customers.find((c) => c.customerId === id));
 
   async function run(fn: () => Promise<{ ok: boolean; error?: string; data?: unknown }>, okText: string) {
     setBusy(true);
@@ -204,7 +218,8 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
   /** ★ ของขาดดูจาก **ถาด** เท่านั้น — รายการที่ส่งเข้าบิลแล้วตัดสต็อกไปเรียบร้อย */
   const short = shortages(tray, data.menus, data.items);
   const ppTarget = { type: data.settings.promptPayType, id: data.settings.promptPayId };
-  const ppError = promptPayError(ppTarget);
+  // ★ หน้าขายอยู่คนละแท็บกับที่ตั้งค่า จึงต้องบอกด้วยว่าไปตั้งที่ไหน
+  const ppError = promptPayError(ppTarget, { showWhere: true });
   const trayQty = tray.reduce((s, l) => s + l.qty, 0);
 
   // ── ถาด ───────────────────────────────────────────────────────────────────
@@ -274,7 +289,6 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
       totals: t,
       seller: data.seller,
       buyer: cust ? { name: cust.name, address: cust.address, taxId: cust.taxId, branch: cust.branch } : null,
-      method: opts.paid ? (opts.method ?? null) : null,
       closedAt: opts.paid ? new Date().toLocaleString("th-TH") : null,
       printedAt: new Date().toLocaleString("th-TH"),
       footer: data.settings.footer,
@@ -333,15 +347,27 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
                     ))}
                   </Select>
                 </div>
-                <div className="w-44">
-                  <Select value={boothCustomer} onChange={(e) => setBoothCustomer(e.target.value)}>
-                    <option value="">— ไม่ระบุลูกค้า —</option>
-                    {data.customers.map((c) => (
-                      <option key={c.customerId} value={c.customerId}>
-                        {c.nickname || c.name}
-                      </option>
-                    ))}
-                  </Select>
+                <div className="flex items-center gap-1">
+                  <div className="w-44">
+                    <Select value={boothCustomer} onChange={(e) => setBoothCustomer(e.target.value)}>
+                      <option value="">— ไม่ระบุลูกค้า —</option>
+                      {data.customers.map((c) => (
+                        <option key={c.customerId} value={c.customerId}>
+                          {customerLabel(c)}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                  {/* ★ เพิ่มลูกค้าได้จากตรงนี้เลย ไม่ต้องสลับไปแท็บลูกค้ากลางงาน */}
+                  <button
+                    type="button"
+                    disabled={!canWrite || busy}
+                    title="เพิ่มลูกค้าใหม่"
+                    onClick={() => setAddCust({ pick: (id) => setBoothCustomer(id) })}
+                    className="grid h-9 w-9 place-items-center rounded-lg border border-line bg-card text-ink disabled:opacity-50"
+                  >
+                    <IconPlus size={15} />
+                  </button>
                 </div>
               </>
             )}
@@ -363,13 +389,21 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
                       <button
                         type="button"
                         onClick={() => setSaleNo(s.saleNo)}
-                        className="px-2 py-2 text-sm hover:text-ink"
+                        className="px-2 py-2 text-left text-sm hover:text-ink"
                       >
-                        {s.tabName || s.saleNo}
-                        <span className="ml-2 opacity-70">{live} รายการ</span>
-                        {/* ★ ของค้างในถาดของ *บิลอื่น* ต้องมองเห็นจากตรงนี้
-                            ไม่งั้นจะลืมทิ้งไว้แล้วปิดร้านไปเลย */}
-                        {waiting > 0 && <span className="ml-1 text-warn">· รอส่ง {waiting}</span>}
+                        <span className="block">
+                          {s.tabName || s.saleNo}
+                          <span className="ml-2 opacity-70">{live} รายการ</span>
+                          {/* ★ ของค้างในถาดของ *บิลอื่น* ต้องมองเห็นจากตรงนี้
+                              ไม่งั้นจะลืมทิ้งไว้แล้วปิดร้านไปเลย */}
+                          {waiting > 0 && <span className="ml-1 text-warn">· รอส่ง {waiting}</span>}
+                        </span>
+                        {/* 🔴 เดิมป้ายบิลบอกแต่ชื่อโต๊ะ **ไม่มีที่ไหนบอกว่าบิลนี้ผูกลูกค้าคนไหน**
+                            ต้องกดเข้าบิลแล้วมองหาชิป "เฉพาะของ …" ถึงจะรู้ว่าเลือกผิดคน
+                            ⇒ ใบเสร็จออกผิดชื่อโดยไม่มีอะไรบนจอฟ้องเลยสักจุด */}
+                        {custOf(s.customerId) && (
+                          <span className="block text-xs opacity-80">{custOf(s.customerId)}</span>
+                        )}
                       </button>
                       {canWrite && (
                         <button
@@ -405,6 +439,7 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
                   disabled={!canWrite || busy}
                   channels={data.settings.channels}
                   customers={data.customers}
+                  onAddCustomer={(pick) => setAddCust({ pick })}
                   onOpen={(name, channel, cust) =>
                     run(() => openSaleAction({ tabName: name, channel, customerId: cust }), "เปิดบิลแล้ว").then(
                       (r) => {
@@ -452,7 +487,9 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
               {customerId && (
                 <label className="flex items-center gap-1.5 text-sm text-muted">
                   <input type="checkbox" checked={chipOn} onChange={(e) => setChipOn(e.target.checked)} />
-                  เฉพาะของ {data.customers.find((c) => c.customerId === customerId)?.name ?? "ลูกค้ารายนี้"}
+                  เฉพาะของ{" "}
+                  {customerLabel(data.customers.find((c) => c.customerId === customerId)) ||
+                    "ลูกค้ารายนี้"}
                 </label>
               )}
               {canWrite && (
@@ -789,6 +826,22 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
               setSaleNo(null);
               setPaying(false);
             }
+          }}
+        />
+      )}
+
+      {addCust && (
+        <CustomerModal
+          boot={data}
+          customerId={null}
+          busy={busy}
+          onClose={() => setAddCust(null)}
+          onSave={async (input) => {
+            const r = await run(() => saveCustomerAction(input), "เพิ่มลูกค้าแล้ว");
+            if (!r) return; // ★ ล้มเหลว = ฟอร์มยังเปิดอยู่พร้อมข้อความบอกเหตุ ไม่ใช่ปิดเงียบ
+            const id = (r.data as { customer_id?: string } | undefined)?.customer_id;
+            if (id) addCust.pick(id);
+            setAddCust(null);
           }}
         />
       )}
@@ -1214,12 +1267,14 @@ function RecipeCard({ boot, menuId }: { boot: BarBoot; menuId: string }) {
 }
 
 function NewTabButton({
-  disabled, onOpen, channels, customers,
+  disabled, onOpen, channels, customers, onAddCustomer,
 }: {
   disabled: boolean;
   onOpen: (name: string, channel: string, customerId: string | null) => void;
   channels: string[];
   customers: { customerId: string; name: string; nickname: string | null }[];
+  /** เปิดฟอร์มเพิ่มลูกค้า แล้ว **เลือกคนที่เพิ่งเพิ่มให้เอง** (ไม่ต้องมาไล่หาในลิสต์อีกรอบ) */
+  onAddCustomer: (pick: (id: string) => void) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -1256,11 +1311,20 @@ function NewTabButton({
           <option value="">— ไม่ระบุลูกค้า —</option>
           {customers.map((c) => (
             <option key={c.customerId} value={c.customerId}>
-              {c.nickname || c.name}
+              {customerLabel(c)}
             </option>
           ))}
         </Select>
       </div>
+      <button
+        type="button"
+        disabled={disabled}
+        title="เพิ่มลูกค้าใหม่"
+        onClick={() => onAddCustomer((id) => setCust(id))}
+        className="grid h-9 w-9 place-items-center rounded-lg border border-line bg-card text-ink disabled:opacity-50"
+      >
+        <IconPlus size={15} />
+      </button>
       <button
         type="button"
         onClick={() => {

@@ -100,11 +100,27 @@ const SUBTAG: Record<PromptPayType, string> = {
 };
 
 /**
+ * คำชี้ทางว่าไปตั้งเลขพร้อมเพย์ได้ที่ไหน
+ *
+ * 🚨 **ต่อท้ายเฉพาะหน้าจอที่ไม่ใช่หน้าตั้งค่า** — ขึ้นคำว่า *"ไปตั้งที่ ตั้งค่าบาร์"*
+ *    บนหน้าตั้งค่าบาร์เอง คือการบอกให้ผู้ใช้เดินไปยังที่ที่เขายืนอยู่แล้ว
+ *    (ตระกูล D91/0059: ตรรกะถูก แต่ประโยคที่ผู้ใช้อ่านแล้วสรุปผิด)
+ * ★ ประโยคยังอยู่ใน lib ที่เดียว — หน้าจอไม่แต่งประโยคเอง
+ */
+export const PROMPTPAY_WHERE = "ไปตั้งที่ แท็บตั้งค่า ของบาร์";
+
+/**
  * เหตุผลที่สร้าง QR ไม่ได้ (ภาษาไทย) — `null` = ใช้ได้
  * ★ หน้าจอเรียกตัวนี้เพื่อ **ปิดปุ่มพร้อมบอกว่าต้องไปแก้อะไร** (กติกา D83)
+ * @param opts.showWhere ต่อท้ายคำชี้ทางว่าไปตั้งที่ไหน — **ปริยายไม่ต่อ**
+ *        หน้าตั้งค่าบาร์ไม่ต้องส่ง · หน้าขาย/หน้าอื่นส่ง `true`
  */
-export function promptPayError(target: PromptPayTarget | null | undefined): string | null {
-  if (!target || !digitsOf(target.id)) return "ยังไม่ได้ตั้งเลขพร้อมเพย์ — ไปตั้งที่ ตั้งค่าบาร์";
+export function promptPayError(
+  target: PromptPayTarget | null | undefined,
+  opts: { showWhere?: boolean } = {},
+): string | null {
+  if (!target || !digitsOf(target.id))
+    return "ยังไม่ได้ตั้งเลขพร้อมเพย์" + (opts.showWhere ? " — " + PROMPTPAY_WHERE : "");
   if (!normalizePromptPayId(target)) {
     if (target.type === "mobile") return "เบอร์พร้อมเพย์ต้องเป็นเบอร์มือถือ 10 หลัก";
     if (target.type === "natid") return "เลขประจำตัวผู้เสียภาษี/บัตรประชาชน ต้องมี 13 หลัก";

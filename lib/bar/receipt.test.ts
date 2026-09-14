@@ -78,22 +78,73 @@ describe("🚨 QR — เงื่อนไขเดียว: บิลต้�
   });
 });
 
-describe("ประทับสถานะการชำระ", () => {
-  it("ยังไม่ปิดบิล = ไม่มีประทับ", () => {
-    expect(buildReceipt(base()).paidStamp).toBeNull();
+/**
+ * ── ตราบนกระดาษ ────────────────────────────────────────────────────────────
+ * 🚫 **ตัดตรา "ชำระแล้ว · วิธีจ่าย · เวลา" ออกแล้ว** (ผู้ใช้สั่ง) — ทั้งใบที่จ่ายแล้ว
+ *    และใบเสร็จ · ใบเสร็จบอกในตัวอยู่แล้วว่ารับเงินแล้ว
+ * 🚨 แต่ **ตราบิลยกเลิกต้องอยู่ต่อ** ไม่งั้นใบที่ยกเลิกแล้วพิมพ์ออกมาเหมือนใบปกติ
+ */
+describe("ตราบนกระดาษ", () => {
+  it("ยังไม่ปิดบิล = ไม่มีตรา", () => {
+    expect(buildReceipt(base()).voidStamp).toBeNull();
   });
 
-  it("ปิดแล้ว = ชำระแล้ว + วิธี + เวลา", () => {
-    const doc = buildReceipt(base({ status: "ปกติ", method: "โอนเงิน", closedAt: "11/09/2569 23:41" }));
-    expect(doc.paidStamp).toBe("ชำระแล้ว · โอนเงิน · 11/09/2569 23:41");
+  it("🚫 ปิดบิลแล้วต้อง **ไม่มี** ตราชำระแล้ว", () => {
+    const doc = buildReceipt(base({ status: "ปกติ", closedAt: "11/09/2569 23:41" }));
+    expect(doc.voidStamp).toBeNull();
   });
 
-  it("ไม่มีวิธี/เวลา ก็ยังบอกว่าชำระแล้ว (ไม่ทิ้งจุดคั่นลอย)", () => {
-    expect(buildReceipt(base({ status: "ปกติ" })).paidStamp).toBe("ชำระแล้ว");
+  it("🚫 ใบเสร็จก็ต้องไม่มีตราชำระแล้วเช่นกัน", () => {
+    const doc = buildReceipt(base({ status: "ปกติ", wantReceipt: true, closedAt: "11/09/2569 23:41" }));
+    expect(doc.voidStamp).toBeNull();
   });
 
   it("บิลถูกยกเลิกต้องเขียนบนกระดาษให้ชัด", () => {
-    expect(buildReceipt(base({ status: "ยกเลิก" })).paidStamp).toBe("บิลนี้ถูกยกเลิก");
+    expect(buildReceipt(base({ status: "ยกเลิก" })).voidStamp).toBe("บิลนี้ถูกยกเลิก");
+  });
+});
+
+/**
+ * ── ชื่อร้านที่ผู้ใช้ตั้งเอง ────────────────────────────────────────────────
+ * 🚨 ชื่อกิจการ (entity) เป็นชื่อทางทะเบียนที่ลูกค้าหน้าบาร์ไม่รู้จัก
+ *    ผู้ใช้ต้องตั้งชื่อร้านเองได้ **แต่ใบกำกับภาษีอย่างย่อยังต้องมีชื่อผู้ประกอบการ**
+ */
+describe("ชื่อร้านบนหัวกระดาษ", () => {
+  it("ตั้งชื่อร้านเอง → ใช้ชื่อนั้น ไม่ใช่ชื่อกิจการ", () => {
+    const doc = buildReceipt(base({ layout: { shopName: "บาร์ลุงหนวด" } }));
+    expect(doc.shopName).toBe("บาร์ลุงหนวด");
+  });
+
+  it("ไม่ได้ตั้ง / ตั้งเป็นช่องว่าง → ใช้ชื่อกิจการ (กระดาษต้องมีชื่อเสมอ)", () => {
+    expect(buildReceipt(base()).shopName).toBe(buildReceipt(base()).seller.name);
+    expect(buildReceipt(base({ layout: { shopName: "   " } })).shopName).toBe(
+      buildReceipt(base()).seller.name,
+    );
+  });
+
+  it("🚨 จด VAT + ชื่อร้านต่างจากชื่อทะเบียน → ต้องพิมพ์ชื่อทะเบียนกำกับด้วย", () => {
+    const doc = buildReceipt(
+      base({ seller: { name: "บริษัท ทดสอบ จำกัด", isVat: true }, layout: { shopName: "บาร์ลุงหนวด" } }),
+    );
+    expect(doc.legalName).toBe("บริษัท ทดสอบ จำกัด");
+  });
+
+  it("ชื่อตรงกัน / ไม่จด VAT → ไม่พิมพ์ซ้ำ", () => {
+    const same = buildReceipt(
+      base({ seller: { name: "บาร์ลุงหนวด", isVat: true }, layout: { shopName: "บาร์ลุงหนวด" } }),
+    );
+    expect(same.legalName).toBeNull();
+    const noVat = buildReceipt(
+      base({ seller: { name: "บริษัท ทดสอบ จำกัด" }, layout: { shopName: "บาร์ลุงหนวด" } }),
+    );
+    expect(noVat.legalName).toBeNull();
+  });
+
+  it("ตัวแปร {ชื่อร้าน} ต้องได้ชื่อเดียวกับที่พิมพ์บนหัวกระดาษ", () => {
+    const doc = buildReceipt(
+      base({ layout: { shopName: "บาร์ลุงหนวด", footer: "ขอบคุณที่มา {ชื่อร้าน}", off: [] } }),
+    );
+    expect(doc.footer).toBe("ขอบคุณที่มา บาร์ลุงหนวด");
   });
 });
 

@@ -16,7 +16,14 @@
 import type { CartLine } from "./types";
 import { lineAmount, type BarTotals } from "./totals";
 import { vatFromGross, vatLabel, type VatSplit } from "./vat";
-import { fillTokens, resolveLayout, type ReceiptLayout, type ResolvedLayout } from "./layout";
+import {
+  fillTokens,
+  legalNameLine,
+  resolveLayout,
+  shopNameOf,
+  type ReceiptLayout,
+  type ResolvedLayout,
+} from "./layout";
 
 export type BarSaleStatus = "เปิดอยู่" | "ปกติ" | "ยกเลิก";
 
@@ -66,7 +73,11 @@ export type ReceiptInput = {
   totals: BarTotals;
   seller: ReceiptSeller;
   buyer?: ReceiptBuyer | null;
-  method?: string | null;
+  /**
+   * เวลาที่ปิดบิล — ใช้เป็น {วันที่} ในข้อความหัว/ท้ายบิลเท่านั้น
+   * 🚫 **ไม่มีช่อง `method` แล้ว** — ตราชำระแล้วถูกตัดออก จึงไม่มีใครอ่านค่านั้นอีก
+   *    (ปล่อยช่องที่ไม่มีใครอ่านไว้ = ช่องหลอกแบบ `employees.end_date` ของ D76)
+   */
   closedAt?: string | null;
   printedAt: string;
   footer?: string | null;
@@ -100,6 +111,16 @@ export type ReceiptDoc = {
   qrPayload: string | null;
   /** ผังที่เรนเดอร์จริง — `print80.ts` วนตามนี้ ไม่ใช่ลำดับตายตัวในตัวมันเอง */
   layout: ResolvedLayout;
+  /**
+   * ชื่อร้านที่พิมพ์บนหัวกระดาษ — ผู้ใช้ตั้งเองในผัง · ไม่ได้ตั้ง = ชื่อกิจการ
+   * 🚨 กระดาษต้องอ่านชื่อจาก **ตัวนี้** ไม่ใช่ `seller.name` (ไม่งั้นชื่อที่ตั้งไว้ไม่มีผล)
+   */
+  shopName: string;
+  /**
+   * ชื่อตามทะเบียนที่พิมพ์กำกับใต้ชื่อร้าน — `null` = ไม่ต้องพิมพ์
+   * ★ มีเฉพาะกิจการจด VAT ที่ตั้งชื่อร้านต่างจากชื่อทะเบียน (ใบกำกับต้องมีชื่อผู้ประกอบการ)
+   */
+  legalName: string | null;
   logoUrl: string | null;
   /** ข้อความหัวบิลที่แทนค่าตัวแปรแล้ว */
   headText: string;
@@ -113,8 +134,15 @@ export type ReceiptDoc = {
   vat: VatSplit | null;
   /** "ภาษีมูลค่าเพิ่ม 7%" — null คู่กับ `vat` */
   vatLabel: string | null;
-  /** ประทับ "ชำระแล้ว · โอนเงิน · 10/09/2569 23:41" — null ตอนยังไม่จ่าย */
-  paidStamp: string | null;
+  /**
+   * ประทับ "บิลนี้ถูกยกเลิก" — `null` = บิลปกติ
+   *
+   * 🚫 **ไม่มีตรา "ชำระแล้ว · วิธีจ่าย · เวลา" อีกแล้ว** (ผู้ใช้สั่งตัดออก) —
+   *    ใบเสร็จบอกอยู่แล้วว่ารับเงินแล้ว การประทับซ้ำเป็นกล่องรกกระดาษเปล่า ๆ
+   * 🚨 แต่ **บิลที่ถูกยกเลิกยังต้องเขียนบนกระดาษเสมอ** ไม่งั้นใบที่ยกเลิกแล้ว
+   *    พิมพ์ออกมาหน้าตาเหมือนใบปกติ (`voidStamp` จึงอยู่ใน `ALWAYS_ON`)
+   */
+  voidStamp: string | null;
   printedAt: string;
   footer: string | null;
 };
@@ -147,12 +175,7 @@ export function buildReceipt(input: ReceiptInput): ReceiptDoc {
   const live = input.lines.filter((l) => !l.voidedAt);
   const hasQr = shouldShowQr(input);
 
-  const paidStamp =
-    input.status === "ปกติ"
-      ? ["ชำระแล้ว", input.method?.trim(), input.closedAt?.trim()].filter(Boolean).join(" · ")
-      : input.status === "ยกเลิก"
-        ? "บิลนี้ถูกยกเลิก"
-        : null;
+  const voidStamp = input.status === "ยกเลิก" ? "บิลนี้ถูกยกเลิก" : null;
 
   // 🚨 ถอดภาษีจาก **ยอดสุทธิ** เท่านั้น (หลังส่วนลด + ปัดเศษ) — ดูเหตุผลใน vat.ts
   const isVat = Boolean(input.seller.isVat);
@@ -168,8 +191,12 @@ export function buildReceipt(input: ReceiptInput): ReceiptDoc {
    * ★ ตัวแปรในข้อความหัว/ท้าย แทนค่าที่นี่ **ก่อนถึงกระดาษ**
    *   กระดาษไม่ควรรู้จักเรื่องตัวแปรเลย (มันมีหน้าที่วาดอย่างเดียว)
    */
+  const shopName = shopNameOf(layout.shopName, input.seller.name);
+
   const tokens = {
-    ชื่อร้าน: input.seller.name,
+    // ★ ตัวแปร {ชื่อร้าน} = ชื่อที่พิมพ์บนหัวกระดาษ ไม่ใช่ชื่อกิจการ
+    //   (ผู้ใช้กดแทรกตัวแปรแล้วต้องได้ชื่อเดียวกับที่ตาเห็นข้างบน)
+    ชื่อร้าน: shopName,
     เลขบิล: kind === "receipt" ? (input.rcptNo ?? input.saleNo) : input.saleNo,
     ยอด: input.totals.grandTotal.toLocaleString("en-US", {
       minimumFractionDigits: 2, maximumFractionDigits: 2,
@@ -195,6 +222,8 @@ export function buildReceipt(input: ReceiptInput): ReceiptDoc {
     hasQr,
     qrPayload: hasQr ? (input.qrPayload ?? null) : null,
     layout,
+    shopName,
+    legalName: legalNameLine({ shopName, sellerName: input.seller.name, isVat }),
     // ★ โลโก้อยู่ในผังของบาร์เอง **ไม่ใช่โลโก้แบรนด์ของ tenant**
     //   บาร์มักขายในนามอีกกิจการหนึ่ง (คนละแบรนด์กับโรงกลั่น)
     logoUrl: layout.logoUrl || null,
@@ -203,7 +232,7 @@ export function buildReceipt(input: ReceiptInput): ReceiptDoc {
     discountLabel: input.totals.discount > 0 ? (input.discountLabel ?? null) : null,
     vat,
     vatLabel: vat ? vatLabel() : null,
-    paidStamp,
+    voidStamp,
     printedAt: input.printedAt,
     // ★ ข้อความท้ายบิลมาจาก 2 ทาง — ผังใหม่ (แทนค่าตัวแปรได้) หรือค่าเดิมที่ส่งมาตรง ๆ
     //   ผังชนะเมื่อมีค่า เพื่อให้ที่ตั้งค่าใหม่เป็นแหล่งความจริงเดียว
