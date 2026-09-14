@@ -203,18 +203,52 @@ describe("④ สิทธิ์ (RLS + definer ต้องเช็คเอ�
     expect(ins.error, "ต้องเขียนผ่าน RPC เท่านั้น").not.toBeNull();
   });
 
-  it("ข้าม tenant ไม่ได้ (กิจการของคนอื่น)", async () => {
+  /**
+   * 🪤 **เทสข้อนี้เคยเขียนผิดเอง** — ยิงด้วย `A.entityId` แล้ว assert ว่าต้องล้มเหลว
+   *    แต่ harness ตั้งใจให้ทั้งสอง tenant ใช้ `EID01` เหมือนกัน (พิสูจน์ composite PK)
+   *    ⇒ B ยิงด้วยค่านั้น = ยิงด้วย **กิจการของตัวเอง** ซึ่งต้องสำเร็จ
+   *    **เทสที่แดงด้วยเหตุผลผิด อันตรายพอกับเทสที่เขียวด้วยเหตุผลผิด** (บทเรียน D85/D92)
+   *
+   * ของจริงที่ต้องพิสูจน์มี 2 ทิศ:
+   *   · ชื่อกิจการซ้ำกันข้าม tenant แล้วแถวต้องไม่ไหลไปหากัน
+   *   · กิจการที่ไม่มีอยู่จริง ต้องตอบเป็นภาษาไทย ไม่ใช่ FK error ดิบ (0072)
+   */
+  it("🚨 ชื่อกิจการซ้ำกันข้าม tenant — แถวต้องอยู่กับเจ้าของเท่านั้น", async () => {
+    const before = (await admin().from("tax_filings").select("id").eq("tenant_id", A.tenantId)).data ?? [];
+
     const B = await seedTenant("filing2");
     const asB = await signIn(B);
+    expect(B.entityId, "harness ตั้งใจให้ชื่อกิจการซ้ำกัน — ถ้าไม่ซ้ำ เทสนี้ไม่ได้พิสูจน์อะไร")
+      .toBe(A.entityId);
+
     const { data, error } = await asB.rpc("fn_file_tax", {
-      p_kind: "vat", p_period: PERIOD, p_entity: A.entityId, p_filed_on: null, p_note: "",
+      p_kind: "vat", p_period: PERIOD, p_entity: B.entityId, p_filed_on: null, p_note: "",
     });
-    // กิจการของ A ไม่มีอยู่ใน tenant ของ B → RPC ต้องไม่สร้างแถวให้ A
-    if (!error) expect((data as { ok: boolean }).ok).toBe(false);
-    const rows = await admin().from("tax_filings").select("id")
-      .eq("tenant_id", B.tenantId);
-    expect(rows.data ?? [], "ห้ามมีแถวข้ามลูกค้า").toHaveLength(0);
+    expect(error, error?.message).toBeNull();
+    expect((data as { ok: boolean }).ok, "ยื่นให้กิจการของตัวเองต้องสำเร็จ").toBe(true);
+
+    const rowsB = (await admin().from("tax_filings").select("id").eq("tenant_id", B.tenantId)).data ?? [];
+    expect(rowsB, "แถวต้องเกิดใน tenant ของผู้เรียก").toHaveLength(1);
+
+    const after = (await admin().from("tax_filings").select("id").eq("tenant_id", A.tenantId)).data ?? [];
+    expect(after.length, "🚨 ของ tenant A ต้องไม่ขยับแม้แถวเดียว").toBe(before.length);
+
+    // ★ tenant มาจาก my_tenant() เสมอ — ผู้เรียกระบุเองไม่ได้ จึงไม่มีทางเขียนข้ามลูกค้า
     await asB.auth.signOut().catch(() => {});
+  });
+
+  it("🚨 กิจการที่ไม่มีอยู่จริง → ข้อความไทย 'ไม่พบกิจการ' ไม่ใช่ FK error ดิบ (0072)", async () => {
+    for (const kind of ["vat", "pnd3"]) {
+      const { error } = await asA.rpc("fn_file_tax", {
+        p_kind: kind, p_period: PERIOD, p_entity: "EID99", p_filed_on: null, p_note: "",
+      });
+      expect(error, `${kind}: ต้องถูกปฏิเสธ`).not.toBeNull();
+      // 🪤 ก่อน 0072: vat เด้ง "ไม่ได้จดทะเบียน VAT" (เหตุผลผิด) · pnd3 เด้ง 23503 ดิบ
+      expect(error!.message, `${kind}: ต้องบอกเหตุผลที่ถูก`).toContain("ไม่พบกิจการ");
+    }
+    const rows = (await admin().from("tax_filings").select("id")
+      .eq("tenant_id", A.tenantId).eq("entity_id", "EID99")).data ?? [];
+    expect(rows, "ห้ามมีแถวของกิจการที่ไม่มีอยู่").toHaveLength(0);
   });
 });
 

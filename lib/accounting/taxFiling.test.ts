@@ -286,4 +286,27 @@ describe("ตรรกะฝั่ง DB ที่ build/lint/test มองไ�
   it("วิธียื่นเก็บเป็นชุดปิดที่ DB — ค่าที่ไม่รู้จักเข้าไปไม่ได้", () => {
     expect(sql).toMatch(/filing_method is null or filing_method in \('paper','efiling'\)/);
   });
+
+  /**
+   * 0072 — ด่าน "ไม่พบกิจการ" ต้องมาก่อนด่าน VAT
+   * 🪤 สลับลำดับเมื่อไหร่ ผู้ใช้ที่พิมพ์รหัสกิจการผิดจะได้ข้อความ *"ไม่ได้จดทะเบียน
+   *    ภาษีมูลค่าเพิ่ม"* แล้วไปแก้ผิดเรื่อง (ตระกูล D91/0059 — ด่านกันถูก ประโยคผิด)
+   *    TypeScript มองลำดับใน plpgsql ไม่เห็นเลย ต้องอ่าน SQL มาตรวจ
+   */
+  it("🚨 fn_file_tax ตรวจ 'ไม่พบกิจการ' ก่อนด่าน VAT เสมอ", () => {
+    const latest = latestSqlWith("function fn_file_tax(");
+    const i = latest.indexOf("create or replace function fn_file_tax(");
+    const fn = latest.slice(i, latest.indexOf("\nend $$;\n", i));
+    /**
+     * 🪤 ต้องจับ **โค้ดจริง** ไม่ใช่คำในไฟล์ — คอมเมนต์ที่อธิบายด่านนี้มีคำว่า
+     *    `entity_is_vat()` อยู่ด้วย (อธิบายว่าทำไมต้องมาก่อน) ⇒ จับคำเปล่า ๆ
+     *    แล้วเทสแดงทั้งที่ลำดับถูก · เป็นกับดักตัวเดียวกับที่ข้อ "cron ต้องไม่ query
+     *    report_runs" เจอมาก่อนหน้านี้ในไฟล์เดียวกัน
+     */
+    const guard = fn.indexOf("raise exception 'ไม่พบกิจการ");
+    const vat = fn.indexOf("not entity_is_vat(");
+    expect(guard, "ต้องมีด่านไม่พบกิจการ (ไม่งั้นหลุดไปชน FK แล้วโยน 23503 ดิบ)").toBeGreaterThan(-1);
+    expect(vat).toBeGreaterThan(-1);
+    expect(guard, "ด่านไม่พบกิจการต้องมาก่อนด่าน VAT").toBeLessThan(vat);
+  });
 });
