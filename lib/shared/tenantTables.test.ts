@@ -28,14 +28,22 @@ function arrayAfter(src: string, marker: string): string {
   return src.slice(i + marker.length, j);
 }
 
-/** ไฟล์ migration ล่าสุดที่นิยาม fn_mig_truncate — ตัวที่มีผลจริงใน DB */
+/**
+ * ไฟล์ migration ล่าสุดที่นิยาม fn_mig_truncate — ตัวที่มีผลจริงใน DB
+ *
+ * 🪤 ต้องจับ `create ... function` ไม่ใช่คำว่า `function fn_mig_truncate` เฉย ๆ —
+ *    `revoke execute on function fn_mig_truncate(uuid)` ใน 0073 (D99) มีคำนั้นด้วย
+ *    แล้วเทสไปหยิบไฟล์ที่ไม่มีตัวฟังก์ชันมาตรวจ (กับดักจับคำ ตระกูล D92/D95)
+ */
+const DEFINES_MIG_TRUNCATE = /create\s+(or\s+replace\s+)?function\s+(public\.)?fn_mig_truncate\s*\(/i;
+
 function latestMigTruncateSql(): string {
   const dir = path.join(ROOT, "supabase/migrations");
   const hit = readdirSync(dir)
     .filter((f) => f.endsWith(".sql"))
     .sort()
     .reverse()
-    .find((f) => readFileSync(path.join(dir, f), "utf8").includes("function fn_mig_truncate"));
+    .find((f) => DEFINES_MIG_TRUNCATE.test(readFileSync(path.join(dir, f), "utf8")));
   expect(hit, "ไม่พบ migration ที่นิยาม fn_mig_truncate").toBeTruthy();
   return readFileSync(path.join(dir, hit!), "utf8");
 }
