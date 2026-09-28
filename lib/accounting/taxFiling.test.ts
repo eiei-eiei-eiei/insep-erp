@@ -294,7 +294,9 @@ describe("ตรรกะฝั่ง DB ที่ build/lint/test มองไ�
    *    TypeScript มองลำดับใน plpgsql ไม่เห็นเลย ต้องอ่าน SQL มาตรวจ
    */
   it("🚨 fn_file_tax ตรวจ 'ไม่พบกิจการ' ก่อนด่าน VAT เสมอ", () => {
-    const latest = latestSqlWith("function fn_file_tax(");
+    // 🪤 ต้องเป็นไฟล์ที่ **นิยาม** ไม่ใช่ไฟล์ที่มีคำ — `revoke ... on function fn_file_tax(`
+    //    ก็มีคำ "function fn_file_tax(" (กับดักที่ 0073 เจอ · D99)
+    const latest = latestSqlWith("create or replace function fn_file_tax(");
     const i = latest.indexOf("create or replace function fn_file_tax(");
     const fn = latest.slice(i, latest.indexOf("\nend $$;\n", i));
     /**

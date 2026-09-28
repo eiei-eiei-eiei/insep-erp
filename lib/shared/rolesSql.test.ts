@@ -24,7 +24,10 @@ function latestHasCapSql(): string {
     .filter((f) => f.endsWith(".sql"))
     .sort()
     .reverse()
-    .find((f) => readFileSync(path.join(dir, f), "utf8").includes("function has_cap("));
+    // 🪤 จับ `create ... function` ไม่ใช่คำว่า `function has_cap(` — บรรทัด
+    //    `revoke execute on function has_cap(text)` ในอนาคตก็มีคำนั้น (กับดักที่ 0073 เจอ · D99)
+    .find((f) => /create\s+(or\s+replace\s+)?function\s+(public\.)?has_cap\s*\(/i
+      .test(readFileSync(path.join(dir, f), "utf8")));
   expect(hit, "ไม่พบ migration ที่นิยาม has_cap()").toBeTruthy();
   return readFileSync(path.join(dir, hit!), "utf8");
 }

@@ -92,7 +92,9 @@ export const createUserAction = guard(async (input: {
     email: usernameToEmail(username),
     password,
     email_confirm: true, // ไม่ต้องยืนยันอีเมล — login ได้ทันที
-    // ★ handle_new_user() (0025) อ่าน tenant_id จากตรงนี้ — ไม่ส่ง = สร้าง profile ไม่ได้
+    // ★ handle_new_user() อ่าน tenant_id จากตรงนี้ — ไม่ส่ง = สร้างผู้ใช้ไม่ได้
+    //   (จริงตั้งแต่ 0074 · D99: ก่อนหน้านั้นมี fallback ไป "tenant แรกที่ active"
+    //    ทำให้ประโยคนี้เป็นคำโกหก · client นี้เป็น service role → my_tenant() เป็น null เสมอ)
     user_metadata: { username, display_name: displayName, tenant_id: me.tenantId },
   });
   if (error) {

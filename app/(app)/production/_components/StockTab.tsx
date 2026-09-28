@@ -1,11 +1,14 @@
 "use client";
 
+import { can, capHolderText, type Role } from "@/lib/shared/roles";
 import { recomputeStockAction } from "../actions";
 import { Card, Msg, useSaver } from "./ui";
 import type { StockRow } from "./types";
 
-export function StockTab({ stock }: { stock: StockRow[] }) {
+export function StockTab({ stock, role }: { stock: StockRow[]; role: Role }) {
   const { pending, msg, run } = useSaver();
+  // ด่านจริงอยู่ใน recompute_stock_product (0074 · D99) — ตรงนี้แค่ไม่ปล่อยให้กดแล้วค่อยเจอ error
+  const mayRepair = can(role, "prod.write");
 
   return (
     <Card title="สต็อกขวดคงเหลือ (stock_product)">
@@ -13,7 +16,7 @@ export function StockTab({ stock }: { stock: StockRow[] }) {
       <div className="mb-3">
         <button
           type="button"
-          disabled={pending}
+          disabled={pending || !mayRepair}
           onClick={() =>
             run(() => recomputeStockAction(), "คำนวณสต็อกใหม่จาก log ทั้งหมดเรียบร้อย")
           }
@@ -21,6 +24,11 @@ export function StockTab({ stock }: { stock: StockRow[] }) {
         >
           {pending ? "กำลังคำนวณ…" : "คำนวณสต็อกใหม่ (recompute)"}
         </button>
+        {!mayRepair && (
+          <p className="mt-2 text-sm text-warn">
+            คำนวณสต็อกใหม่ได้เฉพาะ {capHolderText("prod.write")} — บทบาทนี้ดูยอดได้อย่างเดียว
+          </p>
+        )}
       </div>
       {stock.length === 0 ? (
         <p className="text-sm text-faint">ยังไม่มีข้อมูลสต็อก</p>

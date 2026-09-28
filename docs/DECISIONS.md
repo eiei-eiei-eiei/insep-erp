@@ -10016,6 +10016,131 @@ qty×ราคา แล้วบวก 7% — ไม่มีอะไรให
 - **ไม่แตะ `round2()`** — `1121.5 × 3% = 33.644999…` → 33.64 เป็นพฤติกรรมของระบบเดิม
 - **ไม่เก็บโหมดลง DB** (ดูข้อ 6) · **ไม่แตะฝั่งขาย/บาร์/สูตร ภพ.30**
 
+### D99 — definer ที่ใครก็เรียกได้: `revoke from public` ไม่มีผลบน Supabase (0073-0074, 2026-09-28)
+
+**ต้นเรื่อง**: รีวิวภายนอก `REVIEW_FABLE_1.md` ข้อ R2 (definer 3 ตัวรับ `p_tenant` แต่ไม่ revoke)
+และ R6 (`handle_new_user` ตกไป tenant แรกที่ active) · คัดกรองแล้วใน `REVIEW_FABLE_1_TRIAGE.md`
+
+#### 1. 🔴 ข้อค้นพบหลัก — revoke ทุกบรรทัดใน repo ก่อน 0073 **ไม่มีผลเลย**
+Supabase ตั้ง default privileges ของ schema `public` ไว้ 2 ชุด (ของ `postgres` และ `supabase_admin`)
+ให้ grant execute แก่ `anon` และ `authenticated` **ตรง ๆ** ตอนสร้างฟังก์ชัน
+`revoke ... from public` ถอนได้แค่สิทธิ์ของกลุ่ม PUBLIC ⇒ 2 role นั้นยังเรียกได้ครบ
+- หลักฐานในเทสของเราเองมีมาตลอด: `fn_excise_months_open` ถูก revoke from public ใน 0058
+  แต่ `excise-month-close.test.ts` เรียกด้วย session ผู้ใช้แล้วสำเร็จ — เทสเขียว ไม่มีใครสะดุด
+- ยืนยันด้วย probe `has_function_privilege` (อ่านอย่างเดียว) บน DB จริงทั้ง 2 ก้อน:
+  **definer ทุกตัวเรียกได้จาก anon และ authenticated** (51 ตัวใน DB เจ้าของ · 52 ใน proof-app
+  ซึ่งมี `rls_auto_enable` เพิ่ม — ดูข้อ 8) รวม `fn_mig_truncate(uuid)`,
+  `fn_mig_set_triggers(boolean)`, `fn_mig_recompute_stock(uuid)`
+- ตัวที่หนักที่สุด: `fn_mig_set_triggers(false)` **ไม่ต้องรู้ uuid ไม่ต้องล็อกอิน**
+  (anon key อยู่ใน bundle ฝั่ง browser + `supabase/fleet.json`) ยิงครั้งเดียว = trigger
+  สต็อก+audit ดับทั้งฐานของทุกลูกค้า (ฉากเดียวกับที่ D82 เขียนไว้)
+- 🪤 **คอมเมนต์ที่ประกาศเจตนาที่โค้ดไม่ได้ทำ**: `0014_migration_helpers.sql:7` เขียนว่า
+  *"grant execute ให้ service_role **อย่างเดียว**"* — ไฟล์มี `grant ... to service_role` จริง
+  แต่คำว่า *อย่างเดียว* ไม่เคยเป็นจริง (ไม่มีการถอนจาก anon/authenticated) แล้วรอดสายตา
+  มาได้เพราะ revoke **รันผ่าน** · บทเรียน: *รันผ่าน ≠ มีผล* ต้องถามสถานะจริงหลังลงเสมอ
+- รายงานต้นทางนับ definer ที่รับ `p_tenant` ได้ 3 ตัว — ของจริงมี **7** (+ `fn_mig_truncate`,
+  `fn_mig_recompute_stock`, `entity_is_vat`, `fn_excise_months_open`)
+
+#### 2. แยกเป็น 2 migration — ฉุกเฉินต้องไม่ผูกกับงานที่ยังคุยไม่จบ (ผู้ใช้สั่ง)
+- **0073 (ลงแล้ว ฉุกเฉิน)** GRANT/REVOKE ล้วน ไม่แตะตรรกะ: `fn_mig_set_triggers` ·
+  `fn_mig_truncate` · `fn_mig_recompute_stock` · `bar_apply_move` →
+  `revoke from public, anon, authenticated` + `grant service_role`
+  ★ ก่อนลงไล่ `prosrc` จาก DB จริง: ผู้เรียก `bar_apply_move` 5 ตัวเป็น definer ทั้งหมด ·
+  ไม่มีฟังก์ชันใดใน DB เรียก `fn_mig_*` · 🚨 **หลังลงรัน probe ซ้ำทั้ง 2 ก้อน** (anon/authenticated
+  = false · service_role = true) ก่อนบอกว่าปิดแล้ว
+- **0074** ส่วนที่แตะเส้นทางสต็อก + R6 + เครื่องมือตรวจ (ด้านล่าง)
+- 🚨 **ห้ามมัดการแตะเส้นทางสต็อกเข้ากับ push ฉุกเฉิน**
+
+#### 3. `apply_stock_delta` — พลิก trigger เป็น definer **ก่อน** แล้วค่อยปิด
+ผู้เรียกคนเดียวคือ `trg_update_stock_product` ซึ่งเป็น **invoker** ⇒ revoke ตรง ๆ =
+insert/update/delete บน `log_product` เด้ง permission denied ทั้งระบบ
+→ `alter function trg_update_stock_product() security definer` + `set search_path = public`
+★ **ใช้ `ALTER` ไม่ยกตัวฟังก์ชันมาเขียนใหม่** = ตรรกะ +/− ของ P2 ไม่ถูกคัดลอกแม้ตัวอักษรเดียว
+(เปลี่ยนแค่ระดับสิทธิ์ ตามกติกา D82/D90) · ค่าที่ trigger ส่งต่อมาจากแถวที่ RLS ตรวจไปแล้ว
+
+#### 4. `recompute_stock_product` — คงเรียกได้ (ปุ่มซ่อมสต็อก) แต่มีด่านในตัว
+- ผู้เรียกที่เชื่อได้ = `auth.role()` เป็น `service_role` หรือ **ไม่มี JWT เลย**
+  (postgres / SQL editor / pg_cron) → ทำตามเดิม (`fn_mig_recompute_stock` ของ restore/import)
+- นอกนั้นต้อง: มี `my_tenant()` · มี `has_cap('prod.write')` (viewer เคยสั่งได้) · `p_tenant` ถ้าส่ง
+  ต้องเท่ากับ `my_tenant()` · revoke จาก `anon`
+- 🔄 **ต่างจากที่ triage เสนอ**: triage ให้ยกเว้น "เมื่อ `my_tenant()` เป็น null" แต่ anon และ
+  ผู้ใช้ที่ไม่มี profile ก็ได้ null ⇒ เรียกแบบไม่ส่งพารามิเตอร์ = `v_t` null = **ซ่อมทุก tenant**
+- ยกด้วย `scripts/gen/gen-0074.mjs` ซึ่ง **assert** ว่าถอดบล็อกด่านออกแล้วได้ต้นฉบับจาก 0029 เป๊ะ
+- UI: ปุ่มในแท็บสต็อกเทาสำหรับบทบาทที่ไม่มี `prod.write` พร้อมบอกว่าใครกดได้ (`capHolderText`)
+
+#### 5. R6 `handle_new_user` — ตัด arm ที่ 3 ของ coalesce
+`(select id from tenants where is_active limit 1)` ทิ้ง · คง `my_tenant()` ไว้ ⇒ ไม่มี tenant = raise
+(fail-closed) · ไล่แล้วว่าทุกจุดที่ `createUser` ส่ง `tenant_id` ครบ (provision · หน้าผู้ใช้ ·
+grant-platform-admin · harness เทส) · ผลข้างเคียงที่ตั้งใจ: กด Add user จาก Supabase dashboard
+จะได้ *Database error creating new user* · ★ คอมเมนต์ใน `settings/users/actions.ts` ที่ว่า
+*"ไม่ส่ง = สร้างไม่ได้"* ซึ่งเคยเป็นคำโกหก กลายเป็นความจริง
+⏳ **Email signup บน hosted ต้องเช็คที่ dashboard เอง** (`config.toml` มีผลแค่ local)
+
+#### 6. เทส — ชั้นที่พิสูจน์ถามสิทธิ์จริง ไม่ใช่อ่านไฟล์
+- `fn_audit_definer_grants()` (0074) คืนทุกฟังก์ชันใน public + สิทธิ์ anon/authenticated/
+  service_role + `prosrc` · **security invoker โดยตั้งใจ** · 🚨 revoke ในไฟล์เดียวกัน
+  (ลืม = แจกแผนที่ช่องโหว่) · เทสตรวจตัวมันเองด้วย
+- `tests/tenant/definer-grants.test.ts` วนจาก pg_proc ⇒ ฟังก์ชันในอนาคตถูกครอบอัตโนมัติ ·
+  เหตุผลที่ต้องเป็นชั้นนี้: **drop + create ใหม่ (D69) = ได้ default privileges คืนเงียบ ๆ**
+  ขณะที่ไฟล์ SQL ยังมีบรรทัด revoke ครบ — เทสอ่านไฟล์จะยังเขียว
+- กฎ: definer **ทุกตัว** (ไม่ใช่แค่ 7 ตัวที่รับ p_tenant — "อีก ~40 ตัวมีด่านของตัวเอง" เป็น
+  คำกล่าวอ้าง ไม่ใช่สิ่งที่พิสูจน์แล้ว) ต้อง (ก) ปิดจาก anon+authenticated หรือ (ข) มี
+  `my_tenant()` / `has_cap(` / `*_guard(` ใน body (ตัดคอมเมนต์+สตริงก่อน) หรือ (ค) อยู่ใน
+  allowlist ที่ **ตรวจตัวเองได้** · definer ที่รับ `p_tenant` เข้มกว่า: ต้องปิด หรืออ่านอย่างเดียว
+  หรืออยู่ใน `P_TENANT_GUARDED`
+- allowlist (`lib/shared/definerPolicy.ts`) 3 หมวด: **readonly** (ไม่มีคำสั่งเขียน + ไม่เรียก
+  ฟังก์ชันอื่นนอกหมวด) · **self** (แตะแค่ `profiles` และแก้ได้เฉพาะ `where id = auth.uid()`) ·
+  **delegates** (ไม่เขียนเอง และทุกตัวที่เรียกต่อต้องปิดหรือมีด่าน) ⇒ วันไหนมีคนเติมคำสั่งเขียน
+  เข้าไปในตัวที่ allowlist ไว้ เทสแดงทันที · มีเทสกันชื่อค้างใน allowlist ด้วย
+- probe ก่อนออกแบบ: 12 ตัวไม่ผ่านกฎ (ข) — **อ่าน body ครบทุกตัว ไม่มีตัวไหนเป็นรูจริง**
+  (`fn_bar_quick_sale` ไม่เขียนเอง ส่งต่อให้ 3 ตัวที่มีด่าน · `my_*`/`has_cap` อ่าน profile ตัวเอง ฯลฯ)
+- 🚨 **ห้ามพิสูจน์ด้วยการยิงฟังก์ชันที่ปิดไว้เป็น anon** — ถ้าด่านไม่แน่น การทดสอบคือการก่อ
+  ความเสียหาย · ยิงจริงแค่ `recompute_stock_product` (ผลลัพธ์ถูกต้องเสมอ) และ
+  `fn_audit_definer_grants` (อ่านอย่างเดียว)
+- ชั้นเสริม `lib/shared/definerGrantsSql.test.ts`: ตั้งแต่ 0073 revoke ทุกบรรทัดต้องครอบ `anon` ·
+  ตัวใน `MUST_CLOSED_DEFINERS` ต้องถูก revoke ในไฟล์ที่ไม่เก่ากว่าการนิยามล่าสุด ·
+  **พิสูจน์แล้วว่าจับได้** (แก้ 0074 ให้เหลือ `from public` → แดง 2 ข้อ → generate คืน → เขียว)
+
+- 🪤 **กฎ ข. (มีคำว่า my_tenant() ใน body) ไม่พอสำหรับตัวที่รับ p_tenant** — recompute ก่อน 0074
+  มี `coalesce(p_tenant, my_tenant())` จึงผ่านกฎ ข. ทั้งที่รับ tenant ของใครก็ได้ ⇒ ตัวใน
+  `P_TENANT_GUARDED` ต้อง **เทียบ** `p_tenant <> my_tenant()` จริง และปิดจาก anon (เจอระหว่างเขียนเทส)
+- ตัวตรวจอยู่ใน `lib/shared/definerPolicy.ts` **แหล่งเดียว** ใช้ทั้ง test:tenant และ
+  `npm run db:audit-grants` (ให้ผู้ใช้รันเองหลังลง migration ทุกครั้ง · ใช้ service role key
+  ที่มีอยู่แล้ว **ไม่เพิ่มที่อยู่ใหม่ให้รหัส DB**) · unit test ด้วยข้อมูลสังเคราะห์ 16 ข้อ (คู่ผ่าน/แดงทุกข้อ)
+- ★ **พิสูจน์กับข้อมูลจริงก่อนลง 0074**: รันตัวตรวจกับ pg_proc ของทั้ง 2 DB (อ่านอย่างเดียว)
+  → ฟ้อง **เฉพาะ** `apply_stock_delta` · `recompute_stock_product` · `fn_audit_definer_grants` (ยังไม่มี)
+  ไม่มีตัวอื่นใน definer ทั้งหมด ⇒ กฎกับ allowlist พอดีกับ body จริง
+- ★ **หลังลง 0074 (ผลจริงจาก `db:audit-grants`)**: definer 52 ตัว (เจ้าของ) / 53 ตัว (proof-app) ·
+  ปิดจาก anon+authenticated 5 ตัว · ผ่านทุกกฎทั้ง 2 ก้อน
+  - ทำไมเพิ่มจาก 51/52 → 52/53: `trg_update_stock_product` เพิ่งถูกพลิกเป็น definer (ข้อ 3)
+  - ทำไม 2 ก้อนต่างกัน 1: `rls_auto_enable()` มีเฉพาะ proof-app (ข้อ 8)
+  - ทำไมปิด 5 ไม่ใช่ 6 ตาม `MUST_CLOSED_DEFINERS`: `fn_audit_definer_grants` เป็น **invoker**
+    จึงไม่ถูกนับเป็น definer แต่ปิดจาก anon/authenticated เหมือนกัน (test:tenant ตรวจแยกข้อ)
+  - 🪤 ตัวเลข "52 ตัว" ที่จดไว้ตอนแรกนับผิด — รวมแถว `trg_update_stock_product` ที่ตอนนั้นยังเป็น
+    invoker เข้าไปด้วย (probe แรกคัดแถวด้วย `prosecdef or proname in (...)`) · แก้เป็นตัวเลขจริงแล้ว
+
+#### 7. 🪤 กับดักจับคำ — เทสเดิมแดงเพราะ 0073
+`tenantTables.test.ts` หาไฟล์ที่นิยาม `fn_mig_truncate` ด้วย `includes("function fn_mig_truncate")`
+แต่ `revoke execute on function fn_mig_truncate(uuid)` ก็มีคำนั้น → หยิบ 0073 ที่ไม่มีตัวฟังก์ชัน
+→ แดง 5 ข้อ (DB ไม่มีปัญหา) · แก้เป็นจับ `create [or replace] function` · กับดักเดียวกันแฝงอยู่ใน
+`rolesSql.test.ts` (`has_cap`) และ `taxFiling.test.ts` (`fn_file_tax`) → แก้ไปพร้อมกัน
+(`redistill.test.ts` ไม่โดน — เลือกไฟล์จากชื่อไฟล์)
+
+#### 8. จงใจไม่ทำ / เลื่อน
+- `fn_excise_months_open` — อยู่ใน allowlist หมวด readonly · **เหตุผล: ไม่มีผู้เรียกในแอปเลย
+  (มีแต่ใน SQL ด้วยกัน) และอ่านอย่างเดียว** — ไม่ใช่เพราะเทสเรียกอยู่ (เทสไม่ใช่เหตุผลของการคงรู)
+- `entity_is_vat` — allowlist readonly · ผู้เรียกคือ trigger **invoker** 2 ตัว (ด่าน ม.86/13 บน
+  `transactions`/`sales_orders`) · คืน boolean ที่เป็นข้อมูลสาธารณะ เขียนอะไรไม่ได้
+  ⇒ ไม่คุ้มเอาด่านกฎหมายไปเสี่ยง (ถ้าจะปิด ใช้วิธีเดียวกับข้อ 3)
+- **ไม่แก้ default privileges** — ถ้าแก้ RPC invoker ทุกตัวที่แอปเรียกต้อง grant ทีละตัว
+  (ลืม = แอปพังเงียบ ๆ) และ postgres แก้ default ACL ของ `supabase_admin` ไม่ได้อยู่ดี
+  ⇒ ให้เทส pg_proc เป็นตัวกัน
+- `rls_auto_enable()` (มีเฉพาะ proof-app · ไม่มีในไฟล์ใดใน repo) — owner = `postgres` แต่เป็น
+  ฟังก์ชันของ event trigger `ensure_rls` (ddl_command_end) ที่เปิด RLS ให้ตารางใหม่ใน public เอง
+  ⇒ **ไม่ drop** (drop = ตารางใหม่ใน proof-app ไม่ถูกเปิด RLS) · เรียกแบบ RPC ไม่ได้อยู่แล้ว
+- ⚠️ **pg_cron ไม่ได้ติดตั้งทั้ง 2 DB** (`cron.job` ไม่มี) — บรรทัด *"pg_cron weekly"* ใน CLAUDE.md
+  ไม่ตรงความจริง · ด่านใน recompute รองรับไว้แล้วถ้าจะติดตั้งทีหลัง (ไม่มี JWT = ผ่าน)
+
 ## ค้างต้องถามผู้ใช้ (ยังไม่ตัดสิน — MIGRATION_PLAN sec 11)
 - ~~อีเมล login (ข้อ 9)~~ → **ตัดสินแล้ว (D9)**: username-based `<username>@insep.local`
 - ~~ไฟล์ wh3 (50ทวิ)~~ → **ผู้ใช้ยืนยันว่าเป็นเทมเพลตเปล่า** — อัปโหลดด้วย `--include-wh3` เป็น `wht/wh3_template.pdf`
