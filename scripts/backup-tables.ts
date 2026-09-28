@@ -26,7 +26,7 @@ const TABLES = [
   "bar_receive", "bar_sale", "bar_sale_item", "bar_move", "bar_post",
   "pay_inputs", "pay_components", "pay_rates", "pay_variables", "pay_post_legs",
   "employees", "payroll_periods", "payroll_items",
-  "report_runs", "excise_month_close", "edit_log", "profiles",
+  "report_runs", "excise_month_close", "doc_numbering", "edit_log", "profiles",
 ];
 
 const PAGE = 1000; // limit ปริยายของ PostgREST — ต้องวนหน้า ไม่งั้นตารางใหญ่ขาดเงียบ ๆ

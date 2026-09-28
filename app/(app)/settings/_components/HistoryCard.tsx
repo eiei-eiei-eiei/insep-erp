@@ -3,7 +3,7 @@
 import { Fragment, useState } from "react";
 import { Card, Empty, Badge, RowBtn } from "@/lib/shared/ui";
 import { AUDITED_TABLES, tableLabel } from "@/lib/shared/tenantTables";
-import { changedFields, rawBefore, ACTION_LABEL_TH, type EditLogRow } from "@/lib/shared/editLog";
+import { changedFields, rawBefore, rowPkLabel, ACTION_LABEL_TH, type EditLogRow } from "@/lib/shared/editLog";
 
 /**
  * ประวัติการแก้ไข — ดูอย่างเดียว + คัดลอกค่าเก่า (D80)
@@ -153,12 +153,13 @@ export function HistoryCard({
                           <td className="whitespace-nowrap text-muted">{fmtWhen(r.createdAt)}</td>
                           <td className="text-muted">{r.userName}</td>
                           <td className="text-muted">{tableLabel(r.tableName)}</td>
-                          <td className="font-medium text-ink">{r.rowPk || "—"}</td>
+                          <td className="font-medium text-ink">{r.rowPk ? rowPkLabel(r.tableName, r.rowPk) : "—"}</td>
                           <td>
                             <Badge tone={ACTION_TONE[r.action]}>{ACTION_LABEL_TH[r.action]}</Badge>
                           </td>
                           <td className="num text-muted">
-                            {fields.length} {isOpen ? "▲" : "▼"}
+                            {/* 0 ช่อง = บันทึกซ้ำด้วยค่าเดิม (เช่นตั้งแค่เลขถัดไป · D100) — "0" เฉย ๆ อ่านแล้วงง */}
+                            {fields.length || "—"} {isOpen ? "▲" : "▼"}
                           </td>
                         </tr>
                         {isOpen && (

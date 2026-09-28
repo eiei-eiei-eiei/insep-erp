@@ -12,6 +12,7 @@ import {
   IconBox, IconClock, IconDoc, IconEdit, IconMoney, IconPrint, IconRefresh, IconSearch, IconTrash,
 } from "@/lib/shared/icons";
 import { can, toRole } from "@/lib/shared/roles";
+import { actionPostsRevenue, docDateNote, manualNoError, manualNoFields } from "@/lib/sales/backdate";
 import { cancelLockedText } from "@/lib/production/monthClose";
 
 const itemsCache = new Map<string, OrderItem[]>();
@@ -292,6 +293,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
             (boot.customers.find((c) => c.id === dialog.order.customerId) ??
               boot.customers.find((c) => c.name === dialog.order.customerName))?.creditTerm ?? 0
           }
+          canManual={canCancel}
           onClose={() => setDialog(null)}
           onDone={(text) => {
             setDialog(null);
@@ -347,12 +349,15 @@ function PaymentDialog({
   order,
   action,
   creditDays,
+  canManual,
   onClose,
   onDone,
 }: {
   order: OrderRow;
   action: OrderAction;
   creditDays: number;
+  /** D100 เฟส 3 — กรอกเลขเอกสารเอง (ใบกระดาษช่วงระบบล่ม) = ระดับหัวหน้า (sales.config) */
+  canManual: boolean;
   onClose: () => void;
   onDone: (text: string) => void;
 }) {
@@ -367,6 +372,16 @@ function PaymentDialog({
   const [depositDays, setDepositDays] = useState(7); // ครบกำหนดชำระมัดจำ (แก้ได้)
   const [method, setMethod] = useState("โอนเงิน");
   const [docDate, setDocDate] = useState(todayISO());
+  // D100 เฟส 3 — ใบกระดาษที่ออกไปแล้ว: ช่องที่โชว์ = เลขที่ action นี้จะออกจริง (ตัวเดียวกับ server)
+  const manualFields = manualNoFields(action, order);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualInv, setManualInv] = useState("");
+  const [manualPay, setManualPay] = useState("");
+  const manualErr = manualOpen
+    ? [manualFields.inv && manualInv.trim() ? manualNoError(manualInv) : null,
+       manualFields.pay && manualPay.trim() ? manualNoError(manualPay) : null].find(Boolean) ?? null
+    : null;
+  const dateNote = docDateNote(docDate, todayISO(), actionPostsRevenue(action));
   const [chequeBank, setChequeBank] = useState("");
   const [chequeNo, setChequeNo] = useState("");
   const [chequeDate, setChequeDate] = useState("");
@@ -385,6 +400,9 @@ function PaymentDialog({
       chequeDetails: chequeDetails || undefined,
       creditDays: isDepositInvoice ? depositDays : action === "DEPOSIT_AND_SEND" || action === "SEND_TO_WH" ? creditDays : undefined,
       amount: needsAmount ? amount : action === "PAY_BALANCE" || action === "FULL_PAYMENT_LATER" ? order.outstandingBalance : undefined,
+      manualNos: manualOpen
+        ? { inv: manualFields.inv ? manualInv.trim() : "", pay: manualFields.pay ? manualPay.trim() : "" }
+        : undefined,
     };
     run(() => processOrderActionAction(order.quNo, action, payload), "", (data) => {
       const d = data as { warning?: string };
@@ -458,9 +476,35 @@ function PaymentDialog({
           <label className="block">
             <span className="mb-1 block font-bold text-muted">วันที่ออกเอกสาร / วันที่รับเงิน</span>
             <input type="date" value={docDate} onChange={(e) => setDocDate(e.target.value)} className="w-full rounded-lg border border-line p-2 outline-none focus:border-brand" />
+            {dateNote && <span className="mt-1 block text-xs text-warn">{dateNote}</span>}
           </label>
 
-          <button onClick={submit} disabled={pending} className="w-full rounded-lg bg-brand py-2 font-bold text-on-brand hover:opacity-90 disabled:opacity-50">
+          {/* D100 เฟส 3 — ใบกระดาษที่ออกไปแล้วช่วงระบบล่ม · 🪤 ไม่ซ่อนทั้งก้อนสำหรับคนที่ไม่มีสิทธิ์ — บอกว่าใครทำได้ (D86) */}
+          {(manualFields.inv || manualFields.pay) && (
+            <div className="rounded border border-line p-2">
+              <label className="flex items-center gap-2 text-muted">
+                <input type="checkbox" checked={manualOpen} disabled={!canManual} onChange={(e) => setManualOpen(e.target.checked)} />
+                ออกใบกระดาษไปแล้ว — กรอกเลขตามใบจริง
+              </label>
+              {!canManual && <p className="mt-1 text-xs text-faint">กรอกเลขเอกสารเองได้เฉพาะหัวหน้าฝ่ายขาย</p>}
+              {manualOpen && (
+                <div className="mt-2 space-y-2">
+                  {manualFields.inv && (
+                    <TextInput placeholder="เลขใบแจ้งหนี้ (ว่าง = ให้ระบบออก)" value={manualInv} onChange={(e) => setManualInv(e.target.value)} />
+                  )}
+                  {manualFields.pay && (
+                    <TextInput placeholder="เลขใบกำกับภาษี / ใบเสร็จ (ว่าง = ให้ระบบออก)" value={manualPay} onChange={(e) => setManualPay(e.target.value)} />
+                  )}
+                  <p className="text-xs text-faint">
+                    ระบบตรวจว่าเลขนี้ยังไม่มีเอกสารใช้ · เลขอัตโนมัติใบถัดไปจะต่อจากเลขที่มากที่สุดเอง
+                  </p>
+                  {manualErr && <p className="text-xs text-crit">{manualErr}</p>}
+                </div>
+              )}
+            </div>
+          )}
+
+          <button onClick={submit} disabled={pending || !!manualErr} className="w-full rounded-lg bg-brand py-2 font-bold text-on-brand hover:opacity-90 disabled:opacity-50">
             {pending ? "กำลังบันทึก…" : "บันทึก"}
           </button>
         </div>

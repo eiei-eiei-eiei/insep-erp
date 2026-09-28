@@ -142,6 +142,7 @@ describe("navSubItems — รายการในดร็อปดาวน์
     const items = navSubItems("settings", "main");
     expect(items.map((i) => i.href)).toEqual([
       "/settings/company",
+      "/settings/numbering", // D100
       "/settings/branding",
       "/settings/notify",
       "/settings/users",

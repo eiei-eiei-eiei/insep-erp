@@ -52,8 +52,9 @@ export const DEFINER_ALLOWLIST: Record<string, { kind: AllowKind; why: string }>
   has_cap: { kind: "self", why: "ตารางสิทธิ์ (D85) — อ่าน role ของตัวเอง" },
   clear_password_change_flag: { kind: "self", why: "เคลียร์ flag ของตัวเองคอลัมน์เดียว (0031)" },
   fn_bar_quick_sale: { kind: "delegates", why: "เรียก fn_bar_open_sale/add_lines/close_sale ต่อกัน" },
-  fn_bar_next_doc: { kind: "delegates", why: "ประกอบเลขเอกสาร · นับเลขผ่าน next_serial (มี my_tenant)" },
-  fn_next_sales_doc: { kind: "delegates", why: "ประกอบเลขเอกสาร · นับเลขผ่าน next_serial (มี my_tenant)" },
+  // D100 (0076) — กลายเป็นตัวส่งต่อให้ fn_next_doc_no (มี my_tenant + has_cap/bar_guard)
+  fn_bar_next_doc: { kind: "delegates", why: "แปลง B/BR เป็นชนิดเอกสาร แล้วส่งต่อให้ fn_next_doc_no" },
+  fn_next_sales_doc: { kind: "delegates", why: "แปลง QU/ORD/INV/TAX/RC เป็นชนิดเอกสาร แล้วส่งต่อให้ fn_next_doc_no" },
 };
 
 /** รับ p_tenant แต่เปิดให้ authenticated ได้ เพราะมีด่านเทียบ `p_tenant <> my_tenant()` ในตัว */

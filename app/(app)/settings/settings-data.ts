@@ -2,6 +2,39 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { brandingFromSettings, type Branding } from "@/lib/shared/branding";
 import type { EditLogRow } from "@/lib/shared/editLog";
+import { mustRead } from "@/lib/shared/dbError";
+import { getTenantPlan } from "@/lib/shared/tenant-plan";
+import type { DocNumberingRow } from "@/lib/shared/docNumbering";
+
+/**
+ * ตั้งค่า → เลขเอกสาร (D100)
+ *
+ * · เอกสารขาย = ออกในนามกิจการเดียว (`sales_doc_entity`) — RPC ตัดสินให้เอง ไม่ต้องเลือก
+ * · บาร์ = แยกกิจการ · ปริยายคือกิจการของบาร์ (`bar_entity`) → ถ้าไม่ได้ตั้ง ใช้กิจการแรก
+ * 🚨 อ่านไม่ได้ = throw (D89) — หน้าที่ว่างเปล่าแล้วดูเหมือน "ยังไม่มีอะไรให้ตั้ง" คือคำโกหก
+ */
+export async function getDocNumberingSettings(entityParam?: string): Promise<{
+  rows: DocNumberingRow[];
+  entities: { entity_id: string; name: string }[];
+  barEntityId: string;
+  modules: string[];
+}> {
+  const supabase = await createClient();
+  const [ents, st, plan] = await Promise.all([
+    supabase.from("entities").select("entity_id, name").order("entity_id"),
+    supabase.from("app_settings").select("value").eq("kind", "bar_entity").maybeSingle(),
+    getTenantPlan(),
+  ]);
+  const entities = mustRead(ents, "รายชื่อกิจการ") as { entity_id: string; name: string }[];
+  const known = (id: string | undefined | null) => !!id && entities.some((e) => e.entity_id === id);
+  const barEntityId = known(entityParam)
+    ? entityParam!
+    : known(st.data?.value as string) ? (st.data!.value as string) : entities[0]?.entity_id ?? "";
+
+  const list = await supabase.rpc("fn_doc_numbering_list", { p_entity: barEntityId || null });
+  const rows = (mustRead(list, "รูปแบบเลขเอกสาร") ?? []) as DocNumberingRow[];
+  return { rows, entities, barEntityId, modules: plan.modules };
+}
 
 /**
  * ข้อมูลของหน้าตั้งค่ากลาง (/settings)

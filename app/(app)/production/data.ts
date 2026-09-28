@@ -3,7 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 import { mustRead } from "@/lib/shared/dbError";
 import {
   pendingBatches,
-  nextBatchNumber,
   remainingDistillVol,
   remainingFermentedVol,
   isFermented,
@@ -62,13 +61,32 @@ export async function getPendingBatches() {
   }));
 }
 
-/** P12: เลข batch ถัดไปของวันที่ (ปี พ.ศ.) */
-export async function getNextBatchNumber(dateISO: string) {
+/**
+ * เลขถัดไปของ batch / ล็อตกลั่นซ้ำ ณ วันที่นั้น — รูปแบบตาม ตั้งค่า → เลขเอกสาร (D100)
+ * ปริยาย = รูปแบบเดิมเป๊ะ (`12/69` golden P12 · `S1/69` D94)
+ * ★ `fn_suggest_doc_no` เสนอเลขโดยไม่กินเลข (ผู้ใช้ยังพิมพ์เลขเองได้) และข้ามเลขที่มีอยู่แล้วใน
+ *   หมัก/ปิด batch/รินสุราแช่ (batch) · log_redistill (ล็อต) ทั้ง tenant
+ * 🚨🚨 D89 — ว่างเพราะอ่านไม่ได้ = เลขวนกลับไปเริ่มที่ 1 แล้ว **ชน batch เดิม**
+ *    กติกาเหล็ก "1 batch = 1 แถว log_distill" พังทันที และฟอร์ม ภส. หักส่าซ้ำ → ยอมพังแทน
+ */
+async function suggestProdNo(type: "prod_batch" | "prod_lot", dateISO: string, label: string): Promise<string> {
+  if (!dateISO) return ""; // ของเดิม: ยังไม่เลือกวัน = ยังไม่เสนอเลข
   const supabase = await createClient();
-  // 🚨🚨 D89 — ว่างเพราะอ่านไม่ได้ = เลข batch วนกลับไปเริ่มที่ 1 แล้ว **ชน batch เดิม**
-  //    กติกาเหล็ก "1 batch = 1 แถว log_distill" พังทันที และฟอร์ม ภส. หักส่าซ้ำ
-  const data = mustRead(await supabase.from("log_ferment").select("batch"), "เลข batch ที่มีอยู่");
-  return nextBatchNumber(dateISO, (data ?? []).map((r) => r.batch as string));
+  const data = mustRead(
+    await supabase.rpc("fn_suggest_doc_no", { p_type: type, p_entity: null, p_date: dateISO }),
+    label,
+  );
+  return String(data ?? "");
+}
+
+/** P12: เลข batch ถัดไปของวันที่ */
+export async function getNextBatchNumber(dateISO: string) {
+  return suggestProdNo("prod_batch", dateISO, "เลข batch ถัดไป");
+}
+
+/** เลขล็อตกลั่นซ้ำถัดไปของวันที่ (D94) */
+export async function getNextLotNumber(dateISO: string) {
+  return suggestProdNo("prod_lot", dateISO, "เลขล็อตถัดไป");
 }
 
 /** P9: ปริมาณสุราคงเหลือรอปรุง ต่อชื่อสุรา */
@@ -484,14 +502,6 @@ export async function getRedistillLots() {
     );
   }
   return { lots, rounds };
-}
-
-/** เลขล็อตทั้งหมด (ไว้ให้ nextLotNumber หาเลขถัดไป) */
-export async function getRedistillLotNos() {
-  const supabase = await createClient();
-  // 🚨 D89 — อ่านไม่ได้แล้วเซตว่าง = เลขล็อตวนกลับไป S1 แล้วชนล็อตเดิม (แนวเดียวกับ batch)
-  const data = mustRead(await supabase.from("log_redistill").select("lot_no"), "เลขล็อตที่มีอยู่");
-  return (data ?? []).map((r) => r.lot_no as string);
 }
 
 /** วัตถุดิบ (สมุนไพร) ที่ตัดไว้ของแต่ละรอบ — อ่านกลับมาเติมฟอร์มตอนกดแก้ */

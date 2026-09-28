@@ -438,7 +438,7 @@ function Wht50View({
   const empIds = [...new Set(items.map((i) => i.empId))].sort();
   const certOf = (empId: string) => certs.find((c) => c.empId === empId);
 
-  // 🚨 ต้องเป็น entity จริง — ส่งค่าว่างไป `nextWhtDocNo` จะนับจากศูนย์แล้ว**ออกเลขซ้ำกับใบที่มีอยู่**
+  // 🚨 ต้องเป็น entity จริง — ส่งค่าว่างไปขอเลข 50ทวิ = ขอเลขของกิจการผิดตัว แล้ว**ออกเลขซ้ำกับใบที่มีอยู่**
   //    และ RPC จะ fallback ไป 'EID01' ที่ฮาร์ดโค้ดไว้ ซึ่งผิดกิจการทันทีสำหรับลูกค้ารายอื่น
   const entityId = entity.entityId;
 

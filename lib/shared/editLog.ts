@@ -8,6 +8,8 @@
  * ★ ไฟล์นี้บริสุทธิ์ (ไม่แตะ DB/React) จึงเทสได้ — ตรรกะ diff คือส่วนที่พลาดแล้วเงียบที่สุด
  */
 
+import { DOC_TYPE_INFO, DATE_FMT_LABEL, RESET_LABEL, ERA_LABEL, SEP_LABEL } from "./docNumbering";
+
 export type EditAction = "insert" | "update" | "delete";
 
 export type EditLogRow = {
@@ -33,7 +35,31 @@ export type FieldChange = {
  * คอลัมน์ที่ไม่ต้องโชว์ — เป็นของระบบล้วน ไม่ใช่สิ่งที่ผู้ใช้ "แก้"
  * ★ `tenant_id` ห้ามโชว์เด็ดขาด: ไม่มีความหมายกับผู้ใช้ และเป็น uuid ยาวที่กินพื้นที่จอ
  */
-const SKIP = new Set(["tenant_id", "created_at", "updated_at"]);
+const SKIP = new Set(["tenant_id", "created_at", "updated_at", "updated_by"]);
+// ★ updated_by (D100 · doc_numbering) = uuid ของคนแก้ — ซ้ำกับคอลัมน์ "ใครแก้" ที่โชว์ชื่ออยู่แล้ว
+
+/**
+ * ค่าที่เป็นรหัส → ภาษาคน แยกตามตาราง (ชื่อคอลัมน์อย่าง `reset` อาจซ้ำข้ามตารางได้)
+ * ★ ใช้ป้ายชุดเดียวกับหน้าตั้งค่า (lib/shared/docNumbering) — ไม่เขียนคำแปลซ้ำอีกชุด
+ */
+const docTypeLabel: Record<string, string> = Object.fromEntries(
+  Object.entries(DOC_TYPE_INFO).map(([k, v]) => [k, v.label]),
+);
+const VALUE_LABEL_BY_TABLE: Record<string, Record<string, Record<string, string>>> = {
+  doc_numbering: {
+    doc_type: docTypeLabel,
+    date_fmt: DATE_FMT_LABEL,
+    reset: RESET_LABEL,
+    era: ERA_LABEL,
+    sep: SEP_LABEL,
+  },
+};
+
+/** "รายการที่" ของแถว — ตารางที่คีย์เป็นรหัสภายในแปลงเป็นชื่อไทย (ไม่รู้จัก = คงเดิม) */
+export function rowPkLabel(tableName: string, pk: string): string {
+  if (tableName === "doc_numbering") return docTypeLabel[pk] ?? pk;
+  return pk;
+}
 
 /** ชื่อไทยของคอลัมน์ที่เจอบ่อย — ไม่มีในนี้ = โชว์ชื่อคอลัมน์ตามจริง (ดีกว่าเดาผิด) */
 export const COLUMN_LABEL_TH: Record<string, string> = {
@@ -131,6 +157,15 @@ export const COLUMN_LABEL_TH: Record<string, string> = {
   gross: "รวมเงินได้",
   sso: "ประกันสังคม",
   net: "สุทธิ",
+  // D100 — รูปแบบเลขเอกสาร
+  doc_type: "ชนิดเอกสาร",
+  prefix: "ตัวอักษรนำหน้า",
+  date_fmt: "ส่วนวันที่ในเลข",
+  era: "ปี ค.ศ./พ.ศ.",
+  reset: "เริ่มนับใหม่",
+  digits: "จำนวนหลักเลขรัน",
+  sep: "ตัวคั่น",
+  num_first: "เลขรันอยู่หน้าวันที่",
 };
 
 export const columnLabel = (key: string): string => COLUMN_LABEL_TH[key] ?? key;
@@ -156,15 +191,21 @@ export function fmtVal(v: unknown): string {
  * · insert = ทุกฟิลด์ที่มีค่า (ก่อน = "—")
  * · delete = ทุกฟิลด์ที่มีค่า (หลัง = "—") — เก็บไว้ให้ก๊อปค่ากลับได้ตอนลบผิด
  */
-export function changedFields(row: Pick<EditLogRow, "action" | "before" | "after">): FieldChange[] {
+export function changedFields(
+  row: Pick<EditLogRow, "action" | "before" | "after"> & { tableName?: string },
+): FieldChange[] {
   const before = row.before ?? {};
   const after = row.after ?? {};
+  const labels = VALUE_LABEL_BY_TABLE[row.tableName ?? ""] ?? {};
+  // แปลงรหัสก่อน fmtVal — ตัวคั่น "" ต้องเป็น "ไม่มีตัวคั่น" ไม่ใช่ "—" (ว่างที่มีความหมาย)
+  const show = (key: string, v: unknown) =>
+    typeof v === "string" && labels[key]?.[v] !== undefined ? labels[key][v] : fmtVal(v);
   const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter((k) => !SKIP.has(k));
 
   const out: FieldChange[] = [];
   for (const key of keys) {
-    const b = fmtVal(before[key]);
-    const a = fmtVal(after[key]);
+    const b = key in before ? show(key, before[key]) : "—";
+    const a = key in after ? show(key, after[key]) : "—";
     if (row.action === "update" && b === a) continue;
     if (row.action !== "update" && b === "—" && a === "—") continue; // แถวใหม่/ที่ลบ ไม่ต้องโชว์ช่องว่าง
     out.push({ key, label: columnLabel(key), before: b, after: a });

@@ -98,7 +98,7 @@ export const TENANT_TABLES = [
   "bar_receive", "bar_sale", "bar_sale_item", "bar_move", "bar_post",
   "pay_inputs", "pay_components", "pay_rates", "pay_variables", "pay_post_legs",
   "employees", "payroll_periods", "payroll_items",
-  "report_runs", "excise_month_close", "edit_log", "profiles",
+  "report_runs", "excise_month_close", "doc_numbering", "edit_log", "profiles",
 ] as const;
 
 const must = (label: string, error: { message: string } | null) => {

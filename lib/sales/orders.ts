@@ -55,6 +55,12 @@ export type ActionPayload = {
   docDate?: string; // 'yyyy-MM-dd'
   creditDays?: number;
   chequeDetails?: string;
+  /**
+   * D100 เฟส 3 — เลขที่เขียนบนใบกระดาษไปแล้ว (ช่วงระบบล่ม) · ว่าง = ให้ระบบออกเลขเอง
+   *   inv = ใบแจ้งหนี้ · pay = ใบกำกับภาษี/ใบเสร็จของการรับเงินครั้งนี้
+   * ★ processOrder ไม่อ่านช่องนี้ — server ใช้แทนการขอเลขใหม่ก่อนเรียก processOrder
+   */
+  manualNos?: { inv?: string; pay?: string };
 };
 
 /** เลขเอกสารที่ generate มาแล้ว (caller สร้างจาก next_serial เฉพาะที่ needed) */

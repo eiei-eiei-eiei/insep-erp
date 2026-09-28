@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { changedFields, fmtVal, rawBefore, columnLabel } from "./editLog";
+import { changedFields, fmtVal, rawBefore, columnLabel, rowPkLabel } from "./editLog";
 import { tableLabel } from "./tenantTables";
 
 describe("fmtVal — ค่าที่โชว์บนจอ", () => {
@@ -77,5 +77,43 @@ describe("ป้ายภาษาไทย", () => {
   it("ที่ไม่รู้จัก คืนชื่อจริง (ดีกว่าเดาผิดหรือขึ้นว่าง)", () => {
     expect(tableLabel("some_new_table")).toBe("some_new_table");
     expect(columnLabel("weird_col")).toBe("weird_col");
+  });
+});
+
+describe("D100 — รูปแบบเลขเอกสารในหน้าประวัติ (เจอจากเทสเบราว์เซอร์)", () => {
+  const row = {
+    tableName: "doc_numbering",
+    action: "insert" as const,
+    before: null,
+    after: {
+      tenant_id: "t", entity_id: "EID01", doc_type: "sales_inv", prefix: "IV", date_fmt: "YYMM",
+      era: "be", reset: "month", digits: 4, sep: "", num_first: false,
+      updated_at: "x", updated_by: "2f37eacf-de42-49f7-b14e-be44c00c129d",
+    },
+  };
+
+  it("ค่ารหัสแปลงเป็นภาษาคน · ตัวคั่นว่างเป็น 'ไม่มีตัวคั่น' ไม่ใช่ —", () => {
+    const f = Object.fromEntries(changedFields(row).map((x) => [x.key, x.after]));
+    expect(f.doc_type).toBe("ใบแจ้งหนี้");
+    expect(f.date_fmt).toBe("ปี 2 หลัก + เดือน");
+    expect(f.era).toBe("พ.ศ.");
+    expect(f.reset).toBe("ทุกเดือน");
+    expect(f.sep).toBe("ไม่มีตัวคั่น");
+    expect(f.prefix).toBe("IV");
+  });
+
+  it("ไม่โชว์ uuid ของคนแก้ (คอลัมน์ 'ใครแก้' มีชื่ออยู่แล้ว)", () => {
+    expect(changedFields(row).map((x) => x.key)).not.toContain("updated_by");
+  });
+
+  it("ตารางอื่นไม่ถูกแปลงค่าตามไปด้วย (ชื่อคอลัมน์ซ้ำข้ามตารางได้)", () => {
+    const f = changedFields({ tableName: "products", action: "insert", before: null, after: { reset: "month" } });
+    expect(f[0].after).toBe("month");
+  });
+
+  it("'รายการที่' ของรูปแบบเลขเป็นชื่อเอกสาร · ตารางอื่นคงเดิม", () => {
+    expect(rowPkLabel("doc_numbering", "prod_batch")).toBe("เลข batch");
+    expect(rowPkLabel("doc_numbering", "unknown_x")).toBe("unknown_x");
+    expect(rowPkLabel("sales_orders", "QU1")).toBe("QU1");
   });
 });

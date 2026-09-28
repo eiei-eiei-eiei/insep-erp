@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { sendLine } from "@/lib/line";
 import { mapDbError } from "@/lib/shared/dbError";
 import { bangkokDateISO } from "@/lib/shared/datetime";
+import { actionPostsRevenue, docDateError, shipDateError, saleDateError, manualNoError } from "@/lib/sales/backdate";
 import { quotationTotals, type CartItem } from "@/lib/sales/calc";
 import {
   processOrder,
@@ -248,7 +249,7 @@ async function applyOrderActionCore(
 
   const config = await loadRevenueConfig(supabase);
   // ต้องมีกิจการรับรายได้ก่อน (RECEIVE_REVENUE ลง transactions ต้องมี entity_id ที่มีจริง)
-  const needsRevenue = ["DEPOSIT_AND_SEND", "FULL_PAYMENT_AND_SEND", "FULL_PAYMENT_LATER", "PAY_BALANCE"].includes(action);
+  const needsRevenue = actionPostsRevenue(action); // แหล่งเดียวกับประโยคบนจอ (D100)
   if (needsRevenue && !config.entityId) {
     // 🪤 ของเดิมชี้ให้ไปเปิดไฟล์เอกสาร + บอกชื่อ kind ใน DB ทั้งที่ **ไม่มีหน้าจอให้ตั้งเลย**
     //    (D80) — ตอนนี้ตั้งได้จากในแอปแล้ว ข้อความต้องพาไปถึงที่
@@ -276,31 +277,60 @@ async function applyOrderActionCore(
   if ('conflict' in vat) return { ok: false, error: vat.conflict };
   const need = neededSerials(action, order, vat.isVat);
   const gen: GeneratedSerials = {};
-  if (need.inv) {
-    const { data } = await supabase.rpc("fn_next_sales_doc", { p_prefix: "INV" });
-    gen.invNo = data as string;
+
+  // ── D100 เฟส 3 — วันที่เอกสาร + เลขที่กรอกเอง ──────────────────────────────────
+  // ★ วันที่เดียวใช้ทั้ง "เลขเอกสารของวันไหน" และ "ลงบัญชีวันไหน" (processOrder ใช้ docDate ตัวนี้)
+  //   ไม่ส่งมา = วันนี้ตามเวลาไทย · 🪤 เดิม processOrder ตกไปใช้ today() ของ server ซึ่งเป็น UTC
+  const dateErr = docDateError(payload.docDate);
+  if (dateErr) return { ok: false, error: dateErr };
+  const docDate = payload.docDate || bangkokDateISO();
+  const manual = {
+    inv: payload.manualNos?.inv?.trim() ?? "",
+    pay: payload.manualNos?.pay?.trim() ?? "",
+  };
+  const wantPay = !!(need.tax1 || need.tax2 || need.rcpt1 || need.rcpt2);
+  // 🚨 กรอกเลขให้ใบที่ไม่ได้ออกในครั้งนี้ = ห้ามเงียบ ๆ ทิ้งค่าที่ผู้ใช้พิมพ์ (บอกเหตุผลเสมอ · D92)
+  if (manual.inv && !need.inv) return { ok: false, error: "ครั้งนี้ไม่ได้ออกใบแจ้งหนี้ใหม่ — ช่องเลขใบแจ้งหนี้ต้องว่าง" };
+  if (manual.pay && !wantPay) return { ok: false, error: "ครั้งนี้ไม่ได้ออกใบกำกับภาษี/ใบเสร็จใหม่ — ช่องเลขต้องว่าง" };
+  const payType = vat.isVat ? "sales_tax" : "sales_rcpt";
+
+  /**
+   * ขอเลขเอกสาร 1 ใบ — รูปแบบตามที่ตั้งไว้ใน ตั้งค่า → เลขเอกสาร (D100) · เป็นเลขของ **วันที่บนเอกสาร**
+   * 🚨 เดิมทิ้ง `error` → ออกเลขไม่ได้แล้วได้ `null` = เอกสารไม่มีเลขที่โดยไม่มีอะไรฟ้อง
+   *    ตอนนี้ตัวออกเลขมีด่านสิทธิ์/รูปแบบที่ raise ได้จริง ต้องหยุดทั้งรายการแทน
+   */
+  async function nextDoc(type: "sales_inv" | "sales_tax" | "sales_rcpt"): Promise<string> {
+    const { data, error } = await supabase.rpc("fn_next_doc_no", { p_type: type, p_entity: null, p_date: docDate });
+    if (error || !data) throw new Error(error ? mapDbError(error) : "ออกเลขเอกสารไม่สำเร็จ");
+    return data as string;
   }
-  if (need.tax1) {
-    const { data } = await supabase.rpc("fn_next_sales_doc", { p_prefix: "TAX" });
-    gen.taxNo1 = data as string;
+  /** เลขที่เขียนบนใบกระดาษไปแล้ว — ต้องยังไม่มีเอกสารใช้ (สิทธิ์ sales.config ตรวจใน RPC) */
+  async function manualDoc(type: "sales_inv" | "sales_tax" | "sales_rcpt", no: string): Promise<string> {
+    const bad = manualNoError(no);
+    if (bad) throw new Error(bad);
+    const { data, error } = await supabase.rpc("fn_doc_manual_check", { p_type: type, p_no: no });
+    if (error) throw new Error(mapDbError(error));
+    if (data === true) throw new Error(`เลข ${no} มีเอกสารใช้อยู่แล้ว — ตรวจเลขบนใบกระดาษอีกครั้ง`);
+    return no;
   }
-  if (need.tax2) {
-    const { data } = await supabase.rpc("fn_next_sales_doc", { p_prefix: "TAX" });
-    gen.taxNo2 = data as string;
-  }
-  // D89 — กิจการไม่จด VAT: ใบเสร็จได้เลข **ชุด INV** (ออกเลขชุด TAX ไม่ได้ตาม ม.86/13)
-  if (need.rcpt1) {
-    const { data } = await supabase.rpc("fn_next_sales_doc", { p_prefix: "INV" });
-    gen.rcptNo1 = data as string;
-  }
-  if (need.rcpt2) {
-    const { data } = await supabase.rpc("fn_next_sales_doc", { p_prefix: "INV" });
-    gen.rcptNo2 = data as string;
+  try {
+    // ★ ตรวจเลขที่กรอกเองให้ผ่านก่อน แล้วค่อยขอเลขอัตโนมัติ — ล้มที่เลขที่กรอก = ไม่กินเลขรันไปฟรี
+    const manualInv = manual.inv ? await manualDoc("sales_inv", manual.inv) : "";
+    const manualPay = manual.pay ? await manualDoc(payType, manual.pay) : "";
+    if (need.inv) gen.invNo = manualInv || (await nextDoc("sales_inv"));
+    if (need.tax1) gen.taxNo1 = manualPay || (await nextDoc("sales_tax"));
+    if (need.tax2) gen.taxNo2 = manualPay || (await nextDoc("sales_tax"));
+    // D89 → D100: กิจการไม่จด VAT ออกเลขชุด TAX ไม่ได้ (ม.86/13) · ใบเสร็จมีชุดของตัวเอง `RC`
+    //   (เดิมยืมชุด INV — ใบเก่าที่ได้เลข INV ไปแล้วไม่ถูกแก้ และเลขนั้นไม่ถูกออกซ้ำ)
+    if (need.rcpt1) gen.rcptNo1 = manualPay || (await nextDoc("sales_rcpt"));
+    if (need.rcpt2) gen.rcptNo2 = manualPay || (await nextDoc("sales_rcpt"));
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
   }
 
   // ★ ส่ง isVat ที่อ่านจาก DB ฝั่ง server เข้าไปกับ config — payload บัญชีจะได้ vat = 0
   //   และฐานคิดจาก (1 − wht) เมื่อกิจการไม่จด VAT
-  const result = processOrder(order, action, payload, items, gen, contact, { ...config, isVat: vat.isVat });
+  const result = processOrder(order, action, { ...payload, docDate }, items, gen, contact, { ...config, isVat: vat.isVat });
 
   const { data, error } = await supabase.rpc("fn_apply_order_action", {
     p_qu_no: quNo,
@@ -353,9 +383,19 @@ export async function voidDepositInvoiceAction(quNo: string): Promise<SaveResult
 }
 
 // ── S3: คลังยืนยันจัดส่ง (ตัดสต็อก + SELL_PRODUCT + LINE) ───────────────────────
-export async function confirmFulfillmentAction(quNo: string, userName: string): Promise<SaveResult> {
+/**
+ * @param shipDate วันที่ของออกจริง (D100 เฟส 3) — ลงฟอร์ม ภส. · ไม่ส่ง = วันนี้ตามเวลาไทย
+ *   🚨 ห้ามล่วงหน้า (ตรวจ 2 ชั้น: ที่นี่ + ใน RPC)
+ */
+export async function confirmFulfillmentAction(quNo: string, userName: string, shipDate?: string): Promise<SaveResult> {
   const supabase = await db();
-  const { data, error } = await supabase.rpc("fn_confirm_fulfillment", { p_qu_no: quNo, p_user: userName });
+  const dErr = shipDateError(shipDate, bangkokDateISO());
+  if (dErr) return fail(dErr);
+  const { data, error } = await supabase.rpc("fn_confirm_fulfillment", {
+    p_qu_no: quNo,
+    p_user: userName,
+    p_date: shipDate || null,
+  });
   if (error) return fail(mapDbError(error));
   const res = data as {
     ok: boolean;
@@ -391,6 +431,13 @@ export type PosSalePayload = {
   /** ส่วนลดท้ายบิล (บาท รูปรวม VAT) — ช่องเดียวที่หน้าขายหน้าร้านให้กรอก */
   discount: number;
   method: string;
+  /**
+   * D100 เฟส 3 — วันที่ขาย (ลงย้อนหลังได้ · ไม่ส่ง = วันนี้) ใช้ทั้งเลขใบเสร็จ บัญชี และฟอร์ม ภส.
+   * 🚨 ขายหน้าร้าน = ส่งของทันที ⇒ ล่วงหน้าไม่ได้ (กติกาเดียวกับวันที่ส่งของ)
+   */
+  docDate?: string;
+  /** เลขใบกำกับภาษี/ใบเสร็จที่เขียนบนกระดาษไปแล้ว (ว่าง = ให้ระบบออก) */
+  manualNo?: string;
 };
 
 /** ชื่อผู้ทำรายการ — ลง `stock_moves.user_name` และ `sales_orders.sale_name` */
@@ -421,7 +468,15 @@ export async function posSaleAction(input: PosSalePayload): Promise<SaveResult> 
   if (!input.items.length) return fail("ยังไม่ได้เลือกสินค้า");
 
   const userName = await currentUserName(supabase);
-  const docDate = bangkokDateISO(); // 🪤 server เป็น UTC — ใช้วันตามเวลาไทยเสมอ
+  const today = bangkokDateISO(); // 🪤 server เป็น UTC — ใช้วันตามเวลาไทยเสมอ
+  // ★ ตรวจวันก่อนสร้างอะไรทั้งนั้น — ล้มหลังสร้างออเดอร์ = ออเดอร์ค้างครึ่งทาง
+  const dErr = saleDateError(input.docDate, today);
+  if (dErr) return fail(dErr);
+  if (input.manualNo?.trim()) {
+    const bad = manualNoError(input.manualNo);
+    if (bad) return fail(bad);
+  }
+  const docDate = input.docDate || today;
 
   // ① สร้างออเดอร์ (ไม่ยิง LINE — บิลเดียวต้องได้ข้อความเดียว)
   const saved = await saveQuotationCore(supabase, {
@@ -442,6 +497,7 @@ export async function posSaleAction(input: PosSalePayload): Promise<SaveResult> 
   const paid = await applyOrderActionCore(supabase, saved.quNo, "FULL_PAYMENT_AND_SEND", {
     method: input.method,
     docDate,
+    manualNos: input.manualNo?.trim() ? { pay: input.manualNo.trim() } : undefined,
   });
   if (!paid.ok) {
     return fail(
@@ -454,6 +510,7 @@ export async function posSaleAction(input: PosSalePayload): Promise<SaveResult> 
   const { data: fulfilData, error: fulfilErr } = await supabase.rpc("fn_confirm_fulfillment", {
     p_qu_no: saved.quNo,
     p_user: userName || "pos",
+    p_date: docDate, // ★ ฟอร์ม ภส. วันเดียวกับใบเสร็จ (D100 เฟส 3)
   });
   const fulfil = fulfilData as
     | { ok: boolean; error?: string; summary?: { name: string; remaining: number }[] }

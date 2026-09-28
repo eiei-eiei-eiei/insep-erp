@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { mapDbError } from "@/lib/shared/dbError";
 import { toFilingMethod } from "@/lib/accounting/taxFiling";
+import type { DocNumberCfg, DocNumberPreview, DocType } from "@/lib/shared/docNumbering";
 
 /**
  * server action ของหน้าตั้งค่ากลาง — ย้ายมาจาก accounting/actions.ts (D63)
@@ -199,5 +200,56 @@ export async function clearLineAction(): Promise<SaveResult> {
     .in("kind", ["line_channel_token", "line_group_id"]);
   if (error) return fail(mapDbError(error));
   revalidatePath("/settings/notify");
+  return { ok: true };
+}
+
+// ── เลขเอกสาร (D100 · 0076) ──────────────────────────────────────────────────
+// ★ ตรรกะทั้งหมดอยู่ใน RPC (ตรวจรูปแบบ · จัดรูปเลข · กันเลขซ้ำ · สิทธิ์ admin) — ที่นี่แค่ส่งต่อ
+//   ไม่ตรวจซ้ำฝั่ง TS เพื่อไม่ให้มีกฎ 2 ชุดที่วันหนึ่งไม่ตรงกัน
+
+/** ตัวอย่างเลขถัดไปของรูปแบบที่ยังไม่บันทึก — ไม่กินเลขจริง */
+export async function previewDocNumberAction(input: {
+  docType: DocType;
+  entityId: string | null;
+  cfg: DocNumberCfg;
+  next: number | null;
+}): Promise<DocNumberPreview> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("fn_doc_numbering_preview", {
+    p_type: input.docType,
+    p_entity: input.entityId,
+    p_cfg: input.cfg,
+    p_next: input.next,
+  });
+  if (error) return { ok: false, error: mapDbError(error) };
+  return data as DocNumberPreview;
+}
+
+export async function saveDocNumberAction(input: {
+  docType: DocType;
+  entityId: string | null;
+  cfg: DocNumberCfg;
+  next: number | null;
+}): Promise<SaveResult> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("fn_doc_numbering_save", {
+    p_type: input.docType,
+    p_entity: input.entityId,
+    p_cfg: input.cfg,
+    p_next: input.next,
+  });
+  if (error) return fail(mapDbError(error));
+  revalidatePath("/settings/numbering");
+  return { ok: true, data };
+}
+
+export async function resetDocNumberAction(input: { docType: DocType; entityId: string | null }): Promise<SaveResult> {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("fn_doc_numbering_reset", {
+    p_type: input.docType,
+    p_entity: input.entityId,
+  });
+  if (error) return fail(mapDbError(error));
+  revalidatePath("/settings/numbering");
   return { ok: true };
 }

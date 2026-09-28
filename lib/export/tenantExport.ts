@@ -50,7 +50,9 @@ export const RESTORE_ORDER: readonly TenantTable[] = [
   "bar_receive", "bar_sale", "bar_sale_item", "bar_move", "bar_post",
   "pay_inputs", "pay_components", "pay_rates", "pay_variables", "pay_post_legs",
   "employees", "payroll_periods", "payroll_items",
-  "integration_log", "edit_log", "report_runs", "excise_month_close", "counters",
+  "integration_log", "edit_log", "report_runs", "excise_month_close",
+  // ★ D100 — รูปแบบเลขเอกสาร (FK ไป entities) · ก่อน counters ไม่สำคัญ แต่หลัง entities
+  "doc_numbering", "counters",
 ];
 
 /** ตารางทั้งหมดที่ใส่ลงไฟล์ = ทุกตารางของ tenant (ไม่ข้ามอะไรเลย — สำรองต้องครบ) */

@@ -58,7 +58,10 @@ export function pendingBatches(
 }
 
 // ── P12: เลข batch ถัดไป (SheetData.js getLatestBatchNumber) ───────────────────────
-/** รูปแบบ N/ปีพ.ศ.2หลัก · หา max ของปีนั้น +1 · dateISO ว่าง → "" */
+/** รูปแบบ N/ปีพ.ศ.2หลัก · หา max ของปีนั้น +1 · dateISO ว่าง → ""
+ * ⚠️ D100: แอปไม่เรียกตัวนี้แล้ว — เลขถัดไปมาจาก SQL `fn_suggest_doc_no` (ตั้งรูปแบบเองได้)
+ *    คงไว้เป็น **สเปกของรูปแบบเดิม** (golden) · test:tenant เทียบว่าค่าปริยายของ SQL ให้ผลเท่าตัวนี้
+ */
 export function nextBatchNumber(
   dateISO: string | null | undefined,
   existingBatches: (string | null)[],

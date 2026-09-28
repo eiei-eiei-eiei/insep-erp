@@ -19,6 +19,8 @@ export function whtDocPrefix(gregorianYear: number = new Date().getFullYear()): 
 
 /**
  * A9 — เลข 50ทวิ ถัดไป: prefix + (max ของปีนั้น + 1).padStart(2)
+ * ⚠️ D100: แอปไม่เรียกตัวนี้แล้ว — เลขถัดไปมาจาก SQL `fn_suggest_doc_no` (ตั้งรูปแบบเองได้)
+ *    คงไว้เป็น **สเปกของรูปแบบเดิม** (golden) · test:tenant เทียบว่าค่าปริยายของ SQL ให้ผลเท่าตัวนี้
  * @param existing รายการ doc_no ที่มีอยู่แล้วทั้งหมด
  */
 export function nextWhtDocNo(

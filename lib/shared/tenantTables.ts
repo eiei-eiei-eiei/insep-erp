@@ -24,7 +24,7 @@ export const TENANT_TABLES = [
   "bar_receive", "bar_sale", "bar_sale_item", "bar_move", "bar_post",
   "pay_inputs", "pay_components", "pay_rates", "pay_variables", "pay_post_legs",
   "employees", "payroll_periods", "payroll_items",
-  "report_runs", "excise_month_close", "edit_log", "profiles",
+  "report_runs", "excise_month_close", "doc_numbering", "edit_log", "profiles",
 ] as const;
 
 export type TenantTable = (typeof TENANT_TABLES)[number];
@@ -85,6 +85,7 @@ export const TABLE_LABEL_TH: Partial<Record<TenantTable, string>> = {
   payroll_items: "แถวงวดจ่ายรายคน",
   report_runs: "ประวัติสร้างรายงาน",
   excise_month_close: "ปิดเดือนสรรพสามิต",
+  doc_numbering: "รูปแบบเลขเอกสาร",
   // ★ 3 ตัวนี้ไม่เคยโผล่ให้ผู้ใช้เห็นจนกระทั่ง D82 เอาไปทำ**ชื่อชีต Excel**
   //   ไม่มีชื่อไทย = ลูกค้าเปิดไฟล์แล้วเจอชื่อตารางดิบ ๆ ซึ่งผิดกฎที่เขียนไว้หัวบล็อกนี้เอง
   counters: "เลขรันนิ่งเอกสาร",
@@ -116,6 +117,8 @@ export const AUDITED_TABLES: readonly TenantTable[] = [
   //        และไม่ audit `bar_post` (เขียนผ่าน RPC ที่จดใครลง/ใครถอนไว้ในแถวตัวเอง)
   "bar_category", "bar_item", "bar_menu", "bar_recipe", "bar_customer",
   "bar_sale", "bar_sale_item",
+  // D100 — เปลี่ยนรูปแบบแล้วเลขบนใบกำกับเปลี่ยน ⇒ ต้องตอบได้ว่าใครเปลี่ยนเมื่อไร
+  "doc_numbering",
 ];
 
 /**
@@ -148,7 +151,7 @@ export const ENTITY_SCOPED_TABLES: readonly TenantTable[] = [
   "log_redistill", "log_redistill_round",
   "transactions", "tax_summaries", "tax_payments", "tax_filings", "wht_certificates",
   "sale_menu", "sales_orders", "warehouse_stock", "stock_moves",
-  "employees", "payroll_periods", "report_runs", "excise_month_close",
+  "employees", "payroll_periods", "report_runs", "excise_month_close", "doc_numbering",
   // D96 — ทุกตารางของบาร์มี entity_id (บางตัว FK ตรงไป entities, ที่เหลือผ่านแม่ของมัน)
   //        ⇒ ต้องถูกลบก่อน `entities` ทั้งหมด
   "bar_category", "bar_item", "bar_customer", "bar_menu", "bar_recipe", "bar_customer_fav",

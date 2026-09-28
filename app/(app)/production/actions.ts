@@ -20,11 +20,10 @@ import {
   getRecentDraws,
   getRemainingFermentedVol,
   getRedistillLots,
-  getRedistillLotNos,
+  getNextLotNumber,
   getRedistillMaterials,
 } from "./data";
 import {
-  nextLotNumber,
   materialDocRef,
   lotNoteText,
   type RedistillLot,
@@ -534,7 +533,7 @@ export async function getRedistillMaterialsAction(docRefs: string[]) {
   return getRedistillMaterials(docRefs);
 }
 export async function getNextLotNumberAction(dateISO: string): Promise<string> {
-  return nextLotNumber(dateISO, await getRedistillLotNos());
+  return getNextLotNumber(dateISO);
 }
 
 /** เปิดล็อต = ยกสุราออกจากถัง (RPC เขียนแถว "ยกไปปรุง" ลงฟอร์มให้ทันทีในตัว) */

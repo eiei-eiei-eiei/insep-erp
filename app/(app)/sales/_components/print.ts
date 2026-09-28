@@ -388,7 +388,8 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
     doc.receiptTitle = isVat ? "ใบกำกับภาษี/ใบเสร็จรับเงิน" : "ใบเสร็จรับเงิน";
     doc.receiptTitleEng = isVat ? "Tax Invoice / Receipt" : "Receipt";
     doc.receiptAmount = roundTo2(netPayable - (order.deposit || 0));
-    // 🔴 D86 — กิจการไม่จด VAT ออกเลขใบกำกับ (TAX) ไม่ได้ → ใบเสร็จใช้เลขชุด INV แทน
+    // 🔴 D86 — กิจการไม่จด VAT ออกเลขใบกำกับ (TAX) ไม่ได้ → ใบเสร็จใช้เลขของตัวเอง
+    //    (ชุด RC ตั้งแต่ D100 · ก่อนหน้านั้นยืมชุด INV — ใบเก่ายังพิมพ์ซ้ำด้วยเลขเดิม)
     //    เส้นทางจด VAT ไม่ขยับ เพราะ taxNo มีเสมอ `||` จึงไม่เคยตกไปข้างขวา
     // 🔴 D89 — เดิม fallback ไป invNo ตรง ๆ = ใบเสร็จยอดค้างใช้เลขซ้ำกับใบแจ้งหนี้
     //    ตอนนี้มีช่องของตัวเอง · คง || invNo ท้ายสุดไว้ให้ใบเก่าที่ออกก่อน D89 พิมพ์ซ้ำได้เหมือนเดิม
@@ -403,7 +404,8 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
     doc.documentDate = docDate2_th;
     doc.receiptTitle = isVat ? "ใบกำกับภาษี/ใบเสร็จรับเงิน" : "ใบเสร็จรับเงิน";
     doc.receiptTitleEng = isVat ? "Tax Invoice / Receipt" : "Receipt";
-    // 🔴 D86 — กิจการไม่จด VAT ออกเลขใบกำกับ (TAX) ไม่ได้ → ใบเสร็จใช้เลขชุด INV แทน
+    // 🔴 D86 — กิจการไม่จด VAT ออกเลขใบกำกับ (TAX) ไม่ได้ → ใบเสร็จใช้เลขของตัวเอง
+    //    (ชุด RC ตั้งแต่ D100 · ก่อนหน้านั้นยืมชุด INV — ใบเก่ายังพิมพ์ซ้ำด้วยเลขเดิม)
     //    เส้นทางจด VAT ไม่ขยับ เพราะ taxNo มีเสมอ `||` จึงไม่เคยตกไปข้างขวา
     doc.docNo = order.taxNo1 || order.rcptNo1 || order.invNo;
     doc.outstandingBalance = 0;
@@ -411,7 +413,8 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
     doc.documentDate = docDate2_th;
     doc.receiptTitle = isVat ? "ใบกำกับภาษี/ใบเสร็จรับเงิน/ใบส่งสินค้า" : "ใบเสร็จรับเงิน/ใบส่งสินค้า";
     doc.receiptTitleEng = isVat ? "Tax Invoice / Receipt / Delivery Order" : "Receipt / Delivery Order";
-    // 🔴 D86 — กิจการไม่จด VAT ออกเลขใบกำกับ (TAX) ไม่ได้ → ใบเสร็จใช้เลขชุด INV แทน
+    // 🔴 D86 — กิจการไม่จด VAT ออกเลขใบกำกับ (TAX) ไม่ได้ → ใบเสร็จใช้เลขของตัวเอง
+    //    (ชุด RC ตั้งแต่ D100 · ก่อนหน้านั้นยืมชุด INV — ใบเก่ายังพิมพ์ซ้ำด้วยเลขเดิม)
     //    เส้นทางจด VAT ไม่ขยับ เพราะ taxNo มีเสมอ `||` จึงไม่เคยตกไปข้างขวา
     doc.docNo = order.taxNo1 || order.rcptNo1 || order.invNo;
     doc.outstandingBalance = 0;

@@ -119,6 +119,7 @@ export const WORKSPACE_TABS: Record<string, SubTab[]> = {
  */
 export const SETTINGS_TABS: { slug: string; label: string; href: string }[] = [
   { slug: "company", label: "กิจการ", href: "/settings/company" },
+  { slug: "numbering", label: "เลขเอกสาร", href: "/settings/numbering" },
   { slug: "branding", label: "แบรนด์", href: "/settings/branding" },
   { slug: "notify", label: "แจ้งเตือน", href: "/settings/notify" },
   { slug: "users", label: "ผู้ใช้", href: "/settings/users" },

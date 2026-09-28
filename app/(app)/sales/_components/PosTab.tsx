@@ -9,6 +9,8 @@ import { posSaleAction, savePosWalkinContactAction, getSalesBootstrapAction } fr
 import { printSalesDocs, openPrintWindow } from "./print";
 import { IconCart, IconPlus } from "@/lib/shared/icons";
 import { can, toRole } from "@/lib/shared/roles";
+import { todayISO } from "@/lib/shared/ui";
+import { manualNoError, saleDateError, saleDateNote } from "@/lib/sales/backdate";
 
 const METHODS = ["เงินสด", "โอนเงิน", "บัตรเครดิต"];
 
@@ -28,6 +30,13 @@ export function PosTab({ boot, canWrite }: { boot: SalesBoot; canWrite: boolean 
   const [items, setItems] = useState<OrderItem[]>([]);
   const [discount, setDiscount] = useState(0);
   const [method, setMethod] = useState(METHODS[0]);
+  // D100 เฟส 3 — ลงย้อนหลังตอนระบบล่ม (ซ่อนไว้ปริยาย · ขายปกติยังกดครั้งเดียวจบ)
+  const [backOpen, setBackOpen] = useState(false);
+  const [saleDate, setSaleDate] = useState(todayISO());
+  const [paperNo, setPaperNo] = useState("");
+  const dateErr = backOpen ? saleDateError(saleDate, todayISO()) : null;
+  const paperErr = backOpen && paperNo.trim() ? manualNoError(paperNo) : null;
+  const dateNote = backOpen ? saleDateNote(saleDate, todayISO()) : null;
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [pickCustomer, setPickCustomer] = useState(false);
@@ -69,7 +78,7 @@ export function PosTab({ boot, canWrite }: { boot: SalesBoot; canWrite: boolean 
     { label: "ลูกค้า", ok: !!customer },
     { label: "รายการสินค้า", ok: items.length > 0 },
   ];
-  const ready = checks.every((c) => c.ok) && !busy;
+  const ready = checks.every((c) => c.ok) && !busy && !dateErr && !paperErr;
 
   async function sell() {
     if (!customer || items.length === 0 || busy) return;
@@ -84,6 +93,8 @@ export function PosTab({ boot, canWrite }: { boot: SalesBoot; canWrite: boolean 
         items: snap,
         discount,
         method,
+        docDate: backOpen ? saleDate : undefined,
+        manualNo: backOpen && paperNo.trim() ? paperNo.trim() : undefined,
       });
       if (!r.ok) {
         w?.close();
@@ -132,6 +143,7 @@ export function PosTab({ boot, canWrite }: { boot: SalesBoot; canWrite: boolean 
         ["tax-invoice-receipt-do"],
         w,
       );
+      setPaperNo(""); // เลขบนกระดาษใช้ได้ใบเดียว · วันที่คงไว้ (ลงย้อนหลังหลายบิลของวันเดียวกัน)
       // 🚨 ตัดสต็อกไม่สำเร็จ = สำเร็จบางส่วน ห้ามขึ้นเขียว (บทเรียน D79)
       setMsg(
         d.warning
@@ -369,6 +381,41 @@ export function PosTab({ boot, canWrite }: { boot: SalesBoot; canWrite: boolean 
             </Select>
           </label>
 
+          {/* D100 เฟส 3 — ระบบล่มในวันที่ขาย แล้วมาลงทีหลัง: เลขใบเสร็จ บัญชี และฟอร์ม ภส. เป็นของวันนั้น */}
+          <div className="rounded border border-line p-2 text-sm">
+            <label className="flex items-center gap-2 text-muted">
+              <input type="checkbox" checked={backOpen} onChange={(e) => setBackOpen(e.target.checked)} />
+              ลงรายการย้อนหลัง (ระบบล่มในวันที่ขาย)
+            </label>
+            {backOpen && (
+              <div className="mt-2 space-y-2">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-bold text-muted">วันที่ขาย</span>
+                  <input
+                    type="date"
+                    value={saleDate}
+                    max={todayISO()}
+                    onChange={(e) => setSaleDate(e.target.value)}
+                    className="w-full rounded-lg border border-line p-2 text-sm outline-none focus:border-brand"
+                  />
+                </label>
+                {dateErr && <p className="text-xs text-crit">{dateErr}</p>}
+                {dateNote && <p className="text-xs text-warn">{dateNote}</p>}
+                <label className="block">
+                  <span className="mb-1 block text-xs font-bold text-muted">เลขใบเสร็จที่เขียนไปแล้ว (ว่าง = ให้ระบบออก)</span>
+                  <input
+                    value={paperNo}
+                    disabled={!canConfig}
+                    onChange={(e) => setPaperNo(e.target.value)}
+                    className="w-full rounded-lg border border-line p-2 text-sm outline-none focus:border-brand disabled:opacity-50"
+                  />
+                </label>
+                {!canConfig && <p className="text-xs text-faint">กรอกเลขเอกสารเองได้เฉพาะหัวหน้าฝ่ายขาย</p>}
+                {paperErr && <p className="text-xs text-crit">{paperErr}</p>}
+              </div>
+            )}
+          </div>
+
           {/* ★ เรียงลำดับเดียวกับบนกระดาษ — ผู้ใช้จะได้กระทบยอดกับใบเสร็จได้ทีละบรรทัด */}
           <div className="space-y-1 border-t border-line pt-2">
             {discount > 0 && <Row label="รวมสินค้า" value={totals.grandIncl} />}
@@ -396,7 +443,8 @@ export function PosTab({ boot, canWrite }: { boot: SalesBoot; canWrite: boolean 
           <p className="text-center text-[11px] text-faint">
             ลงบัญชีรายรับ · ตัดสต็อก · ออก{isVat ? "ใบกำกับภาษี/ใบเสร็จ" : "ใบเสร็จรับเงิน"}/ใบส่งของ ให้อัตโนมัติ
             <br />
-            ขายย้อนวันไม่ได้ — ต้องย้อนวันให้ใช้แท็บ &ldquo;＋ สร้างใบเสนอราคา&rdquo;
+            {/* D100 เฟส 3 — เดิมเขียนว่า "ขายย้อนวันไม่ได้" (D86) ซึ่งขัดกับกล่องลงย้อนหลังด้านบน */}
+            ระบบล่มในวันที่ขาย? ติ๊ก &ldquo;ลงรายการย้อนหลัง&rdquo; ด้านบน — เลขใบเสร็จ บัญชี และฟอร์ม ภส. จะเป็นของวันนั้น
           </p>
         </div>
       </Card>

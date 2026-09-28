@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { nextWhtDocNo } from "@/lib/accounting/wht";
 import { previousVat, type InstallmentRow, type TaxReport, type TaxSummaryRow } from "@/lib/accounting/calc";
 import { mapDbError, mustRead } from "@/lib/shared/dbError";
 import { canPay, taxTxDescription, surchargeTxDescription, type TaxKind } from "@/lib/accounting/taxPay";
@@ -239,16 +238,20 @@ export async function voidTransactionAction(txId: string): Promise<SaveResult> {
   return { ok: true, data };
 }
 
-// ── A9 เลข 50ทวิ ถัดไป (รันแยกต่อกิจการ ต่อปี พ.ศ.) — สำหรับ prefill ในฟอร์ม ──
+// ── A9 เลข 50ทวิ ถัดไป (รันแยกต่อกิจการ) — สำหรับ prefill ในฟอร์ม ──
+/**
+ * D100 — รูปแบบตามที่ตั้งใน ตั้งค่า → เลขเอกสาร (ปริยาย = `6901` แบบเดิม · golden A9)
+ * ★ `fn_suggest_doc_no` **เสนอเลขโดยไม่กินเลข** (ผู้ใช้แก้เลขในฟอร์มได้เหมือนเดิม) และข้ามเลขที่
+ *   มีใบอยู่แล้วทั้งใบคู่ค้าและใบพนักงาน (ชุดเดียวกัน D69) — แทนการดึงเลขทั้งหมดมาหา max ฝั่ง TS
+ * 🚨🚨 D89 — อ่านไม่ได้ = ยอมพัง ดีกว่าออกเลข 50ทวิ ซ้ำใบที่อยู่ในมือคู่ค้า
+ */
 export async function nextWhtDocNoAction(entityId: string): Promise<string> {
   const supabase = await db();
-  // 🚨🚨 D89 — ว่างเพราะอ่านไม่ได้ = ออกเลข 50ทวิ ซ้ำเลขที่เคยออกให้คู่ค้าไปแล้ว
-  //    (ใบอยู่ในมือคู่ค้าจริง แก้ย้อนหลังไม่ได้) → ยอมพังดีกว่าออกเลขซ้ำ
-  const certs = mustRead(
-    await supabase.from("wht_certificates").select("doc_no").eq("entity_id", entityId),
-    "ประวัติเลขใบ 50 ทวิ",
+  const data = mustRead(
+    await supabase.rpc("fn_suggest_doc_no", { p_type: "acct_wht", p_entity: entityId, p_date: null }),
+    "เลขใบ 50 ทวิ ถัดไป",
   );
-  return nextWhtDocNo((certs ?? []).map((c) => c.doc_no as string));
+  return String(data ?? "");
 }
 
 // ── A9 ออก 50ทวิ (docNo/วันออก/ประเภทเงินได้ ผู้ใช้กรอก/แก้ได้) ────────────────
