@@ -226,7 +226,8 @@ export async function getBarBootstrap(): Promise<BarBoot> {
 
   const [cats, menus, recipes, items, customers, sales] = await Promise.all([
     supabase.from("bar_category").select("category_id, name, sort, is_system")
-      .eq("entity_id", entityId).order("sort"),
+      // ตัวตัดสินรอง: sort ซ้ำจากข้อมูลเก่า (D101) ต้องไม่ทำให้ลำดับสลับไปมาทุกครั้งที่โหลด (บทเรียน D86)
+      .eq("entity_id", entityId).order("sort").order("category_id"),
     supabase
       .from("bar_menu")
       .select("menu_id, name, price, fixed_cost, category_id, method, glass, note, created_for, active, sort")

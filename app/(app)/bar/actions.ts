@@ -6,6 +6,7 @@ import { mapDbError } from "@/lib/shared/dbError";
 import { barTotals } from "@/lib/bar/totals";
 import { businessDate } from "@/lib/bar/businessDate";
 import { lineAmount } from "@/lib/bar/totals";
+import { nextCategorySort, sortUpdates, sameCategorySet } from "@/lib/bar/categoryOrder";
 import type { CartLine, SaleWindow } from "@/lib/bar/types";
 import { getBarBootstrap } from "./data";
 
@@ -284,11 +285,15 @@ export async function saveItemAction(input: {
   return { ok: true };
 }
 
-/** เพิ่ม/แก้/ลบหมวดเมนู · 🚨 ลบหมวดที่ยังมีเมนูอยู่ต้องล้ม (FK restrict ของ 0064) */
+/**
+ * เพิ่ม/แก้ชื่อหมวดเมนู · 🚨 ลบหมวดที่ยังมีเมนูอยู่ต้องล้ม (FK restrict ของ 0064)
+ * · แก้ชื่อ = แตะแค่ `name` **ไม่แตะ sort** (ลำดับเป็นหน้าที่ของ `reorderCategoriesAction`)
+ * · หมวดใหม่ต่อท้ายด้วย max+1 คิดฝั่ง server — 🪤 ของเดิมรับ "จำนวนหมวด" จากหน้าจอ
+ *   เคยลบหมวดไปแล้ว = เลขชนกัน ลำดับบนหน้าขายสลับไปมาเอง (D101)
+ */
 export async function saveCategoryAction(input: {
   categoryId?: string | null;
   name: string;
-  sort?: number;
 }): Promise<Res> {
   const entity = await barEntity();
   if (!entity) return { ok: false, error: NO_ENTITY };
@@ -297,19 +302,54 @@ export async function saveCategoryAction(input: {
   if (input.categoryId) {
     const { error } = await supabase
       .from("bar_category")
-      .update({ name: input.name.trim(), sort: input.sort ?? 0 })
+      .update({ name: input.name.trim() })
       .eq("entity_id", entity)
       .eq("category_id", input.categoryId);
     if (error) return { ok: false, error: mapDbError(error) };
   } else {
+    const cur = await supabase.from("bar_category").select("sort").eq("entity_id", entity);
+    // 🚨 อ่านไม่ได้ ≠ ไม่มีหมวด (D89) — เดาเป็น 0 = ไปชนหมวดแรก
+    if (cur.error) return { ok: false, error: mapDbError(cur.error) };
     const id = `C-${Date.now().toString(36).toUpperCase()}`;
     const { error } = await supabase.from("bar_category").insert({
       entity_id: entity,
       category_id: id,
       name: input.name.trim(),
-      sort: input.sort ?? 0,
+      sort: nextCategorySort((cur.data ?? []).map((r) => Number(r.sort) || 0)),
       is_system: false,
     });
+    if (error) return { ok: false, error: mapDbError(error) };
+  }
+  revalidatePath("/bar");
+  return { ok: true };
+}
+
+/**
+ * เรียงหมวดใหม่ทั้งชุด (▲▼ ในแท็บเมนู · D101) — เขียน sort เป็น 0,1,2,… ตามลำดับที่ส่งมา
+ * 🚨 ชุดหมวดต้องตรงกับใน DB พอดี ไม่งั้นแปลว่าอีกเครื่องเพิ่ม/ลบหมวดระหว่างนั้น → ไม่เดา ให้รีเฟรช
+ * 🪤 ไม่ใช่ transaction (หมวดมีไม่กี่แถว) — ล้มกลางทาง ลำดับอาจค้างครึ่งเดียว แต่ไม่มีข้อมูลเสีย
+ *    และกด ▲▼ อีกครั้งจะเขียนทั้งชุดใหม่ให้เอง
+ */
+export async function reorderCategoriesAction(ids: string[]): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  const supabase = await createClient();
+  const cur = await supabase.from("bar_category").select("category_id, sort").eq("entity_id", entity);
+  if (cur.error) return { ok: false, error: mapDbError(cur.error) };
+  const rows = cur.data ?? [];
+  if (!sameCategorySet(ids, rows.map((r) => r.category_id as string))) {
+    return {
+      ok: false,
+      error: "รายการหมวดเปลี่ยนไประหว่างนั้น (อาจมีคนเพิ่ม/ลบหมวดจากอีกเครื่อง) — รีเฟรชหน้าแล้วลองใหม่",
+    };
+  }
+  const current = new Map(rows.map((r) => [r.category_id as string, Number(r.sort)]));
+  for (const u of sortUpdates(ids, current)) {
+    const { error } = await supabase
+      .from("bar_category")
+      .update({ sort: u.sort })
+      .eq("entity_id", entity)
+      .eq("category_id", u.categoryId);
     if (error) return { ok: false, error: mapDbError(error) };
   }
   revalidatePath("/bar");
