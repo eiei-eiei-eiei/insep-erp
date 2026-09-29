@@ -5,6 +5,7 @@ import { diluteCalc, isFermented } from "@/lib/production/calc";
 import { getRemainingDistillVolAction, saveDiluteAction, getRecentDilutesAction, deleteDiluteLogAction, updateDiluteLogAction } from "../actions";
 import { Card, Field, MissingHint, Msg, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import type { Product } from "./types";
+import { AbvCalcCard } from "./AbvCalcCard";
 import { IconEdit, IconTrash } from "@/lib/shared/icons";
 
 type RecentDilute = Awaited<ReturnType<typeof getRecentDilutesAction>>[number];
@@ -129,6 +130,8 @@ export function DiluteTab({ products }: { products: Product[] }) {
 
   return (
     <div className="space-y-5">
+    <AbvCalcCard onUse={(abv20) => recalc("v1", { c1: abv20 })} />
+
     <Card title="ปรุง / ปรับดีกรี (C1·V1 = C2·V2)">
       <Msg msg={msg} />
       <div className="mb-4 flex flex-wrap items-center gap-4">
