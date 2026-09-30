@@ -7,7 +7,7 @@ import { barTotals } from "@/lib/bar/totals";
 import { businessDate } from "@/lib/bar/businessDate";
 import { lineAmount } from "@/lib/bar/totals";
 import { nextCategorySort, sortUpdates, sameCategorySet } from "@/lib/bar/categoryOrder";
-import type { ReceiveRow, AdjustRow, NewItemRow } from "@/lib/bar/stockBatch";
+import { unitLockReason, type ReceiveRow, type AdjustRow, type NewItemRow, type ItemEditRow } from "@/lib/bar/stockBatch";
 import type { CartLine, SaleWindow } from "@/lib/bar/types";
 import { getBarBootstrap } from "./data";
 
@@ -274,51 +274,65 @@ export async function addItemsAction(rows: NewItemRow[]): Promise<Res> {
 }
 
 /**
- * เพิ่ม/แก้วัตถุดิบ — เขียนตรงผ่าน RLS (`bar_item_w` ต้องมี `bar.write`)
- * 🚨 **ไม่แตะ `qty` และ `cost_per_unit`** — สองค่านั้นขยับได้ทางเดียวคือผ่าน
- *    `fn_bar_receive` / `fn_bar_adjust` ซึ่งเขียน `bar_move` คู่กันเสมอ
- *    ให้แก้ตรง ๆ ได้เมื่อไหร่ = สต็อกขยับโดยไม่มีร่องรอย (หลักเดียวกับ D93 ที่ไม่ยอมให้
- *    "แก้ตัวเลขตรง ๆ" บน log_distill)
+ * แก้วัตถุดิบหลายรายการแล้วบันทึกทีเดียว (D104) — upsert คำสั่งเดียว = เข้าหมดหรือไม่เข้าเลย
+ * 🚨 ไม่ส่ง `qty` / `cost_per_unit` — upsert ของ PostgREST SET เฉพาะคอลัมน์ที่ส่งมา
+ *    สองค่านั้นขยับได้ทางเดียวคือรับของ/นับสต็อก (มีร่องรอยใน bar_move · หลักเดียวกับ D93 ที่ไม่ให้แก้ตัวเลขบน log_distill ตรง ๆ)
+ * 🚨 ตรวจล็อกหน่วยซ้ำฝั่ง server — หน้าจออาจเปิดค้างไว้ระหว่างที่อีกเครื่องรับของเข้า
+ *    (ยอด 0 ตอนเปิดหน้า ≠ ยอด 0 ตอนกดบันทึก)
  */
-export async function saveItemAction(input: {
-  itemId?: string | null;
-  name: string;
-  unit: string;
-  packSize?: number | null;
-  packLabel?: string | null;
-  lowQty?: number | null;
-  active?: boolean;
-}): Promise<Res> {
+export async function updateItemsAction(rows: ItemEditRow[]): Promise<Res> {
   const entity = await barEntity();
   if (!entity) return { ok: false, error: NO_ENTITY };
-  if (!input.name.trim()) return { ok: false, error: "ตั้งชื่อวัตถุดิบก่อน" };
-  if (!input.unit.trim()) return { ok: false, error: "ระบุหน่วยที่สูตรใช้ (เช่น ml · ขวด · ชิ้น)" };
-
+  if (rows.length === 0) return { ok: false, error: "ยังไม่มีรายการที่เปลี่ยน" };
   const supabase = await createClient();
-  const row = {
-    entity_id: entity,
-    name: input.name.trim(),
-    unit: input.unit.trim(),
-    pack_size: input.packSize ?? null,
-    pack_label: input.packLabel?.trim() || null,
-    low_qty: input.lowQty ?? null,
-    active: input.active !== false,
-  };
+  const [cur, rec] = await Promise.all([
+    supabase.from("bar_item").select("item_id, name, unit, qty").eq("entity_id", entity),
+    supabase.from("bar_recipe").select("item_id").eq("entity_id", entity),
+  ]);
+  // 🚨 อ่านไม่ได้ ≠ ไม่มีอะไรขวาง (D89)
+  if (cur.error) return { ok: false, error: mapDbError(cur.error) };
+  if (rec.error) return { ok: false, error: mapDbError(rec.error) };
 
-  if (input.itemId) {
-    const { error } = await supabase
-      .from("bar_item")
-      .update(row)
-      .eq("entity_id", entity)
-      .eq("item_id", input.itemId);
-    if (error) return { ok: false, error: mapDbError(error) };
-  } else {
-    const itemId = `I-${Date.now().toString(36).toUpperCase()}`;
-    const { error } = await supabase.from("bar_item").insert({ ...row, item_id: itemId });
-    if (error) return { ok: false, error: mapDbError(error) };
+  const byId = new Map((cur.data ?? []).map((r) => [r.item_id as string, r]));
+  const used = new Map<string, number>();
+  for (const r of rec.data ?? []) used.set(r.item_id as string, (used.get(r.item_id as string) ?? 0) + 1);
+
+  const key = (s: string) => s.trim().toLowerCase();
+  const finalName = new Map([...byId].map(([id, r]) => [id, r.name as string]));
+  for (const r of rows) finalName.set(r.itemId, r.name);
+  const nameCount = new Map<string, number>();
+  for (const n of finalName.values()) nameCount.set(key(n), (nameCount.get(key(n)) ?? 0) + 1);
+
+  for (const r of rows) {
+    const prev = byId.get(r.itemId);
+    // ★ upsert บน id ที่ไม่มีอยู่ = insert วัตถุดิบใหม่เงียบ ๆ — ต้องกันไว้
+    if (!prev) return { ok: false, error: `ไม่พบวัตถุดิบ ${r.name} (อาจถูกลบจากอีกเครื่อง) — รีเฟรชหน้าแล้วลองใหม่` };
+    if (!r.name.trim() || !r.unit.trim()) return { ok: false, error: "ทุกรายการต้องมีชื่อและหน่วย" };
+    // ฟ้องเฉพาะตัวที่เปลี่ยนชื่อ — ชื่อซ้ำที่มีอยู่แล้วในข้อมูลเก่าต้องไม่ล็อกการแก้ทั้งตาราง
+    if (key(r.name) !== key(prev.name as string) && (nameCount.get(key(r.name)) ?? 0) > 1)
+      return { ok: false, error: `ชื่อ "${r.name}" ซ้ำกับวัตถุดิบตัวอื่น` };
+    if (r.unit.trim() !== prev.unit) {
+      const lock = unitLockReason({ qty: Number(prev.qty), unit: prev.unit as string }, used.get(r.itemId) ?? 0);
+      if (lock) return { ok: false, error: `${r.name}: ${lock}` };
+    }
   }
+
+  const { error } = await supabase.from("bar_item").upsert(
+    rows.map((r) => ({
+      entity_id: entity,
+      item_id: r.itemId,
+      name: r.name.trim(),
+      unit: r.unit.trim(),
+      pack_size: r.packSize,
+      pack_label: r.packLabel,
+      low_qty: r.lowQty,
+      active: r.active,
+    })),
+    { onConflict: "tenant_id,entity_id,item_id" },
+  );
+  if (error) return { ok: false, error: mapDbError(error) };
   revalidatePath("/bar");
-  return { ok: true };
+  return { ok: true, data: { count: rows.length } };
 }
 
 /**
