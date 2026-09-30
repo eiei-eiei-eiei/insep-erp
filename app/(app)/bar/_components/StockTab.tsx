@@ -2,11 +2,15 @@
 
 import { useState } from "react";
 import type { BarBoot } from "../data";
+import type { BarItem } from "@/lib/bar/types";
 import { stockText, isLowStock, packToBase, numText } from "@/lib/bar/units";
-import { Card, Msg, TextInput, NumBox, Select, Field, Badge, Empty, fmt, useSaver } from "@/lib/shared/ui";
-import { receiveAction, adjustAction, saveItemAction, itemMovesAction } from "../actions";
-
-const ADJUST_REASONS = ["ปรับยอด", "เสียหาย", "ชิม/เทสต์"];
+import {
+  planReceive, planAdjust, planNewItems, countAllDrafts, errorsText, ADJUST_REASONS,
+  blankReceive, blankAdjust, blankNewItem,
+  type ReceiveDraft, type AdjustDraft, type NewItemDraft, type NewItemRow,
+} from "@/lib/bar/stockBatch";
+import { Card, Msg, TextInput, NumBox, Select, Field, Badge, Empty, EscToClose, fmt, useSaver } from "@/lib/shared/ui";
+import { receiveBatchAction, adjustBatchAction, addItemsAction, saveItemAction, itemMovesAction } from "../actions";
 
 type MoveRow = {
   id: number;
@@ -41,6 +45,10 @@ export function StockTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
     try {
       const r = await fn();
       if (!r.ok) {
+        // ★ โหลดข้อมูลใหม่แม้ล้ม (D103) — สาเหตุที่ชุดล้มบ่อยสุดคือยอดถูกแก้จากอีกเครื่อง
+        //   ไม่โหลด = คอลัมน์ "ระบบเก็บอยู่" ยังเป็นค่าเก่า กดใหม่ก็ล้มซ้ำแบบเดิมไม่รู้จบ
+        //   แถวที่กรอกไว้อยู่ใน state ของการ์ด ไม่หายไปกับการโหลด
+        await onReload().catch(() => undefined);
         setMsg({ ok: false, text: r.error ?? "บันทึกไม่สำเร็จ" });
         return false;
       }
@@ -183,10 +191,31 @@ export function StockTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
       {canWrite && <ReceiveCard boot={data} busy={busy} onRun={run} />}
       {canWrite && <AdjustCard boot={data} busy={busy} onRun={run} />}
 
-      {editItem && (
+      {editItem === "new" && (
+        <NewItemsModal
+          boot={data}
+          busy={busy}
+          onClose={() => setEditItem(null)}
+          onSave={async (rows) => {
+            setBusy(true);
+            setMsg(null);
+            try {
+              const r = await addItemsAction(rows);
+              if (r.ok) {
+                await onReload();
+                setMsg({ ok: true, text: `เพิ่มวัตถุดิบแล้ว ${rows.length} รายการ` });
+              }
+              return r;
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
+      )}
+      {editItem && editItem !== "new" && (
         <ItemModal
           boot={data}
-          itemId={editItem === "new" ? null : editItem}
+          itemId={editItem}
           busy={busy}
           onClose={() => setEditItem(null)}
           onSave={async (input) => {
@@ -198,181 +227,443 @@ export function StockTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
   );
 }
 
+type OnRun = (fn: () => Promise<{ ok: boolean; error?: string }>, okText: string) => Promise<boolean>;
+
+const iconBtn =
+  "grid h-7 w-7 place-items-center rounded text-muted hover:bg-raised hover:text-crit disabled:opacity-30";
+
+/** ตัวเลือกวัตถุดิบในแถวหนึ่ง — ซ่อนตัวที่แถวอื่นเลือกไปแล้ว (ซ้ำในชุดเดียว = error อยู่ดี · stockBatch) */
+function itemOptions(items: readonly BarItem[], rows: readonly { itemId: string }[], idx: number, activeOnly: boolean) {
+  const taken = new Set(rows.filter((_, j) => j !== idx).map((r) => r.itemId).filter(Boolean));
+  return items.filter((i) => (!activeOnly || i.active !== false) && !taken.has(i.itemId));
+}
+
+/** เปลี่ยนแถว idx แล้ว ถ้าเป็นแถวสุดท้ายและเพิ่งถูกกรอก → ต่อแถวว่างให้เอง (กรอกต่อได้ไม่ต้องกดเพิ่มแถว) */
+function patchRow<T>(rows: T[], idx: number, patch: Partial<NoInfer<T>>, blank: () => NoInfer<T>, filled: (r: T) => boolean): T[] {
+  const next = rows.map((r, j) => (j === idx ? { ...r, ...patch } : r));
+  if (idx === next.length - 1 && filled(next[idx])) next.push(blank());
+  return next;
+}
+
+/** ลบแถว — เหลือแถวเดียวแล้วลบ = ล้างเป็นแถวว่าง (ตารางไม่หายไปทั้งตาราง) */
+function dropRow<T>(rows: T[], idx: number, blank: () => T): T[] {
+  const next = rows.filter((_, j) => j !== idx);
+  return next.length > 0 ? next : [blank()];
+}
+
 /**
- * รับของเข้าบาร์
- * ★ ช่องราคาเติมค่าล่าสุดมาให้ → กดผ่านเลยก็ได้พฤติกรรม "ราคากลาง"
- *   ⇒ ได้ทั้งสองแบบโดยไม่ต้องมีสองโหมด (ตัดสินไว้ตอนวางแผน)
+ * key ของแถวต้องคงที่ — 🪤 ใช้ index เป็น key แล้วลบแถวกลาง ช่อง NumBox (เก็บ buffer ข้อความเอง)
+ * จะโชว์ค่าของแถวที่ถูกลบค้างอยู่ในแถวถัดไป
  */
-function ReceiveCard({
-  boot, busy, onRun,
-}: {
-  boot: BarBoot;
-  busy: boolean;
-  onRun: (fn: () => Promise<{ ok: boolean; error?: string }>, okText: string) => Promise<boolean>;
-}) {
-  const [itemId, setItemId] = useState("");
-  // 🐛 D96 — ช่องตัวเลขทั้งโมดูลเคยเป็น <input type="number"> ดิบที่ทำ Number("") = 0
-  //    ⇒ ลบเลข 0 ทิ้งไม่ได้ ต้องเลือกคลุมแล้วพิมพ์ทับตลอด (ผู้ใช้แจ้งเอง)
-  //    NumBox เก็บ buffer ข้อความระหว่างพิมพ์และคืนค่าว่างได้ — บัญชี/เงินเดือนใช้มาตั้งแต่ D71
-  const [qtyPack, setQtyPack] = useState<number | "">(1);
-  const [costTotal, setCostTotal] = useState<number | "">("");
+let seq = 0;
+type K<T> = T & { k: number };
+const keyed = <T,>(blank: () => T) => (): K<T> => ({ ...blank(), k: ++seq });
+const newReceive = keyed(blankReceive);
+const newAdjust = keyed(blankAdjust);
+const newItem = keyed(blankNewItem);
+const blanks = <T,>(n: number, blank: () => T) => Array.from({ length: n }, blank);
+
+/**
+ * รับของเข้าบาร์ — หลายรายการ บันทึกทีเดียว (D103)
+ * ★ ช่องราคามีปุ่ม "ใช้ราคาล็อตก่อน" → กดผ่านเลยก็ได้พฤติกรรม "ราคากลาง"
+ * 🚨 ทั้งชุดเข้าหมดหรือไม่เข้าเลย — ล้มแล้วแถวยังอยู่ครบ แก้แถวที่ error บอกแล้วกดใหม่
+ */
+function ReceiveCard({ boot, busy, onRun }: { boot: BarBoot; busy: boolean; onRun: OnRun }) {
+  const [rows, setRows] = useState<K<ReceiveDraft>[]>(() => blanks(3, newReceive));
   const [source, setSource] = useState("");
 
-  const item = boot.items.find((i) => i.itemId === itemId);
-  const nQtyPack = qtyPack === "" ? 0 : qtyPack;
-  const nCost = costTotal === "" ? 0 : costTotal;
-  const qtyBase = item ? packToBase(nQtyPack, item.packSize) : 0;
-  // ค่าที่เติมให้อัตโนมัติ — ราคาล็อตล่าสุดต่อหน่วย × ปริมาณที่กำลังจะรับ
-  const suggested = item ? Math.round(item.costPerUnit * qtyBase * 100) / 100 : 0;
+  const plan = planReceive(rows, boot.items);
+  const total = plan.rows.reduce((s, r) => s + r.costTotal, 0);
+  const freeNames = plan.rows
+    .filter((r) => r.costTotal === 0)
+    .map((r) => boot.items.find((i) => i.itemId === r.itemId)?.name ?? r.itemId);
+  const set = (idx: number, patch: Partial<ReceiveDraft>) =>
+    setRows((rs) => patchRow(rs, idx, patch, newReceive, (r) => !!r.itemId));
 
   return (
     <Card title="รับของเข้าบาร์">
-      <div className="grid gap-2 sm:grid-cols-4">
-        <Field label="วัตถุดิบ">
-          <Select
-            value={itemId}
-            onChange={(e) => {
-              setItemId(e.target.value);
-              setCostTotal("");
-            }}
-          >
-            <option value="">— เลือก —</option>
-            {boot.items
-              .filter((i) => i.active !== false)
-              .map((i) => (
-                <option key={i.itemId} value={i.itemId}>
-                  {i.name}
-                </option>
-              ))}
-          </Select>
-        </Field>
-        <Field label={item?.packLabel ? `จำนวน (${item.packLabel})` : "จำนวน (หน่วยซื้อ)"}>
-          <NumBox value={qtyPack} onChange={setQtyPack} />
-        </Field>
-        <Field label="เป็นหน่วยฐาน">
-          <div className="px-1 py-2 text-sm text-muted">
-            {item ? `${numText(qtyBase)} ${item.unit}` : "—"}
-          </div>
-        </Field>
-        <Field label="ราคาที่จ่ายจริง (บาท)">
-          <NumBox value={costTotal} onChange={setCostTotal} blankZero />
-        </Field>
+      <div className="overflow-x-auto">
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>วัตถุดิบ</th>
+              <th className="text-right">จำนวน (หน่วยซื้อ)</th>
+              <th>เป็นหน่วยฐาน</th>
+              <th className="text-right">ราคาที่จ่ายจริง (บาท)</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, idx) => {
+              const item = boot.items.find((i) => i.itemId === r.itemId);
+              const qtyBase = item && r.qtyPack !== "" ? packToBase(r.qtyPack, item.packSize) : 0;
+              // ราคาล็อตล่าสุดต่อหน่วย × ปริมาณที่กำลังจะรับ
+              const suggested = item ? Math.round(item.costPerUnit * qtyBase * 100) / 100 : 0;
+              return (
+                <tr key={r.k}>
+                  <td className="text-sm text-faint">{idx + 1}</td>
+                  <td>
+                    <div className="w-48">
+                      <Select value={r.itemId} onChange={(e) => set(idx, { itemId: e.target.value, costTotal: "" })}>
+                        <option value="">— เลือก —</option>
+                        {itemOptions(boot.items, rows, idx, true).map((i) => (
+                          <option key={i.itemId} value={i.itemId}>
+                            {i.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                  </td>
+                  <td>
+                    <div className="ml-auto w-24">
+                      <NumBox value={r.qtyPack} onChange={(v) => set(idx, { qtyPack: v })} blankZero />
+                    </div>
+                    {item?.packLabel && <div className="text-right text-xs text-faint">{item.packLabel}</div>}
+                  </td>
+                  <td className="text-sm text-muted">{item && qtyBase > 0 ? `${numText(qtyBase)} ${item.unit}` : "—"}</td>
+                  <td>
+                    <div className="ml-auto w-28">
+                      <NumBox value={r.costTotal} onChange={(v) => set(idx, { costTotal: v })} blankZero />
+                    </div>
+                    {boot.canSeeCost && suggested > 0 && r.costTotal === "" && (
+                      <button
+                        type="button"
+                        onClick={() => set(idx, { costTotal: suggested })}
+                        className="block w-full text-right text-xs text-muted underline"
+                      >
+                        ใช้ราคาล็อตก่อน ({fmt(suggested)})
+                      </button>
+                    )}
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      aria-label="ลบแถว"
+                      onClick={() => setRows((rs) => dropRow(rs, idx, newReceive))}
+                      className={iconBtn}
+                    >
+                      ✕
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
+      <button
+        type="button"
+        onClick={() => setRows((rs) => [...rs, newReceive()])}
+        className="mt-2 block text-sm text-muted underline"
+      >
+        ＋ เพิ่มแถว
+      </button>
 
-      {item && boot.canSeeCost && suggested > 0 && nCost === 0 && (
-        <button
-          type="button"
-          onClick={() => setCostTotal(suggested)}
-          className="mt-1 text-xs text-muted underline"
-        >
-          ใช้ราคาล็อตก่อน ({fmt(suggested)} บาท)
-        </button>
-      )}
-
-      <div className="mt-2 grid gap-2 sm:grid-cols-2">
-        <Field label="ซื้อจาก">
+      <div className="mt-3 max-w-sm">
+        <Field label="ซื้อจาก (ใช้กับทุกรายการในชุดนี้)">
           <TextInput value={source} onChange={(e) => setSource(e.target.value)} placeholder="โรงกลั่น / 7-11" />
         </Field>
       </div>
 
       {/* ⚠️ คีย์ 0 = ของฟรี · ถูกตามเลขคณิต แต่จะทำให้กำไรบาร์ดูดีเกินจริง */}
-      {itemId && nCost === 0 && (
-        <p className="mt-1 text-xs text-warn">
-          ราคาเป็น 0 — ต้นทุนเฉลี่ยจะลดลงและกำไรจะดูดีกว่าความจริง
+      {freeNames.length > 0 && (
+        <p className="mt-2 text-xs text-warn">
+          ราคาเป็น 0: {freeNames.join(" · ")} — ต้นทุนเฉลี่ยจะลดลงและกำไรจะดูดีกว่าความจริง
           ถ้าโรงกลั่นให้ฟรี แนะนำคีย์ราคาส่งไปเลยแล้วหักกลบหลังบ้าน
         </p>
       )}
+      {plan.errors.length > 0 && <p className="mt-2 text-xs text-warn">ยังบันทึกไม่ได้ — {errorsText(plan.errors)}</p>}
 
       <button
         type="button"
-        disabled={busy || !itemId || nQtyPack <= 0}
+        disabled={busy || plan.rows.length === 0 || plan.errors.length > 0}
         onClick={async () => {
-          if (
-            await onRun(
-              () => receiveAction({ itemId, qtyPack: nQtyPack, qty: qtyBase, costTotal: nCost, source }),
-              "รับของเข้าแล้ว",
-            )
-          ) {
-            setQtyPack(1);
-            setCostTotal("");
+          const n = plan.rows.length;
+          if (await onRun(() => receiveBatchAction({ rows: plan.rows, source }), `รับของเข้าแล้ว ${n} รายการ`)) {
+            setRows(blanks(3, newReceive));
           }
         }}
         className="mt-3 rounded-lg bg-brand px-4 py-2 text-sm text-on-brand disabled:opacity-50"
       >
-        รับเข้า
+        {plan.rows.length > 0 ? `รับเข้า ${plan.rows.length} รายการ` : "รับเข้า"}
+        {plan.rows.length > 0 && boot.canSeeCost && ` · รวม ${fmt(total)} บาท`}
       </button>
+      {plan.rows.length === 0 && plan.errors.length === 0 && (
+        <p className="mt-1 text-xs text-faint">เลือกวัตถุดิบอย่างน้อย 1 แถว</p>
+      )}
     </Card>
   );
 }
 
-function AdjustCard({
-  boot, busy, onRun,
-}: {
-  boot: BarBoot;
-  busy: boolean;
-  onRun: (fn: () => Promise<{ ok: boolean; error?: string }>, okText: string) => Promise<boolean>;
-}) {
-  const [itemId, setItemId] = useState("");
-  // ★ ไม่ใส่ `blankZero` — ที่นี่ 0 คือคำตอบจริง (นับแล้วหมดเกลี้ยง) ไม่ใช่ "ยังไม่กรอก"
-  const [qtyAfter, setQtyAfter] = useState<number | "">(0);
-  const [reason, setReason] = useState(ADJUST_REASONS[0]);
-  const [note, setNote] = useState("");
-  const item = boot.items.find((i) => i.itemId === itemId);
+/**
+ * ปรับยอด / ของเสีย / ชิม — หลายรายการ บันทึกทีเดียว (D103)
+ * ★ "นับทั้งร้าน" เติมทุกรายการด้วยยอดปัจจุบัน → แก้เฉพาะตัวที่ไม่ตรง ตัวที่เท่าเดิมถูกข้ามเอง
+ */
+function AdjustCard({ boot, busy, onRun }: { boot: BarBoot; busy: boolean; onRun: OnRun }) {
+  const [rows, setRows] = useState<K<AdjustDraft>[]>(() => blanks(3, newAdjust));
+
+  const plan = planAdjust(rows, boot.items);
+  const set = (idx: number, patch: Partial<AdjustDraft>) =>
+    setRows((rs) => patchRow(rs, idx, patch, newAdjust, (r) => !!r.itemId));
+
+  /** เติมรายการที่ยังไม่อยู่ในตาราง — ★ ไม่ทับแถวที่กรอกไว้แล้ว (จึงไม่ต้องถามยืนยัน) */
+  function countAll() {
+    setRows((rs) => {
+      const kept = rs.filter((r) => r.itemId);
+      const have = new Set(kept.map((r) => r.itemId));
+      return [...kept, ...countAllDrafts(boot.items).filter((d) => !have.has(d.itemId)).map((d) => ({ ...d, k: ++seq })), newAdjust()];
+    });
+  }
 
   return (
     <Card title="ปรับยอด / ของเสีย / ชิม">
-      <div className="grid gap-2 sm:grid-cols-4">
-        <Field label="วัตถุดิบ">
-          <Select
-            value={itemId}
-            onChange={(e) => {
-              setItemId(e.target.value);
-              const it = boot.items.find((i) => i.itemId === e.target.value);
-              setQtyAfter(it?.qty ?? 0);
-            }}
-          >
-            <option value="">— เลือก —</option>
-            {boot.items.map((i) => (
-              <option key={i.itemId} value={i.itemId}>
-                {i.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="ยอดที่นับได้จริง">
-          <NumBox value={qtyAfter} onChange={setQtyAfter} />
-        </Field>
-        <Field label="เหตุผล">
-          <Select value={reason} onChange={(e) => setReason(e.target.value)}>
-            {ADJUST_REASONS.map((r) => (
-              <option key={r}>{r}</option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="หมายเหตุ">
-          <TextInput value={note} onChange={(e) => setNote(e.target.value)} />
-        </Field>
+      <button type="button" onClick={countAll} className="mb-2 rounded-lg bg-raised px-3 py-1.5 text-sm text-ink">
+        นับทั้งร้าน (ใส่ทุกรายการ)
+      </button>
+      <div className="overflow-x-auto">
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>วัตถุดิบ</th>
+              <th className="text-right">ระบบเก็บอยู่</th>
+              <th className="text-right">ยอดที่นับได้จริง</th>
+              <th className="text-right">เปลี่ยน</th>
+              <th>เหตุผล</th>
+              <th>หมายเหตุ</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, idx) => {
+              const item = boot.items.find((i) => i.itemId === r.itemId);
+              const diff = item && r.qtyAfter !== "" ? r.qtyAfter - item.qty : null;
+              return (
+                <tr key={r.k}>
+                  <td className="text-sm text-faint">{idx + 1}</td>
+                  <td>
+                    <div className="w-48">
+                      <Select
+                        value={r.itemId}
+                        onChange={(e) => {
+                          const it = boot.items.find((i) => i.itemId === e.target.value);
+                          set(idx, { itemId: e.target.value, qtyAfter: it ? it.qty : "" });
+                        }}
+                      >
+                        <option value="">— เลือก —</option>
+                        {itemOptions(boot.items, rows, idx, false).map((i) => (
+                          <option key={i.itemId} value={i.itemId}>
+                            {i.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                  </td>
+                  <td className="text-right text-sm text-muted">{item ? `${numText(item.qty)} ${item.unit}` : "—"}</td>
+                  <td>
+                    {/* ★ ไม่ใส่ blankZero — 0 คือคำตอบจริง (นับแล้วหมดเกลี้ยง) */}
+                    <div className="ml-auto w-28">
+                      <NumBox value={r.qtyAfter} onChange={(v) => set(idx, { qtyAfter: v })} />
+                    </div>
+                  </td>
+                  <td className="text-right text-sm">
+                    {diff === null ? (
+                      ""
+                    ) : diff === 0 ? (
+                      <span className="text-faint">เท่าเดิม</span>
+                    ) : (
+                      <span className={diff < 0 ? "text-crit" : "text-ok"}>
+                        {diff > 0 ? "+" : ""}
+                        {numText(diff)}
+                      </span>
+                    )}
+                  </td>
+                  <td>
+                    <div className="w-32">
+                      <Select value={r.reason} onChange={(e) => set(idx, { reason: e.target.value })}>
+                        {ADJUST_REASONS.map((x) => (
+                          <option key={x}>{x}</option>
+                        ))}
+                      </Select>
+                    </div>
+                  </td>
+                  <td>
+                    <div className="w-40">
+                      <TextInput value={r.note} onChange={(e) => set(idx, { note: e.target.value })} />
+                    </div>
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      aria-label="ลบแถว"
+                      onClick={() => setRows((rs) => dropRow(rs, idx, newAdjust))}
+                      className={iconBtn}
+                    >
+                      ✕
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
-      {item && qtyAfter !== "" && (
-        <p className="mt-1 text-xs text-muted">
-          ระบบเก็บอยู่ {numText(item.qty)} {item.unit} → จะเปลี่ยนเป็น {numText(qtyAfter)} {item.unit}
-        </p>
-      )}
       <button
         type="button"
-        disabled={busy || !itemId || qtyAfter === "" || (item ? qtyAfter === item.qty : true)}
-        onClick={() =>
-          qtyAfter !== "" &&
-          onRun(() => adjustAction({ itemId, qtyAfter, reason, note }), "ปรับยอดแล้ว")
-        }
+        onClick={() => setRows((rs) => [...rs, newAdjust()])}
+        className="mt-2 block text-sm text-muted underline"
+      >
+        ＋ เพิ่มแถว
+      </button>
+
+      {plan.errors.length > 0 && <p className="mt-2 text-xs text-warn">ยังบันทึกไม่ได้ — {errorsText(plan.errors)}</p>}
+
+      <button
+        type="button"
+        disabled={busy || plan.rows.length === 0 || plan.errors.length > 0}
+        onClick={async () => {
+          const n = plan.rows.length;
+          if (await onRun(() => adjustBatchAction(plan.rows), `ปรับยอดแล้ว ${n} รายการ`)) {
+            setRows(blanks(3, newAdjust));
+          }
+        }}
         className="mt-3 rounded-lg bg-brand px-4 py-2 text-sm text-on-brand disabled:opacity-50"
       >
-        บันทึกการปรับยอด
+        {plan.rows.length > 0 ? `บันทึกการปรับยอด ${plan.rows.length} รายการ` : "บันทึกการปรับยอด"}
       </button>
-      {item && qtyAfter === item.qty && (
-        <p className="mt-1 text-xs text-faint">ยอดเท่าเดิม — ไม่มีอะไรต้องบันทึก</p>
+      {plan.same > 0 && (
+        <p className="mt-1 text-xs text-faint">ยอดเท่าเดิม {plan.same} รายการ — ไม่ต้องบันทึก ระบบข้ามให้</p>
+      )}
+      {plan.rows.length === 0 && plan.same === 0 && plan.errors.length === 0 && (
+        <p className="mt-1 text-xs text-faint">เลือกวัตถุดิบอย่างน้อย 1 แถว</p>
       )}
     </Card>
+  );
+}
+
+/** เพิ่มวัตถุดิบหลายรายการในป๊อปอัพเดียว (D103) — แก้รายการเดิมยังใช้ ItemModal ตัวเดิม */
+function NewItemsModal({
+  boot, busy, onClose, onSave,
+}: {
+  boot: BarBoot;
+  busy: boolean;
+  onClose: () => void;
+  onSave: (rows: NewItemRow[]) => Promise<{ ok: boolean; error?: string }>;
+}) {
+  const [rows, setRows] = useState<K<NewItemDraft>[]>(() => blanks(3, newItem));
+  const [err, setErr] = useState<string | null>(null);
+  const plan = planNewItems(rows, boot.items);
+  const set = (idx: number, patch: Partial<NewItemDraft>) =>
+    setRows((rs) => patchRow(rs, idx, patch, newItem, (r) => !!r.name.trim()));
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <EscToClose onClose={onClose} />
+      <div className="w-full max-w-4xl rounded-xl bg-card p-5">
+        <h3 className="mb-1 text-lg font-bold text-ink">เพิ่มวัตถุดิบ</h3>
+        <p className="mb-3 text-xs text-faint">
+          🚨 <b>หน่วยที่สูตรใช้</b> คือหน่วยที่สูตรกิน ไม่ใช่หน่วยที่ซื้อ — เหล้าควรเป็น <b>ml</b> ไม่ใช่ขวด
+          ไม่งั้นขาย 1 แก้วแล้วสต็อกกลายเป็นเศษทศนิยมของขวด · ยอดคงเหลือเริ่มที่ 0 แล้วค่อย <b>รับของเข้า</b>
+        </p>
+        <div className="overflow-x-auto">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>ชื่อ</th>
+                <th>หน่วยที่สูตรใช้</th>
+                <th className="text-right">1 หน่วยซื้อ = กี่หน่วยฐาน</th>
+                <th>ป้ายหน่วยซื้อ</th>
+                <th className="text-right">เตือนเมื่อเหลือน้อยกว่า</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, idx) => (
+                <tr key={r.k}>
+                  <td className="text-sm text-faint">{idx + 1}</td>
+                  <td>
+                    <div className="w-44">
+                      <TextInput value={r.name} onChange={(e) => set(idx, { name: e.target.value })} />
+                    </div>
+                  </td>
+                  <td>
+                    <div className="w-20">
+                      <TextInput value={r.unit} onChange={(e) => set(idx, { unit: e.target.value })} />
+                    </div>
+                  </td>
+                  <td>
+                    <div className="ml-auto w-24">
+                      <NumBox value={r.packSize} onChange={(v) => set(idx, { packSize: v })} blankZero placeholder="700" />
+                    </div>
+                  </td>
+                  <td>
+                    <div className="w-36">
+                      <TextInput
+                        value={r.packLabel}
+                        onChange={(e) => set(idx, { packLabel: e.target.value })}
+                        placeholder="ขวด (700 ml)"
+                      />
+                    </div>
+                  </td>
+                  <td>
+                    <div className="ml-auto w-24">
+                      <NumBox value={r.lowQty} onChange={(v) => set(idx, { lowQty: v })} blankZero placeholder="ว่าง=ไม่เตือน" />
+                    </div>
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      aria-label="ลบแถว"
+                      onClick={() => setRows((rs) => dropRow(rs, idx, newItem))}
+                      className={iconBtn}
+                    >
+                      ✕
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <button
+          type="button"
+          onClick={() => setRows((rs) => [...rs, newItem()])}
+          className="mt-2 block text-sm text-muted underline"
+        >
+          ＋ เพิ่มแถว
+        </button>
+
+        {plan.errors.length > 0 && <p className="mt-2 text-xs text-warn">ยังบันทึกไม่ได้ — {errorsText(plan.errors)}</p>}
+        {/* ★ error ต้องอยู่ในป๊อปอัพ — ข้อความบนหน้าหลักโดนป๊อปอัพบัง (D71) */}
+        <div className="mt-2">
+          <Msg msg={err ? { ok: false, text: err } : null} />
+        </div>
+
+        <div className="mt-4 flex gap-2">
+          <button
+            type="button"
+            disabled={busy || plan.rows.length === 0 || plan.errors.length > 0}
+            onClick={async () => {
+              setErr(null);
+              const r = await onSave(plan.rows);
+              if (r.ok) onClose();
+              else setErr(r.error ?? "บันทึกไม่สำเร็จ");
+            }}
+            className="flex-1 rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
+          >
+            {plan.rows.length > 0 ? `บันทึก ${plan.rows.length} รายการ` : "บันทึก"}
+          </button>
+          <button type="button" onClick={onClose} className="rounded-lg bg-raised px-3 py-2 text-sm text-ink">
+            ยกเลิก
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

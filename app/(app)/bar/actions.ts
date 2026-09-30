@@ -7,6 +7,7 @@ import { barTotals } from "@/lib/bar/totals";
 import { businessDate } from "@/lib/bar/businessDate";
 import { lineAmount } from "@/lib/bar/totals";
 import { nextCategorySort, sortUpdates, sameCategorySet } from "@/lib/bar/categoryOrder";
+import type { ReceiveRow, AdjustRow, NewItemRow } from "@/lib/bar/stockBatch";
 import type { CartLine, SaleWindow } from "@/lib/bar/types";
 import { getBarBootstrap } from "./data";
 
@@ -195,46 +196,81 @@ export async function saveMenuAction(input: {
   });
 }
 
-/** รับของเข้าบาร์ — ★ ราคาเป็นของล็อตจริง หน้าจอเติมค่าล่าสุดมาให้ กดผ่านได้ */
-export async function receiveAction(input: {
-  itemId: string;
-  qtyPack?: number | null;
-  qty: number;
-  costTotal: number;
+/**
+ * รับของเข้าบาร์หลายรายการในครั้งเดียว (D103) — ★ ราคาเป็นของล็อตจริง หน้าจอเติมค่าล่าสุดมาให้
+ * 🚨 ทั้งชุดเป็น transaction เดียว (0080) — แถวไหนล้ม ไม่มีแถวไหนเข้าเลย
+ *    `row` = เลขแถวบนจอ ให้ข้อความ error ชี้ถูกแถว (แถวว่างถูกข้ามไปก่อนแล้ว)
+ */
+export async function receiveBatchAction(input: {
+  rows: ReceiveRow[];
   source?: string | null;
   note?: string | null;
   docDate?: string | null;
 }): Promise<Res> {
   const entity = await barEntity();
   if (!entity) return { ok: false, error: NO_ENTITY };
-  return rpc("fn_bar_receive", {
+  if (input.rows.length === 0) return { ok: false, error: "ยังไม่มีรายการให้รับเข้า" };
+  return rpc("fn_bar_receive_batch", {
     p_entity: entity,
-    p_item: input.itemId,
-    p_qty: input.qty,
-    p_cost_total: input.costTotal,
-    p_qty_pack: input.qtyPack ?? null,
+    p_rows: input.rows.map((r) => ({
+      row: r.row, item: r.itemId, qty: r.qty, qty_pack: r.qtyPack, cost_total: r.costTotal,
+    })),
     p_date: input.docDate || null,
     p_source: input.source?.trim() || null,
     p_note: input.note?.trim() || null,
   });
 }
 
-/** ปรับยอดตามที่นับได้จริง / ของเสีย / ชิม — ทุกครั้งเขียน `bar_move` พร้อมเหตุผล */
-export async function adjustAction(input: {
-  itemId: string;
-  qtyAfter: number;
-  reason: string;
-  note?: string | null;
-}): Promise<Res> {
+/** ปรับยอดตามที่นับได้จริง / ของเสีย / ชิม หลายรายการในครั้งเดียว (D103) — ทุกแถวเขียน `bar_move` */
+export async function adjustBatchAction(rows: AdjustRow[]): Promise<Res> {
   const entity = await barEntity();
   if (!entity) return { ok: false, error: NO_ENTITY };
-  return rpc("fn_bar_adjust", {
+  if (rows.length === 0) return { ok: false, error: "ยังไม่มีรายการที่ยอดเปลี่ยน" };
+  return rpc("fn_bar_adjust_batch", {
     p_entity: entity,
-    p_item: input.itemId,
-    p_qty_after: input.qtyAfter,
-    p_reason: input.reason,
-    p_note: input.note?.trim() || null,
+    p_rows: rows.map((r) => ({
+      row: r.row, item: r.itemId, qty_after: r.qtyAfter, reason: r.reason, note: r.note,
+    })),
   });
+}
+
+/**
+ * เพิ่มวัตถุดิบหลายรายการในครั้งเดียว (D103) — insert คำสั่งเดียว = เข้าหมดหรือไม่เข้าเลย
+ * 🚨 ตรวจชื่อซ้ำกับของใน DB อีกรอบฝั่ง server — หน้าจออาจเปิดค้างไว้ขณะอีกเครื่องเพิ่มชื่อเดียวกัน
+ */
+export async function addItemsAction(rows: NewItemRow[]): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  if (rows.length === 0) return { ok: false, error: "ยังไม่มีรายการให้เพิ่ม" };
+  if (rows.some((r) => !r.name.trim() || !r.unit.trim())) {
+    return { ok: false, error: "ทุกรายการต้องมีชื่อและหน่วย" };
+  }
+  const supabase = await createClient();
+  const cur = await supabase.from("bar_item").select("name").eq("entity_id", entity);
+  // 🚨 อ่านไม่ได้ ≠ ไม่มีชื่อซ้ำ (D89)
+  if (cur.error) return { ok: false, error: mapDbError(cur.error) };
+  const key = (s: string) => s.trim().toLowerCase();
+  const have = new Set((cur.data ?? []).map((r) => key(r.name as string)));
+  const dup = rows.filter((r) => have.has(key(r.name))).map((r) => r.name);
+  if (dup.length > 0) return { ok: false, error: `มีวัตถุดิบชื่อนี้อยู่แล้ว: ${dup.join(" · ")}` };
+
+  const stamp = Date.now().toString(36).toUpperCase();
+  const { error } = await supabase.from("bar_item").insert(
+    rows.map((r, i) => ({
+      entity_id: entity,
+      // ★ ต่อท้ายเลขแถว — ทั้งชุดได้ Date.now() ค่าเดียวกัน ไม่ต่อ = รหัสชนกันเองทั้งชุด
+      item_id: `I-${stamp}-${i + 1}`,
+      name: r.name.trim(),
+      unit: r.unit.trim(),
+      pack_size: r.packSize,
+      pack_label: r.packLabel,
+      low_qty: r.lowQty,
+      active: true,
+    })),
+  );
+  if (error) return { ok: false, error: mapDbError(error) };
+  revalidatePath("/bar");
+  return { ok: true, data: { count: rows.length } };
 }
 
 /**
