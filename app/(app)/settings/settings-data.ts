@@ -4,7 +4,7 @@ import { brandingFromSettings, type Branding } from "@/lib/shared/branding";
 import type { EditLogRow } from "@/lib/shared/editLog";
 import { mustRead } from "@/lib/shared/dbError";
 import { getTenantPlan } from "@/lib/shared/tenant-plan";
-import type { DocNumberingRow } from "@/lib/shared/docNumbering";
+import { DOC_GROUPS, type DocEntityParam, type DocNumberingRow } from "@/lib/shared/docNumbering";
 
 /**
  * ตั้งค่า → เลขเอกสาร (D100)
@@ -13,27 +13,45 @@ import type { DocNumberingRow } from "@/lib/shared/docNumbering";
  * · บาร์ = แยกกิจการ · ปริยายคือกิจการของบาร์ (`bar_entity`) → ถ้าไม่ได้ตั้ง ใช้กิจการแรก
  * 🚨 อ่านไม่ได้ = throw (D89) — หน้าที่ว่างเปล่าแล้วดูเหมือน "ยังไม่มีอะไรให้ตั้ง" คือคำโกหก
  */
-export async function getDocNumberingSettings(entityParam?: string): Promise<{
+export async function getDocNumberingSettings(params: Partial<Record<DocEntityParam, string>>): Promise<{
   rows: DocNumberingRow[];
-  entities: { entity_id: string; name: string }[];
-  barEntityId: string;
+  entities: { entity_id: string; name: string; is_default: boolean }[];
+  /** กิจการที่แต่ละการ์ด (บาร์ / 50ทวิ) กำลังแสดงอยู่ */
+  entityOf: Record<DocEntityParam, string>;
   modules: string[];
 }> {
   const supabase = await createClient();
   const [ents, st, plan] = await Promise.all([
-    supabase.from("entities").select("entity_id, name").order("entity_id"),
+    supabase.from("entities").select("entity_id, name, is_default").order("entity_id"),
     supabase.from("app_settings").select("value").eq("kind", "bar_entity").maybeSingle(),
     getTenantPlan(),
   ]);
-  const entities = mustRead(ents, "รายชื่อกิจการ") as { entity_id: string; name: string }[];
-  const known = (id: string | undefined | null) => !!id && entities.some((e) => e.entity_id === id);
-  const barEntityId = known(entityParam)
-    ? entityParam!
-    : known(st.data?.value as string) ? (st.data!.value as string) : entities[0]?.entity_id ?? "";
+  const entities = mustRead(ents, "รายชื่อกิจการ") as { entity_id: string; name: string; is_default: boolean }[];
+  const known = (id: string | undefined | null): id is string => !!id && entities.some((e) => e.entity_id === id);
+  const first = entities[0]?.entity_id ?? "";
+  const main = entities.find((e) => e.is_default)?.entity_id ?? first;
+  const barSetting = st.data?.value as string | undefined;
+  // ★ ค่าปริยายแยกตามการ์ด: บาร์ = กิจการของบาร์ · 50ทวิ = กิจการหลัก (ไม่ใช่ "กิจการแรกในรายชื่อ")
+  const entityOf: Record<DocEntityParam, string> = {
+    bar: known(params.bar) ? params.bar : known(barSetting) ? barSetting : first,
+    wht: known(params.wht) ? params.wht : main,
+  };
 
-  const list = await supabase.rpc("fn_doc_numbering_list", { p_entity: barEntityId || null });
-  const rows = (mustRead(list, "รูปแบบเลขเอกสาร") ?? []) as DocNumberingRow[];
-  return { rows, entities, barEntityId, modules: plan.modules };
+  // RPC คืนทุกชนิดของกิจการหนึ่ง → เรียกครั้งละกิจการ (ไม่เกิน 2 ครั้ง) แล้วแต่ละกลุ่มหยิบแถวของกิจการตัวเอง
+  const ids = [...new Set([entityOf.bar, entityOf.wht])];
+  const lists = await Promise.all(
+    ids.map(async (id) => {
+      const list = await supabase.rpc("fn_doc_numbering_list", { p_entity: id || null });
+      return [id, (mustRead(list, "รูปแบบเลขเอกสาร") ?? []) as DocNumberingRow[]] as const;
+    }),
+  );
+  const byEntity = new Map(lists);
+  const groupOf = (t: DocNumberingRow["doc_type"]) => DOC_GROUPS.find((g) => g.types.includes(t))?.entityParam;
+  const rows = (byEntity.get(entityOf.bar) ?? []).map((r) => {
+    const p = groupOf(r.doc_type);
+    return p ? (byEntity.get(entityOf[p]) ?? []).find((x) => x.doc_type === r.doc_type) ?? r : r;
+  });
+  return { rows, entities, entityOf, modules: plan.modules };
 }
 
 /**

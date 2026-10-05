@@ -9,7 +9,7 @@ import {
 import {
   DOC_GROUPS, DOC_TYPE_INFO, DATE_FMTS, DATE_FMT_LABEL, ERAS, ERA_LABEL, RESETS, RESET_LABEL, SEPS, SEP_LABEL, PREFIX_RE,
   allowedResets, fitReset, toCfg,
-  type DocNumberCfg, type DocNumberingRow, type DocNumberPreview, type DocType,
+  type DocEntityParam, type DocNumberCfg, type DocNumberingRow, type DocNumberPreview, type DocType,
 } from "@/lib/shared/docNumbering";
 import { previewDocNumberAction, resetDocNumberAction, saveDocNumberAction } from "../actions";
 
@@ -23,12 +23,13 @@ import { previewDocNumberAction, resetDocNumberAction, saveDocNumberAction } fro
 export function DocNumberingCard({
   rows,
   entities,
-  barEntityId,
+  entityOf,
   modules,
 }: {
   rows: DocNumberingRow[];
   entities: { entity_id: string; name: string }[];
-  barEntityId: string;
+  /** กิจการที่การ์ดบาร์ / 50ทวิ แสดงอยู่ — แยกกันโดยตั้งใจ */
+  entityOf: Record<DocEntityParam, string>;
   modules: string[];
 }) {
   const router = useRouter();
@@ -39,8 +40,12 @@ export function DocNumberingCard({
   const bought = (t: DocType) => DOC_TYPE_INFO[t].modules.some((m) => modules.includes(m));
   const groups = DOC_GROUPS.map((g) => ({ ...g, rows: rows.filter((r) => g.types.includes(r.doc_type) && bought(r.doc_type)) }))
     .filter((g) => g.rows.length > 0);
-  // กิจการมีผลกับเอกสารที่แยกกิจการเท่านั้น (บาร์ · 50ทวิ) — ขาย/ผลิต RPC ตัดสินกิจการให้เอง
-  const needsEntity = groups.some((g) => g.perEntity);
+
+  /** เปลี่ยนกิจการของการ์ดหนึ่ง — คงค่าของอีกการ์ดไว้ใน URL */
+  function pickEntity(param: DocEntityParam, id: string) {
+    const next = { ...entityOf, [param]: id };
+    router.push(`/settings/numbering?bar=${encodeURIComponent(next.bar)}&wht=${encodeURIComponent(next.wht)}` as Route);
+  }
 
   return (
     <div className="space-y-4">
@@ -53,22 +58,6 @@ export function DocNumberingCard({
           เลขใหม่มากกว่าเลขล่าสุดที่ออกไปแล้วเสมอ — ไม่ซ้ำ ไม่ย้อนลำดับ ไม่เอาเลขที่ถูกลบกลับมาใช้
           · เอกสารที่ออกไปแล้วยังใช้เลขเดิม ไม่ถูกแก้ย้อนหลัง
         </p>
-        {needsEntity && entities.length > 1 && (
-          <div className="mt-3 max-w-xs">
-            <Field label="กิจการ (ใช้กับเลขบาร์และ 50 ทวิ)">
-              <Select
-                value={barEntityId}
-                onChange={(e) => router.push(`/settings/numbering?entity=${encodeURIComponent(e.target.value)}` as Route)}
-              >
-                {entities.map((e) => (
-                  <option key={e.entity_id} value={e.entity_id}>
-                    {e.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
-        )}
       </Card>
 
       {groups.length === 0 && (
@@ -79,7 +68,23 @@ export function DocNumberingCard({
 
       {groups.map((g) => (
         <Card key={g.title} title={g.title}>
-          {g.note && <p className="mb-3 text-xs text-faint">{g.note.replace("{กิจการ}", entityName(g.rows[0].entity_id))}</p>}
+          {/* กิจการเดียว = ไม่มีอะไรให้เลือก ไม่ต้องอธิบายเรื่องเลือกกิจการ (หลักเดียวกับ D53) */}
+          {g.note && (!g.entityParam || entities.length > 1) && (
+            <p className="mb-3 text-xs text-faint">{g.note.replace("{กิจการ}", entityName(g.rows[0].entity_id))}</p>
+          )}
+          {g.entityParam && entities.length > 1 && (
+            <div className="mb-3 max-w-xs">
+              <Field label="กิจการ">
+                <Select value={entityOf[g.entityParam]} onChange={(e) => pickEntity(g.entityParam!, e.target.value)}>
+                  {entities.map((e) => (
+                    <option key={e.entity_id} value={e.entity_id}>
+                      {e.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+          )}
           <DocRows rows={g.rows} onEdit={setEditing} />
         </Card>
       ))}

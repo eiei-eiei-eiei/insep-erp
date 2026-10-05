@@ -71,15 +71,39 @@ export const DOC_TYPE_INFO: Record<DocType, { label: string; modules: ModuleKey[
  * 🚨 ทุกชนิดใน DOC_TYPES ต้องอยู่ในกลุ่มเดียวพอดี (docNumberingSql.test.ts ตรวจ) — ตกกลุ่ม = ตั้งค่าไม่ได้
  * perEntity = เลขแยกตามกิจการ (ตัวเลือกกิจการบนหน้ามีผล) · note: `{กิจการ}` = ชื่อกิจการของแถว
  */
-export const DOC_GROUPS: { title: string; types: DocType[]; perEntity: boolean; note?: string }[] = [
+/**
+ * ★ `entityParam` = กลุ่มนี้รันเลขแยกตามกิจการ → การ์ดมีตัวเลือกกิจการของตัวเอง จำค่าใน URL `?{entityParam}=`
+ *   แยกกันโดยตั้งใจ — เลือกกิจการให้ 50ทวิ แล้วการ์ดบาร์ต้องไม่เปลี่ยนตาม (เดิมใช้ตัวเลือกเดียวบนหัวหน้า
+ *   ที่อ่านแล้วไม่รู้ว่าเลือกแล้วมีผลกับอะไร · เปิดหน้ามาเป็นกิจการของบาร์ แล้วไปแก้ 50ทวิ ผิดกิจการได้)
+ */
+export type DocEntityParam = "bar" | "wht";
+export const DOC_GROUPS: {
+  title: string;
+  types: DocType[];
+  perEntity: boolean;
+  entityParam?: DocEntityParam;
+  note?: string;
+}[] = [
   {
     title: "เอกสารขาย",
     types: ["sales_qu", "sales_ord", "sales_inv", "sales_tax", "sales_rcpt"],
     perEntity: false,
     note: "ออกในนามกิจการ {กิจการ} — เปลี่ยนได้ที่ ตั้งค่า → กิจการ",
   },
-  { title: "บาร์", types: ["bar_bill", "bar_rcpt"], perEntity: true },
-  { title: "บัญชี / เงินเดือน", types: ["acct_wht"], perEntity: true },
+  {
+    title: "บาร์",
+    types: ["bar_bill", "bar_rcpt"],
+    perEntity: true,
+    entityParam: "bar",
+    note: "เลขบิลรันแยกตามกิจการที่ขาย — เลือกกิจการด้านล่างก่อนแก้รูปแบบ",
+  },
+  {
+    title: "บัญชี / เงินเดือน",
+    types: ["acct_wht"],
+    perEntity: true,
+    entityParam: "wht",
+    note: "แต่ละกิจการออกหนังสือรับรองในนามตัวเอง เลขจึงรันแยกกัน — เลือกกิจการด้านล่างก่อนแก้รูปแบบ",
+  },
   {
     title: "ผลิต",
     types: ["prod_batch", "prod_lot"],

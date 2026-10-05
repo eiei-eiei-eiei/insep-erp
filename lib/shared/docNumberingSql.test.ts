@@ -81,6 +81,14 @@ describe("ชนิดเอกสาร ฝั่ง TS ↔ SQL ต้องต
     expect(new Set(labels).size).toBe(labels.length);
   });
 
+  it("กลุ่มที่รันเลขแยกกิจการ มีตัวเลือกกิจการของตัวเอง (key ใน URL ไม่ซ้ำกัน)", () => {
+    const per = DOC_GROUPS.filter((g) => g.perEntity);
+    for (const g of per) expect(g.entityParam, g.title).toBeTruthy();
+    expect(new Set(per.map((g) => g.entityParam)).size).toBe(per.length);
+    // กลุ่มที่ไม่แยกกิจการ ห้ามมีตัวเลือก (เลือกแล้วไม่มีผล = ประโยคบนจอโกหก)
+    for (const g of DOC_GROUPS.filter((x) => !x.perEntity)) expect(g.entityParam, g.title).toBeUndefined();
+  });
+
   it("ทุกชนิดอยู่ในกลุ่มบนหน้าตั้งค่าพอดีกลุ่มเดียว — ตกกลุ่ม = ตั้งค่าไม่ได้", () => {
     const all = DOC_GROUPS.flatMap((g) => g.types);
     expect([...all].sort()).toEqual([...DOC_TYPES].sort());
