@@ -25,6 +25,7 @@ import {
   type ImageState,
   type ShareSupport,
 } from "@/lib/sales/docImage";
+import { lendPopupFrames } from "@/lib/shared/popupFrames";
 
 /** CSS ของหน้าต่างเอกสาร (จอเท่านั้น) — กระดาษพิมพ์ยังเป็น A4_HEAD เดิมทุกอย่าง */
 export const VIEWER_HEAD = `<meta name="viewport" content="width=860">
@@ -109,8 +110,10 @@ export function mountDocViewer(win: Window, print: () => void) {
   const btnPrint = el(d, "button", { class: "dv-btn primary", type: "button" }, "พิมพ์");
   const btnShare = el(d, "button", { class: "dv-btn", type: "button" });
   const hint = el(d, "span", { class: "dv-hint" }, "คัดลอกเป็นภาพได้ทีละหน้าที่ปุ่มเหนือแต่ละหน้า");
+  // มือถือไม่มีการชี้เมาส์ค้าง → title มองไม่เห็น · เหตุผลที่ปุ่มแชร์เทาต้องเป็นตัวหนังสือบนจอ (D83)
+  const why = el(d, "span", { class: "dv-hint dv-why" });
   const status = el(d, "div", { class: "dv-status", role: "status", "aria-live": "polite" });
-  bar.append(btnPrint, btnShare, hint, status);
+  bar.append(btnPrint, btnShare, why, hint, status);
   d.body.insertBefore(bar, d.body.firstChild);
 
   const say = (text: string, tone: "" | "ok" | "warn" | "err" = "") => {
@@ -125,9 +128,11 @@ export function mountDocViewer(win: Window, print: () => void) {
   const refresh = () => {
     const selected = pages.filter((p) => p.check.checked).length;
     btnShare.textContent = shareAllLabel(selected, pages.length);
-    const why = shareDisabledReason(support, selected, state);
-    btnShare.disabled = why !== "";
-    btnShare.title = why;
+    const reason = shareDisabledReason(support, selected, state);
+    btnShare.disabled = reason !== "";
+    btnShare.title = reason;
+    // ระหว่างเตรียมภาพ บรรทัดสถานะบอกอยู่แล้ว · ภาพเสียก็บอกในสถานะ — ไม่พูดซ้ำสองที่
+    why.textContent = state === "ready" ? reason : "";
     for (const p of pages) {
       const share = p.sheet.previousElementSibling?.querySelector<HTMLButtonElement>("[data-act=share]");
       const copy = p.sheet.previousElementSibling?.querySelector<HTMLButtonElement>("[data-act=copy]");
@@ -230,6 +235,24 @@ export function mountDocViewer(win: Window, print: () => void) {
   }
 
   // ── แปลงภาพเตรียมไว้ (ทีละหน้า) ─────────────────────────
+  // จับเวลาด้วย timer ของหน้าต่างเอกสาร (timer ของแท็บแอปที่ถูกซ่อนถูกหน่วงจนไม่น่าเชื่อถือ)
+  const withTimeout = <T,>(p: Promise<T>, ms: number) =>
+    new Promise<T>((res, rej) => {
+      const t = w.setTimeout(() => rej(new Error("timeout")), ms);
+      p.then(
+        (v) => {
+          w.clearTimeout(t);
+          res(v);
+        },
+        (e) => {
+          w.clearTimeout(t);
+          rej(e);
+        },
+      );
+    });
+  const release = lendPopupFrames(window, w);
+  w.addEventListener("pagehide", release);
+
   void (async () => {
     try {
       const { toBlob, getFontEmbedCSS } = await import("html-to-image");
@@ -244,8 +267,10 @@ export function mountDocViewer(win: Window, print: () => void) {
       for (let i = 0; i < pages.length; i++) {
         const p = pages[i];
         say(`กำลังเตรียมภาพ ${i + 1}/${pages.length}…`);
-        if (warm) await toBlob(p.sheet, opts);
-        const b = await toBlob(p.sheet, opts);
+        if (w.closed) return; // ปิดหน้าต่างไปแล้ว — หยุดงาน ไม่กินหน่วยความจำต่อ
+        // 🚨 ห้ามค้างเงียบตลอดกาลอีก — เกิน 45 วินาทีต่อหน้า = ถือว่าล้มเหลว แล้วบอกผู้ใช้
+        if (warm) await withTimeout(toBlob(p.sheet, opts), 45_000);
+        const b = await withTimeout(toBlob(p.sheet, opts), 45_000);
         if (!b) throw new Error("empty image");
         p.resolve(b);
       }
@@ -255,6 +280,8 @@ export function mountDocViewer(win: Window, print: () => void) {
       state = "failed";
       for (const p of pages) p.reject(new Error("render failed"));
       say(IMAGE_FAILED_TEXT, "err");
+    } finally {
+      release();
     }
     refresh();
   })();
