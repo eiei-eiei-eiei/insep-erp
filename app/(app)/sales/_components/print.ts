@@ -3,7 +3,8 @@
 /**
  * print — พิมพ์ใบเสนอราคา (A4) + เอกสารขาย B2B (invoice/tax-invoice/receipt)
  *   port verbatim จาก docs/legacy/sales/_templates_print.html + _js_orders.html (setupDoc)
- *   วิธี: เปิด window ใหม่เขียน HTML แล้ว print (แทน iframe เดิม)
+ *   วิธี: เปิด window ใหม่เขียน HTML (แทน iframe เดิม) — D105: ไม่เปิดหน้าพิมพ์เองแล้ว
+ *   แสดงเอกสาร + แถบปุ่ม พิมพ์ / คัดลอกเป็นภาพ / แชร์ (ดู ./docViewer)
  *
  * ⚠️ หัวกระดาษ/เลขบัญชี = ข้อมูลกิจการจริง — ต้องส่งเข้ามาเป็น argument (D44)
  *    ค่าอยู่ในตาราง `entities` ของแต่ละ tenant ไม่ใช่ในโค้ด (ตรรกะประกอบข้อความ: lib/sales/company)
@@ -14,12 +15,15 @@ import { reverseCalcPrint, roundTo2 } from "@/lib/sales/calc";
 import { formatThaiDate } from "@/lib/sales/orders";
 import { branchLabel, type CompanyInfo } from "@/lib/sales/company";
 import type { OrderItem } from "./types";
+import { mountDocViewer, VIEWER_HEAD } from "./docViewer";
 
 export type { CompanyInfo };
 
 const nf = (n: number) => (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!);
 /** ข้อความหลายบรรทัด → HTML (escape ก่อน แล้วค่อยเปลี่ยน \n เป็น <br>) */
+/** ค่าใน attribute (data-doc-*) — escape เครื่องหมายคำพูดด้วย */
+const escAttr = (s: unknown) => esc(s).replace(/"/g, "&quot;");
 const escMultiline = (s: string) => esc(s).replace(/\r?\n/g, "<br>");
 
 function formatChequeDetail(text: string): string {
@@ -144,7 +148,7 @@ function quotationHtml(c: CompanyInfo, d: QuotationDoc): string {
   const grandBottom = d.whtPercent
     ? "border-bottom:1px solid #cbd5e1;"
     : "border-bottom:4px double #0f172a;background-color:#f1f5f9;";
-  return `<div class="a4-container" style="font-family:'Kanit',sans-serif;color:#111;line-height:1.5;">
+  return `<div class="a4-container" data-doc-title="ใบเสนอราคา" data-doc-no="${escAttr(d.quNo)}" style="font-family:'Kanit',sans-serif;color:#111;line-height:1.5;">
     ${companyHeader(c, "ใบเสนอราคา", "Quotation")}
     <div style="display:flex;justify-content:space-between;width:100%;margin-bottom:15px;font-size:14px;box-sizing:border-box;">
       ${customerBox(d.customerName, d.customerAddress, d.customerTaxId, d.customerBranch)}
@@ -199,14 +203,16 @@ function openPrint(inner: string, pre?: Window | null) {
     return;
   }
   w.document.open();
-  w.document.write(`<!DOCTYPE html><html><head><title>Document</title>${A4_HEAD}</head><body>${inner}</body></html>`);
+  w.document.write(`<!DOCTYPE html><html><head><title>Document</title>${A4_HEAD}${VIEWER_HEAD}</head><body>${inner}</body></html>`);
   w.document.close();
 
   // Smart scale (port executeIframePrint เดิม): ถ้า content เกินหน้าเดียวนิดเดียว → zoom ย่อให้พอดี
   // A4 printable height = 297mm − margin 10mm×2 = 277mm ≈ 1047px @96dpi (ใช้ 1020 กัน rounding)
+  // D105: zoom อยู่ใน @media print เท่านั้น — บนจอ/ในภาพต้องเป็นขนาดจริง
+  //       บนจอ .a4-container กว้าง 190mm เท่ากระดาษ (แผ่น 210mm − ขอบ 10mm×2) → วัดได้ค่าเดียวกับตอนพิมพ์
   const A4_H = 1020;
   const MIN_SCALE = 0.75; // ต่ำกว่านี้ = content เยอะมาก → ปล่อย paginate ตามธรรมชาติ (ดีกว่าตัวเล็กเกิน)
-  const measureAndPrint = () => {
+  const applyPrintScale = () => {
     const containers = w.document.querySelectorAll<HTMLElement>(".a4-container");
     let maxH = 0;
     containers.forEach((c) => {
@@ -216,18 +222,29 @@ function openPrint(inner: string, pre?: Window | null) {
     const scale = A4_H / maxH;
     if (scale < 1 && scale >= MIN_SCALE) {
       const styleEl = w.document.createElement("style");
-      styleEl.textContent = `body { zoom: ${scale.toFixed(3)}; }`;
+      // บนจอย่อเฉพาะเนื้อหาในแผ่น (แผ่นยังเป็น A4) → ภาพที่คัดลอกหน้าตาเท่ากระดาษที่พิมพ์ออกมา
+      styleEl.textContent =
+        `@media print { body { zoom: ${scale.toFixed(3)}; } }\n` +
+        `@media screen { .dv-sheet .a4-container { zoom: ${scale.toFixed(3)}; } }`;
       w.document.head.appendChild(styleEl);
     }
-    w.focus();
-    w.print();
   };
 
   // รอ font โหลด + render ครบก่อนวัด (พึ่ง fonts.ready เป็นหลัก)
+  // D105: ไม่เปิดหน้าพิมพ์เองแล้ว — แสดงเอกสาร + แถบ พิมพ์ / คัดลอกเป็นภาพ / แชร์ ให้ผู้ใช้เลือก
+  const ready = () => {
+    // ห่อหน้าเป็นแผ่นกระดาษก่อน แล้วค่อยวัด (ความกว้างบนจอถึงจะเท่ากับตอนพิมพ์)
+    mountDocViewer(w, () => {
+      w.focus();
+      w.print();
+    });
+    applyPrintScale();
+    w.focus();
+  };
   setTimeout(() => {
     const fonts = (w.document as Document & { fonts?: FontFaceSet }).fonts;
-    if (fonts?.ready) fonts.ready.then(measureAndPrint).catch(measureAndPrint);
-    else measureAndPrint();
+    if (fonts?.ready) fonts.ready.then(ready).catch(ready);
+    else ready();
   }, 300);
 }
 
@@ -523,7 +540,7 @@ function bankOrPaymentBox(c: CompanyInfo, doc: PreparedDoc): string {
 
 function b2bDocHtml(c: CompanyInfo, doc: PreparedDoc, idx: number): string {
   const brk = idx > 0 ? "page-break-before:always;break-before:page;margin-top:15px;" : "";
-  return `<div class="a4-container" style="${brk}font-family:'Kanit',sans-serif;color:#111;line-height:1.5;">
+  return `<div class="a4-container" data-doc-title="${escAttr(doc.receiptTitle)}" data-doc-copy="${escAttr(doc.copyType)}" data-doc-no="${escAttr(doc.docNo)}" style="${brk}font-family:'Kanit',sans-serif;color:#111;line-height:1.5;">
     ${companyHeader(c, doc.receiptTitle as string, doc.receiptTitleEng as string, doc.copyType)}
     <div style="display:flex;justify-content:space-between;width:100%;margin-bottom:15px;font-size:14px;box-sizing:border-box;">
       ${customerBox(doc.customerName as string, doc.customerAddress as string, doc.customerTaxId as string, doc.customerBranch as string)}
