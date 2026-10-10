@@ -1088,14 +1088,21 @@ route `/platform` · requirement เต็ม `docs/ADMIN_APP_REQUIREMENTS.md` �
 
 ### 10.1 โครงสร้าง deployment — **3 Vercel project จาก repo เดียว branch เดียว** (ตอบคำถามผู้ใช้ 2026-08-13)
 
-> สถานะตอนถาม: มี project เดียว `insep-erp` ชี้ **DB ของเจ้าของ** · **ยังไม่มี deployment ไหนชี้ DB ลูกค้าเลย**
-> (= ลูกค้ายังเข้าใช้ไม่ได้อยู่แล้ว ไม่ใช่แค่แอปแอดมิน)
+> ✅ **สร้างครบทั้ง 3 project แล้ว** (ยืนยันสถานะ 2026-10-10)
+> _สถานะตอนถามครั้งแรก 2026-08-13: มี project เดียว `insep-erp` ชี้ DB ของเจ้าของ · ยังไม่มี deployment ไหนชี้ DB ลูกค้าเลย_
 
 | project | ชี้ DB | `PLATFORM_ADMIN` | ใครเข้า |
 |---|---|---|---|
-| `insep-erp` (มีแล้ว) | `vmhiwlxdyhatucioalzp` | **`=1`** (ตั้งแล้ว 2026-08-31 · D87) | เจ้าของ ใช้ทำงานจริง + เข้า `/platform` ของโรงตัวเอง |
-| `proof-app` (ยังไม่สร้าง) | `tnuxrufpzeyuvwdmkojv` | ไม่ตั้ง → `/platform` = **404** | ลูกค้าทุกเจ้า |
-| `proof-admin` (ยังไม่สร้าง) | `tnuxrufpzeyuvwdmkojv` | **`=1`** | เจ้าของระบบคนเดียว |
+| `insep-erp` ✅ | `vmhiwlxdyhatucioalzp` | **`=1`** (ตั้งแล้ว 2026-08-31 · D87) | เจ้าของ ใช้ทำงานจริง + เข้า `/platform` ของโรงตัวเอง |
+| `proof-app` ✅ (`proof-app-lake.vercel.app`) | `tnuxrufpzeyuvwdmkojv` | ไม่ตั้ง → `/platform` = **404** | ลูกค้าทุกเจ้า |
+| `proof-admin` ✅ | `tnuxrufpzeyuvwdmkojv` | **`=1`** | เจ้าของระบบคนเดียว |
+
+> 🚨 **คุม tenant ของลูกค้าต้องเข้าทาง `proof-admin` เท่านั้น** — `/platform` ของ `insep-erp` เห็นแค่
+> tenant ของโรงกลั่นเจ้าของเอง เพราะ `requirePlatformAdmin()` คืน service-role client ของ **DB ที่ env ของ
+> project นั้นชี้** เท่านั้น · เปิดผิด project แล้วไม่เห็นลูกค้า **ไม่ใช่สิทธิ์พัง**
+>
+> 🪤 **บัญชีแอดมินของ 2 DB เป็นคนละบัญชีกัน** (คนละ Supabase project = คนละ auth user)
+> ต่อให้ชื่อผู้ใช้เหมือนกันก็ตาม · และแต่ละโดเมนถือ cookie แยกกัน ต้องล็อกอินใหม่ทีละ project
 
 > 🔄 **แก้ 2026-08-31 (D87)**: `insep-erp` เปิด `PLATFORM_ADMIN=1` แล้ว — รับได้เพราะ project นี้ชี้
 > **DB ของโรงกลั่นเจ้าของเอง** `/platform` จึงเห็นแค่ tenant ตัวเอง ไม่ใช่หน้าจอที่คุมลูกค้า
@@ -1106,7 +1113,7 @@ route `/platform` · requirement เต็ม `docs/ADMIN_APP_REQUIREMENTS.md` �
 > **ยังไม่ต้องซื้อโดเมน**: ไม่ตั้ง `NEXT_PUBLIC_ROOT_DOMAIN` = โหมดลิงก์เดียว ทุก tenant ใช้ URL เดียวกัน
 > (subdomain เป็นของแต่งหน้าล้วน ๆ ตั้งแต่ D48 — ไม่มีก็ล็อกอินได้ปกติ)
 
-**env ที่ต้องตั้งบน `proof-app`** (ก๊อปค่าจาก `.env.local.testing-backup`):
+**env ของ `proof-app`** — ✅ ตั้งแล้ว (ก๊อปค่าจาก `.env.local.testing-backup`) · `proof-admin` ใช้ตารางเดียวกัน **ต่างแค่ `PLATFORM_ADMIN=1`**:
 | ตัวแปร | จำเป็น | เหตุผล |
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` · `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | แอปเข้า DB ไม่ได้เลยถ้าไม่มี |
@@ -1245,3 +1252,16 @@ insert โดย**ไม่ระบุ `tenant_id`/`entity_id`** อาศั�
 > ยังไม่แก้ในรอบนี้เพราะอยู่นอกขอบเขต D98 และแตะชั้น auth/middleware ที่ต้องเทสทุกโดเมน
 > ควรทำเป็นงานของตัวเอง — ทิศทางที่น่าจะถูก: ให้ชั้น server ตรวจ session แล้ว `redirect("/login")`
 > เมื่ออ่านไม่ได้ แทนที่จะปล่อยให้ค้าง (🚨 ระวัง fail-closed/fail-open ตาม D85/D53)
+
+## ค้าง: คัดลอกเป็นภาพ / แชร์ — ยังไม่ทำกับบิลบาร์ (D105 · 2026-10-10)
+
+แอปขายทำแล้ว (ผู้ใช้เทสบนมือถือผ่าน) · **บาร์/POS หน้าร้านยังไม่ทำ** — ผู้ใช้เลือก "เอาแค่แอปขายก่อน"
+
+ถ้าจะทำต่อ:
+- ของที่ใช้ซ้ำได้: `app/(app)/sales/_components/docViewer.ts` (`mountDocViewer`) + `lib/sales/docImage.ts` + `lib/shared/popupFrames.ts`
+  — viewer ผูกกับ `.a4-container` + `data-doc-*` ของ print.ts · บิลบาร์เป็นกระดาษความร้อน 58/80 มม. ไม่ใช่ A4
+  ⇒ ต้องแยก "หน้ากระดาษ" ออกเป็นพารามิเตอร์ (ขนาดแผ่น/ตัวเลือก selector) ก่อน ไม่ใช่ก๊อป viewer ไปอีกชุด
+- 🪤 **กับดักที่เจอจริงบนมือถือ**: โค้ดที่รันในหน้าต่างแอปแต่ทำงานกับ popup — แท็บแอปถูกซ่อนบน Android
+  ⇒ rAF ไม่ยิง · timer ถูกหน่วง ⇒ ต้องยืม rAF (`lendPopupFrames`) + จับเวลาด้วย timer ของ popup
+- 🚨 พรีวิวบิลบาร์ต้องเรนเดอร์ด้วย `receiptHtml()` ตัวเดียวกับที่พิมพ์ (กติกา D96 เฟส G)
+
