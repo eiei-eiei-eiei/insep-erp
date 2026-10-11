@@ -18,7 +18,8 @@
  * 🚩 **build/lint/test มองไม่เห็นเรื่องนี้เลย** ต้องพิมพ์จริงแล้วสแกนด้วยแอปธนาคารจริง
  */
 import type { ReceiptDoc } from "./receipt";
-import { paperMetrics, type BlockKey } from "./layout";
+import { paperMetrics, type BlockKey, type PaperWidth } from "./layout";
+import { mountDocViewer, viewerHead } from "../shared/docViewer";
 
 const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -187,23 +188,61 @@ export function receiptHtml(doc: ReceiptDoc, qrMarkup?: string | null): string {
 }
 
 /**
- * เปิดหน้าต่างพิมพ์
+ * แผ่นบิลบนจอ (D106) — กว้างเท่าม้วนกระดาษ ขอบซ้าย/ขวาเท่าส่วนที่เครื่องพิมพ์ไม่ถึง
+ * ⇒ ภาพที่คัดลอกหน้าตาเท่าบิลที่ออกจากเครื่อง · ความสูงตามเนื้อหา (กระดาษม้วนไม่มีขอบล่าง)
+ * 🚨 อยู่ใน `@media screen` เท่านั้น — กระดาษที่พิมพ์ยังเป็น `receiptCss()` เดิมทุกบรรทัด
+ *    (body ของ receiptCss กว้างเท่าส่วนที่พิมพ์ได้ → บนจอต้องคืนความกว้างให้แถบปุ่ม แล้วย้ายไปคุมที่แผ่นแทน)
+ */
+export function receiptSheetCss(paper: PaperWidth = 80): string {
+  const { printable } = paperMetrics(paper);
+  const side = (paper - printable) / 2;
+  return `@media screen {
+  :root { --dv-w: ${paper}mm; }
+  body { width: auto !important; margin: 0 !important; padding: 0 !important; }
+  .dv-sheet { width: ${paper}mm; padding: 3mm ${side}mm 6mm; }
+}`;
+}
+
+/**
+ * เปิดหน้าต่างบิล — แสดงบิล + แถบ พิมพ์ / คัดลอกเป็นภาพ / แชร์ (D106)
  *
+ * 🔄 D106: **ไม่เปิดหน้าพิมพ์เองแล้ว** (ผู้ใช้เลือก — เหมือนแอปขาย D105)
+ *    ผู้ใช้กดปุ่ม **พิมพ์** บนแถบเอง → กล่องพิมพ์ของ Android → RawBT เหมือนเดิม
  * 🪤 ต้อง `document.write` ลงหน้าต่างใหม่ ไม่ใช่ print หน้าปัจจุบัน —
  *    หน้าแอปมี CSS ของตัวเองเต็มไปหมด แล้วกระดาษจะออกมาเป็นหน้าเว็บย่อส่วน
- * 🪤 เรียก `print()` หลัง `onload` — เรียกก่อนฟอนต์โหลดเสร็จ RawBT จะได้หน้าเปล่า
+ * 🪤 ติดตั้งแถบหลัง `onload` — ก่อนฟอนต์โหลดเสร็จ ภาพ/กระดาษจะได้หน้าเปล่า
  */
-export function openPrint80(html: string, title = "เอกสาร", css = receiptCss()) {
-  const w = window.open("", "_blank", "width=380,height=700");
+export function openPrint80(
+  html: string,
+  title = "เอกสาร",
+  css = receiptCss(),
+  meta: { docNo?: string; paper?: PaperWidth } = {},
+) {
+  const w = window.open("", "_blank", "width=420,height=760");
   if (!w) return false;
   w.document.write(
     `<!DOCTYPE html><html lang="th"><head><meta charset="utf-8">` +
-      `<title>${esc(title)}</title><style>${css}</style></head><body>${html}</body></html>`,
+      `<title>${esc(title)}</title><style>${css}</style>${viewerHead(receiptSheetCss(meta.paper ?? 80))}</head>` +
+      `<body><div class="rc-page" data-doc-title="${esc(title)}" data-doc-no="${esc(meta.docNo ?? "")}">${html}</div></body></html>`,
   );
   w.document.close();
-  w.onload = () => {
+  let mounted = false;
+  const ready = () => {
+    if (mounted) return;
+    mounted = true;
+    // กระดาษแคบ (302 px ที่ 80 มม.) → ภาพละเอียด 3 เท่า ให้ตัวหนังสือคมเมื่อซูมในแชท
+    mountDocViewer(
+      w,
+      () => {
+        w.focus();
+        w.print();
+      },
+      { pageSelector: ".rc-page", pixelRatio: 3 },
+    );
     w.focus();
-    w.print();
   };
+  // document.write บางเบราว์เซอร์ยิง load ไปแล้วก่อนเราผูก → เช็คสถานะด้วย
+  if (w.document.readyState === "complete") setTimeout(ready, 0);
+  else w.onload = ready;
   return true;
 }

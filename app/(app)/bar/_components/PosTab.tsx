@@ -302,7 +302,7 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
     const markup = doc.hasQr && doc.qrPayload ? await qrSvg(doc.qrPayload) : null;
     // ★ CSS ต้องมาจากผังเดียวกับที่วาดเนื้อหา ไม่งั้นกระดาษ 58 มม. จะถูกจัดด้วยความกว้าง 80
     const css = receiptCss(doc.layout.paper, doc.layout.fontLarge);
-    if (!openPrint80(receiptHtml(doc, markup), doc.title, css)) {
+    if (!openPrint80(receiptHtml(doc, markup), doc.title, css, { docNo: doc.docNo, paper: doc.layout.paper })) {
       setMsg({ ok: false, text: "เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — อนุญาต pop-up ให้เว็บนี้ก่อน" });
     }
   }

@@ -1,12 +1,13 @@
-"use client";
-
 /**
- * docViewer — แถบปุ่มในหน้าต่างเอกสารขาย: พิมพ์ · คัดลอกเป็นภาพ · แชร์ (D105)
+ * docViewer — แถบปุ่มในหน้าต่างเอกสาร: พิมพ์ · คัดลอกเป็นภาพ · แชร์ (D105 · บาร์ D106)
+ *
+ * ใช้ร่วม 2 โมดูล: เอกสารขาย A4 (`app/(app)/sales/_components/print.ts`) · บิลบาร์ 58/80 มม. (`lib/bar/print80.ts`)
+ * 🚨 ห้ามก๊อปไฟล์นี้ไปอีกชุด — ต่างกันแค่ "หน้ากระดาษคืออะไร" (`pageSelector`) กับ CSS ของแผ่น (`viewerHead`)
  *
  * เดิมหน้าต่างเอกสารเปิดหน้าพิมพ์ให้ทันที — ตอนนี้แสดงเอกสารพร้อมแถบปุ่มให้เลือกเอง
  * (คนที่จะส่ง LINE อย่างเดียวไม่ต้องกดปิดหน้าพิมพ์ทุกครั้ง)
  *
- * 🚨 ภาพถ่ายจาก DOM ชุดเดียวกับที่พิมพ์ (`.a4-container` ที่ print.ts เขียน) — ห้ามมีเอกสารเวอร์ชันภาพแยก
+ * 🚨 ภาพถ่ายจาก DOM ชุดเดียวกับที่พิมพ์ — ห้ามมีเอกสารเวอร์ชันภาพแยก
  * 🚨 แถบปุ่มทุกชิ้นมีคลาส `no-print` — ห้ามติดไปบนกระดาษ
  *
  * 🪤 โค้ดนี้รันอยู่ใน "หน้าต่างแอป" แต่จับ DOM ของ "หน้าต่างเอกสาร" (popup) — ทุก API ที่ผูกกับ
@@ -24,25 +25,29 @@ import {
   IMAGE_FAILED_TEXT,
   type ImageState,
   type ShareSupport,
-} from "@/lib/sales/docImage";
-import { lendPopupFrames } from "@/lib/shared/popupFrames";
+} from "./docImage";
+import { lendPopupFrames } from "./popupFrames";
 
-/** CSS ของหน้าต่างเอกสาร (จอเท่านั้น) — กระดาษพิมพ์ยังเป็น A4_HEAD เดิมทุกอย่าง */
-export const VIEWER_HEAD = `<meta name="viewport" content="width=860">
+/**
+ * CSS ของหน้าต่างเอกสาร — กระดาษที่พิมพ์ยังเป็น CSS เดิมของแต่ละโมดูลทุกอย่าง
+ * `sheetCss` = หน้าตาของ "แผ่น" บนจอ (ขนาดกระดาษ/ขอบ) ของโมดูลนั้น · ต้องอยู่ใน `@media screen` เอง
+ * `viewport` = meta viewport ของหน้าต่างเอกสาร (A4 ใช้ width=860 ให้มือถือย่อทั้งแผ่นพอดีจอ)
+ * สีเป็น hex โดยตั้งใจ — หน้าต่างเอกสารอยู่นอกแอป ไม่มี token/ธีม (เอกสารต้องดำบนขาวเสมอ)
+ */
+export function viewerHead(sheetCss: string, viewport = "width=device-width, initial-scale=1"): string {
+  return `<meta name="viewport" content="${viewport}">
 <style>
 @media screen {
-  body { background: #e2e8f0 !important; padding: 0 0 32px; }
-  /* สัดส่วน A4 เท่ากระดาษ (210×297mm · ขอบ 10mm เท่า @page) → ภาพที่คัดลอกเป็นหน้า A4 ไม่ใช่สั้นเท่าเนื้อหา
-     เนื้อหาเกินหน้าเดียวนิดเดียว = ย่อแบบเดียวกับตอนพิมพ์ (print.ts applyPrintScale) · เกินมาก = ภาพยาวลงตามเนื้อหา */
-  .dv-sheet { width: 210mm; min-height: 297mm; box-sizing: border-box; padding: 10mm; margin: 0 auto; background: #fff; box-shadow: 0 1px 4px rgba(15,23,42,.25); }
-  .dv-sheet .a4-container { max-width: none; margin-top: 0 !important; }
+  body { background: #e2e8f0 !important; }
+  .dv-sheet { box-sizing: border-box; margin: 0 auto 32px; background: #fff; box-shadow: 0 1px 4px rgba(15,23,42,.25); }
 }
+${sheetCss}
 @media print {
   .no-print { display: none !important; }
-  .dv-sheet { width: auto; padding: 0; margin: 0; box-shadow: none; }
+  .dv-sheet { width: auto !important; min-height: 0 !important; padding: 0 !important; margin: 0 !important; box-shadow: none !important; }
 }
 .dv-bar { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 16px; background: #0f172a; color: #f8fafc; font: 15px 'Kanit', sans-serif; }
-.dv-page { width: 210mm; margin: 20px auto 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font: 14px 'Kanit', sans-serif; color: #0f172a; }
+.dv-page { width: var(--dv-w, 210mm); min-width: min(100%, 340px); box-sizing: border-box; padding: 0 8px; margin: 20px auto 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font: 14px 'Kanit', sans-serif; color: #0f172a; }
 .dv-page label { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; cursor: pointer; font-weight: 500; }
 .dv-page input { width: 20px; height: 20px; }
 .dv-btn { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid #94a3b8; background: #fff; color: #0f172a; cursor: pointer; }
@@ -53,6 +58,14 @@ export const VIEWER_HEAD = `<meta name="viewport" content="width=860">
 .dv-status.ok { color: #86efac; } .dv-status.warn { color: #fde047; } .dv-status.err { color: #fca5a5; }
 .dv-hint { font-size: 13px; color: #cbd5e1; }
 </style>`;
+}
+
+export type ViewerOptions = {
+  /** ตัวเลือก "หน้ากระดาษ" 1 หน้า = 1 ภาพ · ป้าย/เลขที่อ่านจาก data-doc-title / data-doc-copy / data-doc-no */
+  pageSelector: string;
+  /** ความละเอียดภาพ — กระดาษแคบ (บิล 80 มม.) ใช้สูงกว่าให้ตัวหนังสือคมเมื่อซูม */
+  pixelRatio?: number;
+};
 
 type Page = {
   sheet: HTMLElement;
@@ -100,16 +113,17 @@ function isSafari(w: Window): boolean {
  * ติดตั้งแถบปุ่มลงหน้าต่างเอกสาร — เรียกหลังเขียน HTML + ฟอนต์โหลดเสร็จ
  * `print` = ฟังก์ชันพิมพ์ (คำนวณย่อหน้าให้พอดี A4 ก่อน) ของ print.ts
  */
-export function mountDocViewer(win: Window, print: () => void) {
+export function mountDocViewer(win: Window, print: () => void, opts: ViewerOptions) {
   const w = win as PopupWin;
   const d = w.document;
-  const containers = Array.from(d.querySelectorAll<HTMLElement>(".a4-container"));
+  const containers = Array.from(d.querySelectorAll<HTMLElement>(opts.pageSelector));
+  const single = containers.length === 1;
 
   // ── แถบบนสุด ────────────────────────────────────────────
   const bar = el(d, "div", { class: "dv-bar no-print" });
   const btnPrint = el(d, "button", { class: "dv-btn primary", type: "button" }, "พิมพ์");
   const btnShare = el(d, "button", { class: "dv-btn", type: "button" });
-  const hint = el(d, "span", { class: "dv-hint" }, "คัดลอกเป็นภาพได้ทีละหน้าที่ปุ่มเหนือแต่ละหน้า");
+  const hint = el(d, "span", { class: "dv-hint" }, single ? "" : "คัดลอกเป็นภาพได้ทีละหน้าที่ปุ่มเหนือแต่ละหน้า");
   // มือถือไม่มีการชี้เมาส์ค้าง → title มองไม่เห็น · เหตุผลที่ปุ่มแชร์เทาต้องเป็นตัวหนังสือบนจอ (D83)
   const why = el(d, "span", { class: "dv-hint dv-why" });
   const status = el(d, "div", { class: "dv-status", role: "status", "aria-live": "polite" });
@@ -160,7 +174,9 @@ export function mountDocViewer(win: Window, print: () => void) {
     const check = el(d, "input", { type: "checkbox" });
     check.checked = true;
     check.addEventListener("change", refresh);
-    lab.append(check, d.createTextNode(`${i + 1}. ${label}`));
+    // หน้าเดียว = ไม่มีอะไรให้เลือก → ไม่มีช่องติ๊ก (ติ๊กออกแล้วแชร์ไม่ได้ = กับดักเปล่า ๆ)
+    if (single) lab.append(d.createTextNode(label));
+    else lab.append(check, d.createTextNode(`${i + 1}. ${label}`));
     const copy = el(d, "button", { class: "dv-btn", type: "button", "data-act": "copy" }, "คัดลอกเป็นภาพ");
     const share = el(d, "button", { class: "dv-btn", type: "button", "data-act": "share" }, "แชร์หน้านี้");
     head.append(lab, copy, share);
@@ -257,8 +273,8 @@ export function mountDocViewer(win: Window, print: () => void) {
     try {
       const { toBlob, getFontEmbedCSS } = await import("html-to-image");
       const fontEmbedCSS = pages.length ? await getFontEmbedCSS(pages[0].sheet) : "";
-      const opts = {
-        pixelRatio: 2, // ตัวหนังสือคมเมื่อซูมดูในแชท
+      const imgOpts = {
+        pixelRatio: opts.pixelRatio ?? 2, // ตัวหนังสือคมเมื่อซูมดูในแชท
         backgroundColor: "#ffffff",
         fontEmbedCSS,
         style: { margin: "0", boxShadow: "none" },
@@ -269,8 +285,8 @@ export function mountDocViewer(win: Window, print: () => void) {
         say(`กำลังเตรียมภาพ ${i + 1}/${pages.length}…`);
         if (w.closed) return; // ปิดหน้าต่างไปแล้ว — หยุดงาน ไม่กินหน่วยความจำต่อ
         // 🚨 ห้ามค้างเงียบตลอดกาลอีก — เกิน 45 วินาทีต่อหน้า = ถือว่าล้มเหลว แล้วบอกผู้ใช้
-        if (warm) await withTimeout(toBlob(p.sheet, opts), 45_000);
-        const b = await withTimeout(toBlob(p.sheet, opts), 45_000);
+        if (warm) await withTimeout(toBlob(p.sheet, imgOpts), 45_000);
+        const b = await withTimeout(toBlob(p.sheet, imgOpts), 45_000);
         if (!b) throw new Error("empty image");
         p.resolve(b);
       }

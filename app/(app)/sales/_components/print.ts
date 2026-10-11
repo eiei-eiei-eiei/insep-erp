@@ -15,7 +15,7 @@ import { reverseCalcPrint, roundTo2 } from "@/lib/sales/calc";
 import { formatThaiDate } from "@/lib/sales/orders";
 import { branchLabel, type CompanyInfo } from "@/lib/sales/company";
 import type { OrderItem } from "./types";
-import { mountDocViewer, VIEWER_HEAD } from "./docViewer";
+import { mountDocViewer, viewerHead } from "@/lib/shared/docViewer";
 
 export type { CompanyInfo };
 
@@ -48,6 +48,18 @@ const A4_HEAD = `<style>
 body { font-family: 'Kanit', sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; background: white; }
 .a4-container { width: 100%; max-width: 210mm; margin: 0 auto; box-sizing: border-box; background: white; padding: 0 2mm; }
 </style>`;
+
+/**
+ * แผ่น A4 บนจอ (D105) — สัดส่วน A4 เท่ากระดาษ (210×297mm · ขอบ 10mm เท่า @page)
+ * → ภาพที่คัดลอกเป็นหน้า A4 ไม่ใช่สั้นเท่าเนื้อหา · เนื้อหาเกินหน้าเดียวนิดเดียว = ย่อแบบเดียวกับตอนพิมพ์ (applyPrintScale)
+ */
+const VIEWER_HEAD = viewerHead(
+  `@media screen {
+  .dv-sheet { width: 210mm; min-height: 297mm; padding: 10mm; }
+  .dv-sheet .a4-container { max-width: none; margin-top: 0 !important; }
+}`,
+  "width=860",
+);
 
 function companyHeader(c: CompanyInfo, rightTitle: string, rightEng: string, copyType?: string): string {
   const title = [esc(c.name), esc(c.nameEng)].filter(Boolean).join("<br>");
@@ -234,10 +246,14 @@ function openPrint(inner: string, pre?: Window | null) {
   // D105: ไม่เปิดหน้าพิมพ์เองแล้ว — แสดงเอกสาร + แถบ พิมพ์ / คัดลอกเป็นภาพ / แชร์ ให้ผู้ใช้เลือก
   const ready = () => {
     // ห่อหน้าเป็นแผ่นกระดาษก่อน แล้วค่อยวัด (ความกว้างบนจอถึงจะเท่ากับตอนพิมพ์)
-    mountDocViewer(w, () => {
-      w.focus();
-      w.print();
-    });
+    mountDocViewer(
+      w,
+      () => {
+        w.focus();
+        w.print();
+      },
+      { pageSelector: ".a4-container" },
+    );
     applyPrintScale();
     w.focus();
   };

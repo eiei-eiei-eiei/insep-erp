@@ -143,7 +143,12 @@ export function HistoryTab({ boot, onReload }: { boot: BarBoot; onReload: () => 
       channel: s.channel,
     });
     const { receiptHtml, openPrint80, receiptCss } = await import("@/lib/bar/print80");
-    if (!openPrint80(receiptHtml(doc, null), doc.title, receiptCss(doc.layout.paper, doc.layout.fontLarge))) {
+    if (
+      !openPrint80(receiptHtml(doc, null), doc.title, receiptCss(doc.layout.paper, doc.layout.fontLarge), {
+        docNo: doc.docNo,
+        paper: doc.layout.paper,
+      })
+    ) {
       setMsg({ ok: false, text: "เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — อนุญาต pop-up ให้เว็บนี้ก่อน" });
     }
   }
