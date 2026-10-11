@@ -230,7 +230,7 @@ export async function getBarBootstrap(): Promise<BarBoot> {
       .eq("entity_id", entityId).order("sort").order("category_id"),
     supabase
       .from("bar_menu")
-      .select("menu_id, name, price, fixed_cost, category_id, method, glass, note, created_for, active, sort")
+      .select("menu_id, name, price, fixed_cost, category_id, method, glass, note, created_for, active, sort, sort_all")
       .eq("entity_id", entityId),
     supabase.from("bar_recipe").select("menu_id, item_id, qty").eq("entity_id", entityId),
     supabase
@@ -373,6 +373,7 @@ export async function getBarBootstrap(): Promise<BarBoot> {
       createdFor: (m.created_for as string) ?? null,
       active: m.active !== false,
       sort: m.sort === null ? null : Number(m.sort),
+      sortAll: m.sort_all === null || m.sort_all === undefined ? null : Number(m.sort_all),
     })),
     items: stripCost(
       itemRows.map((i) => ({

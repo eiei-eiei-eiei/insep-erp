@@ -42,7 +42,10 @@ export type BarMenu = {
   note?: string | null;
   createdFor?: string | null;
   active?: boolean;
+  /** ลำดับในหมวดของตัวเอง (ว่าง = ต่อท้ายตามชื่อ) */
   sort?: number | null;
+  /** ลำดับในหน้า "ทั้งหมด" — ตั้งแยกจาก `sort` (D108 · ผู้ใช้เลือกให้แต่ละหน้าไม่มีผลต่อกัน) */
+  sortAll?: number | null;
 };
 
 /** 1 บรรทัดในตะกร้า/บิล */

@@ -10,6 +10,7 @@ import { lineCost } from "@/lib/bar/cost";
 import { searchMenus } from "@/lib/bar/menuFilter";
 import { Card, Msg, TextInput, NumBox, Select, Field, Badge, Empty, fmt, useSaver } from "@/lib/shared/ui";
 import { saveMenuAction, saveCategoryAction, deleteCategoryAction, reorderCategoriesAction } from "../actions";
+import { MenuOrderEditor } from "./MenuOrderEditor";
 
 const MODE_LABEL: Record<string, string> = {
   recipe: "มีสูตร",
@@ -31,6 +32,7 @@ export function MenuTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pro
   const [cat, setCat] = useState("");
   const [edit, setEdit] = useState<string | null | "new">(null);
   const [showCats, setShowCats] = useState(false);
+  const [showOrder, setShowOrder] = useState(false);
 
   const canWrite = data.canWrite;
   const unset = unsetMenus(data.menus);
@@ -110,11 +112,19 @@ export function MenuTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pro
               >
                 จัดการหมวด
               </button>
+              <button
+                type="button"
+                onClick={() => setShowOrder((v) => !v)}
+                className="rounded-lg bg-raised px-3 py-1.5 text-sm text-ink"
+              >
+                จัดลำดับบนหน้าขาย
+              </button>
             </>
           )}
         </div>
 
         {showCats && canWrite && <CategoryEditor boot={data} busy={busy} onRun={run} />}
+        {showOrder && canWrite && <MenuOrderEditor boot={data} busy={busy} onRun={run} />}
 
         <div className="overflow-x-auto">
           <table className="tbl">

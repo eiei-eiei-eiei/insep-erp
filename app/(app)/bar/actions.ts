@@ -7,6 +7,8 @@ import { barTotals } from "@/lib/bar/totals";
 import { businessDate } from "@/lib/bar/businessDate";
 import { lineAmount } from "@/lib/bar/totals";
 import { nextCategorySort, sortUpdates, sameCategorySet } from "@/lib/bar/categoryOrder";
+import { menuOrderError, menuOrderUpdates, menuQtyMap, orderColumn, type OrderView } from "@/lib/bar/menuOrder";
+import { fetchAllRows } from "@/lib/shared/paginate";
 import { unitLockReason, type ReceiveRow, type AdjustRow, type NewItemRow, type ItemEditRow } from "@/lib/bar/stockBatch";
 import type { CartLine, SaleWindow } from "@/lib/bar/types";
 import { getBarBootstrap } from "./data";
@@ -404,6 +406,96 @@ export async function reorderCategoriesAction(ids: string[]): Promise<Res> {
   }
   revalidatePath("/bar");
   return { ok: true };
+}
+
+/**
+ * จัดลำดับเมนูบนหน้าขาย (▲▼ · D108) — `view` = "all" (หน้า "ทั้งหมด" → sort_all) หรือ category_id (→ sort)
+ * ★ แต่ละหน้าตั้งแยกกัน ไม่มีผลต่อกัน (ผู้ใช้เลือก) · คอลัมน์ตัดสินที่ `orderColumn()` ที่เดียว
+ * 🪤 ไม่ใช่ transaction (แบบเดียวกับเรียงหมวด D101) — ล้มกลางทาง ลำดับค้างครึ่งเดียวแต่ไม่มีข้อมูลเสีย
+ *    กดบันทึกอีกครั้งเขียนทั้งชุดใหม่ให้เอง
+ */
+export async function reorderMenusAction(view: OrderView, ids: string[]): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  const supabase = await createClient();
+  const col = orderColumn(view);
+  const cur = await supabase.from("bar_menu").select("menu_id, category_id, sort, sort_all").eq("entity_id", entity);
+  // 🚨 อ่านไม่ได้ ≠ ไม่มีเมนู (D89)
+  if (cur.error) return { ok: false, error: mapDbError(cur.error) };
+  const rows = (cur.data ?? []).map((r) => ({
+    menuId: r.menu_id as string,
+    categoryId: r.category_id as string,
+    pos: (col === "sort_all" ? r.sort_all : r.sort) as number | null,
+  }));
+  const bad = menuOrderError(ids, rows, view);
+  if (bad) return { ok: false, error: bad };
+  const current = new Map(rows.map((r) => [r.menuId, r.pos === null ? null : Number(r.pos)]));
+  const results = await Promise.all(
+    menuOrderUpdates(ids, current).map((u) =>
+      supabase.from("bar_menu").update({ [col]: u.pos }).eq("entity_id", entity).eq("menu_id", u.menuId),
+    ),
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error) return { ok: false, error: mapDbError(failed.error) };
+  revalidatePath("/bar");
+  return { ok: true };
+}
+
+/**
+ * ยอดสั่งต่อเมนูย้อนหลัง N วัน — ใช้โชว์ข้างชื่อตอนจัดลำดับ (ช่วยตัดสินใจ ไม่ได้ใช้เรียง)
+ * ไม่นับบรรทัดที่ยกเลิก และบิลที่ยกเลิกทั้งใบ
+ * 🪤 PostgREST คืนแค่ 1,000 แถวเงียบ ๆ — บาร์ 30 วันเกินแน่ ต้องวน `.range()` (D82)
+ */
+type SaleItemRow = { sale_no: string; menu_id: string | null; qty: number; voided_at: string | null };
+
+export async function getMenuSalesAction(
+  days = 30,
+): Promise<{ ok: boolean; error?: string; data?: Record<string, number> }> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  const supabase = await createClient();
+  const since = new Date(Date.now() - days * 86_400_000).toISOString();
+  try {
+    const [items, cancelled] = await Promise.all([
+      fetchAllRows<SaleItemRow>(
+        async (from, to) => {
+          const { data, error, count } = await supabase
+            .from("bar_sale_item")
+            .select("sale_no, menu_id, qty, voided_at", { count: from === 0 ? "exact" : undefined })
+            .eq("entity_id", entity)
+            .gte("added_at", since)
+            .order("sale_no")
+            .order("line_no")
+            .range(from, to);
+          return { data: (data ?? []) as SaleItemRow[], error, count };
+        },
+        { label: "ยอดขายเมนู" },
+      ),
+      fetchAllRows<{ sale_no: string }>(
+        async (from, to) => {
+          const { data, error, count } = await supabase
+            .from("bar_sale")
+            .select("sale_no", { count: from === 0 ? "exact" : undefined })
+            .eq("entity_id", entity)
+            .eq("status", "ยกเลิก")
+            .gte("opened_at", new Date(Date.now() - (days + 2) * 86_400_000).toISOString())
+            .order("sale_no")
+            .range(from, to);
+          return { data: (data ?? []) as { sale_no: string }[], error, count };
+        },
+        { label: "บิลที่ยกเลิก" },
+      ),
+    ]);
+    const dead = new Set(cancelled.map((r) => r.sale_no));
+    const qty = menuQtyMap(
+      items
+        .filter((r) => !dead.has(r.sale_no))
+        .map((r) => ({ menuId: r.menu_id, qty: Number(r.qty) || 0, voided: r.voided_at != null })),
+    );
+    return { ok: true, data: Object.fromEntries(qty) };
+  } catch {
+    return { ok: false, error: "อ่านยอดขายไม่สำเร็จ — จัดลำดับได้ตามปกติ แค่ไม่มีตัวเลขช่วยดู" };
+  }
 }
 
 export async function deleteCategoryAction(categoryId: string): Promise<Res> {

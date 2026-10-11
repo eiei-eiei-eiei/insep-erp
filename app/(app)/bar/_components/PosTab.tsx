@@ -183,7 +183,7 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
     if (cat) list = list.filter((m) => m.categoryId === cat);
     list = applyCustomerChip(list, chipOn, chipIds);
     list = searchMenus(list, q);
-    return sortMenusForGrid(list, history);
+    return sortMenusForGrid(list, history, cat ? "category" : "all"); // D108 แต่ละหน้ามีลำดับของตัวเอง
   }, [data.menus, cat, chipOn, chipIds, q, history]);
 
   /**
