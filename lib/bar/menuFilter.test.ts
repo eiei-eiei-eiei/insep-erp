@@ -123,6 +123,63 @@ describe("เรียงเมนูในตะแกรง", () => {
   });
 });
 
+/**
+ * D107 — ตัวเปรียบเทียบเคยวนเป็นวง → Node กับ Chrome เรียงต่างกัน → hydration mismatch ในแท็บขาย
+ * ข้อมูลชุดนี้คือของจริงที่ทำให้พัง (เมนูเฉพาะกิจ 2 ตัวไม่มีเลข sort + 1 ตัวมี sort 5)
+ */
+describe("🔴 เรียงเมนูต้องได้ลำดับเดียวแน่นอนเสมอ (D107)", () => {
+  const REAL = [
+    m("T-BM01", { name: "Negroni ทดสอบ", categoryId: "T-cocktail", sort: 1 }),
+    m("T-BM02", { name: "จินทดสอบ (ขวด)", categoryId: "T-bottle", sort: 2 }),
+    m("T-BM03", { name: "จินช็อตทดสอบ", categoryId: "T-shot", sort: 3 }),
+    m("T-BM04", { name: "ถั่วทอดทดสอบ", categoryId: "T-food", sort: 4 }),
+    m("T-BM05", { name: "ค็อกเทลลับทดสอบ", categoryId: "custom", sort: 5 }),
+    m("C-1", { name: "เมรัย", categoryId: "custom" }),
+    m("C-2", { name: "เทส", categoryId: "custom" }),
+  ];
+
+  /** ทุกการสลับลำดับของ n ตัว */
+  function* perms<T>(xs: T[]): Generator<T[]> {
+    if (xs.length <= 1) return yield xs;
+    for (let i = 0; i < xs.length; i++) {
+      for (const p of perms([...xs.slice(0, i), ...xs.slice(i + 1)])) yield [xs[i], ...p];
+    }
+  }
+
+  it("ข้อมูลเข้ามาลำดับไหนก็ได้ผลเดียวกัน (สลับครบ 5,040 แบบ)", () => {
+    const want = sortMenusForGrid(REAL).map((x) => x.menuId).join(",");
+    let n = 0;
+    for (const p of perms(REAL)) {
+      expect(sortMenusForGrid(p).map((x) => x.menuId).join(",")).toBe(want);
+      n++;
+    }
+    expect(n).toBe(5040);
+  });
+
+  it("เมนูปกติก่อน (ตามเลข sort) · เมนูเฉพาะกิจไว้ท้าย", () => {
+    const out = sortMenusForGrid(REAL).map((x) => x.categoryId);
+    expect(out.slice(0, 4)).toEqual(["T-cocktail", "T-bottle", "T-shot", "T-food"]);
+    expect(out.slice(4).every((c) => c === "custom")).toBe(true);
+  });
+
+  it("ไม่วนเป็นวงอีก: ค็อกเทลลับ ↔ เมรัย ↔ Negroni ตอบสอดคล้องกันทุกคู่", () => {
+    const order = sortMenusForGrid(REAL).map((x) => x.name);
+    expect(order.indexOf("Negroni ทดสอบ")).toBeLessThan(order.indexOf("เมรัย"));
+    expect(order.indexOf("Negroni ทดสอบ")).toBeLessThan(order.indexOf("ค็อกเทลลับทดสอบ"));
+  });
+
+  it("ในกลุ่มเฉพาะกิจ: สั่งล่าสุดยังขึ้นก่อนเหมือนเดิม", () => {
+    const out = sortMenusForGrid(REAL, [{ menuId: "C-1", at: "2026-10-09T09:27:15Z", qty: 1 }]);
+    expect(out[4].menuId).toBe("C-1");
+  });
+
+  it("ชื่อซ้ำกันเป๊ะ ตัดสินด้วย menuId (ไม่ปล่อยให้เครื่องยนต์ JS เลือกเอง)", () => {
+    const twins = [m("Z", { name: "ซ้ำ", sort: 1 }), m("A", { name: "ซ้ำ", sort: 1 })];
+    expect(sortMenusForGrid(twins).map((x) => x.menuId)).toEqual(["A", "Z"]);
+    expect(sortMenusForGrid([...twins].reverse()).map((x) => x.menuId)).toEqual(["A", "Z"]);
+  });
+});
+
 describe("ค้นหาเมนู", () => {
   const searchable = [
     m("S1", { name: "Negroni", note: "ของพี่โอ๊ต ลดเวอร์มุท", glass: "coupe", method: "stir 30 วิ" }),
