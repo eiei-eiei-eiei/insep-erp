@@ -101,8 +101,12 @@ export function MenuOrderEditor({
               const m = byId.get(id);
               if (!m) return null;
               return (
-                <li key={id} className="flex flex-wrap items-center gap-1.5 text-sm">
-                  <span className="w-6 text-right text-faint">{i + 1}</span>
+                // 🐛 เดิม flex-wrap ทั้งแถว → ชื่อยาวตกไปบรรทัดใหม่ทั้งก้อน ปุ่มค้างอยู่บรรทัดบนเปล่า ๆ (ผู้ใช้แจ้ง)
+                // → ปุ่มเป็นคอลัมน์กว้างคงที่ทางซ้าย · ชื่อกินที่ที่เหลือแล้วตัดบรรทัด**ในคอลัมน์ตัวเอง**
+                //   หมวด + ยอดขายเป็นบรรทัดเล็กใต้ชื่อ (ไม่ลอยไปมาตามความยาวชื่อ)
+                <li key={id} className="flex items-start gap-1.5 border-b border-line py-1.5 text-sm last:border-b-0">
+                  <span className="w-6 shrink-0 pt-1 text-right text-faint">{i + 1}</span>
+                  <div className="flex shrink-0 items-center">
                   <button
                     type="button"
                     aria-label="ขึ้นบนสุด"
@@ -131,9 +135,17 @@ export function MenuOrderEditor({
                   >
                     ▼
                   </button>
-                  <span className="text-ink">{m.name}</span>
-                  {view === ALL_VIEW && <span className="text-xs text-faint">{catName(m.categoryId)}</span>}
-                  {sales && <span className="ml-auto text-xs text-muted">{salesHint(sales[id], DAYS)}</span>}
+                  </div>
+                  <div className="min-w-0 flex-1 pt-0.5">
+                    <div className="break-words text-ink">{m.name}</div>
+                    {(view === ALL_VIEW || sales) && (
+                      <div className="text-xs text-muted">
+                        {[view === ALL_VIEW ? catName(m.categoryId) : "", sales ? salesHint(sales[id], DAYS) : ""]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </div>
+                    )}
+                  </div>
                 </li>
               );
             })}

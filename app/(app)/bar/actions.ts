@@ -6,7 +6,7 @@ import { mapDbError } from "@/lib/shared/dbError";
 import { barTotals } from "@/lib/bar/totals";
 import { businessDate } from "@/lib/bar/businessDate";
 import { lineAmount } from "@/lib/bar/totals";
-import { nextCategorySort, sortUpdates, sameCategorySet } from "@/lib/bar/categoryOrder";
+import { nextCategorySort, sortUpdates, categoryEditsError, categoryNameUpdates } from "@/lib/bar/categoryOrder";
 import { menuOrderError, menuOrderUpdates, menuQtyMap, orderColumn, type OrderView } from "@/lib/bar/menuOrder";
 import { fetchAllRows } from "@/lib/shared/paginate";
 import { unitLockReason, type ReceiveRow, type AdjustRow, type NewItemRow, type ItemEditRow } from "@/lib/bar/stockBatch";
@@ -338,27 +338,17 @@ export async function updateItemsAction(rows: ItemEditRow[]): Promise<Res> {
 }
 
 /**
- * เพิ่ม/แก้ชื่อหมวดเมนู · 🚨 ลบหมวดที่ยังมีเมนูอยู่ต้องล้ม (FK restrict ของ 0064)
- * · แก้ชื่อ = แตะแค่ `name` **ไม่แตะ sort** (ลำดับเป็นหน้าที่ของ `reorderCategoriesAction`)
+ * เพิ่มหมวดเมนู · 🚨 ลบหมวดที่ยังมีเมนูอยู่ต้องล้ม (FK restrict ของ 0064)
+ * · 🔄 D109: แก้ชื่อย้ายไป `saveCategoriesAction` (บันทึกพร้อมลำดับทีเดียว) — ทางเดียว ไม่ให้มีสองทาง (D81)
  * · หมวดใหม่ต่อท้ายด้วย max+1 คิดฝั่ง server — 🪤 ของเดิมรับ "จำนวนหมวด" จากหน้าจอ
  *   เคยลบหมวดไปแล้ว = เลขชนกัน ลำดับบนหน้าขายสลับไปมาเอง (D101)
  */
-export async function saveCategoryAction(input: {
-  categoryId?: string | null;
-  name: string;
-}): Promise<Res> {
+export async function saveCategoryAction(input: { name: string }): Promise<Res> {
   const entity = await barEntity();
   if (!entity) return { ok: false, error: NO_ENTITY };
   if (!input.name.trim()) return { ok: false, error: "ตั้งชื่อหมวดก่อน" };
   const supabase = await createClient();
-  if (input.categoryId) {
-    const { error } = await supabase
-      .from("bar_category")
-      .update({ name: input.name.trim() })
-      .eq("entity_id", entity)
-      .eq("category_id", input.categoryId);
-    if (error) return { ok: false, error: mapDbError(error) };
-  } else {
+  {
     const cur = await supabase.from("bar_category").select("sort").eq("entity_id", entity);
     // 🚨 อ่านไม่ได้ ≠ ไม่มีหมวด (D89) — เดาเป็น 0 = ไปชนหมวดแรก
     if (cur.error) return { ok: false, error: mapDbError(cur.error) };
@@ -377,26 +367,38 @@ export async function saveCategoryAction(input: {
 }
 
 /**
- * เรียงหมวดใหม่ทั้งชุด (▲▼ ในแท็บเมนู · D101) — เขียน sort เป็น 0,1,2,… ตามลำดับที่ส่งมา
+ * บันทึกหมวดทีเดียว — ลำดับ + ชื่อที่แก้ (D109 · แทน reorderCategoriesAction + แก้ชื่อรายหมวดของ D101)
+ * `order` = category_id ทั้งชุดตามลำดับใหม่ · `names` = เฉพาะหมวดที่ผู้ใช้แตะ
  * 🚨 ชุดหมวดต้องตรงกับใน DB พอดี ไม่งั้นแปลว่าอีกเครื่องเพิ่ม/ลบหมวดระหว่างนั้น → ไม่เดา ให้รีเฟรช
- * 🪤 ไม่ใช่ transaction (หมวดมีไม่กี่แถว) — ล้มกลางทาง ลำดับอาจค้างครึ่งเดียว แต่ไม่มีข้อมูลเสีย
- *    และกด ▲▼ อีกครั้งจะเขียนทั้งชุดใหม่ให้เอง
+ * 🪤 ไม่ใช่ transaction (หมวดมีไม่กี่แถว) — ล้มกลางทาง บางส่วนค้าง แต่ไม่มีข้อมูลเสีย กดบันทึกอีกครั้งเขียนให้ครบ
  */
-export async function reorderCategoriesAction(ids: string[]): Promise<Res> {
+export async function saveCategoriesAction(input: {
+  order: string[];
+  names: Record<string, string>;
+}): Promise<Res> {
   const entity = await barEntity();
   if (!entity) return { ok: false, error: NO_ENTITY };
   const supabase = await createClient();
-  const cur = await supabase.from("bar_category").select("category_id, sort").eq("entity_id", entity);
+  const cur = await supabase.from("bar_category").select("category_id, name, sort").eq("entity_id", entity);
   if (cur.error) return { ok: false, error: mapDbError(cur.error) };
   const rows = cur.data ?? [];
-  if (!sameCategorySet(ids, rows.map((r) => r.category_id as string))) {
-    return {
-      ok: false,
-      error: "รายการหมวดเปลี่ยนไประหว่างนั้น (อาจมีคนเพิ่ม/ลบหมวดจากอีกเครื่อง) — รีเฟรชหน้าแล้วลองใหม่",
-    };
+  const bad = categoryEditsError(
+    input.order,
+    input.names,
+    rows.map((r) => r.category_id as string),
+  );
+  if (bad) return { ok: false, error: bad };
+  const names = categoryNameUpdates(input.names, new Map(rows.map((r) => [r.category_id as string, r.name as string])));
+  const sorts = sortUpdates(input.order, new Map(rows.map((r) => [r.category_id as string, Number(r.sort)])));
+  for (const u of names) {
+    const { error } = await supabase
+      .from("bar_category")
+      .update({ name: u.name })
+      .eq("entity_id", entity)
+      .eq("category_id", u.categoryId);
+    if (error) return { ok: false, error: mapDbError(error) };
   }
-  const current = new Map(rows.map((r) => [r.category_id as string, Number(r.sort)]));
-  for (const u of sortUpdates(ids, current)) {
+  for (const u of sorts) {
     const { error } = await supabase
       .from("bar_category")
       .update({ sort: u.sort })

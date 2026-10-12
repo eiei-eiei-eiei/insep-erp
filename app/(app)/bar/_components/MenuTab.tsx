@@ -2,14 +2,14 @@
 
 import { useMemo, useState } from "react";
 import type { BarBoot } from "../data";
-import type { BarCategory, BarMenu } from "@/lib/bar/types";
+import type { BarMenu } from "@/lib/bar/types";
 import { CUSTOM_CATEGORY_ID } from "@/lib/bar/types";
-import { moveCategory } from "@/lib/bar/categoryOrder";
+import { moveCategory, categoryEditsError, categoryNameUpdates } from "@/lib/bar/categoryOrder";
 import { menuMode, menuWarning, unsetMenus, cleanRecipe, blankRecipeRow, danglingRows, type RecipeDraftRow } from "@/lib/bar/recipe";
 import { lineCost } from "@/lib/bar/cost";
 import { searchMenus } from "@/lib/bar/menuFilter";
-import { Card, Msg, TextInput, NumBox, Select, Field, Badge, Empty, fmt, useSaver } from "@/lib/shared/ui";
-import { saveMenuAction, saveCategoryAction, deleteCategoryAction, reorderCategoriesAction } from "../actions";
+import { Card, Msg, TextInput, NumBox, Select, Field, Badge, Empty, fmt, useSaver, useConfirm } from "@/lib/shared/ui";
+import { saveMenuAction, saveCategoryAction, deleteCategoryAction, saveCategoriesAction } from "../actions";
 import { MenuOrderEditor } from "./MenuOrderEditor";
 
 const MODE_LABEL: Record<string, string> = {
@@ -195,6 +195,16 @@ export function MenuTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pro
   );
 }
 
+/**
+ * จัดการหมวด (D101 → 🔄 D109)
+ * ★ ลำดับ + ชื่อ แก้ในจอทั้งหมดแล้วกด **บันทึก** ปุ่มเดียว — ผู้ใช้ขอ: เดิม ▲▼ บันทึกทุกคลิก ต้องรอระบบทุกครั้ง
+ *   และแก้ชื่อมีปุ่มบันทึกรายหมวด (ตอนนี้แบบเดียวกับจัดลำดับเมนู D108)
+ * 🪤 เพิ่ม/ลบหมวดยังทำงานทันทีแล้วโหลดข้อมูลใหม่ → ถ้ามีที่แก้ค้างจะหายเงียบ ๆ
+ *    ⇒ ระหว่างยังไม่บันทึก ปุ่มเพิ่ม/ลบกดไม่ได้ พร้อมบอกเหตุผลบนจอ (D83)
+ * 🚨 ลบหมวด = ถามยืนยันก่อน (`useConfirm` — ห้าม window.confirm() เบราว์เซอร์บล็อกแล้วคืน false เงียบ ๆ · D96)
+ *    หมวดที่ยังมีเมนู ลบไม่ได้ (FK) → บอกเหตุผลแทนปุ่ม ไม่ต้องรอ server ตอบ error
+ * ★ ช่องชื่อเป็น <TextInput> ตรง ๆ ในคอมโพเนนต์นี้ ห้ามประกาศคอมโพเนนต์ซ้อนข้างใน (โฟกัสหลุดทุกตัวอักษร · D71)
+ */
 function CategoryEditor({
   boot, busy, onRun,
 }: {
@@ -202,125 +212,132 @@ function CategoryEditor({
   busy: boolean;
   onRun: (fn: () => Promise<{ ok: boolean; error?: string }>, okText: string) => Promise<boolean>;
 }) {
-  const [name, setName] = useState("");
+  const { confirmNode, ask } = useConfirm();
+  const [newName, setNewName] = useState("");
+  const [order, setOrder] = useState<string[] | null>(null);
+  const [names, setNames] = useState<Record<string, string>>({});
   const count = (id: string) => boot.menus.filter((m) => m.categoryId === id).length;
-  const ids = boot.categories.map((c) => c.categoryId);
+  const baseIds = boot.categories.map((c) => c.categoryId);
+  const ids = order ?? baseIds;
+  const byId = new Map(boot.categories.map((c) => [c.categoryId, c]));
+  const nameOf = (id: string) => names[id] ?? byId.get(id)?.name ?? "";
+  const renamed = categoryNameUpdates(names, new Map(boot.categories.map((c) => [c.categoryId, c.name])));
+  const blank = Object.values(names).some((n) => !n.trim());
+  const dirty = ids.join("|") !== baseIds.join("|") || renamed.length > 0 || blank;
+  const problem = dirty ? categoryEditsError(ids, names, baseIds) : "";
+  const reset = () => {
+    setOrder(null);
+    setNames({});
+  };
 
-  const move = (id: string, dir: -1 | 1) =>
-    onRun(() => reorderCategoriesAction(moveCategory(ids, id, dir)), "เรียงหมวดใหม่แล้ว");
+  const btn =
+    "grid h-7 w-7 place-items-center rounded text-muted hover:bg-card hover:text-ink disabled:opacity-30";
 
   return (
     <div className="mb-3 rounded-lg bg-raised p-3">
+      {confirmNode}
       <div className="mb-1 text-sm font-medium text-ink">หมวดเมนู (เรียงตามลำดับที่โชว์ในหน้าขาย)</div>
-      <div className="mb-2 text-xs text-muted">▲▼ เลื่อนลำดับ · แก้ชื่อในช่องแล้วกด บันทึก (หรือ Enter)</div>
-      {boot.categories.map((c, i) => (
-        <div key={c.categoryId} className="flex flex-wrap items-center gap-2 py-0.5 text-sm">
-          <button
-            type="button"
-            aria-label="เลื่อนขึ้น"
-            disabled={busy || i === 0}
-            onClick={() => move(c.categoryId, -1)}
-            className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-card hover:text-ink disabled:opacity-30"
-          >
-            ▲
-          </button>
-          <button
-            type="button"
-            aria-label="เลื่อนลง"
-            disabled={busy || i === ids.length - 1}
-            onClick={() => move(c.categoryId, 1)}
-            className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-card hover:text-ink disabled:opacity-30"
-          >
-            ▼
-          </button>
-          <CategoryName key={`${c.categoryId}:${c.name}`} cat={c} busy={busy} onRun={onRun} />
-          <span className="text-muted">{count(c.categoryId)} เมนู</span>
-          {c.isSystem ? (
-            // ★ หมวด custom เป็นที่ลงจอดของเมนูใหม่จากหน้าขาย → ลบไม่ได้
-            //   ปุ่มเทาพร้อมเหตุผล ดีกว่าซ่อนปุ่ม (D86)
-            // 🐛 D96 — เดิมเขียนแค่ "หมวดระบบ" ซึ่ง**บอกสถานะแต่ไม่บอกความหมาย**
-            //    ผู้ใช้ถามตรง ๆ ว่ามันคืออะไร · คำอธิบายอยู่ใน title= ที่บนมือถือไม่มีทางเห็น
-            <span className="text-xs text-faint">
-              หมวดตั้งต้นของเมนูที่สร้างจากหน้าขาย — เปลี่ยนชื่อได้ ลบไม่ได้
-            </span>
-          ) : (
+      <div className="mb-2 text-xs text-muted">
+        ▲▼ เลื่อนลำดับ · แก้ชื่อในช่อง · เสร็จแล้วกด <b>บันทึก</b> ทีเดียว
+      </div>
+      {ids.map((id, i) => {
+        const c = byId.get(id);
+        if (!c) return null;
+        const n = count(id);
+        return (
+          <div key={id} className="flex flex-wrap items-center gap-2 py-0.5 text-sm">
             <button
               type="button"
-              disabled={busy}
-              onClick={() => onRun(() => deleteCategoryAction(c.categoryId), "ลบหมวดแล้ว")}
-              className="text-xs text-crit underline disabled:opacity-50"
+              aria-label="เลื่อนขึ้น"
+              disabled={busy || i === 0}
+              onClick={() => setOrder(moveCategory(ids, id, -1))}
+              className={btn}
             >
-              ลบ
+              ▲
             </button>
-          )}
-        </div>
-      ))}
-      <div className="mt-2 flex gap-2">
-        <div className="w-48">
-          <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="ชื่อหมวดใหม่" />
-        </div>
+            <button
+              type="button"
+              aria-label="เลื่อนลง"
+              disabled={busy || i === ids.length - 1}
+              onClick={() => setOrder(moveCategory(ids, id, 1))}
+              className={btn}
+            >
+              ▼
+            </button>
+            <div className="w-48">
+              <TextInput value={nameOf(id)} onChange={(e) => setNames((p) => ({ ...p, [id]: e.target.value }))} />
+            </div>
+            <span className="text-muted">{n} เมนู</span>
+            {c.isSystem ? (
+              // ★ หมวด custom เป็นที่ลงจอดของเมนูใหม่จากหน้าขาย → ลบไม่ได้ (บอกเหตุผล ดีกว่าซ่อน · D86/D96)
+              <span className="text-xs text-faint">หมวดตั้งต้นของเมนูที่สร้างจากหน้าขาย — เปลี่ยนชื่อได้ ลบไม่ได้</span>
+            ) : n > 0 ? (
+              <span className="text-xs text-faint">ลบไม่ได้จนกว่าจะย้ายเมนูออกจากหมวดนี้</span>
+            ) : (
+              <button
+                type="button"
+                disabled={busy || dirty}
+                onClick={async () => {
+                  const ok = await ask({
+                    title: `ลบหมวด "${c.name}"?`,
+                    detail: "หมวดนี้ไม่มีเมนูอยู่แล้ว · ลบแล้วเอากลับคืนไม่ได้ ต้องสร้างใหม่",
+                    confirmText: "ลบหมวด",
+                    danger: true,
+                  });
+                  if (ok) await onRun(() => deleteCategoryAction(id), "ลบหมวดแล้ว");
+                }}
+                className="text-xs text-crit underline disabled:opacity-50"
+              >
+                ลบ
+              </button>
+            )}
+          </div>
+        );
+      })}
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         <button
           type="button"
-          disabled={busy || !name.trim()}
+          disabled={busy || !dirty || problem !== ""}
           onClick={async () => {
-            if (await onRun(() => saveCategoryAction({ name }), "เพิ่มหมวดแล้ว")) setName("");
+            if (await onRun(() => saveCategoriesAction({ order: ids, names }), "บันทึกหมวดแล้ว")) reset();
           }}
           className="rounded-lg bg-brand px-3 py-1.5 text-sm text-on-brand disabled:opacity-50"
         >
-          เพิ่ม
+          บันทึก
         </button>
+        {dirty && (
+          <>
+            <button type="button" onClick={reset} className="text-xs text-muted underline">
+              เลิกแก้
+            </button>
+            <span className="text-xs text-warn">{problem || "ยังไม่ได้บันทึก"}</span>
+          </>
+        )}
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+        <div className="w-48">
+          <TextInput
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="ชื่อหมวดใหม่"
+            disabled={dirty}
+          />
+        </div>
+        <button
+          type="button"
+          disabled={busy || dirty || !newName.trim()}
+          onClick={async () => {
+            if (await onRun(() => saveCategoryAction({ name: newName }), "เพิ่มหมวดแล้ว")) setNewName("");
+          }}
+          className="rounded-lg bg-brand px-3 py-1.5 text-sm text-on-brand disabled:opacity-50"
+        >
+          เพิ่มหมวด
+        </button>
+        {dirty && <span className="text-xs text-warn">เพิ่ม/ลบหมวดได้หลังบันทึกหรือเลิกแก้ที่ค้างอยู่</span>}
       </div>
     </div>
-  );
-}
-
-/**
- * ช่องแก้ชื่อหมวด — ★ ประกาศนอก CategoryEditor เสมอ (ประกาศข้างใน = input ถูกทำลายทุกตัวอักษร · D71)
- * 🪤 ของเดิมบันทึกเองตอน blur โดยไม่มีอะไรบอก → คนพิมพ์แล้วหาปุ่มไม่เจอ
- *    → ปุ่ม บันทึก/เลิกแก้ โผล่เมื่อชื่อต่างจากที่บันทึกไว้ + บรรทัดเหลือง "ยังไม่ได้บันทึก"
- * `key` ผูกกับชื่อที่บันทึกไว้ → บันทึกสำเร็จแล้วโหลดใหม่ ช่องรีเซ็ตเป็นค่าจริงเอง
- */
-function CategoryName({
-  cat, busy, onRun,
-}: {
-  cat: BarCategory;
-  busy: boolean;
-  onRun: (fn: () => Promise<{ ok: boolean; error?: string }>, okText: string) => Promise<boolean>;
-}) {
-  const [draft, setDraft] = useState(cat.name);
-  const dirty = draft.trim() !== cat.name;
-  const save = () =>
-    dirty && draft.trim() && onRun(() => saveCategoryAction({ categoryId: cat.categoryId, name: draft }), "แก้ชื่อหมวดแล้ว");
-
-  return (
-    <>
-      <div className="w-48">
-        <TextInput
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") save();
-            if (e.key === "Escape") setDraft(cat.name);
-          }}
-        />
-      </div>
-      {dirty && (
-        <>
-          <button
-            type="button"
-            disabled={busy || !draft.trim()}
-            onClick={save}
-            className="rounded-lg bg-brand px-2.5 py-1 text-xs text-on-brand disabled:opacity-50"
-          >
-            บันทึก
-          </button>
-          <button type="button" onClick={() => setDraft(cat.name)} className="text-xs text-muted underline">
-            เลิกแก้
-          </button>
-          <span className="text-xs text-warn">{draft.trim() ? "ยังไม่ได้บันทึก" : "ชื่อหมวดว่างไม่ได้"}</span>
-        </>
-      )}
-    </>
   );
 }
 

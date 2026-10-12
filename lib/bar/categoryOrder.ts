@@ -44,3 +44,35 @@ export function sameCategorySet(ids: readonly string[], existing: readonly strin
   if (a.size !== ids.length) return false;
   return existing.every((id) => a.has(id));
 }
+
+/**
+ * ── D109: บันทึกหมวดทีเดียว (ลำดับ + ชื่อ) ─────────────────────────────────
+ * ผู้ใช้ขอ: เดิม ▲▼ บันทึกทุกครั้งที่กด (ต้องรอระบบทุกคลิก) และแก้ชื่อมีปุ่มบันทึกรายหมวด
+ * → แก้ในจอทั้งหมดแล้วกด **บันทึก** ปุ่มเดียว (แบบเดียวกับจัดลำดับเมนู D108)
+ */
+
+/** ชื่อที่ต้องเขียนใหม่ — เฉพาะที่เปลี่ยน (ตัดช่องว่างหัวท้ายแล้วเทียบ) */
+export function categoryNameUpdates(
+  names: Readonly<Record<string, string>>,
+  current: ReadonlyMap<string, string>,
+): { categoryId: string; name: string }[] {
+  return Object.entries(names)
+    .map(([categoryId, n]) => ({ categoryId, name: n.trim() }))
+    .filter((u) => current.has(u.categoryId) && current.get(u.categoryId) !== u.name);
+}
+
+/** ตรวจก่อนบันทึก — คืนข้อความไทย ("" = ผ่าน) · ใช้ทั้งบนจอ (ปิดปุ่ม) และ server (ด่านจริง) */
+export function categoryEditsError(
+  order: readonly string[],
+  names: Readonly<Record<string, string>>,
+  existing: readonly string[],
+): string {
+  if (!sameCategorySet(order, existing)) {
+    return "รายการหมวดเปลี่ยนไประหว่างนั้น (อาจมีคนเพิ่ม/ลบหมวดจากอีกเครื่อง) — รีเฟรชหน้าแล้วลองใหม่";
+  }
+  for (const [id, n] of Object.entries(names)) {
+    if (!existing.includes(id)) return "มีหมวดที่ถูกลบไประหว่างนั้น — รีเฟรชหน้าแล้วลองใหม่";
+    if (!n.trim()) return "ชื่อหมวดว่างไม่ได้";
+  }
+  return "";
+}

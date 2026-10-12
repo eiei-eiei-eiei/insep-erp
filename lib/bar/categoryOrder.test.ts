@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { moveCategory, nextCategorySort, sortUpdates, sameCategorySet } from "./categoryOrder";
+import { moveCategory, nextCategorySort, sortUpdates, sameCategorySet, categoryNameUpdates, categoryEditsError } from "./categoryOrder";
 
 describe("moveCategory — ▲▼", () => {
   const ids = ["A", "B", "C"];
@@ -48,4 +48,24 @@ describe("sameCategorySet — กันเรียงทับตอนอี�
   it("ขาดหมวด = ไม่ผ่าน", () => expect(sameCategorySet(["A"], ["A", "B"])).toBe(false));
   it("เกินหมวด = ไม่ผ่าน", () => expect(sameCategorySet(["A", "B", "C"], ["A", "B"])).toBe(false));
   it("id ซ้ำ = ไม่ผ่าน", () => expect(sameCategorySet(["A", "A"], ["A", "B"])).toBe(false));
+});
+
+describe("D109 — บันทึกหมวดทีเดียว (ลำดับ + ชื่อ)", () => {
+  const cur = new Map([
+    ["A", "ค็อกเทล"],
+    ["B", "ช็อต"],
+  ]);
+  it("เขียนเฉพาะชื่อที่เปลี่ยน · ตัดช่องว่างหัวท้าย", () => {
+    expect(categoryNameUpdates({ A: "ค็อกเทล", B: " ช็อตใหม่ " }, cur)).toEqual([{ categoryId: "B", name: "ช็อตใหม่" }]);
+    expect(categoryNameUpdates({ A: " ค็อกเทล " }, cur)).toEqual([]);
+  });
+  it("หมวดที่ไม่มีแล้วไม่ถูกเขียน", () => {
+    expect(categoryNameUpdates({ Z: "x" }, cur)).toEqual([]);
+  });
+  it("ตรวจก่อนบันทึก: ปกติผ่าน · ชื่อว่าง/ชุดหมวดไม่ตรง/หมวดถูกลบ = error ไทย", () => {
+    expect(categoryEditsError(["B", "A"], { A: "ใหม่" }, ["A", "B"])).toBe("");
+    expect(categoryEditsError(["A", "B"], { A: "  " }, ["A", "B"])).toMatch(/ว่างไม่ได้/);
+    expect(categoryEditsError(["A"], {}, ["A", "B"])).toMatch(/รีเฟรช/);
+    expect(categoryEditsError(["A", "B"], { Z: "x" }, ["A", "B"])).toMatch(/รีเฟรช/);
+  });
 });
