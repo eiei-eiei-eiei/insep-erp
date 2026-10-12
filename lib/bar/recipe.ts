@@ -132,7 +132,8 @@ export function mergeCart(cart: readonly CartLine[]): CartLine[] {
  * ⇒ ฟอร์มต้องยอมให้ช่อง **ว่าง** ได้ระหว่างพิมพ์ (ชนิด `number | ""`)
  *   แล้วค่อยกรองทิ้งตอนบันทึก — ที่นี่คือจุดกรองจุดเดียว ใช้ทั้งแท็บเมนูและปุ่ม ＋เมนูใหม่ ในหน้าขาย
  */
-export type RecipeDraftRow = { itemId: string; qty: number | "" };
+/** `text` = ข้อความที่พิมพ์ในช่องค้นวัตถุดิบ (D110) — ยังไม่ตรงวัตถุดิบไหน = itemId ว่าง แต่ข้อความต้องไม่หาย */
+export type RecipeDraftRow = { itemId: string; qty: number | ""; text?: string };
 
 export const blankRecipeRow = (): RecipeDraftRow => ({ itemId: "", qty: "" });
 

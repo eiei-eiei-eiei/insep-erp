@@ -5,7 +5,8 @@ import type { BarBoot } from "../data";
 import type { BarMenu } from "@/lib/bar/types";
 import { CUSTOM_CATEGORY_ID } from "@/lib/bar/types";
 import { moveCategory, categoryEditsError, categoryNameUpdates } from "@/lib/bar/categoryOrder";
-import { menuMode, menuWarning, unsetMenus, cleanRecipe, blankRecipeRow, danglingRows, type RecipeDraftRow } from "@/lib/bar/recipe";
+import { menuMode, menuWarning, unsetMenus, cleanRecipe, blankRecipeRow, type RecipeDraftRow } from "@/lib/bar/recipe";
+import { RecipeEditor, PriceSuggest } from "./RecipeEditor";
 import { lineCost } from "@/lib/bar/cost";
 import { searchMenus } from "@/lib/bar/menuFilter";
 import { Card, Msg, TextInput, NumBox, Select, Field, Badge, Empty, fmt, useSaver, useConfirm } from "@/lib/shared/ui";
@@ -363,14 +364,9 @@ function MenuModal({
   const [rows, setRows] = useState<RecipeDraftRow[]>(
     cur?.recipe.length ? cur.recipe.map((r) => ({ ...r })) : [blankRecipeRow(), blankRecipeRow()],
   );
-  const setRow = (i: number, patch: Partial<RecipeDraftRow>) =>
-    setRows((p) => p.map((r, j) => (j === i ? { ...r, ...patch } : r)));
-
   const recipe = cleanRecipe(rows);
   const nPrice = price === "" ? 0 : price;
-  const previewCost = boot.canSeeCost
-    ? recipe.reduce((s, r) => s + r.qty * (boot.items.find((i) => i.itemId === r.itemId)?.costPerUnit ?? 0), 0)
-    : 0;
+  const isVat = boot.seller?.isVat ?? false;
 
   return (
     <div
@@ -409,78 +405,21 @@ function MenuModal({
               <NumBox value={fixedCost} onChange={setFixedCost} blankZero placeholder="0" />
             </Field>
             <p className="text-xs text-faint">โหมดนี้ <b>ไม่ตัดสต็อก</b> — ใช้ตอนที่รู้ต้นทุนแต่ไม่อยากคีย์ส่วนผสม</p>
+            {fixedCost !== "" && fixedCost > 0 && (
+              <PriceSuggest cost={fixedCost} canSeeCost={boot.canSeeCost} isVat={isVat} price={price} onUsePrice={setPrice} />
+            )}
           </>
         ) : (
           <>
-            <div className="mt-3 text-sm font-medium text-muted">สูตร (ตัดสต็อกตามนี้)</div>
-            {rows.map((r, i) => (
-              // 🐛 D96 (B-8) — เดิมยัด select + ช่องตัวเลข + ปุ่มลัด 4 ปุ่ม ไว้บรรทัดเดียว
-              //    บนจอแคบ select ถูกบีบจนอ่านชื่อวัตถุดิบไม่ออก → แยกบรรทัดบนมือถือ
-              <div key={i} className="mt-1 flex flex-wrap items-center gap-2">
-                <Select
-                  value={r.itemId}
-                  onChange={(e) => setRow(i, { itemId: e.target.value })}
-                  className="w-full sm:w-auto sm:flex-1"
-                >
-                  <option value="">— เลือกวัตถุดิบ —</option>
-                  {boot.items
-                    .filter((it) => it.active !== false)
-                    .map((it) => (
-                      <option key={it.itemId} value={it.itemId}>
-                        {it.name} ({it.unit})
-                      </option>
-                    ))}
-                </Select>
-                <div className="w-24">
-                  <NumBox value={r.qty} onChange={(v) => setRow(i, { qty: v })} blankZero />
-                </div>
-                <div className="flex gap-1">
-                  {[15, 30, 45, 60].map((v) => (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => setRow(i, { qty: v })}
-                      className="rounded bg-raised px-1.5 text-xs text-muted"
-                    >
-                      {v}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setRows((p) => p.filter((_, j) => j !== i))}
-                  className="text-xs text-crit underline"
-                >
-                  ลบ
-                </button>
-              </div>
-            ))}
-            <button
-              type="button"
-              onClick={() => setRows((p) => [...p, blankRecipeRow()])}
-              className="mt-1 text-xs text-muted underline"
-            >
-              ＋ เพิ่มบรรทัด
-            </button>
-            {boot.canSeeCost && recipe.length > 0 && (
-              <p className="mt-1 text-xs text-muted">
-                ต้นทุนตามสูตรตอนนี้ <b>{fmt(previewCost)}</b> บาท ·
-                กำไรขั้นต้น <b>{fmt(nPrice - previewCost)}</b> บาท
-              </p>
-            )}
-            {recipe.length === 0 && (
-              <p className="mt-1 text-xs text-warn">
-                ยังไม่ใส่สูตร — บันทึกได้ แต่เมนูนี้จะ <b>ไม่ตัดสต็อกและต้นทุนเป็น 0</b>
-              </p>
-            )}
-            {/* 🚨 แถวที่กรอกครึ่งเดียวถูกทิ้งเงียบ ๆ ไม่ได้ — ต้องบอกว่ามีกี่แถวและจะเกิดอะไร
-                (บทเรียน D79: แถวที่กรอกแต่ราคาไม่กรอกชื่อ เคยล้มการบันทึกโดยไม่บอกว่าแถวไหน) */}
-            {danglingRows(rows) > 0 && (
-              <p className="mt-1 text-xs text-warn">
-                มี <b>{danglingRows(rows)} บรรทัด</b> ที่กรอกไม่ครบ (เลือกวัตถุดิบแต่ไม่ใส่ปริมาณ หรือกลับกัน) —
-                บรรทัดพวกนี้จะ <b>ไม่ถูกบันทึก</b>
-              </p>
-            )}
+            <RecipeEditor
+              items={boot.items}
+              rows={rows}
+              setRows={setRows}
+              canSeeCost={boot.canSeeCost}
+              isVat={isVat}
+              price={price}
+              onUsePrice={setPrice}
+            />
           </>
         )}
 

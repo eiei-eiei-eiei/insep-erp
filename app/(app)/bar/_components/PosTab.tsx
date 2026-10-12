@@ -6,7 +6,7 @@ import type { CartLine, BarMenu } from "@/lib/bar/types";
 import { barTotals, lineAmount } from "@/lib/bar/totals";
 import {
   menuMode, menuWarning, shortages, mergeCart,
-  cleanRecipe, blankRecipeRow, danglingRows, type RecipeDraftRow,
+  cleanRecipe, blankRecipeRow, type RecipeDraftRow,
 } from "@/lib/bar/recipe";
 import {
   discountBaht, discountLabel, resolveLines, NO_DISCOUNT, type DiscountInput,
@@ -26,6 +26,7 @@ import {
   quickSaleAction, saveMenuAction, issueReceiptAction, saveCustomerAction,
 } from "../actions";
 import { CustomerModal } from "./CustomerModal";
+import { RecipeEditor } from "./RecipeEditor";
 
 const METHODS = ["เงินสด", "โอนเงิน", "QR", "บัตรเครดิต"];
 
@@ -1361,11 +1362,7 @@ function NewMenuModal({
   const [method, setMethod] = useState("");
   const [note, setNote] = useState("");
   const [rows, setRows] = useState<RecipeDraftRow[]>([blankRecipeRow(), blankRecipeRow(), blankRecipeRow()]);
-  const setRow = (i: number, patch: Partial<RecipeDraftRow>) =>
-    setRows((p) => p.map((r, j) => (j === i ? { ...r, ...patch } : r)));
-
   const recipe = cleanRecipe(rows);
-  const dangling = danglingRows(rows);
 
   return (
     <div
@@ -1379,47 +1376,16 @@ function NewMenuModal({
           <NumBox value={price} onChange={setPrice} blankZero placeholder="ราคา" />
         </div>
 
-        <div className="mt-3 text-sm font-medium text-muted">สูตร (ตัดสต็อกตามนี้)</div>
-        {rows.map((r, i) => (
-          // 🐛 D96 (B-8) — เดิมยัด select + ช่องตัวเลข + ปุ่มลัด 4 ปุ่ม ไว้บรรทัดเดียว
-          //    บนจอแคบ select ถูกบีบจนอ่านชื่อวัตถุดิบไม่ออก → แยกบรรทัดบนมือถือ
-          <div key={i} className="mt-1 flex flex-wrap items-center gap-2">
-            <div className="min-w-40 flex-1">
-              <Select value={r.itemId} onChange={(e) => setRow(i, { itemId: e.target.value })}>
-                <option value="">— เลือกวัตถุดิบ —</option>
-                {boot.items
-                  .filter((it) => it.active !== false)
-                  .map((it) => (
-                    <option key={it.itemId} value={it.itemId}>
-                      {it.name} ({it.unit})
-                    </option>
-                  ))}
-              </Select>
-            </div>
-            <div className="w-24">
-              <NumBox value={r.qty} onChange={(v) => setRow(i, { qty: v })} blankZero />
-            </div>
-            <div className="flex gap-1">
-              {[15, 30, 45, 60].map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => setRow(i, { qty: v })}
-                  className="rounded bg-raised px-2 py-1 text-xs text-muted"
-                >
-                  {v}
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
-        <button
-          type="button"
-          onClick={() => setRows((p) => [...p, blankRecipeRow()])}
-          className="mt-1 text-xs text-muted underline"
-        >
-          ＋ เพิ่มบรรทัด
-        </button>
+        {/* D110 — ช่องสูตรชุดเดียวกับแท็บ เมนู & สูตร: พิมพ์ค้นวัตถุดิบ + ต้นทุน + ราคาแนะนำ */}
+        <RecipeEditor
+          items={boot.items}
+          rows={rows}
+          setRows={setRows}
+          canSeeCost={boot.canSeeCost}
+          isVat={boot.seller?.isVat ?? false}
+          price={price}
+          onUsePrice={setPrice}
+        />
 
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
           <TextInput value={glass} onChange={(e) => setGlass(e.target.value)} placeholder="แก้วที่ใช้ เช่น coupe" list="bar-glass" />
@@ -1437,16 +1403,6 @@ function NewMenuModal({
           className="mt-2 w-full"
         />
 
-        {recipe.length === 0 && (
-          <p className="mt-2 text-xs text-warn">
-            ยังไม่ใส่สูตร — บันทึกได้ แต่เมนูนี้จะ <b>ไม่ตัดสต็อกและต้นทุนเป็น 0</b>
-          </p>
-        )}
-        {dangling > 0 && (
-          <p className="mt-1 text-xs text-warn">
-            มี <b>{dangling} บรรทัด</b> ที่กรอกไม่ครบ — บรรทัดพวกนี้จะ <b>ไม่ถูกบันทึก</b>
-          </p>
-        )}
 
         <div className="mt-4 flex gap-2">
           <button
