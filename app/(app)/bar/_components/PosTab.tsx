@@ -11,7 +11,15 @@ import {
 import {
   discountBaht, discountLabel, resolveLines, NO_DISCOUNT, type DiscountInput,
 } from "@/lib/bar/discount";
-import { customerMenuIds, applyCustomerChip, sortMenusForGrid, searchMenus } from "@/lib/bar/menuFilter";
+import {
+  customerMenuIds,
+  applyCustomerChip,
+  sortMenusForGrid,
+  searchMenus,
+  customerChipLabel,
+  CUSTOMER_CHIP_HINT,
+  CUSTOMER_HISTORY_DAYS,
+} from "@/lib/bar/menuFilter";
 import { promptPayPayload, promptPayError } from "@/lib/bar/promptpay";
 import { customerLabel } from "@/lib/bar/customerName";
 import { buildReceipt } from "@/lib/bar/receipt";
@@ -23,7 +31,7 @@ import {
 } from "@/lib/shared/icons";
 import {
   openSaleAction, addLinesAction, voidLineAction, closeSaleAction, voidSaleAction,
-  quickSaleAction, saveMenuAction, issueReceiptAction, saveCustomerAction,
+  quickSaleAction, saveMenuAction, issueReceiptAction, saveCustomerAction, getCustomerMenusAction,
 } from "../actions";
 import { CustomerModal } from "./CustomerModal";
 import { RecipeEditor } from "./RecipeEditor";
@@ -175,9 +183,35 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
       ),
     [data.openSales],
   );
+  /**
+   * D111 — ของโปรด + เคยสั่งจากบิลที่ปิดแล้ว 90 วัน · โหลดเฉพาะตอนเปิดชิป และเฉพาะลูกค้าคนนี้
+   * (เดิมชิปได้แค่เมนูที่สร้างให้ + บิลที่ยังเปิด — ของโปรดไม่ได้ส่งเข้าไปเลย)
+   */
+  const [custMenus, setCustMenus] = useState<Record<string, { fav: string[]; ordered: string[] } | { error: string }>>({});
+  useEffect(() => {
+    if (!chipOn || !customerId || custMenus[customerId]) return;
+    let alive = true;
+    void getCustomerMenusAction(customerId, CUSTOMER_HISTORY_DAYS).then((r) => {
+      if (!alive) return;
+      setCustMenus((p) => ({
+        ...p,
+        [customerId]: r.ok && r.data ? r.data : { error: r.error ?? "อ่านประวัติลูกค้าไม่สำเร็จ" },
+      }));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [chipOn, customerId, custMenus]);
+  const custExtra = customerId ? custMenus[customerId] : undefined;
   const chipIds = useMemo(
-    () => customerMenuIds(customerId, { menus: data.menus, history }),
-    [customerId, data.menus, history],
+    () =>
+      customerMenuIds(customerId, {
+        menus: data.menus,
+        history,
+        favMenuIds: custExtra && "fav" in custExtra ? custExtra.fav : [],
+        orderedMenuIds: custExtra && "ordered" in custExtra ? custExtra.ordered : [],
+      }),
+    [customerId, data.menus, history, custExtra],
   );
   const shown = useMemo(() => {
     let list = data.menus.filter((m) => m.active !== false);
@@ -488,10 +522,18 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
               {customerId && (
                 <label className="flex items-center gap-1.5 text-sm text-muted">
                   <input type="checkbox" checked={chipOn} onChange={(e) => setChipOn(e.target.checked)} />
-                  เฉพาะของ{" "}
-                  {customerLabel(data.customers.find((c) => c.customerId === customerId)) ||
-                    "ลูกค้ารายนี้"}
+                  {customerChipLabel(customerLabel(data.customers.find((c) => c.customerId === customerId)))}
                 </label>
+              )}
+              {/* D111 — บอกว่าชิปนับจากอะไร และเป็นแค่การกรอง (ผู้ใช้เคยเข้าใจว่าติ๊กแล้วเมนูใหม่จะเป็นของคนนั้น) */}
+              {customerId && chipOn && (
+                <div className="basis-full text-xs text-muted">
+                  {!custExtra ? "กำลังโหลดของโปรด/ประวัติการสั่ง…" : "error" in custExtra ? (
+                    <span className="text-warn">{custExtra.error}</span>
+                  ) : (
+                    CUSTOMER_CHIP_HINT
+                  )}
+                </div>
               )}
               {canWrite && (
                 <button

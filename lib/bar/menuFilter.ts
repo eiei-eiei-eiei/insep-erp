@@ -35,15 +35,33 @@ export function customerMenuIds(
     menus: readonly BarMenu[];
     favMenuIds?: readonly string[];
     history?: readonly MenuHistoryRow[];
+    /** D111 — เมนูที่ลูกค้าคนนี้เคยสั่งจากบิลที่ปิดแล้ว ย้อนหลัง `CUSTOMER_HISTORY_DAYS` วัน (server ส่งมาเฉพาะของคนนี้) */
+    orderedMenuIds?: readonly string[];
   },
 ): Set<string> {
   const out = new Set<string>();
   if (!customerId) return out;
   for (const m of src.menus) if (m.createdFor === customerId) out.add(m.menuId);
   for (const id of src.favMenuIds ?? []) out.add(id);
+  for (const id of src.orderedMenuIds ?? []) out.add(id);
   for (const h of src.history ?? []) if (h.customerId === customerId) out.add(h.menuId);
   return out;
 }
+
+/**
+ * ── D111: ชิปกรองรายลูกค้าในหน้าขาย ──────────────────────────────────────────
+ * 🐛 เดิมหน้าขายส่งเข้า `customerMenuIds` แค่ menus + บิลที่**ยังเปิดอยู่** — ของโปรดไม่ได้ส่งเลย
+ *    และบิลที่ปิดแล้วไม่นับ ⇒ ติ๊กแล้วเห็นแค่เมนูที่สร้างให้ + ของในบิลค้าง (ผู้ใช้ถามว่าติ๊กแล้วมีผลอะไร)
+ * 🪤 ป้ายเดิม "เฉพาะของ X" อ่านแล้วนึกว่า **ติ๊กแล้วเมนูใหม่จะเป็นของ X** (ผู้ใช้เข้าใจแบบนั้นจริง)
+ *    → ป้ายบอกว่าเป็นการ **ดู** + บอกว่านับจากอะไรบ้าง · ประโยคอยู่ที่นี่ที่เดียว
+ */
+export const CUSTOMER_HISTORY_DAYS = 90;
+
+export function customerChipLabel(name: string): string {
+  return `ดูเฉพาะเมนูของ ${name || "ลูกค้ารายนี้"}`;
+}
+
+export const CUSTOMER_CHIP_HINT = `สร้างให้ · ของโปรด · เคยสั่งใน ${CUSTOMER_HISTORY_DAYS} วัน — แค่กรองการแสดงผล ลูกค้าคนอื่นยังสั่งได้`;
 
 /**
  * ใช้ชิปกรองกับรายการเมนู
@@ -121,10 +139,15 @@ export function sortMenusForGrid(
 }
 
 /** ค้นหาเมนูด้วยข้อความ — ชื่อ · โน้ต · แก้ว · วิธีชง (พิมพ์คำในสูตรก็เจอ) */
-export function searchMenus(menus: readonly BarMenu[], q: string): BarMenu[] {
+export function searchMenus(
+  menus: readonly BarMenu[],
+  q: string,
+  /** D111 — ข้อความเพิ่มที่ให้ค้นได้ต่อเมนู (แท็บเมนูส่งชื่อลูกค้าที่เมนูถูกสร้างให้) */
+  extra?: (m: BarMenu) => string,
+): BarMenu[] {
   const t = q.trim().toLowerCase();
   if (!t) return [...menus];
   return menus.filter((m) =>
-    [m.name, m.note, m.glass, m.method].some((f) => (f ?? "").toLowerCase().includes(t)),
+    [m.name, m.note, m.glass, m.method, extra?.(m)].some((f) => (f ?? "").toLowerCase().includes(t)),
   );
 }

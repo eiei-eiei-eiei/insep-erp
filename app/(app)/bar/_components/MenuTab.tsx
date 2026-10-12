@@ -9,6 +9,7 @@ import { menuMode, menuWarning, unsetMenus, cleanRecipe, blankRecipeRow, type Re
 import { RecipeEditor, PriceSuggest } from "./RecipeEditor";
 import { lineCost } from "@/lib/bar/cost";
 import { searchMenus } from "@/lib/bar/menuFilter";
+import { customerLabel } from "@/lib/bar/customerName";
 import { Card, Msg, TextInput, NumBox, Select, Field, Badge, Empty, fmt, useSaver, useConfirm } from "@/lib/shared/ui";
 import { saveMenuAction, saveCategoryAction, deleteCategoryAction, saveCategoriesAction } from "../actions";
 import { MenuOrderEditor } from "./MenuOrderEditor";
@@ -55,11 +56,17 @@ export function MenuTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pro
     }
   }
 
+  /** D111 — ชื่อลูกค้าที่เมนูนี้ถูกสร้างให้ ("" = ไม่ได้สร้างให้ใคร) · รูปแบบชื่อเดียวกับที่อื่นในบาร์ (D97) */
+  const ownerOf = (m: BarMenu) =>
+    m.createdFor ? customerLabel(data.customers.find((c) => c.customerId === m.createdFor)) : "";
+
   const shown = useMemo(() => {
     let list = data.menus;
     if (cat) list = list.filter((m) => m.categoryId === cat);
-    return searchMenus(list, q).sort((a, b) => a.name.localeCompare(b.name, "th"));
-  }, [data.menus, cat, q]);
+    // D111 — ค้นด้วยชื่อลูกค้าที่เมนูถูกสร้างให้ได้ด้วย
+    return searchMenus(list, q, (m) => ownerOf(m)).sort((a, b) => a.name.localeCompare(b.name, "th"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ownerOf อ่านจาก data.customers ที่อยู่ใน deps แล้ว
+  }, [data.menus, data.customers, cat, q]);
 
   const catName = (id: string) => data.categories.find((c) => c.categoryId === id)?.name ?? id;
 
@@ -86,7 +93,7 @@ export function MenuTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pro
 
       <Card title="เมนู">
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <TextInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นชื่อ · โน้ต · แก้ว" className="max-w-xs" />
+          <TextInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นชื่อ · โน้ต · แก้ว · ลูกค้า" className="max-w-xs" />
           <div className="w-44">
             <Select value={cat} onChange={(e) => setCat(e.target.value)}>
             <option value="">ทุกหมวด</option>
@@ -154,6 +161,8 @@ export function MenuTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pro
                       <span className="text-ink">{m.name}</span>
                       {m.note && <div className="text-xs text-muted">{m.note}</div>}
                       {m.glass && <div className="text-xs text-faint">แก้ว: {m.glass}</div>}
+                      {/* D111 — เดิมเก็บไว้ใน DB แต่ไม่มีหน้าจอไหนแสดงเลย (ตระกูล D74/D101) */}
+                      {ownerOf(m) && <div className="text-xs text-muted">สร้างให้: {ownerOf(m)}</div>}
                     </td>
                     <td className="text-sm">{catName(m.categoryId)}</td>
                     <td className="text-right">{fmt(m.price)}</td>
@@ -361,6 +370,8 @@ function MenuModal({
   const [glass, setGlass] = useState(cur?.glass ?? "");
   const [method, setMethod] = useState(cur?.method ?? "");
   const [note, setNote] = useState(cur?.note ?? "");
+  // D111 — แก้/เอาออกได้ (สร้างจากบิลผิดคน = เดิมแก้ไม่ได้เลย)
+  const [createdFor, setCreatedFor] = useState(cur?.createdFor ?? "");
   const [rows, setRows] = useState<RecipeDraftRow[]>(
     cur?.recipe.length ? cur.recipe.map((r) => ({ ...r })) : [blankRecipeRow(), blankRecipeRow()],
   );
@@ -436,6 +447,19 @@ function MenuModal({
             <TextInput value={note} onChange={(e) => setNote(e.target.value)} placeholder="ของพี่โอ๊ต — ลดเวอร์มุท" />
           </Field>
         </div>
+        <Field label="สร้างให้ลูกค้า">
+          <Select value={createdFor} onChange={(e) => setCreatedFor(e.target.value)}>
+            <option value="">— ไม่ได้สร้างให้ใคร —</option>
+            {boot.customers.map((c) => (
+              <option key={c.customerId} value={c.customerId}>
+                {customerLabel(c)}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <p className="-mt-1 text-xs text-faint">
+          แค่ป้ายบอกที่มา + ใช้กับชิป &quot;ดูเฉพาะเมนูของ…&quot; ในหน้าขาย · ลูกค้าคนอื่นยังสั่งเมนูนี้ได้ตามปกติ
+        </p>
         <Field label="วิธีชง">
           <textarea
             value={method}
@@ -460,7 +484,7 @@ function MenuModal({
                 glass,
                 method,
                 note,
-                createdFor: cur?.createdFor ?? null,
+                createdFor: createdFor || null,
                 recipe: useFixed ? [] : recipe,
               })
             }

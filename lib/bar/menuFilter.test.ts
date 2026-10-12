@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { customerMenuIds, applyCustomerChip, sortMenusForGrid, searchMenus } from "./menuFilter";
+import {
+  customerMenuIds,
+  applyCustomerChip,
+  sortMenusForGrid,
+  searchMenus,
+  customerChipLabel,
+  CUSTOMER_CHIP_HINT,
+} from "./menuFilter";
 import type { BarMenu } from "./types";
 
 /**
@@ -201,5 +208,28 @@ describe("ค้นหาเมนู", () => {
 
   it("คำค้นว่าง = คืนครบ (ไม่ใช่ว่างเปล่า)", () => {
     expect(searchMenus(searchable, "   ")).toHaveLength(2);
+  });
+});
+
+describe("D111 — ชิปกรองรายลูกค้าครบ 3 ทาง + ป้าย + ค้นด้วยชื่อลูกค้า", () => {
+  it("รวมเมนูที่เคยสั่งจากบิลที่ปิดแล้ว (orderedMenuIds)", () => {
+    expect([...customerMenuIds("C1", { menus: MENUS, orderedMenuIds: ["M3"] })].sort()).toEqual(["M1", "M3"]);
+  });
+  it("รวมของโปรด", () => {
+    expect([...customerMenuIds("C1", { menus: MENUS, favMenuIds: ["M2"] })].sort()).toEqual(["M1", "M2"]);
+  });
+  it("ไม่มีลูกค้า = เซตว่าง แม้ส่งข้อมูลมา", () => {
+    expect(customerMenuIds(null, { menus: MENUS, orderedMenuIds: ["M3"], favMenuIds: ["M2"] }).size).toBe(0);
+  });
+  it("ป้ายบอกว่าเป็นการดู ไม่ใช่การกำหนดเจ้าของ · บอกว่านับจากอะไร", () => {
+    expect(customerChipLabel("พี่โอ๊ต")).toBe("ดูเฉพาะเมนูของ พี่โอ๊ต");
+    expect(customerChipLabel("")).toBe("ดูเฉพาะเมนูของ ลูกค้ารายนี้");
+    expect(CUSTOMER_CHIP_HINT).toMatch(/90 วัน/);
+    expect(CUSTOMER_CHIP_HINT).toMatch(/แค่กรอง/);
+  });
+  it("ค้นเมนูด้วยข้อความเพิ่ม (ชื่อลูกค้าที่สร้างให้)", () => {
+    const owner = (x: BarMenu) => (x.createdFor === "C2" ? "พี่โอ๊ต (สมชาย)" : "");
+    expect(searchMenus(MENUS, "สมชาย", owner).map((x) => x.menuId)).toEqual(["M4"]);
+    expect(searchMenus(MENUS, "สมชาย").map((x) => x.menuId)).toEqual([]);
   });
 });

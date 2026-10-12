@@ -448,6 +448,50 @@ export async function reorderMenusAction(view: OrderView, ids: string[]): Promis
  * ไม่นับบรรทัดที่ยกเลิก และบิลที่ยกเลิกทั้งใบ
  * 🪤 PostgREST คืนแค่ 1,000 แถวเงียบ ๆ — บาร์ 30 วันเกินแน่ ต้องวน `.range()` (D82)
  */
+/**
+ * เมนูที่ "เป็นของ" ลูกค้าคนนี้ สำหรับชิปกรองหน้าขาย (D111) — ของโปรด + เคยสั่งจากบิลที่ปิดแล้ว ย้อนหลัง N วัน
+ * (เมนูที่สร้างให้ + บิลที่ยังเปิด หน้าจอมีอยู่แล้วในข้อมูลหลัก)
+ * ★ ไม่ใส่ในข้อมูลหลักของหน้า (bootstrap) — ประวัติทุกลูกค้า 90 วันหนักเกินไป ขอเฉพาะคนที่ใช้ชิปอยู่
+ * ไม่นับบิลที่ยกเลิก / บรรทัดที่ยกเลิก
+ */
+export async function getCustomerMenusAction(
+  customerId: string,
+  days = 90,
+): Promise<{ ok: boolean; error?: string; data?: { fav: string[]; ordered: string[] } }> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  const supabase = await createClient();
+  const since = new Date(Date.now() - days * 86_400_000).toISOString();
+  const [favs, sales] = await Promise.all([
+    supabase.from("bar_customer_fav").select("menu_id").eq("entity_id", entity).eq("customer_id", customerId),
+    supabase
+      .from("bar_sale")
+      .select("sale_no")
+      .eq("entity_id", entity)
+      .eq("customer_id", customerId)
+      .neq("status", "ยกเลิก")
+      .gte("opened_at", since)
+      .limit(1000),
+  ]);
+  // 🚨 อ่านไม่ได้ ≠ ไม่มี (D89) — บอก แล้วชิปยังใช้ข้อมูลที่มีอยู่ได้
+  if (favs.error || sales.error) return { ok: false, error: "อ่านของโปรด/ประวัติลูกค้าไม่สำเร็จ — ชิปกรองแสดงได้ไม่ครบ" };
+  const saleNos = (sales.data ?? []).map((r) => r.sale_no as string);
+  const ordered = new Set<string>();
+  // .in() ทีละก้อน — URL ยาวเกินถ้าส่งเลขบิลหลายร้อยใบในคำขอเดียว
+  for (let i = 0; i < saleNos.length; i += 150) {
+    const items = await supabase
+      .from("bar_sale_item")
+      .select("menu_id")
+      .eq("entity_id", entity)
+      .in("sale_no", saleNos.slice(i, i + 150))
+      .is("voided_at", null)
+      .limit(5000);
+    if (items.error) return { ok: false, error: "อ่านประวัติการสั่งของลูกค้าไม่สำเร็จ — ชิปกรองแสดงได้ไม่ครบ" };
+    for (const r of items.data ?? []) if (r.menu_id) ordered.add(r.menu_id as string);
+  }
+  return { ok: true, data: { fav: (favs.data ?? []).map((r) => r.menu_id as string), ordered: [...ordered] } };
+}
+
 type SaleItemRow = { sale_no: string; menu_id: string | null; qty: number; voided_at: string | null };
 
 export async function getMenuSalesAction(
