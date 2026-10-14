@@ -953,3 +953,85 @@ describe("⑨ VAT — ใบกำกับอย่างย่อ + ช่อ�
     }
   });
 });
+
+describe("⑪ D112 — แก้ส่วนลด/แถม หลังส่งเข้าบิล · เปลี่ยนลูกค้าของบิลที่ยังเปิด (0082)", () => {
+  const openWith = async (items: unknown[]) => {
+    const open = await rpc(asA, "fn_bar_open_sale", { p_entity: E() });
+    const saleNo = (open.data as { sale_no: string }).sale_no;
+    const add = await rpc(asA, "fn_bar_add_lines", { p_entity: E(), p_sale_no: saleNo, p_items: items });
+    expect(add.error, add.error?.message).toBeNull();
+    return saleNo;
+  };
+  const lineOf = async (saleNo: string, lineNo: number) => {
+    const { data } = await admin().from("bar_sale_item").select("*")
+      .eq("tenant_id", A.tenantId).eq("entity_id", A.entityId).eq("sale_no", saleNo).eq("line_no", lineNo).single();
+    return data!;
+  };
+  const edit = (saleNo: string, p: { disc?: number; pct?: number | null; comp?: boolean; amount: number }) =>
+    rpc(asA, "fn_bar_edit_line", {
+      p_entity: E(), p_sale_no: saleNo, p_line_no: 1,
+      p_line_discount: p.disc ?? 0, p_line_discount_pct: p.pct ?? null, p_is_comp: Boolean(p.comp), p_amount: p.amount,
+    });
+
+  it("ลดเป็นบาท → ยอดรายการ + ยอดบิลถูกคิดใหม่ · สต็อกไม่ขยับ", async () => {
+    const saleNo = await openWith([negroni(2)]);
+    const gin = await qtyOf("T-GIN");
+    const r = await edit(saleNo, { disc: 50, amount: lineAmount({ menuId: "T-M1", menuName: "x", qty: 2, price: 260, lineDiscount: 50 }) });
+    expect(r.error, r.error?.message).toBeNull();
+    expect(Number((await lineOf(saleNo, 1)).amount)).toBe(470);
+    expect(Number((await saleOf(saleNo)).sub_total)).toBe(470);
+    expect(await qtyOf("T-GIN")).toBe(gin);
+  });
+
+  it("เปลี่ยนเป็นแถม → ยอด 0 แต่ต้นทุนยังอยู่", async () => {
+    const saleNo = await openWith([negroni(1)]);
+    const r = await edit(saleNo, { comp: true, amount: 0 });
+    expect(r.error, r.error?.message).toBeNull();
+    const line = await lineOf(saleNo, 1);
+    expect(Number(line.amount)).toBe(0);
+    expect(line.is_comp).toBe(true);
+    expect(Number(line.cost)).toBe(60);
+    expect(Number((await saleOf(saleNo)).cost_total)).toBe(60);
+  });
+
+  it("🚨 แถมแต่ส่งยอด ≠ 0 / ยอดไม่ตรงส่วนลด / ยอดเกินราคาเต็ม → ปฏิเสธ (ยิงตรงก็ไม่รอด)", async () => {
+    const saleNo = await openWith([negroni(1)]);
+    expect((await edit(saleNo, { comp: true, amount: 260 })).error?.message).toContain("ของแถม");
+    expect((await edit(saleNo, { disc: 50, amount: 260 })).error?.message).toContain("ไม่ตรง");
+    expect((await edit(saleNo, { amount: 999 })).error?.message).toContain("ไม่ถูกต้อง");
+    expect(Number((await lineOf(saleNo, 1)).amount)).toBe(260);
+  });
+
+  it("🚨 บิลที่ปิดแล้ว → แก้รายการและเปลี่ยนลูกค้าไม่ได้ (error ไทย)", async () => {
+    const saleNo = await openWith([negroni(1)]);
+    await rpc(asA, "fn_bar_close_sale", { p_entity: E(), p_sale_no: saleNo, p_method: "เงินสด", p_business_date: today });
+    expect((await edit(saleNo, { disc: 10, amount: 250 })).error?.message).toContain("ปิดไปแล้ว");
+    const c = await rpc(asA, "fn_bar_set_sale_customer", {
+      p_entity: E(), p_sale_no: saleNo, p_customer_id: "T-C1", p_tab_name: "x",
+    });
+    expect(c.error?.message).toContain("ปิดไปแล้ว");
+  });
+
+  it("เปลี่ยนลูกค้า + ชื่อบิลของบิลที่ยังเปิด · เอาลูกค้าออกได้ · ลูกค้าไม่มีจริง = error", async () => {
+    const saleNo = await openWith([negroni(1)]);
+    const set = await rpc(asA, "fn_bar_set_sale_customer", {
+      p_entity: E(), p_sale_no: saleNo, p_customer_id: "T-C1", p_tab_name: " โต๊ะ 9 ",
+    });
+    expect(set.error, set.error?.message).toBeNull();
+    let s = await saleOf(saleNo);
+    expect(s.customer_id).toBe("T-C1");
+    expect(s.tab_name).toBe("โต๊ะ 9");
+
+    const clear = await rpc(asA, "fn_bar_set_sale_customer", {
+      p_entity: E(), p_sale_no: saleNo, p_customer_id: null, p_tab_name: "โต๊ะ 9",
+    });
+    expect(clear.error, clear.error?.message).toBeNull();
+    s = await saleOf(saleNo);
+    expect(s.customer_id).toBeNull();
+
+    const bad = await rpc(asA, "fn_bar_set_sale_customer", {
+      p_entity: E(), p_sale_no: saleNo, p_customer_id: "NOPE", p_tab_name: "",
+    });
+    expect(bad.error?.message).toContain("ไม่พบลูกค้า");
+  });
+});

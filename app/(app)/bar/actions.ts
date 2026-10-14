@@ -6,6 +6,7 @@ import { mapDbError } from "@/lib/shared/dbError";
 import { barTotals } from "@/lib/bar/totals";
 import { businessDate } from "@/lib/bar/businessDate";
 import { lineAmount } from "@/lib/bar/totals";
+import { resolveLine } from "@/lib/bar/discount";
 import { nextCategorySort, sortUpdates, categoryEditsError, categoryNameUpdates } from "@/lib/bar/categoryOrder";
 import { menuOrderError, menuOrderUpdates, menuQtyMap, orderColumn, type OrderView } from "@/lib/bar/menuOrder";
 import { fetchAllRows } from "@/lib/shared/paginate";
@@ -97,6 +98,66 @@ export async function voidLineAction(input: {
     p_sale_no: input.saleNo,
     p_line_no: input.lineNo,
     p_reason: input.reason?.trim() || "แก้บิล",
+  });
+}
+
+/**
+ * แก้ส่วนลด/แถม ของรายการที่ส่งเข้าบิลแล้ว (D112 · 0082) — เฉพาะบิลที่ยังเปิด
+ * ★ ยอดรายการคิดที่นี่ด้วย `resolveLine` + `lineAmount` ตัวเดียวกับตอนส่งเข้าบิล
+ *   จาก qty/ราคา **ที่อยู่ใน DB** (ไม่เชื่อตัวเลขจากหน้าจอ) · SQL แค่ตรวจว่าไม่ขัดกติกา
+ */
+export async function editLineAction(input: {
+  saleNo: string;
+  lineNo: number;
+  lineDiscount: number;
+  lineDiscountPct: number | null;
+  isComp: boolean;
+}): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  const supabase = await createClient();
+  const cur = await supabase
+    .from("bar_sale_item")
+    .select("menu_id, menu_name, qty, price")
+    .eq("entity_id", entity)
+    .eq("sale_no", input.saleNo)
+    .eq("line_no", input.lineNo)
+    .maybeSingle();
+  if (cur.error) return { ok: false, error: mapDbError(cur.error) };
+  if (!cur.data) return { ok: false, error: "ไม่พบรายการนี้ในบิล — รีเฟรชหน้าแล้วลองใหม่" };
+  const line = resolveLine({
+    menuId: (cur.data.menu_id as string) ?? null,
+    menuName: cur.data.menu_name as string,
+    qty: Number(cur.data.qty),
+    price: Number(cur.data.price),
+    lineDiscount: input.isComp ? 0 : input.lineDiscount,
+    lineDiscountPct: input.isComp ? null : input.lineDiscountPct,
+    isComp: input.isComp,
+  });
+  return rpc("fn_bar_edit_line", {
+    p_entity: entity,
+    p_sale_no: input.saleNo,
+    p_line_no: input.lineNo,
+    p_line_discount: line.lineDiscount ?? 0,
+    p_line_discount_pct: line.lineDiscountPct ?? null,
+    p_is_comp: input.isComp,
+    p_amount: lineAmount(line),
+  });
+}
+
+/** เปลี่ยนลูกค้า/ชื่อบิล ของบิลที่ยังเปิดอยู่ (D112 · 0082) — บิลที่ปิดแล้ว SQL ปฏิเสธ */
+export async function setSaleCustomerAction(input: {
+  saleNo: string;
+  customerId: string | null;
+  tabName: string;
+}): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  return rpc("fn_bar_set_sale_customer", {
+    p_entity: entity,
+    p_sale_no: input.saleNo,
+    p_customer_id: input.customerId,
+    p_tab_name: input.tabName,
   });
 }
 

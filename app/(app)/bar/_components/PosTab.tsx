@@ -32,9 +32,11 @@ import {
 import {
   openSaleAction, addLinesAction, voidLineAction, closeSaleAction, voidSaleAction,
   quickSaleAction, saveMenuAction, issueReceiptAction, saveCustomerAction, getCustomerMenusAction,
+  editLineAction, setSaleCustomerAction,
 } from "../actions";
 import { CustomerModal } from "./CustomerModal";
 import { RecipeEditor } from "./RecipeEditor";
+import { BilledLineRow, EditBillCustomer } from "./BilledLines";
 
 const METHODS = ["เงินสด", "โอนเงิน", "QR", "บัตรเครดิต"];
 
@@ -84,6 +86,14 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
   const [cat, setCat] = useState<string>("");
   const [q, setQ] = useState("");
   const [chipOn, setChipOn] = useState(false);
+  const [editBill, setEditBill] = useState(false);
+  /** D112 — เมนูที่เพิ่งแตะ → แถบล่างกะพริบ "+ ชื่อเมนู" ครู่หนึ่ง */
+  const [lastAdded, setLastAdded] = useState<{ name: string; at: number } | null>(null);
+  useEffect(() => {
+    if (!lastAdded) return;
+    const t = setTimeout(() => setLastAdded(null), 1800);
+    return () => clearTimeout(t);
+  }, [lastAdded]);
   const [sheet, setSheet] = useState(false);
   const [paying, setPaying] = useState(false);
   const [newMenu, setNewMenu] = useState(false);
@@ -109,6 +119,8 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
   } | null>(null);
 
   const sale = data.openSales.find((s) => s.saleNo === saleNo) ?? null;
+  // D112 — สลับไปบิลอื่นแล้วฟอร์มแก้บิลต้องไม่ค้าง (ไม่งั้นแก้ผิดบิลได้)
+  useEffect(() => setEditBill(false), [saleNo]);
   const canWrite = data.canWrite;
 
   /** ถาดที่กำลังใช้อยู่ — โหมดบูธไม่มีเลขบิล จึงใช้คีย์คงที่ */
@@ -256,6 +268,9 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
   // ★ หน้าขายอยู่คนละแท็บกับที่ตั้งค่า จึงต้องบอกด้วยว่าไปตั้งที่ไหน
   const ppError = promptPayError(ppTarget, { showWhere: true });
   const trayQty = tray.reduce((s, l) => s + l.qty, 0);
+  /** D112 — จำนวนที่รอส่งต่อเมนู → ตัวเลขบนการ์ด */
+  const pendingByMenu = new Map<string, number>();
+  for (const l of tray) if (l.menuId) pendingByMenu.set(l.menuId, (pendingByMenu.get(l.menuId) ?? 0) + l.qty);
 
   // ── ถาด ───────────────────────────────────────────────────────────────────
   /**
@@ -267,7 +282,10 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
     setTray(key, (prev) =>
       mergeCart([...prev, { menuId: m.menuId, menuName: m.name, qty: 1, price: m.price }]),
     );
-    setSheet(true);
+    // 🔄 D112 — เดิม setSheet(true) ทุกครั้ง → บนมือถือแผงถาดเด้งขึ้นบังเมนู ต้องกดย่อลงก่อนเลือกตัวถัดไป (ผู้ใช้แจ้ง)
+    //    → ไม่เปิดแผงเอง · บอกว่าเลือกแล้วด้วยตัวเลขบนการ์ด + แถบล่างกะพริบชื่อเมนู (ผู้ใช้เลือก)
+    //    ★ คงจังหวะ "ส่งเข้าบิล" ไว้ในแผงตามเดิม (D96 — ตรวจก่อนของถูกตัดสต็อก)
+    setLastAdded({ name: m.name, at: Date.now() });
   }
   const bump = (i: number, by: number) =>
     key &&
@@ -557,8 +575,20 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 2xl:grid-cols-4">
               {shown.map((m) => {
                 const warn = menuWarning(m);
+                const pending = pendingByMenu.get(m.menuId) ?? 0;
                 return (
-                  <div key={m.menuId} className="rounded-lg border border-line p-2">
+                  <div
+                    key={m.menuId}
+                    className={`relative rounded-lg border p-2 ${pending > 0 ? "border-brand bg-brand-soft" : "border-line"}`}
+                  >
+                    {pending > 0 && (
+                      <span
+                        aria-label={`รอส่ง ${pending}`}
+                        className="absolute -right-1.5 -top-1.5 grid h-6 min-w-6 place-items-center rounded-full bg-brand px-1.5 text-xs font-bold text-on-brand shadow"
+                      >
+                        {pending}
+                      </span>
+                    )}
                     <button
                       type="button"
                       disabled={!key || !canWrite}
@@ -594,17 +624,27 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
             <button
               type="button"
               onClick={() => setSheet(true)}
-              className="flex w-full items-center gap-3 border-t border-line bg-card px-4 py-3 text-left shadow-lg lg:hidden"
+              // 🐛 รอบแรกใช้ bg-brand-soft (สีโปร่ง) → การ์ดเมนูข้างหลังทะลุแถบ · พื้นต้องทึบเสมอ กะพริบด้วยกรอบแทน
+              className={`flex w-full items-center gap-3 border-t bg-card px-4 py-3 text-left shadow-lg lg:hidden ${
+                lastAdded ? "border-brand ring-2 ring-inset ring-brand" : "border-line"
+              }`}
             >
-              <span className="text-sm text-muted">
-                {booth ? "ขายเร็ว" : sale ? sale.tabName || sale.saleNo : "ยังไม่ได้เลือกบิล"}
+              {/* ระหว่างกะพริบ ชื่อเมนูที่เพิ่งแตะแทนที่ชื่อบิล (ไม่งั้นข้อความ 3 ก้อนบีบกันจนตัดบรรทัดทุกก้อน) */}
+              <span className={`min-w-0 flex-1 truncate text-sm ${lastAdded ? "font-medium text-brand" : "text-muted"}`}>
+                {lastAdded
+                  ? `+ ${lastAdded.name}`
+                  : booth
+                    ? "ขายเร็ว"
+                    : sale
+                      ? sale.tabName || sale.saleNo
+                      : "ยังไม่ได้เลือกบิล"}
               </span>
-              <span className="ml-auto text-sm text-ink">
+              <span className="shrink-0 text-sm text-ink">
                 {trayQty > 0
                   ? `${booth ? "" : "รอส่ง "}${trayQty} รายการ`
                   : "ยังไม่ได้เลือกอะไร"}
               </span>
-              <span className="text-lg font-bold text-ink">{fmt(totals.grandTotal)}</span>
+              <span className="shrink-0 text-lg font-bold text-ink">{fmt(totals.grandTotal)}</span>
             </button>
           )}
 
@@ -624,6 +664,37 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
                 <Msg msg={msg} />
 
                 {!key && !justClosed && <Empty>— เปิดบิลใหม่หรือเลือกบิลที่เปิดอยู่ก่อน —</Empty>}
+
+                {/* D112 — แก้ลูกค้า/ชื่อบิล ของบิลที่ยังเปิด (เดิมเปลี่ยนไม่ได้เลย) */}
+                {sale && !booth && canWrite && !editBill && (
+                  <button
+                    type="button"
+                    onClick={() => setEditBill(true)}
+                    className="mb-2 text-xs text-muted underline"
+                  >
+                    แก้ชื่อบิล / ลูกค้า
+                    {sale.customerId ? ` (ตอนนี้: ${customerLabel(data.customers.find((c) => c.customerId === sale.customerId))})` : " (ยังไม่ระบุลูกค้า)"}
+                  </button>
+                )}
+                {sale && !booth && editBill && (
+                  <EditBillCustomer
+                    key={sale.saleNo}
+                    saleNo={sale.saleNo}
+                    tabName={sale.tabName}
+                    customerId={sale.customerId}
+                    customers={data.customers}
+                    busy={busy}
+                    onCancel={() => setEditBill(false)}
+                    onSave={async (customerId, tabName) => {
+                      const r = await run(
+                        () => setSaleCustomerAction({ saleNo: sale.saleNo, customerId, tabName }),
+                        "แก้บิลแล้ว",
+                      );
+                      if (r) setEditBill(false);
+                      return Boolean(r);
+                    }}
+                  />
+                )}
 
                 {justClosed && (
                   <ClosedPanel
@@ -667,30 +738,24 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
                     {sale.lines
                       .filter((l) => !l.voidedAt)
                       .map((l) => (
-                        <div key={l.lineNo} className="flex items-center gap-2 py-0.5 text-sm">
-                          <span className="w-8 text-muted">{l.qty}×</span>
-                          <span className="flex-1 text-ink">
-                            {l.menuName}
-                            {l.isComp && <span className="ml-1 text-xs text-muted">(แถม)</span>}
-                          </span>
-                          <span className="text-ink">{l.isComp ? "—" : fmt(l.amount)}</span>
-                          {canWrite && (
-                            <button
-                              type="button"
-                              title="ยกเลิกรายการนี้ (คืนสต็อก)"
-                              disabled={busy}
-                              onClick={() =>
-                                run(
-                                  () => voidLineAction({ saleNo: sale.saleNo, lineNo: l.lineNo }),
-                                  "ยกเลิกรายการแล้ว",
-                                )
-                              }
-                              className="grid h-7 w-7 place-items-center rounded text-crit hover:bg-crit-bg disabled:opacity-40"
-                            >
-                              <IconTrash size={14} />
-                            </button>
-                          )}
-                        </div>
+                        // D112 — แก้ส่วนลด/แถมได้หลังส่งเข้าบิล · key ผูกยอด → บันทึกแล้วโหลดใหม่ ช่องรีเซ็ตเป็นค่าจริงเอง
+                        <BilledLineRow
+                          key={`${l.lineNo}:${l.amount}:${l.isComp}:${l.lineDiscountPct ?? ""}`}
+                          line={l}
+                          canWrite={canWrite}
+                          busy={busy}
+                          onSave={async (p) =>
+                            Boolean(
+                              await run(
+                                () => editLineAction({ saleNo: sale.saleNo, lineNo: l.lineNo, ...p }),
+                                "แก้รายการแล้ว",
+                              ),
+                            )
+                          }
+                          onVoid={() =>
+                            run(() => voidLineAction({ saleNo: sale.saleNo, lineNo: l.lineNo }), "ยกเลิกรายการแล้ว")
+                          }
+                        />
                       ))}
                   </div>
                 )}

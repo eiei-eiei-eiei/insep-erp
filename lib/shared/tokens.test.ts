@@ -53,6 +53,8 @@ const TAILWIND_WORDS = new Set([
   "0", "2", "4", "8",
   // เงา
   "md", "inner",
+  // ring-inset = วาดกรอบเข้าด้านใน (คำของ Tailwind ไม่ใช่สี · D112)
+  "inset",
 ]);
 
 /** ไฟล์ .tsx ทั้งหมดใต้ app/ และ lib/ */
