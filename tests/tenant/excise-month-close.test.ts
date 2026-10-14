@@ -17,8 +17,16 @@ import { assertTestEnv, cleanupTestTenants, seedTenant, signIn, seedUser, admin,
 let A: Tenant;
 let asA: SupabaseClient;
 
-const MONTH = "2026-09";
-const NEXT = "2026-10";
+/**
+ * 🪤 **เดือนต้องคิดจากวันนี้ ห้ามฮาร์ดโค้ด** (แก้ 2026-10-14)
+ * `fn_cancel_order` ลงแถวคืนสต็อกด้วย `current_date` (UTC) — เทสตั้งใจให้แถวคืนตกเดือนเดียวกับ MONTH
+ * เดิมฮาร์ดโค้ด "2026-09"/"2026-10" แล้วผ่านเพราะรันในเดือน ก.ย. พอปฏิทินขึ้น ต.ค. แถวคืนทุกใบไปตกใน NEXT
+ * ⇒ ข้อ ⑤ ได้ 4 คู่แทน 1 · **ระบบไม่ได้พัง เทสผูกกับวันที่รันโดยไม่รู้ตัว**
+ */
+const ym = (d: Date) => d.toISOString().slice(0, 7);
+const NOW = new Date();
+const MONTH = ym(NOW);
+const NEXT = ym(new Date(Date.UTC(NOW.getUTCFullYear(), NOW.getUTCMonth() + 1, 1)));
 
 /** สร้างออเดอร์ที่ "ตัดสต็อกไปแล้ว" ให้พร้อมถูกยกเลิก — ปูสถานะเดียวกับที่ fn_confirm_fulfillment ทิ้งไว้ */
 async function seedFulfilledOrder(n: number, saleDate: string) {
