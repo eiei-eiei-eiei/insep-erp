@@ -7,6 +7,9 @@ import {
   itemDiscBahtFromPct,
   itemTotal,
   exVatFromInVat,
+  priceFromInput,
+  reinterpretPrice,
+  unitPriceHeader,
   inVatFromExVat,
   entryCalc,
   effectiveVatMode,
@@ -366,5 +369,42 @@ describe("A21 — โหมดกรอกราคา รวม VAT (D98)", () 
     expect(itemsHintText("in")).not.toBe(itemsHintText("ex"));
     const modes: VatMode[] = ["ex", "in"];
     expect(new Set(modes.map((m) => VAT_MODE_LABEL[m])).size).toBe(2);
+  });
+});
+
+describe("A21 — ช่องราคาช่องเดียว (D113)", () => {
+  const prices = [0, 0.01, 1, 9.99, 70.09, 75, 100, 107, 1234.56];
+
+  it("🚨 พิมพ์ช่องเดียวได้คอลัมน์คู่เท่าสูตรเดิมทุกตัวอักษร (เหมือนพิมพ์ช่องนั้นตอนมี 2 ช่อง)", () => {
+    for (const v of prices) {
+      expect(priceFromInput("ex", v)).toEqual({ exVat: v, inVat: inVatFromExVat(v) });
+      expect(priceFromInput("in", v)).toEqual({ inVat: v, exVat: exVatFromInVat(v) });
+    }
+  });
+
+  it("สลับโหมด = ตัวเลขในช่องคงเดิม เปลี่ยนแค่ความหมาย", () => {
+    const ex = reinterpretPrice("ex", "in", 75, inVatFromExVat(75));
+    expect(ex).toEqual({ inVat: 75, exVat: exVatFromInVat(75) });
+    const back = reinterpretPrice("in", "ex", ex.exVat, ex.inVat);
+    expect(back).toEqual({ exVat: 75, inVat: inVatFromExVat(75) });
+    // โหมดเดิม = ไม่แตะค่า
+    expect(reinterpretPrice("in", "in", 70.09, 75)).toEqual({ exVat: 70.09, inVat: 75 });
+  });
+
+  it("🚨 ยอดบิลจากช่องเดียวเท่าเดิม: 16×75 รวม VAT = 1,200.00 · ไม่รวม VAT = เส้นทาง A3 เดิม", () => {
+    const run = (mode: VatMode, v: number) => {
+      const p = priceFromInput(mode, v);
+      return entryCalc({ items: [{ quantity: 16, ...p, discBaht: 0 }], discount: 0, hasVat: true, hasWht: false, whtRate: 0, vatMode: mode });
+    };
+    const inn = run("in", 75);
+    expect(round2(inn.amountAfterDiscount + inn.vatAmount)).toBe(1200);
+    const legacy = entryCalc({ items: [{ quantity: 16, exVat: 75, discBaht: 0 }], discount: 0, hasVat: true, hasWht: false, whtRate: 0 });
+    expect(run("ex", 75)).toEqual(legacy);
+  });
+
+  it("หัวช่องบอกความหมายตามปุ่ม", () => {
+    expect(unitPriceHeader("in")).toContain("รวม VAT");
+    expect(unitPriceHeader("ex")).toContain("ไม่รวม VAT");
+    expect(itemsHintText("ex")).not.toContain("พิมพ์ในช่องไหน");
   });
 });

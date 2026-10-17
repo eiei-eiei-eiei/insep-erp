@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { searchBillsAction, getBillDetailAction, voidTransactionAction, updateTransactionAction, getItemHistoryAction } from "../actions";
-import { entryCalc, itemTotal, detectVatMode, unitPriceOf, lineTotalHeader, itemsHintText } from "@/lib/accounting/calc";
+import { entryCalc, itemTotal, detectVatMode, unitPriceOf, unitPriceHeader, lineTotalHeader, itemsHintText } from "@/lib/accounting/calc";
 import { qn, emptyItem, makeItemHandlers, buildItemInputs, useBillAmounts, hasContent, type BillItem } from "./billItems";
 import { VatModeCard } from "./VatModeCard";
 import type { Bootstrap } from "./types";
@@ -258,7 +258,7 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
   const effBranchId = multiBranch ? (nameMatches.some((c) => c.contact_id === contactId) ? contactId : nameMatches[0].contact_id) : "";
   const resolvedContactId = nameMatches.length === 1 ? nameMatches[0].contact_id : multiBranch ? effBranchId : (contactId || undefined);
 
-  const { setItem, onExVat, onInVat, onQty, onDiscPct, onDiscBaht, removeItem, changeVatMode } = makeItemHandlers(items, setItems, effVatMode, setVatMode);
+  const { setItem, priceOf, onPrice, onQty, onDiscPct, onDiscBaht, removeItem, changeVatMode } = makeItemHandlers(items, setItems, effVatMode, setVatMode, vatMode);
   // แถวใหม่ก๊อปหมวด/งานจากแถวสุดท้าย (บิลเดียวกันมักเป็นงานเดียวกัน) — เหมือน EntryTab
   function addItem() { const last = items[items.length - 1]; setItems((p) => [...p, emptyItem(last?.itemCategory ?? "", last?.itemJob ?? "")]); }
   function fillAll(patch: Partial<BillItem>) { setItems((p) => p.map((it) => ({ ...it, ...patch }))); }
@@ -309,7 +309,7 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
             </div>
             <div className="overflow-x-auto">
               <table className="tbl">
-                <thead><tr className="text-left text-faint"><th>ชื่อรายการ</th><th className="w-28">หมวดหมู่</th><th className="w-24">งาน</th><th className="w-16">จำนวน</th><th className="w-28">รวม VAT</th><th className="w-28">ไม่รวม VAT</th><th className="w-16">ลด %</th><th className="w-24">ลด บาท</th><th className="w-28 num">{lineTotalHeader(effVatMode)}</th><th className="w-8"></th></tr></thead>
+                <thead><tr className="text-left text-faint"><th>ชื่อรายการ</th><th className="w-28">หมวดหมู่</th><th className="w-24">งาน</th><th className="w-16">จำนวน</th><th className="w-32">{unitPriceHeader(vatMode)}</th><th className="w-16">ลด %</th><th className="w-24">ลด บาท</th><th className="w-28 num">{lineTotalHeader(effVatMode)}</th><th className="w-8"></th></tr></thead>
                 <tbody>
                   {items.map((it, i) => (
                     <tr key={i}>
@@ -317,8 +317,7 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
                       <td><TextInput list="edit-item-cats" value={it.itemCategory} onChange={(e) => setItem(i, { itemCategory: e.target.value })} placeholder="หมวดหมู่" /></td>
                       <td><TextInput list="edit-item-jobs" value={it.itemJob} onChange={(e) => setItem(i, { itemJob: e.target.value })} placeholder="งาน" /></td>
                       <td><NumBox value={it.quantity} onChange={(v) => onQty(i, v)} /></td>
-                      <td><NumBox value={it.inVat} blankZero onChange={(v) => onInVat(i, v === "" ? 0 : v)} /></td>
-                      <td><NumBox value={it.exVat} blankZero onChange={(v) => onExVat(i, v === "" ? 0 : v)} /></td>
+                      <td><NumBox value={priceOf(it)} blankZero onChange={(v) => onPrice(i, v === "" ? 0 : v)} /></td>
                       <td><NumBox value={it.discPct} blankZero onChange={(v) => onDiscPct(i, v === "" ? 0 : v)} /></td>
                       <td><NumBox value={it.discBaht} blankZero onChange={(v) => onDiscBaht(i, v === "" ? 0 : v)} /></td>
                       <td className="font-medium num">{fmt(itemTotal(qn(it.quantity), unitPriceOf(effVatMode, it.exVat, it.inVat), it.discBaht))}</td>

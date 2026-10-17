@@ -8,7 +8,7 @@
  * เสี่ยง "เลขตอนสร้าง ≠ เลขตอนแก้" · สูตรจริงยังอยู่ที่ lib/accounting/calc เหมือนเดิม
  * ไฟล์นี้แค่รวม state handler ไม่ได้คำนวณเงินเอง
  *
- * D98 — เพิ่ม "โหมดกรอกราคา" (A21): ผู้ใช้พิมพ์ช่องไหน = โหมดนั้น
+ * D98 — เพิ่ม "โหมดกรอกราคา" (A21) · D113 — เหลือช่องราคาช่องเดียว เลือกโหมดที่ปุ่มอย่างเดียว
  * 🚨 โหมดเป็นของ **บิล** ไม่ใช่ของแถว — ใบของผู้ขายตั้งราคาแบบเดียวทั้งใบ
  *    ถ้าให้แต่ละแถวมีโหมดของตัวเอง ยอดรวมบิลจะเป็นผลบวกของเลขคนละหน่วย
  */
@@ -19,8 +19,9 @@ import {
   itemTotal,
   itemDiscBahtFromPct,
   inVatFromExVat,
-  exVatFromInVat,
   effectiveVatMode,
+  priceFromInput,
+  reinterpretPrice,
   unitPriceOf,
   allocateExTotals,
   round2,
@@ -76,30 +77,36 @@ export function buildItemInputs(items: BillItem[], mode: VatMode = "ex", baseAmo
   }));
 }
 
-/** handler แก้แถวรายการ (in↔ex VAT สลับกัน · ส่วนลด %↔บาท) — เหมือนกันทั้ง 2 ฟอร์ม */
+/**
+ * handler แก้แถวรายการ (ราคาช่องเดียว · ส่วนลด %↔บาท) — เหมือนกันทั้ง 2 ฟอร์ม
+ *
+ * D113 — เหลือช่องราคาช่องเดียว:
+ * · `mode`      = โหมดที่ **มีผลจริง** (effVatMode) ใช้คิดส่วนลดบาท — เหมือนเดิม
+ * · `inputMode` = โหมดที่ **ผู้ใช้เลือกที่ปุ่ม** บอกว่าตัวเลขในช่องคืออะไร
+ *   🪤 ใช้ตัวนี้ ไม่ใช่ effVatMode — เลือก "รวม VAT" แต่ยังไม่ติ๊ก VAT แล้วช่องต้องยังโชว์
+ *      เลขที่พิมพ์ไว้ ไม่ใช่สลับไปโชว์ค่าที่ถอดแล้ว (ตัวเลขบนจอเปลี่ยนเองโดยไม่ได้แตะ)
+ */
 export function makeItemHandlers(
   items: BillItem[],
   setItems: React.Dispatch<React.SetStateAction<BillItem[]>>,
   mode: VatMode = "ex",
   setMode?: (m: VatMode) => void,
+  inputMode: VatMode = mode,
 ) {
   const setItem = (i: number, patch: Partial<BillItem>) =>
     setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
   /** ส่วนลดบาทของแถว คิดจากฐานตามโหมด (โหมด in = บาทรวม VAT) */
-  const discOf = (it: BillItem, qty: number, pct: number) =>
+  const discOf = (it: Pick<BillItem, "exVat" | "inVat">, qty: number, pct: number) =>
     itemDiscBahtFromPct(qty, unitPriceOf(mode, it.exVat, it.inVat), pct);
   return {
     setItem,
-    onExVat: (i: number, v: number) => {
-      setMode?.("ex"); // พิมพ์ช่องไหน = เลือกโหมดนั้น
+    /** ตัวเลขในช่องราคา (ตามโหมดที่ผู้ใช้เลือก) */
+    priceOf: (it: BillItem) => unitPriceOf(inputMode, it.exVat, it.inVat),
+    /** พิมพ์ช่องราคา — เติมอีกคอลัมน์ด้วยสูตรเดิม (priceFromInput) · ไม่สลับโหมดเอง */
+    onPrice: (i: number, v: number) => {
       const it = items[i];
-      setItem(i, { exVat: v, inVat: inVatFromExVat(v), discBaht: itemDiscBahtFromPct(qn(it.quantity), unitPriceOf("ex", v, inVatFromExVat(v)), it.discPct) });
-    },
-    onInVat: (i: number, v: number) => {
-      setMode?.("in");
-      const it = items[i];
-      const ex = exVatFromInVat(v);
-      setItem(i, { inVat: v, exVat: ex, discBaht: itemDiscBahtFromPct(qn(it.quantity), unitPriceOf("in", ex, v), it.discPct) });
+      const p = priceFromInput(inputMode, v);
+      setItem(i, { ...p, discBaht: discOf(p, qn(it.quantity), it.discPct) });
     },
     onQty: (i: number, q: Qty) => setItem(i, { quantity: q, discBaht: discOf(items[i], qn(q), items[i].discPct) }),
     onDiscPct: (i: number, v: number) => setItem(i, { discPct: v, discBaht: discOf(items[i], qn(items[i].quantity), v) }),
@@ -110,16 +117,21 @@ export function makeItemHandlers(
     },
     removeItem: (i: number) => setItems((p) => p.filter((_, idx) => idx !== i)),
     /**
-     * สลับโหมดจากปุ่มบนหัวการ์ด — ต้องคิดส่วนลดบาทของทุกแถวใหม่ด้วย
+     * สลับโหมดจากปุ่มบนหัวการ์ด
+     * D113: ตัวเลขในช่องคงเดิม เปลี่ยนแค่ความหมาย (reinterpretPrice) แล้วเติมอีกคอลัมน์ใหม่
+     * แล้วต้องคิดส่วนลดบาทของทุกแถวใหม่ด้วย
      * 🪤 ไม่คิดใหม่ = ส่วนลด % บนจอกับยอดส่วนลดบาทที่ใช้จริงจะไม่ตรงกันเงียบ ๆ
      */
     changeVatMode: (m: VatMode) => {
+      if (m === inputMode) return;
       setMode?.(m);
-      setItems((prev) => prev.map((it) => (
-        it.discPct > 0
-          ? { ...it, discBaht: itemDiscBahtFromPct(qn(it.quantity), unitPriceOf(m, it.exVat, it.inVat), it.discPct) }
-          : it
-      )));
+      setItems((prev) => prev.map((it) => {
+        const p = reinterpretPrice(inputMode, m, it.exVat, it.inVat);
+        const next = { ...it, ...p };
+        return it.discPct > 0
+          ? { ...next, discBaht: itemDiscBahtFromPct(qn(it.quantity), unitPriceOf(m, p.exVat, p.inVat), it.discPct) }
+          : next;
+      }));
     },
   };
 }

@@ -130,6 +130,42 @@ export function unitPriceOf(mode: VatMode, exVat: number, inVat: number | undefi
   return mode === "in" ? num(inVat) : num(exVat);
 }
 
+/**
+ * A21 (D113) — ช่องราคาช่องเดียว: ตัวเลขที่ผู้ใช้พิมพ์ → ราคาทั้งสองคอลัมน์
+ *
+ * หน้าจอเหลือช่องกรอกราคาช่องเดียว ปุ่มโหมดบอกว่าตัวเลขนั้น "รวม" หรือ "ไม่รวม" VAT
+ * แต่ state/DB ยังเก็บครบทั้ง ex_vat และ in_vat เหมือนเดิม (แท็บประวัติราคา/เช็คราคาอ่านทั้งคู่)
+ * ⇒ ช่องที่ผู้ใช้ไม่ได้พิมพ์ถูกเติมด้วยสูตรเดิม inVatFromExVat / exVatFromInVat ทุกตัวอักษร
+ * 🚨 entryCalc() อ่านแค่คอลัมน์ของโหมดที่มีผล (unitPriceOf) — ค่าที่เติมให้อีกช่องเป็นแค่ค่าแสดง
+ *    ไม่เคยเข้าสูตรยอดบิล ⇒ ยอดเท่ากับตอนที่มี 2 ช่องแล้วพิมพ์ช่องเดียวกันเป๊ะ
+ */
+export function priceFromInput(mode: VatMode, value: number): { exVat: number; inVat: number } {
+  const v = num(value);
+  return mode === "in"
+    ? { inVat: v, exVat: exVatFromInVat(v) }
+    : { exVat: v, inVat: inVatFromExVat(v) };
+}
+
+/**
+ * A21 (D113) — สลับปุ่มโหมดแล้ว **ตัวเลขในช่องคงเดิม เปลี่ยนแค่ความหมาย** (ผู้ใช้เลือก)
+ * เช่น พิมพ์ 75 ไว้ในโหมดไม่รวม VAT แล้วกด "รวม VAT" ⇒ 75 กลายเป็นราคารวม VAT
+ * 🪤 ไม่ใช่การแปลงค่า (75 → 70.09) — ปุ่มคือการบอกว่าเลขที่พิมพ์ไปแล้ว "คืออะไร"
+ */
+export function reinterpretPrice(
+  from: VatMode,
+  to: VatMode,
+  exVat: number,
+  inVat: number | undefined,
+): { exVat: number; inVat: number } {
+  if (from === to) return { exVat: num(exVat), inVat: num(inVat) };
+  return priceFromInput(to, unitPriceOf(from, exVat, inVat));
+}
+
+/** A21 (D113) — หัวช่องราคาช่องเดียว (บอกความหมายของตัวเลขตามปุ่มที่เลือก) */
+export function unitPriceHeader(mode: VatMode): string {
+  return mode === "in" ? "ราคา/หน่วย (รวม VAT)" : "ราคา/หน่วย (ไม่รวม VAT)";
+}
+
 // ── A3: สรุปยอดบิล (calculateSummary source='items') ─────────────────────────
 export type EntryItem = {
   quantity: number;
@@ -246,7 +282,7 @@ export function detectVatMode(
  */
 export function vatModeWarn(mode: VatMode | undefined, hasVat: boolean): string {
   if (mode !== "in" || hasVat) return "";
-  return "กรอกราคาในช่อง รวม VAT แต่ยังไม่ได้ติ๊ก \"มี VAT 7%\" — ตอนนี้ระบบคิดยอดแบบไม่รวม VAT ให้ก่อน ถ้าบิลนี้มีภาษีให้ติ๊กช่อง มี VAT 7% ที่การ์ดสรุปยอด";
+  return "เลือกว่าราคาที่กรอกเป็น รวม VAT แต่ยังไม่ได้ติ๊ก \"มี VAT 7%\" — ตอนนี้ระบบคิดยอดแบบไม่รวม VAT ให้ก่อน ถ้าบิลนี้มีภาษีให้ติ๊กช่อง มี VAT 7% ที่การ์ดสรุปยอด";
 }
 
 /** A21 — หัวคอลัมน์ "รวม" ของตารางรายการ (ความหมายต่างกันตามโหมด ต้องบอกให้ชัด) */
@@ -261,9 +297,9 @@ export function lineTotalHeader(mode: VatMode): string {
  */
 export function itemsHintText(mode: VatMode): string {
   const head = mode === "in"
-    ? "กรอกราคาช่อง รวม VAT · ช่อง ไม่รวม VAT เป็นค่าที่ถอดให้ดูเฉย ๆ ไม่ใช่ตัวคิดยอด · ส่วนลด % ↔ บาท คิดจากราคารวม VAT × จำนวน · ยอดบิลถอด VAT ออกจากยอดรวมครั้งเดียว (ไม่ถอดต่อหน่วย)"
-    : "กรอกราคาช่อง ไม่รวม VAT · ช่อง รวม VAT คำนวณให้ · ส่วนลด % ↔ บาท คิดจากราคาไม่รวม VAT × จำนวน · ยอดบิล = ผลรวมรายการ แล้วบวก VAT 7%";
-  return head + " · พิมพ์ในช่องไหน = สลับโหมดให้อัตโนมัติ · Enter ในช่องตัวเลข = เพิ่มแถว";
+    ? "ราคาที่กรอกเป็นราคารวม VAT · ส่วนลด % ↔ บาท คิดจากราคารวม VAT × จำนวน · ยอดบิลถอด VAT ออกจากยอดรวมครั้งเดียว (ไม่ถอดต่อหน่วย)"
+    : "ราคาที่กรอกเป็นราคาไม่รวม VAT · ส่วนลด % ↔ บาท คิดจากราคาไม่รวม VAT × จำนวน · ยอดบิล = ผลรวมรายการ แล้วบวก VAT 7%";
+  return head + " · สลับปุ่มด้านบน = ตัวเลขที่กรอกไว้คงเดิม เปลี่ยนแค่ความหมาย · Enter ในช่องตัวเลข = เพิ่มแถว";
 }
 /**
  * A3 (reverse) — ถอดยอดจากยอดสุทธิ + อัตรา WHT (applyReverseCalc)
