@@ -69,6 +69,8 @@ export type BarSettings = {
   blockNegative: boolean;
   footer: string;
   revenueAccount: string;
+  /** D116 — บัญชีที่ยอดเงินสดลง · ว่าง = ใช้ revenueAccount */
+  cashAccount: string;
   incomeCat: string;
 };
 
@@ -123,6 +125,7 @@ const DEFAULT_SETTINGS = (entityId: string): BarSettings => ({
   blockNegative: false,
   footer: "",
   revenueAccount: "",
+  cashAccount: "",
   incomeCat: "",
 });
 
@@ -182,6 +185,7 @@ export async function getBarBootstrap(): Promise<BarBoot> {
     blockNegative: one("bar_block_negative") === "1",
     footer: one("bar_receipt_footer") as string,
     revenueAccount: one("bar_revenue_account") as string,
+    cashAccount: (one("bar_cash_account") as string) || "",
     incomeCat: one("bar_income_cat") as string,
   };
 

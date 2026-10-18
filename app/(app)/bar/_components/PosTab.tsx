@@ -1,5 +1,6 @@
 "use client";
 
+import { PAY_METHODS, wantsQr } from "@/lib/bar/payMethods";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { BarBoot, BarOpenSale } from "../data";
 import type { CartLine, BarMenu } from "@/lib/bar/types";
@@ -38,7 +39,8 @@ import { CustomerModal } from "./CustomerModal";
 import { RecipeEditor } from "./RecipeEditor";
 import { BilledLineRow, EditBillCustomer } from "./BilledLines";
 
-const METHODS = ["เงินสด", "โอนเงิน", "QR", "บัตรเครดิต"];
+// D116 — เหลือ เงินสด · โอน/QR (ไม่รับบัตร · โอนกับ QR เคยทำงานเหมือนกันทุกอย่าง)
+const METHODS: readonly string[] = PAY_METHODS;
 
 /** คีย์ของถาดในโหมดบูธ — ไม่มีเลขบิลให้ผูก จึงใช้คีย์คงที่ตัวนี้ */
 const BOOTH = "__booth__";
@@ -1141,7 +1143,7 @@ function PayScreen({
 }) {
   const [method, setMethod] = useState(METHODS[0]);
   const [svg, setSvg] = useState<string | null>(null);
-  const wantQr = method === "QR" || method === "โอนเงิน";
+  const wantQr = wantsQr(method);
 
   useEffect(() => {
     if (!wantQr || !ppPayload) {

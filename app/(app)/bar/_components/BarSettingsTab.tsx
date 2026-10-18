@@ -40,6 +40,7 @@ export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: ()
   const [blockNegative, setBlockNegative] = useState(s.blockNegative);
   const [footer, setFooter] = useState(s.footer);
   const [revenueAccount, setRevenueAccount] = useState(s.revenueAccount);
+  const [cashAccount, setCashAccount] = useState(s.cashAccount);
   const [incomeCat, setIncomeCat] = useState(s.incomeCat);
   const [layout, setLayout] = useState<ReceiptLayout>(data.layout);
   const [preview, setPreview] = useState<string | null>(null);
@@ -62,6 +63,7 @@ export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: ()
         blockNegative,
         footer,
         revenueAccount,
+        cashAccount,
         incomeCat,
         layout,
       });
@@ -203,7 +205,7 @@ export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: ()
         */}
       {data.hasAccounting && (
         <Card title="ลงบัญชียอดขายบาร์">
-          <Field label="บัญชีที่รายได้บาร์เข้า">
+          <Field label="บัญชีที่รายได้บาร์เข้า (โอน/QR)">
             <Select value={revenueAccount} onChange={(e) => setRevenueAccount(e.target.value)}>
               <option value="">— ยังไม่ได้ตั้ง —</option>
               {data.bankAccounts.map((b) => (
@@ -222,17 +224,25 @@ export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: ()
             * 🚨 **รูซ้อนที่ต้องอุดพร้อมกัน** — ต่อให้ลงบัญชีสำเร็จ ถ้าบัญชีนี้ไม่ได้ถูกนับเข้า
             *    ระบบภาษี ยอดบาร์จะ **หายจาก ภพ.30 ทั้งเดือนโดยไม่มีอะไรฟ้อง**
             *    (`passesTaxGuard()` กรองด้วย `taxAccounts.has(account_name)` — กติกา D93)
-            * 🚨 ทุกครั้งที่ระบบไม่ทำอะไรให้ ต้องบอกว่าทำไม (D92)
+            * D116 — บัญชีเงินสดก็โดนกติกาเดียวกัน ต้องเตือนทั้งสองช่อง
             */}
-          {revenueAccount &&
-            data.bankAccounts.some((b) => b.name === revenueAccount && !b.countedInTax) && (
-              <p className="mt-1 text-xs text-warn">
-                ⚠️ บัญชี <b>{revenueAccount}</b> ยังไม่ได้ถูกติ๊กว่า <b>นับเข้าระบบภาษี</b> —
-                ลงบัญชีจะสำเร็จ แต่ยอดบาร์จะ <b>ไม่ขึ้นใน ภพ.30</b>
-                <br />
-                ไปติ๊กที่ <b>บัญชี → ตั้งค่า → บัญชีที่นับเข้าระบบภาษี</b>
-              </p>
-            )}
+          <TaxAccountWarn name={revenueAccount} accounts={data.bankAccounts} />
+
+          {/* D116 — เงินสดเก็บหมุนในร้าน ไม่ได้ฝากธนาคาร → ลงบัญชีแยกได้ */}
+          <Field label="บัญชีที่ยอดเงินสดเข้า">
+            <Select value={cashAccount} onChange={(e) => setCashAccount(e.target.value)}>
+              <option value="">— ใช้บัญชีเดียวกับข้างบน —</option>
+              {data.bankAccounts.map((b) => (
+                <option key={b.name} value={b.name}>
+                  {b.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <p className="mt-1 text-xs text-faint">
+            ถ้าเงินสดเก็บไว้หมุนในร้าน ให้เลือกบัญชีเงินสด (เช่น เงินสดในร้าน) — ยอดในบัญชีธนาคารของแอปจะตรงกับเงินที่เข้าธนาคารจริง
+          </p>
+          <TaxAccountWarn name={cashAccount} accounts={data.bankAccounts} />
 
           <Field label="หมวดรายรับ">
             <SuggestInput
@@ -245,7 +255,7 @@ export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: ()
           </Field>
           <p className="mt-1 text-xs text-faint">
             ไม่กรอก = ใช้ <b>รายได้บาร์</b> · บิลบัญชีจะถูกสร้าง <b>1 ใบต่อ 1 วิธีรับเงินต่อวัน</b>
-            (เงินสด/โอน/QR แยกใบ)
+            (เงินสด กับ โอน/QR แยกใบ)
           </p>
         </Card>
       )}
@@ -264,5 +274,18 @@ export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: ()
         <MissingHint checks={[{ ok: data.canConfig, label: "สิทธิ์ตั้งค่าบาร์" }]} />
       </div>
     </div>
+  );
+}
+
+/** เตือนเมื่อบัญชีที่เลือกยังไม่ถูกนับเข้าระบบภาษี (ยอดจะไม่ขึ้นใน ภพ.30 · D93/D96) */
+function TaxAccountWarn({ name, accounts }: { name: string; accounts: { name: string; countedInTax: boolean }[] }) {
+  if (!name || !accounts.some((b) => b.name === name && !b.countedInTax)) return null;
+  return (
+    <p className="mt-1 text-xs text-warn">
+      ⚠️ บัญชี <b>{name}</b> ยังไม่ได้ถูกติ๊กว่า <b>นับเข้าระบบภาษี</b> — ลงบัญชีจะสำเร็จ แต่ยอดนี้จะ{" "}
+      <b>ไม่ขึ้นใน ภพ.30</b>
+      <br />
+      ไปติ๊กที่ <b>บัญชี → ตั้งค่า → บัญชีที่นับเข้าระบบภาษี</b>
+    </p>
   );
 }

@@ -1014,6 +1014,7 @@ export async function saveBarSettingsAction(input: {
   blockNegative?: boolean;
   footer?: string;
   revenueAccount?: string;
+  cashAccount?: string;
   incomeCat?: string;
   /** ผังหน้าตาบิล — เก็บเป็น JSON ก้อนเดียว (ดูเหตุผลใน migration 0070) */
   layout?: unknown;
@@ -1030,6 +1031,7 @@ export async function saveBarSettingsAction(input: {
     ["bar_block_negative", input.blockNegative === undefined ? undefined : input.blockNegative ? "1" : "0"],
     ["bar_receipt_footer", input.footer],
     ["bar_revenue_account", input.revenueAccount],
+    ["bar_cash_account", input.cashAccount],
     ["bar_income_cat", input.incomeCat],
     ["bar_receipt_layout", input.layout === undefined ? undefined : JSON.stringify(input.layout)],
   ];

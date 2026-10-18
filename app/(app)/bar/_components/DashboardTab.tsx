@@ -14,6 +14,7 @@ import { businessDate } from "@/lib/bar/businessDate";
 import { Card, Msg, TextInput, Field, Badge, Empty, fmt, useSaver, useConfirm } from "@/lib/shared/ui";
 import { dashboardAction, postDayAction, unpostDayAction } from "../actions";
 import { unpostedText, unpostedTotal } from "@/lib/bar/posting";
+import { CASH_METHOD, accountForMethod } from "@/lib/bar/payMethods";
 import { customerLabel } from "@/lib/bar/customerName";
 
 type PostRow = { post_date: string; status: string; tx_ids: string[]; totals: Record<string, unknown>; posted_at: string };
@@ -271,9 +272,16 @@ export function DashboardTab({ boot, onReload }: { boot: BarBoot; onReload: () =
           <Card title="ยอดรายวัน และการลงบัญชี">
             <p className="mb-2 text-sm text-muted">
               กด <b>ลงบัญชี</b> ที่แถวของวันนั้น = รวมบิลของวันเป็น <b>1 บิลรายรับต่อ 1 วิธีรับเงิน</b> (ตามที่เห็นในคอลัมน์
-              แยกวิธีรับเงิน) เข้าบัญชี <b>{boot.settings.revenueAccount || "—"}</b> ของกิจการ{" "}
+              แยกวิธีรับเงิน) ของกิจการ{" "}
               <b>{boot.settings.entityId}</b> · ลงแล้ว ยกเลิก/แก้/ปิดบิลเข้าวันนั้นไม่ได้จนกว่าจะกด <b>ถอน</b>
             </p>
+            {/* D116 — บอกล่วงหน้าว่าแต่ละวิธีลงบัญชีไหน (กติกาเดียวกับ fn_bar_post_day ผ่าน accountForMethod) */}
+            {canPost && (
+              <p className="mb-2 text-xs text-faint">
+                {CASH_METHOD} → <b>{accountForMethod(CASH_METHOD, boot.settings.revenueAccount, boot.settings.cashAccount)}</b> ·
+                วิธีอื่น → <b>{boot.settings.revenueAccount}</b>
+              </p>
+            )}
             {!canPost && (
               <p className="mb-2 text-xs text-warn">
                 ยังไม่ได้ตั้ง <b>บัญชีที่รายได้บาร์เข้า</b> — ไปตั้งที่แท็บ <b>ตั้งค่าบาร์</b> ก่อน

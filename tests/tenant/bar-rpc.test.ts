@@ -604,6 +604,39 @@ describe("⑦ ลงบัญชีรายวัน — จุดเชื่�
     expect(await count()).toBe(before);
   });
 
+  it("🚨 D116 — ตั้งบัญชีเงินสด: ยอดเงินสดลงบัญชีนั้น · โอน/QR ลงบัญชีหลัก · ไม่ตั้ง = บัญชีหลักทั้งคู่", async () => {
+    const DAY = "2026-09-21";
+    const CASH_ACC = "T-เงินสดในร้าน ทดสอบ";
+    for (const method of ["เงินสด", "โอน/QR"]) {
+      const r = await rpc(asA, "fn_bar_quick_sale", {
+        p_entity: E(), p_items: [negroni(1)], p_method: method, p_business_date: DAY,
+      });
+      expect(r.error, r.error?.message).toBeNull();
+    }
+    const accountsOf = async (txIds: string[]) => {
+      const { data } = await admin().from("transactions").select("account_name, description")
+        .eq("tenant_id", A.tenantId).in("tx_id", txIds);
+      return Object.fromEntries(data!.map((t) => [String(t.description).includes("เงินสด") ? "cash" : "qr", t.account_name]));
+    };
+
+    // ไม่ตั้ง = พฤติกรรมเดิม
+    const r1 = await rpc(asA, "fn_bar_post_day", { p_entity: E(), p_date: DAY, p_account: account });
+    expect(r1.error, r1.error?.message).toBeNull();
+    expect(await accountsOf((r1.data as { tx_ids: string[] }).tx_ids)).toEqual({ cash: account, qr: account });
+    await rpc(asA, "fn_bar_unpost_day", { p_entity: E(), p_date: DAY });
+
+    // ตั้งบัญชีเงินสด
+    await admin().from("app_settings").insert({ tenant_id: A.tenantId, kind: "bar_cash_account", value: CASH_ACC });
+    try {
+      const r2 = await rpc(asA, "fn_bar_post_day", { p_entity: E(), p_date: DAY, p_account: account });
+      expect(r2.error, r2.error?.message).toBeNull();
+      expect(await accountsOf((r2.data as { tx_ids: string[] }).tx_ids)).toEqual({ cash: CASH_ACC, qr: account });
+    } finally {
+      await rpc(asA, "fn_bar_unpost_day", { p_entity: E(), p_date: DAY });
+      await admin().from("app_settings").delete().eq("tenant_id", A.tenantId).eq("kind", "bar_cash_account");
+    }
+  });
+
   it("วันที่ไม่มีบิล → error ไทย ไม่ใช่ลงบิลยอด 0", async () => {
     const r = await rpc(asA, "fn_bar_post_day", {
       p_entity: E(), p_date: "2026-01-01", p_account: account,
