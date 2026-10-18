@@ -12,6 +12,7 @@ import {
   itemsHintText,
   type VatMode,
 } from "@/lib/accounting/calc";
+import { taxDateOnNoChange, taxDateOnTxDateChange, shouldRefreshDraftDate } from "@/lib/accounting/entryForm";
 // ตรรกะแถวรายการ/ยอดบิล ใช้ร่วมกับฟอร์มแก้บิล (BillsTab → EditBillModal)
 import { qn, emptyItem, makeItemHandlers, buildItemInputs, useBillAmounts, hasContent, type BillItem } from "./billItems";
 import { VatModeCard } from "./VatModeCard";
@@ -38,6 +39,8 @@ type Draft = {
   txDate: string; taxInvoiceNo: string; taxInvoiceDate: string; discount: number; hasVat: boolean; hasWht: boolean;
   whtRate: number; items: Item[]; isApAr: boolean; dueDate: string; isInst: boolean; insts: Inst[]; branchId: string;
   manualAmt: boolean; ovAfterDisc: number; ovVat: number; ovWht: number;
+  /** D114 — วันที่เก็บร่าง (ใช้ตัดสินว่าวันที่รายการค้างข้ามวันไหม) · ร่างเก่าไม่มี = ถือว่าวันอื่น */
+  savedOn?: string;
   /** D98 — ไม่มีใน draft เก่า = "ex" (พฤติกรรมเดิม) */
   vatMode?: VatMode;
 };
@@ -120,7 +123,9 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
         if (d.accountName != null) setAccountName(d.accountName);
         if (d.contactName != null) setContactName(d.contactName);
         if (d.description != null) setDescription(d.description);
-        if (d.txDate) setTxDate(d.txDate);
+        // D114: ร่างข้ามวันที่ไม่มีบิลค้าง → วันที่รายการกลับเป็นวันนี้ (ค่าเริ่มของ state)
+        const hasUnsaved = Boolean(d.description || d.taxInvoiceNo || (Array.isArray(d.items) && d.items.some((it) => hasContent(it, d.vatMode ?? "ex"))));
+        if (d.txDate && !shouldRefreshDraftDate(d.savedOn, todayISO(), hasUnsaved)) setTxDate(d.txDate);
         if (d.taxInvoiceNo != null) setTaxInvoiceNo(d.taxInvoiceNo);
         if (d.taxInvoiceDate != null) setTaxInvoiceDate(d.taxInvoiceDate);
         if (d.discount != null) setDiscount(d.discount);
@@ -146,7 +151,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   }, []);
   useEffect(() => {
     if (!hydrated) return;
-    const draft: Draft = { type, category, accountName, contactName, description, txDate, taxInvoiceNo, taxInvoiceDate, discount, hasVat, hasWht, whtRate, items, isApAr, dueDate, isInst, insts, branchId, manualAmt, ovAfterDisc, ovVat, ovWht, vatMode };
+    const draft: Draft = { savedOn: todayISO(), type, category, accountName, contactName, description, txDate, taxInvoiceNo, taxInvoiceDate, discount, hasVat, hasWht, whtRate, items, isApAr, dueDate, isInst, insts, branchId, manualAmt, ovAfterDisc, ovVat, ovWht, vatMode };
     try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); } catch { /* ignore */ }
   }, [hydrated, type, category, accountName, contactName, description, txDate, taxInvoiceNo, taxInvoiceDate, discount, hasVat, hasWht, whtRate, items, isApAr, dueDate, isInst, insts, branchId, manualAmt, ovAfterDisc, ovVat, ovWht, vatMode]);
   function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ } }
@@ -261,8 +266,21 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
       (data) => { const d = data as { warning?: string | null } | undefined; if (d?.warning) setMsg({ ok: true, warn: true, text: d.warning }); resetItems(); refreshItemHist(); },
     );
   }
-  // หลังบันทึก: ล้างเฉพาะรายการ/รายละเอียด/เลขใบกำกับ (คงคู่ค้า/หมวดหมู่ไว้กรอกบิลถัดไปเร็วขึ้น)
-  function resetItems() { setItems([emptyItem()]); setDescription(""); setTaxInvoiceNo(""); setHasVat(false); setManualAmt(false); setOvAfterDisc(0); setOvVat(0); setOvWht(0); setDiscount(0); setVatMode("ex"); }
+  /**
+   * หลังบันทึก (D114):
+   * · คงไว้ = ค่าที่มักเหมือนเดิมเวลาคีย์บิลเจ้าเดิมต่อกัน และเห็นชัดบนหัวฟอร์ม:
+   *   ประเภท · หมวดหมู่ · บัญชี · คู่ค้า/สาขา · กิจการ · วันที่รายการ · ปุ่ม รวม/ไม่รวม VAT
+   *   (ปุ่ม VAT เลือกผิด = ยอดต่าง 7% เห็นบนจอทันที · วันที่รายการข้ามวันกลับเป็นวันนี้ — shouldRefreshDraftDate)
+   * · ล้าง = ค่าที่ติดไปบิลถัดไปแล้วผิดเงียบ ๆ:
+   *   🚨 ตั้งค้าง/แบ่งงวด (บิลจ่ายสดกลายเป็นหนี้ค้าง → ยอดเงินสดไม่ขยับ)
+   *   🚨 หัก ณ ที่จ่าย + อัตรา (ไหลเข้า ภงด.3/53) · เลข+วันที่ใบกำกับ + ติ๊ก VAT · ส่วนลด · โหมดแก้ยอดเอง
+   */
+  function resetItems() {
+    setItems([emptyItem()]); setDescription(""); setTaxInvoiceNo(""); setTaxInvoiceDate(""); setHasVat(false);
+    setManualAmt(false); setOvAfterDisc(0); setOvVat(0); setOvWht(0); setDiscount(0);
+    setHasWht(false); setWhtRate(0);
+    setIsApAr(false); setDueDate(""); setIsInst(false); setInsts([{ percent: 50, dueDate: "" }, { percent: 50, dueDate: "" }]);
+  }
 
   // ค่ารวมสำหรับดรอปดาวน์รายการสินค้า (ประวัติ + ที่กรอกในบิลปัจจุบัน)
   const itemCatOptions = useMemo(() => [...new Set([...itemHist.itemCategories, ...items.map((it) => it.itemCategory).filter(Boolean)])], [itemHist.itemCategories, items]);
@@ -321,8 +339,8 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
               </div>
             )}
           </Field>
-          <Field label="วันที่รายการ"><TextInput type="date" value={txDate} onChange={(e) => setTxDate(e.target.value)} /></Field>
-          <Field label="เลขที่ใบกำกับภาษี"><TextInput value={taxInvoiceNo} onChange={(e) => { setTaxInvoiceNo(e.target.value); setHasVat(e.target.value.trim() !== ""); }} placeholder="มีเลข = ติ๊ก VAT อัตโนมัติ" /></Field>
+          <Field label="วันที่รายการ"><TextInput type="date" value={txDate} onChange={(e) => { setTaxInvoiceDate(taxDateOnTxDateChange(taxInvoiceNo, taxInvoiceDate, txDate, e.target.value)); setTxDate(e.target.value); }} /></Field>
+          <Field label="เลขที่ใบกำกับภาษี"><TextInput value={taxInvoiceNo} onChange={(e) => { setTaxInvoiceNo(e.target.value); setHasVat(e.target.value.trim() !== ""); setTaxInvoiceDate(taxDateOnNoChange(e.target.value, taxInvoiceDate, txDate)); }} placeholder="มีเลข = ติ๊ก VAT อัตโนมัติ" /></Field>
           <Field label="วันที่ใบกำกับ"><TextInput type="date" value={taxInvoiceDate} onChange={(e) => setTaxInvoiceDate(e.target.value)} /></Field>
           <div className="col-span-2 md:col-span-3"><Field label="รายละเอียด"><TextInput value={description} onChange={(e) => setDescription(e.target.value)} /></Field></div>
         </div>

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { searchBillsAction, getBillDetailAction, voidTransactionAction, updateTransactionAction, getItemHistoryAction } from "../actions";
 import { entryCalc, itemTotal, detectVatMode, unitPriceOf, unitPriceHeader, lineTotalHeader, itemsHintText } from "@/lib/accounting/calc";
+import { taxDateOnNoChange, taxDateOnTxDateChange } from "@/lib/accounting/entryForm";
 import { qn, emptyItem, makeItemHandlers, buildItemInputs, useBillAmounts, hasContent, type BillItem } from "./billItems";
 import { VatModeCard } from "./VatModeCard";
 import type { Bootstrap } from "./types";
@@ -298,8 +299,8 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
                   </Select>
                 )}
               </Field>
-              <Field label="วันที่รายการ"><TextInput type="date" value={txDate} onChange={(e) => setTxDate(e.target.value)} /></Field>
-              <Field label="เลขที่ใบกำกับภาษี"><TextInput value={taxInvoiceNo} onChange={(e) => { setTaxInvoiceNo(e.target.value); setHasVat(e.target.value.trim() !== ""); }} /></Field>
+              <Field label="วันที่รายการ"><TextInput type="date" value={txDate} onChange={(e) => { setTaxInvoiceDate(taxDateOnTxDateChange(taxInvoiceNo, taxInvoiceDate, txDate, e.target.value)); setTxDate(e.target.value); }} /></Field>
+              <Field label="เลขที่ใบกำกับภาษี"><TextInput value={taxInvoiceNo} onChange={(e) => { setTaxInvoiceNo(e.target.value); setHasVat(e.target.value.trim() !== ""); setTaxInvoiceDate(taxDateOnNoChange(e.target.value, taxInvoiceDate, txDate)); }} /></Field>
               <Field label="วันที่ใบกำกับ"><TextInput type="date" value={taxInvoiceDate} onChange={(e) => setTaxInvoiceDate(e.target.value)} /></Field>
               <div className="col-span-2 md:col-span-3"><Field label="รายละเอียด"><TextInput value={description} onChange={(e) => setDescription(e.target.value)} /></Field></div>
             </div>
