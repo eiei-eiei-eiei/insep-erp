@@ -831,7 +831,7 @@ export async function customerCardAction(customerId: string): Promise<Res> {
 }
 
 /** ยอดขายในช่วง — ใช้ทำแดชบอร์ด · อ่านค่าที่ **แช่ไว้ในบิล** เท่านั้น (D75) */
-export async function dashboardAction(input: { from: string; to: string }): Promise<Res> {
+export async function dashboardAction(input: { from: string; to: string; prev?: { from: string; to: string } }): Promise<Res> {
   const entity = await barEntity();
   if (!entity) return { ok: false, error: NO_ENTITY };
   const supabase = await createClient();
@@ -843,6 +843,22 @@ export async function dashboardAction(input: { from: string; to: string }): Prom
     .gte("business_date", input.from)
     .lte("business_date", input.to);
   if (sales.error) return { ok: false, error: mapDbError(sales.error) };
+
+  /**
+   * D115 — ช่วงก่อนหน้า (ไว้เทียบ ▲▼ %) · ดึงแค่ยอดที่แช่ไว้ ไม่ดึงรายการเมนู
+   * 🚨 อ่านพลาดต้องฟ้อง ไม่ใช่เทียบกับศูนย์ (= ทุกตัวขึ้น "ไม่มีข้อมูลเทียบ" เงียบ ๆ · D89)
+   */
+  let prevSales: unknown[] = [];
+  if (input.prev) {
+    const p = await supabase
+      .from("bar_sale")
+      .select("sale_no, status, business_date, channel, method, grand_total, cost_total")
+      .eq("entity_id", entity)
+      .gte("business_date", input.prev.from)
+      .lte("business_date", input.prev.to);
+    if (p.error) return { ok: false, error: mapDbError(p.error) };
+    prevSales = p.data ?? [];
+  }
 
   const saleNos = (sales.data ?? []).map((s) => s.sale_no as string);
   let lines: unknown[] = [];
@@ -889,6 +905,7 @@ export async function dashboardAction(input: { from: string; to: string }): Prom
 
   return okOf({
     sales: sales.data ?? [],
+    prevSales,
     lines,
     posts: posts.data ?? [],
     customers: customers.data ?? [],

@@ -591,6 +591,19 @@ describe("⑦ ลงบัญชีรายวัน — จุดเชื่�
     expect(again.error, again.error?.message).toBeNull();
   });
 
+  it("🚨 D115 — ปิดบิลเข้าวันที่ลงบัญชีแล้ว → error ไทย และไม่มีบิลค้างเกิดขึ้น", async () => {
+    const count = async () => (await admin().from("bar_sale").select("sale_no", { count: "exact", head: true })
+      .eq("tenant_id", A.tenantId)).count ?? 0;
+    const before = await count();
+    const r = await rpc(asA, "fn_bar_quick_sale", {
+      p_entity: E(), p_items: [negroni(1)], p_method: "เงินสด", p_business_date: POST_DAY,
+    });
+    expect(r.error!.message).toContain("ลงบัญชีไปแล้ว");
+    expect(r.error!.message).toContain("ถอนการลงบัญชี");
+    // ทั้งฟังก์ชันเป็น transaction เดียว — เปิดบิลไปแล้วต้องถูก rollback ด้วย
+    expect(await count()).toBe(before);
+  });
+
   it("วันที่ไม่มีบิล → error ไทย ไม่ใช่ลงบิลยอด 0", async () => {
     const r = await rpc(asA, "fn_bar_post_day", {
       p_entity: E(), p_date: "2026-01-01", p_account: account,
