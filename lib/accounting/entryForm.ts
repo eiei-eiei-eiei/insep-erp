@@ -35,3 +35,16 @@ export function taxDateOnTxDateChange(no: string, curDate: string, oldTx: string
 export function shouldRefreshDraftDate(savedOn: string | undefined, today: string, hasUnsaved: boolean): boolean {
   return savedOn !== today && !hasUnsaved;
 }
+
+/**
+ * D117 — กด Enter ในแถวรายการสินค้า = เพิ่มรายการใหม่ (Ctrl/⌘+Enter = บันทึกบิล จับที่ระดับฟอร์ม)
+ * · ทุกช่องในแถว รวมช่องชื่อที่มีรายการแนะนำ (เดิมยกเว้นช่อง datalist → Enter ในช่องชื่อไม่ทำอะไรเลย)
+ * · Shift+Enter ไม่เพิ่ม (เผื่อคนกดค้างผิด) · ระหว่างพิมพ์ด้วย IME (isComposing) ไม่เพิ่ม
+ * · นอกแถวรายการ (ปุ่มโหมด VAT · ช่องในการ์ดสรุป) ไม่เพิ่ม
+ */
+export function isAddRowKey(e: { key: string; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; isComposing?: boolean; inItemRow: boolean }): boolean {
+  return e.key === "Enter" && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.isComposing && e.inItemRow;
+}
+
+/** คำกำกับคีย์ลัดใต้ตารางรายการ — เฉพาะฟอร์มบันทึก (ฟอร์มแก้บิลไม่มีคีย์ลัดนี้ ห้ามบอก) */
+export const ITEM_KEYS_HINT = "Enter ในแถวรายการ = เพิ่มรายการใหม่ · Ctrl+Enter = บันทึกบิล";

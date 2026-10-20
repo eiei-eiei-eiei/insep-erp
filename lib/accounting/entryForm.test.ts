@@ -29,3 +29,22 @@ describe("D114 — วันที่รายการที่ค้างใ�
     expect(shouldRefreshDraftDate("2026-10-18", "2026-10-18", false)).toBe(false);
   });
 });
+
+describe("D117 — Enter เพิ่มรายการ", () => {
+  it("Enter ในแถวรายการ = เพิ่ม · Ctrl/⌘/Shift/IME/นอกแถว = ไม่เพิ่ม", async () => {
+    const { isAddRowKey } = await import("./entryForm");
+    const base = { key: "Enter", ctrlKey: false, metaKey: false, shiftKey: false, isComposing: false, inItemRow: true };
+    expect(isAddRowKey(base)).toBe(true);
+    expect(isAddRowKey({ ...base, ctrlKey: true })).toBe(false);
+    expect(isAddRowKey({ ...base, metaKey: true })).toBe(false);
+    expect(isAddRowKey({ ...base, shiftKey: true })).toBe(false);
+    expect(isAddRowKey({ ...base, isComposing: true })).toBe(false);
+    expect(isAddRowKey({ ...base, inItemRow: false })).toBe(false);
+    expect(isAddRowKey({ ...base, key: "Tab" })).toBe(false);
+  });
+  it("🚨 คำกำกับในตารางรายการ (ใช้ร่วมกับฟอร์มแก้บิล) ต้องไม่อ้างคีย์ลัด", async () => {
+    const { itemsHintText } = await import("./calc");
+    expect(itemsHintText("ex")).not.toContain("Enter");
+    expect(itemsHintText("in")).not.toContain("Enter");
+  });
+});

@@ -12,7 +12,7 @@ import {
   itemsHintText,
   type VatMode,
 } from "@/lib/accounting/calc";
-import { taxDateOnNoChange, taxDateOnTxDateChange, shouldRefreshDraftDate } from "@/lib/accounting/entryForm";
+import { taxDateOnNoChange, taxDateOnTxDateChange, shouldRefreshDraftDate, isAddRowKey, ITEM_KEYS_HINT } from "@/lib/accounting/entryForm";
 // ตรรกะแถวรายการ/ยอดบิล ใช้ร่วมกับฟอร์มแก้บิล (BillsTab → EditBillModal)
 import { qn, emptyItem, makeItemHandlers, buildItemInputs, useBillAmounts, hasContent, type BillItem } from "./billItems";
 import { VatModeCard } from "./VatModeCard";
@@ -25,7 +25,7 @@ import {
 } from "../actions";
 import type { Bootstrap, Contact } from "./types";
 import { Card, Field, Msg, NumBox, NumInput, SaveButton, Select, TextInput, cleanTaxId13, fmt, todayISO, useSaver, EscToClose } from "./ui";
-import { IconEye, IconEyeOff, IconTrash } from "@/lib/shared/icons";
+import { IconTrash } from "@/lib/shared/icons";
 import { isForwardCat } from "@/lib/accounting/forwardCats";
 
 type Item = BillItem;
@@ -73,7 +73,6 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   const [dueDate, setDueDate] = useState("");
   const [isInst, setIsInst] = useState(false);
   const [insts, setInsts] = useState<Inst[]>([{ percent: 50, dueDate: "" }, { percent: 50, dueDate: "" }]);
-  const [showOpt, setShowOpt] = useState(false);
 
   // ยอดของบิล: ปกติคำนวณอัตโนมัติ · โหมด "แก้ยอดเอง" ล็อกไว้ ต้องกดปลดล็อกก่อนแก้ (กันเผลอ)
   // ตรรกะร่วมกับฟอร์มแก้บิล (billItems.ts) — สูตรจริงยังอยู่ lib/accounting/calc
@@ -219,12 +218,23 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
 
   // แก้ราคา: in↔ex VAT สลับกัน · ส่วนลด %↔บาท (ตรรกะร่วมกับ EditBillModal — billItems.ts)
   const { setItem, priceOf, onPrice, onQty, onDiscPct, onDiscBaht, removeItem, changeVatMode } = makeItemHandlers(items, setItems, effVatMode, setVatMode, vatMode);
-  function addItem() { const last = items[items.length - 1]; setItems((p) => [...p, emptyItem(last?.itemCategory ?? "", last?.itemJob ?? "")]); }
-  // Enter ในช่องตัวเลข (ไม่ใช่ช่องมี datalist) = เพิ่มแถวใหม่ · Ctrl+Enter = บันทึก (จับที่ระดับบน)
+  // D117 — เพิ่มแถวแล้วย้ายเคอร์เซอร์ไปช่องชื่อของแถวใหม่ (เดิมเพิ่มแถวแต่เคอร์เซอร์ค้างแถวเดิม)
+  const focusNewRow = useRef(false);
+  function addItem() { const last = items[items.length - 1]; focusNewRow.current = true; setItems((p) => [...p, emptyItem(last?.itemCategory ?? "", last?.itemJob ?? "")]); }
+  useEffect(() => {
+    if (!focusNewRow.current) return;
+    focusNewRow.current = false;
+    // ตาราง (จอกว้าง) กับการ์ด (มือถือ) render คู่กัน ซ่อนด้วย CSS → เลือกตัวที่มองเห็นจริง
+    const firsts = [...(itemsCardRef.current?.querySelectorAll<HTMLElement>("[data-item-first]") ?? [])].filter((el) => el.offsetParent !== null);
+    firsts[firsts.length - 1]?.focus();
+  }, [items.length]);
+  // D117 — Enter ในแถวรายการ (ทุกช่อง รวมช่องชื่อ) = เพิ่มรายการใหม่ · Ctrl+Enter = บันทึก (จับที่ระดับบน)
   function onItemsKeyDown(e: React.KeyboardEvent) {
-    if (e.key !== "Enter" || e.ctrlKey || e.metaKey) return;
-    const t = e.target as HTMLInputElement;
-    if (t.tagName === "INPUT" && !t.getAttribute("list")) { e.preventDefault(); addItem(); }
+    const el = e.target as HTMLElement;
+    const inItemRow = (el.tagName === "INPUT" || el.tagName === "SELECT") && el.closest("[data-item-row]") !== null;
+    if (!isAddRowKey({ key: e.key, ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing, inItemRow })) return;
+    e.preventDefault();
+    addItem();
   }
 
   type ErrField = "entity" | "category" | "account" | "items";
@@ -365,7 +375,6 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
         )}
 
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <button type="button" onClick={() => setShowOpt((v) => !v)} className="text-xs text-faint hover:text-ink">{showOpt ? <><IconEyeOff size={14} className="mr-1 inline align-[-2px]" />ซ่อนคอลัมน์เสริม</> : <><IconEye size={14} className="mr-1 inline align-[-2px]" />แสดงคอลัมน์เสริม (หมวด/งาน/ส่วนลด)</>}</button>
           <button type="button" onClick={() => { if (confirm("ล้างฟอร์มทั้งหมด? (ข้อมูลที่กรอกค้างจะหาย)")) clearForm(); }} className="inline-flex items-center gap-1 text-xs text-faint transition hover:text-crit"><IconTrash size={14} />ล้างฟอร์ม</button>
           {isCost && <span className="text-xs text-warn">{category} — จะรับวัตถุดิบเข้าสต็อกผลิตอัตโนมัติ (ชื่อรายการต้องตรง master)</span>}
         </div>
@@ -381,35 +390,35 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
             <thead>
               <tr className="text-left text-faint">
                 <th>ชื่อรายการ</th>
-                {showOpt && <th className="w-28">หมวดหมู่</th>}
-                {showOpt && <th className="w-24">งาน</th>}
+                <th className="w-28">หมวดหมู่</th>
+                <th className="w-24">งาน</th>
                 <th className="w-16">จำนวน</th>
                 <th className="w-32">{unitPriceHeader(vatMode)}</th>
-                {showOpt && <th className="w-16">ลด %</th>}
-                {showOpt && <th className="w-24">ลด บาท</th>}
+                <th className="w-16">ลด %</th>
+                <th className="w-24">ลด บาท</th>
                 <th className="w-28 num">{lineTotalHeader(effVatMode)}</th>
                 <th className="w-8"></th>
               </tr>
             </thead>
             <tbody>
               {items.map((it, i) => (
-                <tr key={i}>
+                <tr key={i} data-item-row>
                   <td>
                     {isCost ? (
-                      <Select value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })}>
+                      <Select data-item-first value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })}>
                         <option value="">— เลือกวัตถุดิบ —</option>
                         {boot.materials.map((m) => (<option key={m.material_id} value={m.name}>{m.name}</option>))}
                       </Select>
                     ) : (
-                      <TextInput list="hist-item-names" value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })} placeholder="ชื่อสินค้า/บริการ" />
+                      <TextInput data-item-first list="hist-item-names" value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })} placeholder="ชื่อสินค้า/บริการ" />
                     )}
                   </td>
-                  {showOpt && <td><TextInput list="hist-item-cats" value={it.itemCategory} onChange={(e) => setItem(i, { itemCategory: e.target.value })} placeholder="หมวดหมู่" /></td>}
-                  {showOpt && <td><TextInput list="hist-item-jobs" value={it.itemJob} onChange={(e) => setItem(i, { itemJob: e.target.value })} placeholder="งาน" /></td>}
+                  <td><TextInput list="hist-item-cats" value={it.itemCategory} onChange={(e) => setItem(i, { itemCategory: e.target.value })} placeholder="หมวดหมู่" /></td>
+                  <td><TextInput list="hist-item-jobs" value={it.itemJob} onChange={(e) => setItem(i, { itemJob: e.target.value })} placeholder="งาน" /></td>
                   <td><NumBox value={it.quantity} onChange={(v) => onQty(i, v)} /></td>
                   <td><NumBox value={priceOf(it)} blankZero onChange={(v) => onPrice(i, v === "" ? 0 : v)} /></td>
-                  {showOpt && <td><NumBox value={it.discPct} blankZero onChange={(v) => onDiscPct(i, v === "" ? 0 : v)} /></td>}
-                  {showOpt && <td><NumBox value={it.discBaht} blankZero onChange={(v) => onDiscBaht(i, v === "" ? 0 : v)} /></td>}
+                  <td><NumBox value={it.discPct} blankZero onChange={(v) => onDiscPct(i, v === "" ? 0 : v)} /></td>
+                  <td><NumBox value={it.discBaht} blankZero onChange={(v) => onDiscBaht(i, v === "" ? 0 : v)} /></td>
                   <td className="font-medium num">{fmt(itemTotal(qn(it.quantity), unitPriceOf(effVatMode, it.exVat, it.inVat), it.discBaht))}</td>
                   <td><button type="button" onClick={() => removeItem(i)} title="ลบรายการนี้" className="text-crit hover:text-crit">✕</button></td>
                 </tr>
@@ -421,16 +430,16 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
         {/* Mobile: การ์ดต่อรายการ */}
         <div className="space-y-3 md:hidden">
           {items.map((it, i) => (
-            <div key={i} className="rounded-lg border border-line p-3">
+            <div key={i} data-item-row className="rounded-lg border border-line p-3">
               <div className="mb-2 flex items-start gap-2">
                 <div className="flex-1">
                   {isCost ? (
-                    <Select value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })}>
+                    <Select data-item-first value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })}>
                       <option value="">— เลือกวัตถุดิบ —</option>
                       {boot.materials.map((m) => (<option key={m.material_id} value={m.name}>{m.name}</option>))}
                     </Select>
                   ) : (
-                    <TextInput list="hist-item-names" value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })} placeholder="ชื่อสินค้า/บริการ" />
+                    <TextInput data-item-first list="hist-item-names" value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })} placeholder="ชื่อสินค้า/บริการ" />
                   )}
                 </div>
                 <button type="button" onClick={() => removeItem(i)} title="ลบรายการนี้" className="px-2 py-1 text-crit hover:text-crit">✕</button>
@@ -438,10 +447,10 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <label className="block"><span className="mb-0.5 block text-faint">จำนวน</span><NumBox value={it.quantity} onChange={(v) => onQty(i, v)} /></label>
                 <label className="block"><span className="mb-0.5 block text-faint">{unitPriceHeader(vatMode)}</span><NumBox value={priceOf(it)} blankZero onChange={(v) => onPrice(i, v === "" ? 0 : v)} /></label>
-                {showOpt && <label className="block"><span className="mb-0.5 block text-faint">หมวดหมู่</span><TextInput list="hist-item-cats" value={it.itemCategory} onChange={(e) => setItem(i, { itemCategory: e.target.value })} /></label>}
-                {showOpt && <label className="block"><span className="mb-0.5 block text-faint">งาน</span><TextInput list="hist-item-jobs" value={it.itemJob} onChange={(e) => setItem(i, { itemJob: e.target.value })} /></label>}
-                {showOpt && <label className="block"><span className="mb-0.5 block text-faint">ลด %</span><NumBox value={it.discPct} blankZero onChange={(v) => onDiscPct(i, v === "" ? 0 : v)} /></label>}
-                {showOpt && <label className="block"><span className="mb-0.5 block text-faint">ลด บาท</span><NumBox value={it.discBaht} blankZero onChange={(v) => onDiscBaht(i, v === "" ? 0 : v)} /></label>}
+                <label className="block"><span className="mb-0.5 block text-faint">หมวดหมู่</span><TextInput list="hist-item-cats" value={it.itemCategory} onChange={(e) => setItem(i, { itemCategory: e.target.value })} /></label>
+                <label className="block"><span className="mb-0.5 block text-faint">งาน</span><TextInput list="hist-item-jobs" value={it.itemJob} onChange={(e) => setItem(i, { itemJob: e.target.value })} /></label>
+                <label className="block"><span className="mb-0.5 block text-faint">ลด %</span><NumBox value={it.discPct} blankZero onChange={(v) => onDiscPct(i, v === "" ? 0 : v)} /></label>
+                <label className="block"><span className="mb-0.5 block text-faint">ลด บาท</span><NumBox value={it.discBaht} blankZero onChange={(v) => onDiscBaht(i, v === "" ? 0 : v)} /></label>
               </div>
               <div className="mt-2 text-right text-sm font-medium text-muted">{lineTotalHeader(effVatMode)} ฿{fmt(itemTotal(qn(it.quantity), unitPriceOf(effVatMode, it.exVat, it.inVat), it.discBaht))}</div>
             </div>
@@ -452,7 +461,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
         <datalist id="hist-item-cats">{itemCatOptions.map((v) => (<option key={v} value={v} />))}</datalist>
         <datalist id="hist-item-jobs">{itemJobOptions.map((v) => (<option key={v} value={v} />))}</datalist>
         <button type="button" onClick={addItem} className="mt-2 text-sm text-muted hover:text-ink">+ เพิ่มรายการ</button>
-        <p className="mt-1 text-xs text-faint">{itemsHintText(effVatMode)}</p>
+        <p className="mt-1 text-xs text-faint">{itemsHintText(effVatMode)} · {ITEM_KEYS_HINT}</p>
       </Card>
       </div>
 
