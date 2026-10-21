@@ -10602,3 +10602,18 @@ grant-platform-admin · harness เทส) · ผลข้างเคียง�
 - 🚨 คำกำกับคีย์ลัดย้ายออกจาก `itemsHintText()` เพราะฟอร์มแก้บิลใช้ข้อความเดียวกันแต่ **ไม่มีคีย์ลัดนี้** (เดิมบอกผู้ใช้ผิด) → `ITEM_KEYS_HINT` แสดงเฉพาะฟอร์มบันทึก + เทสล็อก
 - คอลัมน์ หมวดหมู่/งาน/ลด %/ลด บาท แสดงตลอด ตัดปุ่มซ่อน (ฟอร์มแก้บิลแสดงตลอดอยู่แล้วตั้งแต่ D77)
 - ชุดเทส `docs/TESTING.md` ส่วนที่ 75
+
+### D118 — grant ตารางแบบเขียนเอง: Supabase เลิกแจก grant ให้ตารางใหม่ (0085, 2026-10-21)
+
+- **ที่มา**: เมล Supabase (2026-09-23 + "Final notice" 2026-10-20 · github.com/orgs/supabase/discussions/45329) — ตั้งแต่ **2026-10-30** ตาราง/วิว/sequence ที่สร้างใหม่ใน `public` ไม่ได้ grant ให้ `anon`/`authenticated`/`service_role` อัตโนมัติ · project ใหม่เลิกแจกไปก่อนแล้ว (ตั้งแต่ราว 30 พ.ค. 2026) · ตารางเดิมไม่กระทบ · ฟังก์ชันไม่เปลี่ยน
+- 🔴 migration 0001-0084 **ไม่มี grant ตารางเลยสักบรรทัด** (62 `create table` พึ่ง default) ⇒ (1) ตารางใหม่ที่ลืม grant = permission denied ทุก DB โดย build/lint/test ผ่านหมด (2) **เปิด DB ก้อนใหม่ให้ลูกค้าแล้วรัน migration = ทุกตารางเข้าไม่ได้ แอปใช้ไม่ได้ทั้งระบบ**
+- **0085**: grant ทีละตาราง (ไม่ใช่ `on all tables`) ตามกลุ่มใน `lib/shared/tableGrants.ts`
+  - ตารางแอป 56 ตัว (`TENANT_TABLES` + `tenants`) → select/insert/update/delete ให้ authenticated + service_role
+  - ตารางแพลตฟอร์ม 4 ตัว (D54/D59) → service_role เท่านั้น 🚨 grant เหมาทั้ง schema = ราคาลูกค้าแต่ละเจ้ารั่ว (เหลือ RLS ชั้นเดียว)
+  - sequence ของ bigserial 24 ตัว → usage, select (ขาด = insert ล้ม) · identity ไม่ต้อง
+  - **anon ไม่ได้ตารางไหนเลย** — ไล่โค้ดแล้ว คนยังไม่ล็อกอินใช้แค่วิว `tenant_branding` (definer view · grant ไว้ใน 0030) · cron ใช้ service role
+  - ★ บน DB เดิมไฟล์นี้ไม่เปลี่ยนสิทธิ์อะไร (มีจาก default อยู่แล้ว) · grant ที่ anon ค้างจาก default บน DB เดิม **จงใจไม่ถอน** (RLS กันอยู่ · ไม่แตะระบบที่ใช้งานจริง) ⇒ DB ใหม่แน่นกว่า DB เดิมเรื่อง anon โดยตั้งใจ
+- **กันลืม 2 ชั้น** (แพตเทิร์น D99): `lib/shared/tableGrantsSql.test.ts` อ่านไฟล์ SQL — ตารางที่มีอยู่ต้องถูกจัดกลุ่ม · ตารางใหม่หลัง 0085 ต้อง grant **ในไฟล์เดียวกับ create** · sequence ครบ · ห้าม grant ตารางแพลตฟอร์มให้ anon/authenticated · ห้าม `on all tables` · ห้าม grant ให้ anon (พิสูจน์แล้วว่าแดงเมื่อลบ grant ออก) + `fn_audit_table_grants()` (invoker · ปิดจาก anon/authenticated ในไฟล์เดียวกัน) ถาม pg_class จริง → `npm run db:audit-grants` + `tests/tenant/table-grants.test.ts` ตรวจ RLS เปิดทุกตารางด้วย (grant เปิดประตูแล้ว RLS ปิด = ทุกคนอ่านได้ทุกแถว)
+- 🪤 **identity ไม่ใช่ serial**: `payroll_items.id` เป็น `generated always as identity` — Postgres ไม่ตรวจสิทธิ์ sequence ของ identity ตอน insert ⇒ ไม่ต้อง grant · แต่ตัวตรวจ DB รอบแรกนับรวมแล้วจะฟ้องผิดบน DB ก้อนใหม่ (DB เดิมผ่านเพราะได้ grant จาก default — เจอจากเลข `sequence 27` ที่ไม่ตรงกับ 24 ที่นับไว้) → `IDENTITY_APP_TABLES` + เทสอ่านไฟล์ SQL เทียบรายชื่อ
+- ⏳ **ยังต้องพิสูจน์บน Supabase project ใหม่จริง 1 รอบ** ก่อนรับลูกค้าที่เปิด DB ก้อนใหม่ (ไฟล์ SQL + DB เดิมพิสูจน์ไม่ได้ว่า project ใหม่ไม่มีค่าตั้งต้นอื่นที่ต่าง)
+- ชุดเทส `docs/TESTING.md` ส่วนที่ 76

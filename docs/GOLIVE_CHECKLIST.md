@@ -1045,3 +1045,14 @@ npm run db:audit-grants
 - 🪤 ถ้า `npm run db:push:all` ขึ้น `hostname resolving error … no such host` = เน็ตไม่มี IPv6 (ฐานข้อมูล Supabase แบบ direct เป็น IPv6 อย่างเดียว)
   → เปลี่ยนเน็ต/รีสตาร์ตเราเตอร์ หรือใช้ Session pooler (IPv4) แทน
 
+
+## D118 — grant ตาราง (Supabase เลิกแจกสิทธิ์ตารางใหม่ตั้งแต่ 2026-10-30)
+
+- [x] (2026-10-21) ลง 0085 ทุก DB: `npm run db:push:all -- --apply --backup="D:/insep-erp-backup/<วันที่>"` แล้ว `npm run db:audit-grants` ต้องขึ้น ✅ ทุกก้อน
+- [ ] **ก่อนรับลูกค้าที่ต้องเปิด Supabase project ใหม่ (ครั้งแรกหลังงานนี้) — ลองบน project ทดสอบ 1 รอบ:**
+  1. สร้าง project ฟรีใหม่ใน Supabase (ชื่อเช่น `grant-test`) — **ค่าตั้งต้นของ Supabase ตามที่เขาให้มา ไม่ต้องติ๊กอะไรเพิ่ม**
+  2. เติมก้อนนี้ใน `supabase/targets.json` ชั่วคราว แล้วลง migration ทั้งหมด
+  3. `npm run db:audit-grants` → ก้อนใหม่ต้อง ✅ ทุกกฎ
+  4. รับลูกค้าทดสอบผ่าน `/platform` → ล็อกอิน → ไล่ใช้ทุกโมดูล ต้องไม่มี permission denied
+  5. ลบ project ทดสอบ + เอาออกจาก `targets.json` (**ไม่ต้อง** `fleet:sync` เพราะไม่ได้ใช้จริง)
+- [ ] จำไว้: migration ที่ `create table` ทุกตัวต่อจากนี้ต้องมี grant ในไฟล์เดียวกัน (`npm run test` ฟ้องถ้าลืม)

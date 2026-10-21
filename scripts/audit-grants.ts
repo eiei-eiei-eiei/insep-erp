@@ -1,5 +1,6 @@
 /**
  * audit-grants — ตรวจว่า security definer ทุกตัว **ปิดประตูจริง** ในทุก DB ที่เราถืออยู่ (D99)
+ *              + ตารางทุกตัวมี grant ถูกกลุ่ม (D118 · ตารางแพลตฟอร์มต้องปิด)
  *
  *   npm run db:audit-grants
  *
@@ -18,6 +19,7 @@ import { createClient } from "@supabase/supabase-js";
 import { readEnv, die } from "./lib/provision";
 import { parseTargets } from "./lib/db-targets";
 import { auditDefiners, staleAllowlist, type DefinerRow } from "../lib/shared/definerPolicy";
+import { auditTableGrants, type GrantRow } from "../lib/shared/tableGrants";
 
 async function main() {
   const file = "supabase/targets.json";
@@ -61,6 +63,16 @@ async function main() {
       ...a.unguarded.map((u) => `🚨 คนนอกเรียกได้โดยไม่มีด่าน: ${u.fn} — ${u.why}`),
       ...stale.map((n) => `allowlist ค้าง (ไม่ต้องอยู่แล้ว): ${n}`),
     ];
+    // D118 · สิทธิ์ระดับตาราง — Supabase เลิกแจก grant ให้ตารางใหม่อัตโนมัติ (2026-10-30)
+    const tg = await db.rpc("fn_audit_table_grants");
+    if (tg.error) {
+      problems.push(`เรียก fn_audit_table_grants ไม่ได้: ${tg.error.message} (ยังไม่ได้ลง migration 0085?)`);
+    } else {
+      const trows = (tg.data ?? []) as GrantRow[];
+      console.log(`   ตาราง ${trows.filter((r) => r.kind === "table").length} · sequence ${trows.filter((r) => r.kind === "sequence").length} · วิว ${trows.filter((r) => r.kind === "view").length}`);
+      problems.push(...auditTableGrants(trows));
+    }
+
     if (problems.length === 0) {
       console.log("   ✅ ผ่านทุกกฎ");
     } else {
