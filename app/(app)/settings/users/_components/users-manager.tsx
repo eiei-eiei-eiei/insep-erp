@@ -19,8 +19,10 @@ import {
   updateRoleAction,
   resetPasswordAction,
   deleteUserAction,
+  updateEntityScopeAction,
   type ActionResult,
 } from "../actions";
+import { entityScopeLabel, ENTITY_SCOPE_COVERS, ENTITY_SCOPE_NOT_COVERED } from "@/lib/shared/entityScope";
 
 export type UserRow = {
   id: string;
@@ -28,7 +30,10 @@ export type UserRow = {
   display_name: string | null;
   role: Role;
   created_at: string;
+  /** D120 — null = เห็นทุกกิจการ */
+  allowed_entity_ids: string[] | null;
 };
+export type EntityOpt = { entity_id: string; name: string };
 
 /**
  * 🚨 อ่านจาก ROLES ที่ lib/shared/roles โดยตรง — **ห้ามก๊อปรายชื่อมาไว้ที่นี่**
@@ -38,15 +43,21 @@ export type UserRow = {
 const ROLE_OPTIONS: readonly Role[] = ROLES;
 
 /** ป๊อปอัพที่เปิดอยู่ — `null` = ไม่มี */
-type Dialog = { kind: "reset" | "delete"; user: UserRow } | null;
+type Dialog = { kind: "reset" | "delete" | "scope"; user: UserRow } | null;
 
 export function UsersManager({
   users,
+  entities,
   currentUserId,
 }: {
   users: UserRow[];
+  entities: EntityOpt[];
   currentUserId: string;
 }) {
+  // D120 — กิจการเดียว = ไม่มีอะไรให้จำกัด → ไม่โชว์คอลัมน์ (D51: ไม่โชว์ทางเลือกที่ไม่มีจริง)
+  const multiEntity = entities.length > 1;
+  // ป๊อปอัพจำกัดกิจการ: null = ทุกกิจการ
+  const [scope, setScope] = useState<string[] | null>(null);
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState<UiMsg | null>(null);
 
@@ -179,6 +190,7 @@ export function UsersManager({
               <th className="px-4 py-3">username</th>
               <th className="px-4 py-3">ชื่อแสดงผล</th>
               <th className="px-4 py-3">สิทธิ์</th>
+              {multiEntity && <th className="px-4 py-3">กิจการที่เห็นได้</th>}
               <th className="px-4 py-3 num">จัดการ</th>
             </tr>
           </thead>
@@ -215,6 +227,24 @@ export function UsersManager({
                       ))}
                     </Select>
                   </td>
+                  {multiEntity && (
+                    <td className="px-4 py-3">
+                      <div className={u.allowed_entity_ids ? "text-warn" : "text-muted"}>
+                        {entityScopeLabel(u.allowed_entity_ids, entities)}
+                      </div>
+                      {u.role === "main" ? (
+                        <span className="text-xs text-faint">main เห็นทุกกิจการเสมอ</span>
+                      ) : isSelf ? null : (
+                        <RowBtn
+                          className="mt-1"
+                          disabled={pending}
+                          onClick={() => { setScope(u.allowed_entity_ids); setDialog({ kind: "scope", user: u }); }}
+                        >
+                          จำกัดกิจการ
+                        </RowBtn>
+                      )}
+                    </td>
+                  )}
                   <td className="px-4 py-3 num">
                     <RowBtn
                       className="mr-2"
@@ -254,7 +284,23 @@ export function UsersManager({
         >
           <EscToClose onClose={closeDialog} />
           <div className="w-full max-w-md rounded-lg bg-card p-5 shadow-xl">
-            {dialog.kind === "reset" ? (
+            {dialog.kind === "scope" ? (
+              <ScopeDialog
+                user={dialog.user}
+                entities={entities}
+                scope={scope}
+                setScope={setScope}
+                pending={pending}
+                onCancel={closeDialog}
+                onSave={() =>
+                  run(
+                    () => updateEntityScopeAction({ id: dialog.user.id, entityIds: scope }),
+                    `ตั้งกิจการที่ ${dialog.user.username} เห็นได้แล้ว`,
+                    () => setDialog(null),
+                  )
+                }
+              />
+            ) : dialog.kind === "reset" ? (
               <>
                 <div className="mb-1 text-lg font-bold text-ink">รีเซ็ตรหัสผ่าน</div>
                 <p className="mb-3 text-sm text-muted">
@@ -324,5 +370,68 @@ export function UsersManager({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * D120 — เลือกกิจการที่ผู้ใช้เห็นได้
+ * 🚨 บอกตรง ๆ ว่าครอบอะไร/ไม่ครอบอะไร — ข้อความมาจาก lib (ต้องตรงกับ migration 0087)
+ *    เขียนว่า "เห็นแค่บริษัท" ทั้งที่งานผลิต/ขายยังเห็นทุกกิจการ = เจ้าของเข้าใจผิดว่าข้อมูลปลอดภัย
+ */
+function ScopeDialog({
+  user, entities, scope, setScope, pending, onCancel, onSave,
+}: {
+  user: UserRow;
+  entities: EntityOpt[];
+  scope: string[] | null;
+  setScope: (v: string[] | null) => void;
+  pending: boolean;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  const limited = scope !== null;
+  const picked = scope ?? [];
+  const checks = [{ label: "เลือกอย่างน้อย 1 กิจการ", ok: !limited || picked.length > 0 }];
+  return (
+    <>
+      <div className="mb-1 text-lg font-bold text-ink">กิจการที่เห็นได้</div>
+      <p className="mb-3 text-sm text-muted">
+        ผู้ใช้ <b className="text-ink">{user.username}</b> ({ROLE_LABEL[user.role] ?? user.role})
+      </p>
+      <label className="mb-2 flex items-center gap-2 text-sm">
+        <input type="radio" checked={!limited} onChange={() => setScope(null)} /> ทุกกิจการ
+      </label>
+      <label className="mb-2 flex items-center gap-2 text-sm">
+        <input type="radio" checked={limited} onChange={() => setScope(picked)} /> เฉพาะกิจการที่เลือก
+      </label>
+      {limited && (
+        <div className="mb-3 ml-6 space-y-1">
+          {entities.map((e) => (
+            <label key={e.entity_id} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={picked.includes(e.entity_id)}
+                onChange={(ev) =>
+                  setScope(ev.target.checked ? [...picked, e.entity_id] : picked.filter((x) => x !== e.entity_id))
+                }
+              />
+              {e.entity_id} — {e.name}
+            </label>
+          ))}
+        </div>
+      )}
+      <div className="mb-4 rounded-lg bg-raised px-3 py-2 text-xs text-muted">
+        <div>จำกัดได้: {ENTITY_SCOPE_COVERS}</div>
+        <div className="mt-1 text-warn">ยังไม่ถูกจำกัด: {ENTITY_SCOPE_NOT_COVERED}</div>
+        <div className="mt-1 text-faint">มีผลตั้งแต่ผู้ใช้เปิดหน้าถัดไป (ไม่ต้องออกจากระบบ)</div>
+      </div>
+      <div className="flex justify-end gap-2">
+        <RowBtn onClick={onCancel} disabled={pending}>ยกเลิก</RowBtn>
+        <SaveButton pending={pending} pendingText="กำลังบันทึก…" disabled={!checks.every((c) => c.ok)} onClick={onSave}>
+          บันทึก
+        </SaveButton>
+      </div>
+      <MissingHint checks={checks} />
+    </>
   );
 }

@@ -10,12 +10,20 @@ export default async function UsersPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: users } = await supabase
-    .from("profiles")
-    .select("id, username, display_name, role, created_at")
-    .order("created_at", { ascending: true });
+  const [{ data: users }, { data: entities }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("id, username, display_name, role, created_at, allowed_entity_ids")
+      .order("created_at", { ascending: true }),
+    // D120 — main เห็นทุกกิจการ (ไม่ถูกจำกัด) จึงได้รายชื่อครบสำหรับเลือก
+    supabase.from("entities").select("entity_id, name").order("entity_id"),
+  ]);
 
   return (
-    <UsersManager users={(users ?? []) as UserRow[]} currentUserId={user.id} />
+    <UsersManager
+      users={(users ?? []) as UserRow[]}
+      entities={(entities ?? []) as { entity_id: string; name: string }[]}
+      currentUserId={user.id}
+    />
   );
 }

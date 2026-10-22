@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { usernameToEmail, USERNAME_RE } from "@/lib/shared/auth-domain";
 import { validatePassword } from "@/lib/shared/password";
 import { ROLES, can, toRole } from "@/lib/shared/roles";
+import { entityScopeError, normalizeEntityScope } from "@/lib/shared/entityScope";
 
 export type ActionResult = { ok: boolean; error?: string };
 
@@ -135,9 +136,48 @@ export const updateRoleAction = guard(async (input: {
     return { ok: false, error: "ห้ามลดสิทธิ์ตัวเอง (กันล็อกตัวเองออกจากระบบ)" };
 
   const supabase = await createClient();
+  // D120 — เลื่อนเป็น main = ล้างการจำกัดกิจการ (main แก้ profile ตัวเองคืนได้อยู่แล้ว
+  //        เก็บค่าค้างไว้ = หน้าจอบอกว่าจำกัด แต่จริง ๆ ไม่ได้จำกัดอะไร)
+  const patch: { role: string; allowed_entity_ids?: null } = { role: input.role };
+  if (input.role === "main") patch.allowed_entity_ids = null;
   const { error } = await supabase
     .from("profiles")
-    .update({ role: input.role })
+    .update(patch)
+    .eq("id", input.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/settings/users");
+  return { ok: true };
+});
+
+/**
+ * D120 — จำกัดให้ผู้ใช้เห็นเฉพาะบางกิจการ (`null` = ทุกกิจการ)
+ * ★ ผ่าน session main + RLS (profiles_write ต้อง admin) — ไม่ใช้ service role
+ * 🚨 ตัวกันจริงคือ RLS/RPC ใน 0087 — ที่นี่แค่กันค่าที่ทำให้สองชั้นขัดกัน (array ว่าง · main)
+ */
+export const updateEntityScopeAction = guard(async (input: {
+  id: string;
+  entityIds: string[] | null;
+}): Promise<ActionResult> => {
+  const { callerId } = await requireMain();
+  if (input.id === callerId && input.entityIds !== null)
+    return { ok: false, error: "ห้ามจำกัดกิจการของตัวเอง (กันล็อกตัวเองออกจากข้อมูล)" };
+
+  const supabase = await createClient();
+  const [{ data: target, error: tErr }, { data: ents, error: eErr }] = await Promise.all([
+    supabase.from("profiles").select("role").eq("id", input.id).maybeSingle(),
+    supabase.from("entities").select("entity_id"),
+  ]);
+  if (tErr || eErr) return { ok: false, error: "อ่านข้อมูลผู้ใช้/กิจการไม่สำเร็จ — ลองใหม่" };
+  if (!target) return { ok: false, error: "ไม่พบผู้ใช้นี้ในกิจการของคุณ" };
+  const allIds = (ents ?? []).map((e) => e.entity_id as string);
+
+  const bad = entityScopeError(target.role as string, input.entityIds, allIds);
+  if (bad) return { ok: false, error: bad };
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ allowed_entity_ids: normalizeEntityScope(input.entityIds, allIds) })
     .eq("id", input.id);
   if (error) return { ok: false, error: error.message };
 
