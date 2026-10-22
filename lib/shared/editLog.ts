@@ -135,6 +135,10 @@ export const COLUMN_LABEL_TH: Record<string, string> = {
   receipt_image_url: "รูปใบเสร็จ",
   item_category: "หมวดหมู่ของรายการ",
   item_job: "งานของรายการ",
+  advance_for_entity: "สำรองจ่ายให้กิจการ",
+  advance_status: "สถานะสำรองจ่าย",
+  advance_clear_id: "เลขที่การเคลียสำรองจ่าย",
+  advance_src_tx: "มาจากบิลสำรองจ่าย",
   // ขาย
   qu_no: "เลขที่ใบเสนอราคา",
   order_no: "เลขที่ออเดอร์",

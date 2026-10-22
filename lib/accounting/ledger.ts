@@ -35,14 +35,28 @@ function monthOf(iso: string | null | undefined): string {
 }
 
 /**
+ * ทิศทางเงินของแต่ละประเภทบิล — จุดเดียวที่ตัดสินว่าบิลไหนขยับยอดเงินในบัญชี
+ * · in = เงินเข้า (+net) · out = เงินออก (−net) · signed = ตามเครื่องหมาย net (โอน) · null = ไม่ขยับ
+ * ★ D119: สำรองจ่าย = เงินออกจากบัญชีคนจ่าย · รับคืนสำรองจ่าย = เงินกลับเข้า
+ *   (ทั้งคู่ไม่ใช่รายรับ/รายจ่าย ⇒ ไม่เข้าแดชบอร์ด/ภพ.30/ภงด. เพราะรายงานพวกนั้นเลือกด้วย type ตรง ๆ)
+ */
+export function cashDirection(type: string): "in" | "out" | "signed" | null {
+  if (type === "รายรับ" || type === "รับคืนสำรองจ่าย") return "in";
+  if (type === "รายจ่าย" || type === "สำรองจ่าย") return "out";
+  if (type === "โอนระหว่างบัญชี") return "signed";
+  return null;
+}
+
+/**
  * A7 — ผลของรายการต่อยอดบัญชี (debit/credit/effect)
  * รายรับ = credit (+net) · รายจ่าย = debit (−net) · โอน: net>0 รับเข้า, net<0 โอนออก
  */
 export function txEffect(type: string, net: number): { debit: number; credit: number; effect: number } {
   const n = num(net);
-  if (type === "รายรับ") return { debit: 0, credit: n, effect: n };
-  if (type === "รายจ่าย") return { debit: n, credit: 0, effect: -n };
-  if (type === "โอนระหว่างบัญชี") {
+  const dir = cashDirection(type);
+  if (dir === "in") return { debit: 0, credit: n, effect: n };
+  if (dir === "out") return { debit: n, credit: 0, effect: -n };
+  if (dir === "signed") {
     if (n > 0) return { debit: 0, credit: n, effect: n };
     return { debit: Math.abs(n), credit: 0, effect: n };
   }
@@ -81,9 +95,10 @@ export function accountBalances(
     const accName = String(tx.account_name ?? "").trim();
     const net = num(tx.net_amount);
     if (!accMap[accName]) accMap[accName] = { totalIn: 0, totalOut: 0 };
-    if (tx.type === "รายรับ") accMap[accName].totalIn += net;
-    else if (tx.type === "รายจ่าย") accMap[accName].totalOut += net;
-    else if (tx.type === "โอนระหว่างบัญชี") {
+    const dir = cashDirection(tx.type);
+    if (dir === "in") accMap[accName].totalIn += net;
+    else if (dir === "out") accMap[accName].totalOut += net;
+    else if (dir === "signed") {
       if (net > 0) accMap[accName].totalIn += net;
       else accMap[accName].totalOut += Math.abs(net);
     }

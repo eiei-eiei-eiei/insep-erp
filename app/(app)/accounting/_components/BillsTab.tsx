@@ -9,14 +9,31 @@ import { VatModeCard } from "./VatModeCard";
 import type { Bootstrap } from "./types";
 import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, fmt, useSaver, EscToClose, useRead, LoadError } from "./ui";
 import { can, toRole } from "@/lib/shared/roles";
+import { ADVANCE_TYPE, ADVANCE_REFUND_TYPE, advanceStatusLabel } from "@/lib/accounting/advance";
 
 type Bills = Awaited<ReturnType<typeof searchBillsAction>>;
 type Detail = Awaited<ReturnType<typeof getBillDetailAction>>;
 // searchBills คืน Tx[] แต่ raw มีคอลัมน์เพิ่ม (po_group_id/transfer_id ฯลฯ) — cast เพื่ออ่านตอนคุมสิทธิ์แก้
-type BillRow = Bills[number] & { po_group_id?: string | null; transfer_id?: string | null; installment_no?: number | null };
+type BillRow = Bills[number] & {
+  po_group_id?: string | null; transfer_id?: string | null; installment_no?: number | null;
+  advance_status?: string | null; advance_for_entity?: string | null; advance_clear_id?: string | null;
+};
 
+// D119 — สำรองจ่ายแก้ได้ระหว่างรอเบิกคืน (เคลียแล้วต้องถอนก่อน — DB บล็อกด้วย trigger advance_guard)
 const canEdit = (r: BillRow) =>
-  r.status !== "ยกเลิก" && (r.type === "รายรับ" || r.type === "รายจ่าย") && !r.po_group_id && !r.transfer_id;
+  r.status !== "ยกเลิก" && !r.po_group_id && !r.transfer_id &&
+  (r.type === "รายรับ" || r.type === "รายจ่าย" || (r.type === ADVANCE_TYPE && r.advance_status === "รอเบิกคืน"));
+/** ยกเลิกทีละใบไม่ได้: สำรองจ่ายที่เคลียแล้ว · รายการรับคืน · บิลที่เกิดจากการเคลีย (ใช้ถอนการเคลียแทน) */
+const canVoid = (r: BillRow) =>
+  r.status !== "ยกเลิก" && !r.advance_clear_id && r.type !== ADVANCE_REFUND_TYPE;
+
+/** ป้ายสถานะสำรองจ่ายต่อท้ายสถานะบิล (D119) */
+function statusExtra(r: BillRow): string {
+  const l = advanceStatusLabel(r.type, r.advance_status);
+  if (l) return ` · ${l}`;
+  if (r.advance_clear_id && r.type === "รายจ่าย") return " · จากการเคลียสำรองจ่าย";
+  return "";
+}
 
 export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; period: string; entityId: string; active: boolean }) {
   const [text, setText] = useState("");
@@ -60,7 +77,7 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
     <>
       <button onClick={() => openDetail(r.tx_id)} className={`${actBtn} border-line text-muted hover:bg-raised`}>ดู</button>
       {!readOnly && canEdit(r as BillRow) && <button onClick={() => setEditId(r.tx_id)} disabled={pending} className={`${actBtn} border-brand-line text-brand hover:bg-brand-soft disabled:opacity-50`}>แก้ไข</button>}
-      {!readOnly && r.status !== "ยกเลิก" && <button onClick={() => doVoid(r.tx_id)} disabled={pending} className={`${actBtn} ml-auto border-crit-line text-crit hover:bg-crit-bg disabled:opacity-50 sm:ml-2`}>ยกเลิก</button>}
+      {!readOnly && canVoid(r as BillRow) && <button onClick={() => doVoid(r.tx_id)} disabled={pending} className={`${actBtn} ml-auto border-crit-line text-crit hover:bg-crit-bg disabled:opacity-50 sm:ml-2`}>ยกเลิก</button>}
     </>
   );
 
@@ -72,7 +89,7 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
           <Field label="คู่ค้า">
             <Select value={contact} onChange={(e) => setContact(e.target.value)}><option value="">ทั้งหมด</option>{boot.contacts.map((c) => <option key={c.contact_id} value={c.name}>{c.name}</option>)}</Select>
           </Field>
-          <Field label="ประเภท"><Select value={type} onChange={(e) => setType(e.target.value)}><option value="">ทั้งหมด</option><option>รายรับ</option><option>รายจ่าย</option><option>โอนระหว่างบัญชี</option><option>เช็คราคา</option></Select></Field>
+          <Field label="ประเภท"><Select value={type} onChange={(e) => setType(e.target.value)}><option value="">ทั้งหมด</option><option>รายรับ</option><option>รายจ่าย</option><option>โอนระหว่างบัญชี</option><option>เช็คราคา</option><option>{ADVANCE_TYPE}</option><option>{ADVANCE_REFUND_TYPE}</option></Select></Field>
           <div className="flex flex-col justify-end gap-1 text-sm">
             <label className="flex items-center gap-1"><input type="checkbox" checked={useMonth} onChange={(e) => setUseMonth(e.target.checked)} /> เฉพาะเดือน {period}</label>
             <label className="flex items-center gap-1"><input type="checkbox" checked={includeVoid} onChange={(e) => setIncludeVoid(e.target.checked)} /> รวมที่ยกเลิก</label>
@@ -98,7 +115,7 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
                     <tr key={r.tx_id}>
                       <td className="whitespace-nowrap">{r.transaction_date}</td><td>{r.tx_id}</td><td>{r.type}</td>
                       <td>{r.contact_name}</td><td>{r.description}</td><td className="num">{fmt(r.net_amount as number)}</td>
-                      <td>{r.status}{r.ap_ar_status ? ` (${r.ap_ar_status})` : ""}</td>
+                      <td>{r.status}{r.ap_ar_status ? ` (${r.ap_ar_status})` : ""}{statusExtra(r as BillRow)}</td>
                       <td className="whitespace-nowrap"><div className="flex gap-1">{billActions(r)}</div></td>
                     </tr>
                   ))}
@@ -118,7 +135,7 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
                     </div>
                     <div className="whitespace-nowrap text-right">
                       <div className="font-semibold text-ink">฿{fmt(r.net_amount as number)}</div>
-                      <div className="text-[10px] text-faint">{r.status}{r.ap_ar_status ? ` (${r.ap_ar_status})` : ""}</div>
+                      <div className="text-[10px] text-faint">{r.status}{r.ap_ar_status ? ` (${r.ap_ar_status})` : ""}{statusExtra(r as BillRow)}</div>
                     </div>
                   </div>
                   <div className="mt-2 flex gap-1.5">{billActions(r)}</div>
@@ -133,7 +150,7 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
         <Card title={`รายละเอียดบิล ${detail.tx.tx_id}`}>
           <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm md:grid-cols-3">
             <Info k="ประเภท" v={detail.tx.type} /><Info k="หมวดหมู่" v={detail.tx.category ?? "-"} /><Info k="บัญชี" v={detail.tx.account_name ?? "-"} />
-            <Info k="คู่ค้า" v={detail.tx.contact_name ?? "-"} /><Info k="ใบกำกับ" v={detail.tx.tax_invoice_no ?? "-"} /><Info k="วันที่ใบกำกับ" v={detail.tx.tax_invoice_date ?? "-"} />
+            <Info k="คู่ค้า" v={detail.tx.contact_name ?? "-"} />{(detail.tx as BillRow).advance_for_entity ? <Info k="สำรองจ่ายให้" v={`${(detail.tx as BillRow).advance_for_entity} · ${advanceStatusLabel(detail.tx.type, (detail.tx as BillRow).advance_status) || "-"}`} /> : null}<Info k="ใบกำกับ" v={detail.tx.tax_invoice_no ?? "-"} /><Info k="วันที่ใบกำกับ" v={detail.tx.tax_invoice_date ?? "-"} />
             <Info k="ยอดก่อนหัก" v={fmt(detail.tx.amount_after_discount as number)} /><Info k="VAT" v={fmt(detail.tx.vat_amount as number)} /><Info k="สุทธิ" v={fmt(detail.tx.net_amount as number)} />
           </div>
           {detail.items.length > 0 && (
@@ -168,7 +185,8 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
 function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: Bootstrap; onClose: () => void; onSaved: () => void }) {
   const { pending, msg, run, setMsg } = useSaver();
   const [loading, setLoading] = useState(true);
-  const [type, setType] = useState<"รายรับ" | "รายจ่าย">("รายจ่าย");
+  // D119 — บิลสำรองจ่ายแก้ได้ แต่เปลี่ยนประเภทไม่ได้ (DB บล็อกด้วย)
+  const [type, setType] = useState<"รายรับ" | "รายจ่าย" | typeof ADVANCE_TYPE>("รายจ่าย");
   const [category, setCategory] = useState("");
   const [accountName, setAccountName] = useState("");
   const [contactName, setContactName] = useState("");
@@ -197,7 +215,7 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
     getBillDetailAction(txId).then((d) => {
       if (!alive || !d.tx) { if (alive) { setLoading(false); setMsg({ ok: false, text: "ไม่พบบิล" }); } return; }
       const tx = d.tx as unknown as Record<string, unknown>;
-      setType((tx.type as "รายรับ" | "รายจ่าย") ?? "รายจ่าย");
+      setType((tx.type as "รายรับ" | "รายจ่าย" | typeof ADVANCE_TYPE) ?? "รายจ่าย");
       setCategory((tx.category as string) ?? "");
       setAccountName((tx.account_name as string) ?? "");
       setContactName((tx.contact_name as string) ?? "");
@@ -284,7 +302,9 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
         {loading ? <p className="text-faint">กำลังโหลด…</p> : (
           <>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-              <Field label="ประเภท"><Select value={type} onChange={(e) => setType(e.target.value as "รายรับ" | "รายจ่าย")}><option value="รายจ่าย">รายจ่าย</option><option value="รายรับ">รายรับ</option></Select></Field>
+              <Field label="ประเภท">{type === ADVANCE_TYPE
+                ? <Select value={type} disabled title="บิลสำรองจ่ายเปลี่ยนประเภทไม่ได้ — ใช้ปุ่ม เคลีย / ตัดเป็นส่วนตัว ในแท็บลูกหนี้-เจ้าหนี้"><option value={ADVANCE_TYPE}>{ADVANCE_TYPE}</option></Select>
+                : <Select value={type} onChange={(e) => setType(e.target.value as "รายรับ" | "รายจ่าย")}><option value="รายจ่าย">รายจ่าย</option><option value="รายรับ">รายรับ</option></Select>}</Field>
               <Field label="หมวดหมู่">
                 <input list="edit-cat-list" value={category} onChange={(e) => setCategory(e.target.value)} className="w-full rounded-lg border border-line px-3 py-2 text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft" />
                 <datalist id="edit-cat-list">{cats.map((c) => (<option key={c} value={c} />))}{type === "รายจ่าย" && boot.forwardCats.filter((c) => !cats.includes(c)).map((c) => (<option key={c} value={c} />))}</datalist>

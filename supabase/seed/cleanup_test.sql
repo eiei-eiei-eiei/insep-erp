@@ -40,6 +40,14 @@ delete from tax_payments     where entity_id = 'EID99';   -- D88 ชำระภ
 delete from wht_certificates where entity_id = 'EID99';
 delete from tax_summaries    where entity_id = 'EID99';
 delete from report_runs      where entity_id = 'EID99';
+-- D119 สำรองจ่าย: บิลที่เกิดจากการเคลียอยู่ใน **กิจการปลายทาง** (ไม่ใช่ EID99) → ตามด้วย advance_src_tx
+--   🪤 ถ้าไม่ลบ บิลรายจ่ายทดสอบจะค้างในกิจการจริง แล้วโผล่ใน ภพ.30 ของกิจการนั้น
+--   🪤 ต้องตามทั้งบิล seed (T-ADV-%) และบิลสำรองจ่ายที่คีย์เองจากหน้าจอใน EID99 (เลข TR- ปกติ)
+delete from transaction_items where tx_id in (select tx_id from transactions
+  where advance_src_tx like 'T-ADV-%'
+     or advance_src_tx in (select tx_id from transactions where entity_id = 'EID99'));
+delete from transactions where advance_src_tx like 'T-ADV-%'
+   or advance_src_tx in (select tx_id from transactions where entity_id = 'EID99');
 delete from transaction_items where tx_id in (select tx_id from transactions where entity_id = 'EID99');
 delete from transactions     where entity_id = 'EID99';
 delete from bank_accounts    where account_name like '%ทดสอบ%';

@@ -3,6 +3,7 @@
 import { Fragment, useState } from "react";
 import { getApArAction, settleApArAction, voidTransactionAction } from "../actions";
 import type { Bootstrap } from "./types";
+import { AdvanceCard } from "./AdvanceCard";
 import { Card, Field, Msg, Select, TextInput, fmt, todayISO, useSaver, useRead, LoadError } from "./ui";
 
 type ApAr = Awaited<ReturnType<typeof getApArAction>>;
@@ -77,6 +78,8 @@ export function ApArTab({ boot, entityId, active }: { boot: Bootstrap; entityId:
 
   return (
     <div className="space-y-4">
+      {/* D119 — สำรองจ่ายรอเบิกคืน (เงินที่จ่ายแทนไปแล้ว ไม่ใช่หนี้ค้าง — จึงแยกการ์ดจาก AP/AR) */}
+      <AdvanceCard boot={boot} entityId={entityId} active={active} />
       {table("เจ้าหนี้ (AP) — เราต้องจ่าย", data.payable, data.totalAP, "text-crit")}
       {table("ลูกหนี้ (AR) — เขาต้องจ่ายเรา", data.receivable, data.totalAR, "text-ok")}
       <Card title={`ยอดค้างจากออเดอร์ขาย (${data.salesOutstanding.length}) — อ่านอย่างเดียว`}>

@@ -21,6 +21,7 @@ import {
   getItemHistory,
   getReportRuns,
   getTaxPayBoard,
+  getAdvances,
 } from "./data";
 
 export type SaveResult = { ok: boolean; error?: string; data?: unknown };
@@ -37,6 +38,9 @@ export async function getDashboardAction(period: string, entityId: string) {
 }
 export async function getApArAction(entityId: string) {
   return getApAr(entityId);
+}
+export async function getAdvancesAction(entityId: string) {
+  return getAdvances(entityId);
 }
 export async function getBalancesAction(upToPeriod: string, entityId: string) {
   return getBalances(upToPeriod, entityId);
@@ -126,6 +130,8 @@ export type SaveTxInput = {
   ap_ar_status?: "AP" | "AR" | "";
   due_date?: string;
   forward_material?: boolean;
+  /** D119 — type สำรองจ่าย: กิจการที่ซื้อให้ (entity_id = กิจการของคนจ่าย) */
+  advance_for_entity?: string;
 };
 
 export async function saveTransactionAction(input: SaveTxInput, items: TxItemInput[]): Promise<SaveResult> {
@@ -225,6 +231,48 @@ export async function settleApArAction(input: {
   if (!res.ok) return fail(res.error ?? "settle ไม่สำเร็จ");
   revalidatePath("/accounting");
   return { ok: true };
+}
+
+// ── D119 สำรองจ่าย: เคลีย / ถอนการเคลีย / ตัดเป็นค่าใช้จ่ายส่วนตัว ──────────────
+// ★ ตัวตัดสินอยู่ใน RPC ทั้งหมด (0086) — ที่นี่แค่ส่งต่อ + แปลงผลเป็นข้อความไทย
+export async function clearAdvancesAction(input: {
+  txIds: string[];
+  payAccount: string;
+  refundAccount?: string;
+  date: string;
+}): Promise<SaveResult> {
+  const supabase = await db();
+  const { data, error } = await supabase.rpc("fn_clear_advances", {
+    p_tx_ids: input.txIds,
+    p_pay_account: input.payAccount,
+    p_refund_account: input.refundAccount || null,
+    p_date: input.date || null,
+  });
+  if (error) return fail(mapDbError(error));
+  const res = data as { ok: boolean; error?: string };
+  if (!res.ok) return fail(res.error ?? "เคลียไม่สำเร็จ");
+  revalidatePath("/accounting");
+  return { ok: true, data: res };
+}
+
+export async function unclearAdvancesAction(clearId: string): Promise<SaveResult> {
+  const supabase = await db();
+  const { data, error } = await supabase.rpc("fn_unclear_advances", { p_clear_id: clearId });
+  if (error) return fail(mapDbError(error));
+  const res = data as { ok: boolean; error?: string };
+  if (!res.ok) return fail(res.error ?? "ถอนการเคลียไม่สำเร็จ");
+  revalidatePath("/accounting");
+  return { ok: true, data: res };
+}
+
+export async function advanceToPersonalAction(txId: string): Promise<SaveResult> {
+  const supabase = await db();
+  const { data, error } = await supabase.rpc("fn_advance_to_personal", { p_tx_id: txId });
+  if (error) return fail(mapDbError(error));
+  const res = data as { ok: boolean; error?: string };
+  if (!res.ok) return fail(res.error ?? "ตัดเป็นค่าใช้จ่ายส่วนตัวไม่สำเร็จ");
+  revalidatePath("/accounting");
+  return { ok: true, data: res };
 }
 
 // ── A14 void (soft-delete ทั้งกลุ่ม) ─────────────────────────────────────────

@@ -16,6 +16,7 @@ import {
   type LedgerTx,
   type AccountMeta,
 } from "@/lib/accounting/ledger";
+import { ADVANCE_TYPE, ADVANCE_REFUND_TYPE, type AdvanceRow } from "@/lib/accounting/advance";
 import { fetchAllRows } from "@/lib/shared/paginate";
 import { effectiveTaxAccounts } from "@/lib/accounting/taxAccounts";
 import { mustRead } from "@/lib/shared/dbError";
@@ -24,7 +25,7 @@ import { toFilingMethod, type TaxFilingRow } from "@/lib/accounting/taxFiling";
 
 // คอลัมน์ transactions ที่ใช้ทุกรายงาน
 const TX_COLS =
-  "tx_id, transaction_date, type, account_name, category, contact_name, contact_id, description, base_amount, discount, amount_after_discount, vat_amount, wht_rate, wht_amount, net_amount, tax_invoice_no, tax_invoice_date, status, entity_id, ap_ar_status, payment_date, transfer_id, po_group_id, installment_no, installment_total, due_date, source, receipt_image_url";
+  "tx_id, transaction_date, type, account_name, category, contact_name, contact_id, description, base_amount, discount, amount_after_discount, vat_amount, wht_rate, wht_amount, net_amount, tax_invoice_no, tax_invoice_date, status, entity_id, ap_ar_status, payment_date, transfer_id, po_group_id, installment_no, installment_total, due_date, source, receipt_image_url, advance_for_entity, advance_status, advance_clear_id, advance_src_tx";
 
 async function db() {
   return createClient();
@@ -243,6 +244,89 @@ export type SalesOutstandingRow = {
   status: string;
 };
 
+/** การเคลียสำรองจ่าย 1 ครั้ง (บิลสำรองจ่าย + บิลของกิจการปลายทาง + รับคืน) */
+export type AdvanceClearBatch = {
+  clearId: string;
+  date: string;
+  payer: string;
+  target: string;
+  payAccount: string;
+  refundAccount: string;
+  total: number;
+  /** บิลรายจ่ายของกิจการปลายทาง */
+  billIds: string[];
+  /** บิลสำรองจ่ายต้นทาง */
+  advanceIds: string[];
+};
+
+/**
+ * D119 — สำรองจ่ายรอเบิกคืน + การเคลียที่ยังมีผลอยู่
+ * ขอบเขต: กิจการที่เลือกด้านบนเป็น **คนจ่าย หรือ** กิจการที่ซื้อให้ (ALL = ทุกใบ)
+ * ★ RLS กรองอีกชั้น — ผู้ใช้ที่เห็นแค่บริษัทจะไม่เห็นบิลสำรองจ่ายเลย (บิลอยู่ในกิจการของคนจ่าย)
+ *   ซึ่งตรงกับเจตนา "บริษัทยังไม่รู้จนกว่าจะเคลีย"
+ */
+export async function getAdvances(entityId: string) {
+  const supabase = await db();
+  const [pendingRaw, clearedRaw] = await Promise.all([
+    fetchAllTransactions(supabase, (q) =>
+      q.eq("type", ADVANCE_TYPE).eq("status", "ปกติ").eq("advance_status", "รอเบิกคืน")),
+    fetchAllTransactions(supabase, (q) => q.eq("status", "ปกติ").not("advance_clear_id", "is", null)),
+  ]);
+  const inScope = (payer: string, target: string) =>
+    !entityId || entityId === "ALL" || payer === entityId || target === entityId;
+
+  type Raw = Tx & { advance_for_entity?: string | null; advance_clear_id?: string | null; description?: string | null };
+  const pending: AdvanceRow[] = [];
+  for (const r of pendingRaw as unknown as Raw[]) {
+    const target = r.advance_for_entity ?? "";
+    if (!inScope(r.entity_id, target)) continue;
+    pending.push({
+      txId: r.tx_id,
+      date: String(r.transaction_date ?? "").substring(0, 10),
+      payer: r.entity_id,
+      target,
+      accountName: r.account_name ?? "",
+      contactName: r.contact_name ?? "",
+      description: r.description ?? "",
+      category: r.category ?? "",
+      netAmount: Number(r.net_amount) || 0,
+      vatAmount: Number(r.vat_amount) || 0,
+      taxInvoiceNo: r.tax_invoice_no ?? "",
+      taxInvoiceDate: String(r.tax_invoice_date ?? "").substring(0, 10),
+    });
+  }
+
+  const batches = new Map<string, AdvanceClearBatch>();
+  for (const r of clearedRaw as unknown as Raw[]) {
+    const id = r.advance_clear_id ?? "";
+    let b = batches.get(id);
+    if (!b) {
+      b = { clearId: id, date: "", payer: "", target: "", payAccount: "", refundAccount: "", total: 0, billIds: [], advanceIds: [] };
+      batches.set(id, b);
+    }
+    if (r.type === ADVANCE_REFUND_TYPE) {
+      b.date = String(r.transaction_date ?? "").substring(0, 10);
+      b.payer = r.entity_id;
+      b.refundAccount = r.account_name ?? "";
+      b.total = Number(r.net_amount) || 0;
+    } else if (r.type === ADVANCE_TYPE) {
+      b.advanceIds.push(r.tx_id);
+      b.target = r.advance_for_entity ?? b.target;
+    } else {
+      b.billIds.push(r.tx_id);
+      b.target = r.entity_id;
+      b.payAccount = r.account_name ?? "";
+    }
+  }
+  // 🪤 เห็นไม่ครบชุด (เช่น ผู้ใช้ที่เห็นแค่บริษัท เห็นบิลของบริษัทแต่ไม่เห็นรายการรับคืน)
+  //    = ไม่ใช่ชุดที่ผู้ใช้คนนี้ถอนได้ทั้งชุด → ไม่แสดงในรายการถอน (บิลของบริษัทยังเห็นในค้นบิลตามปกติ)
+  const cleared = [...batches.values()]
+    .filter((b) => b.date && b.advanceIds.length > 0 && inScope(b.payer, b.target))
+    .sort((a, b) => (a.date === b.date ? (a.clearId < b.clearId ? 1 : -1) : a.date < b.date ? 1 : -1));
+
+  return { pending, cleared };
+}
+
 /** A8 — ยอดคงเหลือทุกบัญชี ณ สิ้นเดือน */
 export async function getBalances(upToPeriod: string, entityId: string) {
   const supabase = await db();
@@ -417,7 +501,7 @@ export async function searchPriceHistory(params: { itemName?: string; contact?: 
   const supabase = await db();
   let q = supabase
     .from("transaction_items")
-    .select("item_id, tx_id, item_name, quantity, in_vat, ex_vat, total_price, transactions!inner(transaction_date, contact_name, type, status, entity_id)")
+    .select("item_id, tx_id, item_name, quantity, in_vat, ex_vat, total_price, transactions!inner(transaction_date, contact_name, type, status, entity_id, advance_status)")
     .order("item_id", { ascending: false })
     .limit(300);
   if (params.itemName) q = q.ilike("item_name", `%${params.itemName}%`);
@@ -431,10 +515,12 @@ export async function searchPriceHistory(params: { itemName?: string; contact?: 
     in_vat: number;
     total_price: number;
     tx_id: string;
-    transactions: { transaction_date: string; contact_name: string | null; type: string; status: string } | null;
+    transactions: { transaction_date: string; contact_name: string | null; type: string; status: string; advance_status: string | null } | null;
   };
   return ((data ?? []) as unknown as Row[])
     .filter((r) => r.transactions && r.transactions.status === "ปกติ")
+    // D119 — สำรองจ่ายที่เคลียแล้ว: รายการเดียวกันถูกคัดลอกไปเป็นบิลของกิจการปลายทาง → ไม่นับซ้ำ
+    .filter((r) => !(r.transactions!.type === ADVANCE_TYPE && r.transactions!.advance_status === "เคลียแล้ว"))
     .filter((r) => (params.includePriceCheck ? true : r.transactions!.type !== "เช็คราคา"))
     .filter((r) => (params.contact ? r.transactions!.contact_name === params.contact : true))
     .map((r) => ({

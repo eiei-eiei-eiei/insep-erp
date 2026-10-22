@@ -27,15 +27,18 @@ import type { Bootstrap, Contact } from "./types";
 import { Card, Field, Msg, NumBox, NumInput, SaveButton, Select, TextInput, cleanTaxId13, fmt, todayISO, useSaver, EscToClose } from "./ui";
 import { IconTrash } from "@/lib/shared/icons";
 import { isForwardCat } from "@/lib/accounting/forwardCats";
+import { ADVANCE_TYPE, advanceTargets } from "@/lib/accounting/advance";
 
 type Item = BillItem;
+/** D119 — สำรองจ่าย = จ่ายเงินของกิจการนี้ (มักเป็นเงินส่วนตัว) แทนกิจการอื่นไปก่อน แล้วค่อยเบิกคืน */
+type EntryType = "รายรับ" | "รายจ่าย" | typeof ADVANCE_TYPE;
 type Inst = { percent: number; dueDate: string };
 type RecentBill = Awaited<ReturnType<typeof getRecentBillsByContactAction>>[number];
 type ItemHist = Awaited<ReturnType<typeof getItemHistoryAction>>;
 
 const DRAFT_KEY = "acc-entry-draft-v1";
 type Draft = {
-  type: "รายรับ" | "รายจ่าย"; category: string; accountName: string; contactName: string; description: string;
+  type: EntryType; category: string; accountName: string; contactName: string; description: string;
   txDate: string; taxInvoiceNo: string; taxInvoiceDate: string; discount: number; hasVat: boolean; hasWht: boolean;
   whtRate: number; items: Item[]; isApAr: boolean; dueDate: string; isInst: boolean; insts: Inst[]; branchId: string;
   manualAmt: boolean; ovAfterDisc: number; ovVat: number; ovWht: number;
@@ -43,6 +46,8 @@ type Draft = {
   savedOn?: string;
   /** D98 — ไม่มีใน draft เก่า = "ex" (พฤติกรรมเดิม) */
   vatMode?: VatMode;
+  /** D119 — สำรองจ่ายให้กิจการไหน */
+  advanceFor?: string;
 };
 
 export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entityId: string; ambiguous: boolean }) {
@@ -50,10 +55,22 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   // เมื่อ header เลือก "ทุกกิจการ" → กิจการปลายทางกำกวม ให้ผู้ใช้เลือกชัดเจนในฟอร์ม (กันบันทึกเข้ากิจการผิดเงียบ ๆ)
   const [pickedEntity, setPickedEntity] = useState(entityId);
   const effEntity = ambiguous ? (pickedEntity || entityId) : entityId;
-  // 4.3 — กิจการที่ไม่จดทะเบียน VAT บันทึกรายการที่มี VAT ไม่ได้ (trigger ใน 0036 บล็อกที่ DB ด้วย)
-  const entityIsVat = (boot.entities.find((e) => e.entity_id === effEntity)?.is_vat ?? true) !== false;
   const effEntityName = boot.entities.find((e) => e.entity_id === effEntity)?.name ?? "";
-  const [type, setType] = useState<"รายรับ" | "รายจ่าย">("รายจ่าย");
+  const [type, setType] = useState<EntryType>("รายจ่าย");
+  // D119 — สำรองจ่าย: บิลอยู่ในกิจการของคนจ่าย (effEntity) · advanceFor = กิจการที่ซื้อให้
+  const isAdvance = type === ADVANCE_TYPE;
+  const [advanceFor, setAdvanceFor] = useState("");
+  const targetOptions = advanceTargets(boot.entities, effEntity);
+  // กิจการเดียวในระบบ = ไม่มีใครให้สำรองจ่ายให้ → ไม่เสนอตัวเลือกนี้เลย (D51: ไม่โชว์ทางเลือกที่ไม่มีจริง)
+  const canAdvance = targetOptions.length > 0;
+  const effAdvanceFor = targetOptions.some((e) => e.entity_id === advanceFor)
+    ? advanceFor
+    : targetOptions.length === 1 ? targetOptions[0].entity_id : "";
+  const advanceForName = boot.entities.find((e) => e.entity_id === effAdvanceFor)?.name ?? "";
+  // 4.3 — กิจการที่ไม่จดทะเบียน VAT บันทึกรายการที่มี VAT ไม่ได้ (trigger ใน 0036 บล็อกที่ DB ด้วย)
+  // 🪤 D119: ใบกำกับของบิลสำรองจ่ายออกในนาม "กิจการที่ซื้อให้" → ดู VAT ของกิจการนั้น ไม่ใช่คนจ่าย
+  const vatEntity = isAdvance ? effAdvanceFor : effEntity;
+  const entityIsVat = (boot.entities.find((e) => e.entity_id === vatEntity)?.is_vat ?? true) !== false;
   const [category, setCategory] = useState("");
   const [accountName, setAccountName] = useState("");
   const [contactName, setContactName] = useState("");
@@ -139,6 +156,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
         if (d.branchId != null) setBranchId(d.branchId);
         if (d.manualAmt != null) setManualAmt(d.manualAmt);
         if (d.vatMode != null) setVatMode(d.vatMode);
+        if (d.advanceFor != null) setAdvanceFor(d.advanceFor);
         if (d.ovAfterDisc != null) setOvAfterDisc(d.ovAfterDisc);
         if (d.ovVat != null) setOvVat(d.ovVat);
         if (d.ovWht != null) setOvWht(d.ovWht);
@@ -150,16 +168,16 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   }, []);
   useEffect(() => {
     if (!hydrated) return;
-    const draft: Draft = { savedOn: todayISO(), type, category, accountName, contactName, description, txDate, taxInvoiceNo, taxInvoiceDate, discount, hasVat, hasWht, whtRate, items, isApAr, dueDate, isInst, insts, branchId, manualAmt, ovAfterDisc, ovVat, ovWht, vatMode };
+    const draft: Draft = { savedOn: todayISO(), type, category, accountName, contactName, description, txDate, taxInvoiceNo, taxInvoiceDate, discount, hasVat, hasWht, whtRate, items, isApAr, dueDate, isInst, insts, branchId, manualAmt, ovAfterDisc, ovVat, ovWht, vatMode, advanceFor };
     try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); } catch { /* ignore */ }
-  }, [hydrated, type, category, accountName, contactName, description, txDate, taxInvoiceNo, taxInvoiceDate, discount, hasVat, hasWht, whtRate, items, isApAr, dueDate, isInst, insts, branchId, manualAmt, ovAfterDisc, ovVat, ovWht, vatMode]);
+  }, [hydrated, type, category, accountName, contactName, description, txDate, taxInvoiceNo, taxInvoiceDate, discount, hasVat, hasWht, whtRate, items, isApAr, dueDate, isInst, insts, branchId, manualAmt, ovAfterDisc, ovVat, ovWht, vatMode, advanceFor]);
   function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ } }
   function clearForm() {
     setType("รายจ่าย"); setCategory(""); setAccountName(""); setContactName(""); setDescription("");
     setTxDate(todayISO()); setTaxInvoiceNo(""); setTaxInvoiceDate(""); setDiscount(0); setHasVat(false);
     setHasWht(false); setWhtRate(0); setItems([emptyItem()]); setIsApAr(false); setDueDate("");
     setIsInst(false); setInsts([{ percent: 50, dueDate: "" }, { percent: 50, dueDate: "" }]); setBranchId("");
-    setManualAmt(false); setOvAfterDisc(0); setOvVat(0); setOvWht(0); setVatMode("ex");
+    setManualAmt(false); setOvAfterDisc(0); setOvVat(0); setOvWht(0); setVatMode("ex"); setAdvanceFor("");
     setRecentBills([]); setShowRecent(false); clearDraft(); setMsg(null);
   }
 
@@ -237,9 +255,10 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
     addItem();
   }
 
-  type ErrField = "entity" | "category" | "account" | "items";
+  type ErrField = "entity" | "category" | "account" | "items" | "advance";
   function validate(): { text: string; field: ErrField } | null {
     if (!effEntity) return { text: "เลือกกิจการก่อน", field: "entity" };
+    if (isAdvance && !effAdvanceFor) return { text: "เลือกว่าสำรองจ่ายให้กิจการไหน", field: "advance" };
     if (!category) return { text: "เลือกหมวดหมู่", field: "category" };
     if (!isApAr && !isInst && !accountName && type !== "รายรับ") return { text: "เลือกบัญชี (หรือติ๊กตั้งค้าง)", field: "account" };
     if (items.every((it) => !hasContent(it, effVatMode))) return { text: "เพิ่มรายการอย่างน้อย 1 รายการ", field: "items" };
@@ -257,7 +276,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
     if (err) { setMsg({ ok: false, text: err.text }); flagError(err.field); return; }
     const itemInputs = buildItemInputs(items, effVatMode, calc.baseAmount);
 
-    if (isInst) {
+    if (isInst && !isAdvance) {
       if (Math.abs(instSumPct - 100) > 0.01) { setMsg({ ok: false, text: `ผลรวมงวด = ${instSumPct}% (ต้อง 100%)` }); return; }
       const rows = instRows.map((r) => ({ ...r, description: `${description}${description ? " " : ""}(งวด ${r.installmentNo}/${r.installmentTotal})` }));
       run(() => saveInstallmentsAction({ transaction_date: txDate, type, category, contact_name: contactName, contact_id: resolvedContactId, entity_id: effEntity }, rows, itemInputs), `บันทึก ${rows.length} งวดเรียบร้อย (เป็นหนี้ค้างทั้งหมด)`, () => { resetItems(); refreshItemHist(); });
@@ -265,13 +284,16 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
     }
     run(
       () => saveTransactionAction({
-        transaction_date: txDate, type, account_name: isApAr ? "" : accountName, category, contact_name: contactName, contact_id: resolvedContactId, description,
+        transaction_date: txDate, type, account_name: isApAr && !isAdvance ? "" : accountName, category, contact_name: contactName, contact_id: resolvedContactId, description,
         base_amount: calc.baseAmount, discount, amount_after_discount: effAfterDisc, vat_amount: effVat,
         wht_rate: calc.whtRate, wht_amount: effWht, net_amount: effNet,
         tax_invoice_no: taxInvoiceNo, tax_invoice_date: taxInvoiceDate, entity_id: effEntity,
-        ap_ar_status: isApAr ? (type === "รายรับ" ? "AR" : "AP") : "", due_date: isApAr ? dueDate : "", forward_material: isCost,
+        ap_ar_status: isApAr && !isAdvance ? (type === "รายรับ" ? "AR" : "AP") : "", due_date: isApAr && !isAdvance ? dueDate : "", forward_material: isCost,
+        advance_for_entity: isAdvance ? effAdvanceFor : "",
       }, itemInputs),
-      "บันทึกข้อมูลเรียบร้อยแล้ว",
+      isAdvance
+        ? `บันทึกสำรองจ่ายแล้ว — รอเบิกคืนจาก ${advanceForName || effAdvanceFor} (เคลียได้ที่แท็บลูกหนี้-เจ้าหนี้)`
+        : "บันทึกข้อมูลเรียบร้อยแล้ว",
       // forward วัตถุดิบพลาด = บิลลงบัญชีแล้วแต่สต็อกผลิตไม่ได้รับ → ต้องขึ้น "เหลือง" ไม่ใช่เขียว
       (data) => { const d = data as { warning?: string | null } | undefined; if (d?.warning) setMsg({ ok: true, warn: true, text: d.warning }); resetItems(); refreshItemHist(); },
     );
@@ -308,15 +330,38 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
             </Select>
           </div>
         ) : (
-          <div className="mb-3 text-xs text-faint">บันทึกเข้ากิจการ: <b className="text-muted">{effEntity}{effEntityName ? ` — ${effEntityName}` : ""}</b></div>
+          <div className="mb-3 text-xs text-faint">{isAdvance ? "จ่ายโดยกิจการ" : "บันทึกเข้ากิจการ"}: <b className="text-muted">{effEntity}{effEntityName ? ` — ${effEntityName}` : ""}</b></div>
+        )}
+        {isAdvance && (
+          // D119 — บอกให้ชัดว่าบิลนี้ "ยังไม่เป็นของ" กิจการที่ซื้อให้ (ไม่งั้นนึกว่าบันทึกเข้าบริษัทแล้ว)
+          <p className="mb-3 rounded-lg border border-warn-line bg-warn-bg p-2 text-xs text-warn">
+            สำรองจ่าย: เงินออกจากบัญชีที่เลือกทันที แต่ <b>ยังไม่เข้าค่าใช้จ่ายและภาษีของใครเลย</b>
+            {advanceForName ? ` และ ${advanceForName} จะยังไม่เห็นบิลนี้` : ""} จนกว่าจะกดเคลียที่แท็บ <b>ลูกหนี้-เจ้าหนี้</b>{" "}
+            — ตอนเคลียระบบจะสร้างบิลรายจ่ายของกิจการนั้น (ลงวันที่เคลีย) และรับเงินคืนเข้าบัญชีของคุณ
+          </p>
         )}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
           <Field label="ประเภท">
-            <Select value={type} onChange={(e) => { setType(e.target.value as "รายรับ" | "รายจ่าย"); setCategory(""); }}>
+            <Select value={type} onChange={(e) => {
+              const v = e.target.value as EntryType;
+              // หมวดของรายรับกับรายจ่ายเป็นคนละชุด — ล้างเมื่อข้ามฝั่งเท่านั้น (สำรองจ่ายใช้หมวดรายจ่าย)
+              if ((v === "รายรับ") !== (type === "รายรับ")) setCategory("");
+              if (v === ADVANCE_TYPE) { setIsApAr(false); setIsInst(false); }
+              setType(v);
+            }}>
               <option value="รายจ่าย">รายจ่าย</option>
               <option value="รายรับ">รายรับ</option>
+              {(canAdvance || isAdvance) && <option value={ADVANCE_TYPE}>สำรองจ่าย (จ่ายแทนกิจการอื่นไปก่อน)</option>}
             </Select>
           </Field>
+          {isAdvance && (
+            <Field label="สำรองจ่ายให้กิจการ">
+              <Select value={effAdvanceFor} onChange={(e) => { setAdvanceFor(e.target.value); setErrField(null); }} className={errField === "advance" ? "border-crit-line ring-2 ring-crit-line" : ""}>
+                <option value="">— เลือก —</option>
+                {targetOptions.map((en) => (<option key={en.entity_id} value={en.entity_id}>{en.entity_id} — {en.name}</option>))}
+              </Select>
+            </Field>
+          )}
           <Field label="หมวดหมู่">
             <input ref={catRef} list="bill-cat-list" value={category} onChange={(e) => { setCategory(e.target.value); setErrField(null); }} placeholder="พิมพ์เพื่อค้นหา / เลือก" className={`w-full rounded-lg border px-3 py-2 text-ink outline-none focus:ring-2 ${errField === "category" ? "border-crit-line ring-2 ring-crit-line" : "border-line focus:border-brand focus:ring-brand-soft"}`} />
             <datalist id="bill-cat-list">
@@ -324,9 +369,9 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
               {extraCats.map((c) => (<option key={c} value={c} />))}
             </datalist>
           </Field>
-          <Field label="บัญชี">
-            <Select value={accountName} onChange={(e) => { setAccountName(e.target.value); setErrField(null); }} disabled={isApAr || isInst} className={errField === "account" ? "border-crit-line ring-2 ring-crit-line" : ""}>
-              <option value="">{isApAr || isInst ? "(ตั้งค้าง — เติมตอนชำระ)" : "— เลือก —"}</option>
+          <Field label={isAdvance ? "จ่ายจากบัญชี (ของคนจ่าย)" : "บัญชี"}>
+            <Select value={accountName} onChange={(e) => { setAccountName(e.target.value); setErrField(null); }} disabled={(isApAr || isInst) && !isAdvance} className={errField === "account" ? "border-crit-line ring-2 ring-crit-line" : ""}>
+              <option value="">{(isApAr || isInst) && !isAdvance ? "(ตั้งค้าง — เติมตอนชำระ)" : "— เลือก —"}</option>
               {accountOptions.map((a) => (<option key={a.account_name} value={a.account_name}>{a.account_name}</option>))}
             </Select>
           </Field>
@@ -513,10 +558,12 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
         </Card>
 
         <Card title="ออปชัน">
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={isApAr} onChange={(e) => { setIsApAr(e.target.checked); if (e.target.checked) setIsInst(false); }} /> ตั้งเป็นบิลค้าง ({type === "รายรับ" ? "ลูกหนี้ AR" : "เจ้าหนี้ AP"})</label>
-          {isApAr && <div className="mt-2"><Field label="วันครบกำหนด"><TextInput type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></Field></div>}
-          <label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={isInst} onChange={(e) => { setIsInst(e.target.checked); if (e.target.checked) setIsApAr(false); }} /> แบ่งจ่ายหลายงวด (ทุกงวดเป็นหนี้ค้าง)</label>
-          {isInst && (
+          {/* D119 — สำรองจ่ายคือเงินที่จ่ายไปแล้วจริง ตั้งค้าง/แบ่งงวดไม่ได้ (DB บล็อกด้วย) · ปุ่มเทาพร้อมเหตุผล ไม่ซ่อน (D86) */}
+          <label className={`flex items-center gap-2 text-sm ${isAdvance ? "opacity-50" : ""}`} title={isAdvance ? "สำรองจ่ายคือเงินที่จ่ายไปแล้วจริง ตั้งเป็นบิลค้างไม่ได้" : undefined}><input type="checkbox" checked={isApAr && !isAdvance} disabled={isAdvance} onChange={(e) => { setIsApAr(e.target.checked); if (e.target.checked) setIsInst(false); }} /> ตั้งเป็นบิลค้าง ({type === "รายรับ" ? "ลูกหนี้ AR" : "เจ้าหนี้ AP"})</label>
+          {isApAr && !isAdvance && <div className="mt-2"><Field label="วันครบกำหนด"><TextInput type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></Field></div>}
+          <label className={`mt-3 flex items-center gap-2 text-sm ${isAdvance ? "opacity-50" : ""}`} title={isAdvance ? "สำรองจ่ายคือเงินที่จ่ายไปแล้วจริง แบ่งงวดไม่ได้" : undefined}><input type="checkbox" checked={isInst && !isAdvance} disabled={isAdvance} onChange={(e) => { setIsInst(e.target.checked); if (e.target.checked) setIsApAr(false); }} /> แบ่งจ่ายหลายงวด (ทุกงวดเป็นหนี้ค้าง)</label>
+          {isAdvance && <p className="mt-1 text-xs text-faint">สำรองจ่ายตั้งค้างหรือแบ่งงวดไม่ได้ — เป็นเงินที่จ่ายออกไปแล้วจริง</p>}
+          {isInst && !isAdvance && (
             <div className="mt-2 space-y-2">
               {insts.map((it, i) => (
                 <div key={i} className="flex items-center gap-2">
