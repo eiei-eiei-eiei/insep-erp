@@ -87,20 +87,29 @@ export const ENTITY_ID_RE = /^[A-Z0-9-]{2,12}$/;
 // ── ตรวจ input (ล้วน — เทสออฟไลน์ได้) ────────────────────────────────────────
 
 /**
- * ตรวจให้ครบก่อนแตะ DB — สร้างครึ่งทางแล้วค้างคือสิ่งที่แก้ยากที่สุดในงานนี้
- * คืนข้อความภาษาไทยบอกสาเหตุ หรือ null ถ้าผ่าน
+ * ชื่อย่อ + ชื่อลูกค้า — กติกาเดียวทั้งตอนรับลูกค้าใหม่และตอนแก้ชื่อ (ห้ามเขียนซ้ำสองชุด)
  */
-export function validateNewTenant(input: NewTenantInput): string | null {
-  const slug = input.slug.trim().toLowerCase();
+export function validateTenantIdentity(rawSlug: string, rawName: string): string | null {
+  const slug = rawSlug.trim().toLowerCase();
   if (!slug || !isValidTenantSlug(slug)) {
     return "ชื่อย่อลูกค้า (slug) ต้องเป็น a-z 0-9 และ - เท่านั้น ห้ามภาษาไทย เช่น rongsomchai";
   }
   if (isReservedSlug(slug)) {
     return `ชื่อย่อ "${slug}" เป็นชื่อสงวนของระบบ — ใช้ชื่ออื่น`;
   }
-  if (!input.name.trim()) {
+  if (!rawName.trim()) {
     return "ต้องใส่ชื่อกิจการที่จะแสดงในแอป";
   }
+  return null;
+}
+
+/**
+ * ตรวจให้ครบก่อนแตะ DB — สร้างครึ่งทางแล้วค้างคือสิ่งที่แก้ยากที่สุดในงานนี้
+ * คืนข้อความภาษาไทยบอกสาเหตุ หรือ null ถ้าผ่าน
+ */
+export function validateNewTenant(input: NewTenantInput): string | null {
+  const idBad = validateTenantIdentity(input.slug, input.name);
+  if (idBad) return idBad;
   if (!BRAND_COLORS.some((c) => c.key === input.color)) {
     return "ชุดสีไม่ถูกต้อง";
   }
@@ -445,4 +454,52 @@ export async function setEntityVat(
     .eq("tenant_id", tenantId)
     .eq("entity_id", id);
   if (error) fail(`เปลี่ยนสถานะ VAT: ${error.message}`);
+}
+
+/**
+ * แก้ชื่อย่อ (slug) / ชื่อลูกค้า — **เปลี่ยนแค่แถว `tenants` แถวเดียว**
+ *
+ * ★ ปลอดภัยเพราะทุกตารางผูกลูกค้าด้วย `tenants.id` (uuid) ไม่มีตารางไหนเก็บ slug
+ *   ข้อมูลกิจการ · การตั้งค่า · แบรนด์ (`app_settings.brand_name` — D47) · ผู้ใช้ จึงไม่ขยับ
+ * ★ ชื่อผู้ใช้ไม่ผูกกับ slug (ชื่อไม่ซ้ำทั้งระบบ — D48) ⇒ `owner-<slug เดิม>` ยังล็อกอินได้เหมือนเดิม
+ * 🪤 slug ยังใช้กับ: หน้าล็อกอินแบบ subdomain (แต่งหน้า co-brand) · ชื่อไฟล์ดาวน์โหลดข้อมูล
+ *   · `restore:tenant` เทียบ slug ในไฟล์สำรอง (ไฟล์เก่าต้องระบุ --tenant เอง) → หน้าจอต้องบอก
+ * 🚨 ห้ามแก้ tenant แพลตฟอร์ม (`is_platform`) — ชื่อ `platform` ถูกอ้างตายตัวใน migration 0035
+ */
+export async function renameTenant(
+  db: SupabaseClient,
+  tenantId: string,
+  raw: { slug: string; name: string },
+): Promise<{ from: { slug: string; name: string }; to: { slug: string; name: string }; changed: boolean }> {
+  const to = { slug: raw.slug.trim().toLowerCase(), name: raw.name.trim() };
+  const bad = validateTenantIdentity(to.slug, to.name);
+  if (bad) fail(bad);
+
+  const { data: t, error: readErr } = await db
+    .from("tenants")
+    .select("id, slug, name, is_platform")
+    .eq("id", tenantId)
+    .maybeSingle();
+  // 🚨 อ่านไม่สำเร็จ ≠ ไม่มีลูกค้า (D89)
+  if (readErr) fail(`อ่านข้อมูลลูกค้า: ${readErr.message}`);
+  if (!t) fail("ไม่พบลูกค้ารายนี้");
+  if (t!.is_platform) fail("แก้ชื่อ tenant ของแพลตฟอร์มไม่ได้");
+  const from = { slug: t!.slug as string, name: t!.name as string };
+  if (from.slug === to.slug && from.name === to.name) return { from, to, changed: false };
+
+  if (from.slug !== to.slug) {
+    const { data: dup, error: dupErr } = await db
+      .from("tenants")
+      .select("id")
+      .eq("slug", to.slug)
+      .neq("id", tenantId)
+      .maybeSingle();
+    if (dupErr) fail(`ตรวจชื่อย่อซ้ำ: ${dupErr.message}`);
+    if (dup) fail(`มีลูกค้าชื่อย่อ "${to.slug}" อยู่แล้ว — ใช้ชื่ออื่น`);
+  }
+
+  const { error } = await db.from("tenants").update(to).eq("id", tenantId);
+  // unique index ของ slug จับกรณีชนกันพร้อมกันอีกชั้น
+  if (error) fail(/duplicate|unique/i.test(error.message) ? `มีลูกค้าชื่อย่อ "${to.slug}" อยู่แล้ว — ใช้ชื่ออื่น` : `แก้ชื่อลูกค้า: ${error.message}`);
+  return { from, to, changed: true };
 }

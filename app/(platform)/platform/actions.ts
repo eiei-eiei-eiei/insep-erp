@@ -7,6 +7,7 @@ import {
   setEntityVat,
   createTenant,
   logPlatformAction,
+  renameTenant,
   resetUserPassword,
   validateModules,
   validateQuota,
@@ -76,6 +77,28 @@ export const setModulesAction = guard(
       action: "set_modules",
       tenantSlug: input.slug,
       detail: { modules: input.modules },
+    });
+
+    refresh();
+    return { ok: true };
+  },
+);
+
+/**
+ * แก้ชื่อย่อ/ชื่อลูกค้า — เปลี่ยนแค่แถว tenants (ดูเหตุผลใน renameTenant)
+ * ★ log เก็บทั้งค่าเดิมและค่าใหม่ — log เก่าอ้างลูกค้าด้วย slug เดิม ต้องโยงกลับได้
+ */
+export const renameTenantAction = guard(
+  async (input: { tenantId: string; slug: string; name: string }): Promise<ActionResult> => {
+    const { adminId, db } = await requirePlatformAdmin();
+    const r = await renameTenant(db, input.tenantId, { slug: input.slug, name: input.name });
+    if (!r.changed) return { ok: true };
+
+    await logPlatformAction(db, {
+      actor: adminId,
+      action: "rename_tenant",
+      tenantSlug: r.to.slug,
+      detail: { from_slug: r.from.slug, to_slug: r.to.slug, from_name: r.from.name, to_name: r.to.name },
     });
 
     refresh();

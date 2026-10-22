@@ -22,6 +22,7 @@ import type { TenantRow } from "@/lib/platform/provision";
 import {
   addEntityAction,
   createTenantAction,
+  renameTenantAction,
   setEntityVatAction,
   resetPasswordAction,
   setModulesAction,
@@ -274,6 +275,7 @@ function NewTenantForm({
 function TenantPanel({
   t,
   pending,
+  onRename,
   onModules,
   onQuota,
   onAddEntity,
@@ -282,6 +284,7 @@ function TenantPanel({
 }: {
   t: TenantRow;
   pending: boolean;
+  onRename: (slug: string, name: string) => void;
   onModules: (modules: string[]) => void;
   onQuota: (n: number) => void;
   onAddEntity: (e: { entityId: string; name: string; isVat: boolean }) => void;
@@ -293,8 +296,12 @@ function TenantPanel({
   const [entityId, setEntityId] = useState("");
   const [entityName, setEntityName] = useState("");
   const [isVat, setIsVat] = useState(true);
+  const [slug, setSlug] = useState(t.slug);
+  const [name, setName] = useState(t.name);
 
   const quotaFull = t.entities.length >= t.maxEntities;
+  const slugNorm = slug.trim().toLowerCase();
+  const renameDirty = slugNorm !== t.slug || name.trim() !== t.name;
 
   return (
     <Card className="space-y-6">
@@ -308,8 +315,44 @@ function TenantPanel({
         {!t.isActive && <Badge tone="crit">ปิดใช้งาน</Badge>}
       </div>
 
-      {/* ── โมดูลตามแพ็กเกจ ── */}
+      {/* ── ชื่อย่อ / ชื่อลูกค้า — เปลี่ยนแค่แถว tenants (D122) ── */}
       <div>
+        <h3 className="mb-2 text-sm font-semibold text-ink">ชื่อย่อ / ชื่อลูกค้า</h3>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="w-48">
+            <Field label="ชื่อย่อ (a-z 0-9 -)">
+              <TextInput value={slug} onChange={(e) => setSlug(e.target.value)} />
+            </Field>
+          </div>
+          <div className="min-w-56 flex-1">
+            <Field label="ชื่อลูกค้า (ในหน้านี้)">
+              <TextInput value={name} onChange={(e) => setName(e.target.value)} />
+            </Field>
+          </div>
+          <SaveButton
+            pending={pending}
+            disabled={!renameDirty}
+            title={renameDirty ? undefined : "ยังไม่ได้แก้อะไร"}
+            onClick={() => onRename(slug, name)}
+            type="button"
+          >
+            บันทึกชื่อ
+          </SaveButton>
+        </div>
+        <p className="mt-2 text-xs text-faint">
+          ข้อมูลกิจการ การตั้งค่า แบรนด์ที่ลูกค้าเห็น และชื่อผู้ใช้ (เช่น owner-{t.slug}) ไม่เปลี่ยน
+          · ชื่อแบรนด์บนแอปลูกค้าแก้ที่ ตั้งค่า → แบรนด์ ของลูกค้าเอง
+        </p>
+        {slugNorm !== t.slug && (
+          <p className="mt-1 text-xs text-warn">
+            เปลี่ยนชื่อย่อแล้ว ลิงก์หน้าล็อกอินแบบชื่อย่อ ({t.slug}.…) จะใช้ไม่ได้ ต้องใช้ชื่อใหม่แทน
+            · ไฟล์สำรองข้อมูลที่ลูกค้าโหลดไว้ก่อนเปลี่ยน ตอนเอากลับต้องระบุ --tenant เอง
+          </p>
+        )}
+      </div>
+
+      {/* ── โมดูลตามแพ็กเกจ ── */}
+      <div className="border-t border-line-soft pt-4">
         <h3 className="mb-2 text-sm font-semibold text-ink">โมดูลที่เปิดใช้</h3>
         <ModulePicker value={modules} onChange={setModules} idPrefix={`m-${t.id}`} />
         <div className="mt-3">
@@ -604,6 +647,12 @@ export function PlatformManager({ tenants }: { tenants: TenantRow[] }) {
           key={open.id}
           t={open}
           pending={pending}
+          onRename={(slug, name) =>
+            run(
+              () => renameTenantAction({ tenantId: open.id, slug, name }),
+              "บันทึกชื่อแล้ว",
+            )
+          }
           onModules={(modules) =>
             run(
               () => setModulesAction({ tenantId: open.id, slug: open.slug, modules }),
