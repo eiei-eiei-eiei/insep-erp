@@ -16,6 +16,7 @@
  */
 
 import { vatFromGross } from "../shared/vat";
+import { TAX_ACCOUNTS_WHERE } from "./taxAccounts";
 
 // ── helpers ────────────────────────────────────────────────────────────────
 /** parse ตัวเลข (รองรับ string มีคอมม่า) — เหมือน num() เดิม */
@@ -465,7 +466,7 @@ export function settleVatWarn(
   if (!accountName || num(tx.vat_amount) <= 0 || !hasTaxInvoice(tx)) return null;
   if (taxAccounts.has(accountName)) return null;
   return `บัญชี "${accountName}" ไม่ได้นับเข้าระบบภาษี — กดชำระแล้วบิลนี้จะหลุดจาก ภพ.30 ของเดือนที่ออกใบกำกับ ` +
-    "(ถ้าตั้งใจให้นับ ให้เลือกบัญชีอื่น หรือไปติ๊กบัญชีนี้ที่ บัญชี → ตั้งค่า → บัญชีที่นับเข้าระบบภาษี)";
+    `(ถ้าตั้งใจให้นับ ให้เลือกบัญชีอื่น หรือเพิ่มบัญชีนี้ที่ ${TAX_ACCOUNTS_WHERE})`;
 }
 
 // ── A1: ภพ.30 ────────────────────────────────────────────────────────────────

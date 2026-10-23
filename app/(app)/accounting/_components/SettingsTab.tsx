@@ -11,6 +11,7 @@ import {
 } from "../actions";
 import Link from "next/link";
 import { FORWARD_CAT_KIND, DEFAULT_FORWARD_CATS } from "@/lib/accounting/forwardCats";
+import { TAX_ACCOUNTS_CARD } from "@/lib/accounting/taxAccounts";
 import type { AccountRow, Bootstrap, Contact } from "./types";
 import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, cleanTaxId13, fmt, useSaver, EscToClose } from "./ui";
 
@@ -35,7 +36,7 @@ export function SettingsTab({ boot }: { boot: Bootstrap }) {
         <ChipList kind="wht_rate" title="อัตรา WHT (%)" initial={boot.whtRates} placeholder="เช่น 3" />
         <ChipList
           kind="tax_account"
-          title="บัญชีในระบบภาษี (ชื่อต้องตรงบัญชีเงิน)"
+          title={`${TAX_ACCOUNTS_CARD} (ชื่อต้องตรงบัญชีเงิน)`}
           initial={boot.taxAccountsSet}
           emptyHint="ยังไม่ได้ตั้ง — ระบบนับทุกบัญชีเงินในระบบให้ก่อน · เพิ่มเองแล้วจะนับเฉพาะที่เพิ่ม"
           note="บิลที่ลงบัญชีนอกรายการนี้จะไม่เข้า ภพ.30 / ภงด. / แดชบอร์ด — ใช้คัดบัญชีส่วนตัวออกจากงบ"

@@ -27,6 +27,19 @@ export function ApArTab({ boot, entityId, active }: { boot: Bootstrap; entityId:
     { skip: !active },
   );
 
+  /**
+   * เปิด/ปิดแถวชำระ — 🪤 เปิดแถวใหม่ต้องล้างบัญชี/วันที่ทุกครั้ง
+   * เดิม state ใช้ร่วมทุกแถว: ชำระใบแรกเข้า "กสิกร" วันที่ 20/10 แล้วเปิดใบถัดไป
+   * ช่องยังเติมค่าเดิมไว้ให้ → กดยืนยันเร็ว ๆ = ชำระผิดบัญชี/ผิดวันโดยไม่รู้ตัว (เจอตอนเทส D123)
+   */
+  function toggleSettle(txId: string) {
+    setMsg(null);
+    if (settleId === txId) { setSettleId(null); return; }
+    setAcc("");
+    setPayDate(todayISO());
+    setSettleId(txId);
+  }
+
   function doSettle(txId: string) {
     if (!acc) { setMsg({ ok: false, text: "เลือกบัญชีที่ใช้ชำระ" }); return; }
     run(() => settleApArAction({ txId, accountName: acc, paymentDate: payDate }), "บันทึกการชำระเรียบร้อย", () => { setSettleId(null); reload(); });
@@ -55,7 +68,7 @@ export function ApArTab({ boot, entityId, active }: { boot: Bootstrap; entityId:
                     <td>{r.dueDate}</td>
                     <td className={`p-1 text-right font-medium ${tone}`}>{fmt(r.amount)}</td>
                     <td className="whitespace-nowrap">
-                      <button onClick={() => { setSettleId(settleId === r.transactionId ? null : r.transactionId); setMsg(null); }} className="text-sm text-muted hover:underline">ชำระ</button>
+                      <button onClick={() => toggleSettle(r.transactionId)} className="text-sm text-muted hover:underline">ชำระ</button>
                       <button onClick={() => doVoid(r.transactionId)} className="ml-2 text-sm text-crit hover:underline">ยกเลิก</button>
                     </td>
                   </tr>
@@ -89,6 +102,9 @@ export function ApArTab({ boot, entityId, active }: { boot: Bootstrap; entityId:
 
   return (
     <div className="space-y-4">
+      {/* 🪤 ข้อความผลลัพธ์ต้องอยู่นอกแถวชำระด้วย — ชำระสำเร็จแล้วแถวปิดพร้อมข้อความในแถว
+          ผู้ใช้เห็นแค่แถวหายไปเฉย ๆ (ยกเลิกบิลก็เช่นกัน) · แถวเปิดอยู่ = ข้อความอยู่ในแถว ไม่ซ้ำสองที่ */}
+      {settleId === null && <Msg msg={msg} />}
       {/* D119 — สำรองจ่ายรอเบิกคืน (เงินที่จ่ายแทนไปแล้ว ไม่ใช่หนี้ค้าง — จึงแยกการ์ดจาก AP/AR) */}
       <AdvanceCard boot={boot} entityId={entityId} active={active} />
       {table("เจ้าหนี้ (AP) — เราต้องจ่าย", data.payable, data.totalAP, "text-crit")}

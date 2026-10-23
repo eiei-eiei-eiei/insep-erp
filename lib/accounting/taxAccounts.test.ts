@@ -34,3 +34,22 @@ describe("A19 effectiveTaxAccounts", () => {
     expect(taxAccountsAreDefault(["บัญชีบริษัท"])).toBe(false);
   });
 });
+
+// ── D123 — ข้อความที่ชี้ทางมาหาการ์ดนี้ ต้องใช้ชื่อเดียวกับหัวการ์ดจริง ────────────────
+describe("ชื่อการ์ดบัญชีในระบบภาษี — แหล่งเดียว (D123)", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { readFileSync } = require("node:fs") as typeof import("node:fs");
+  const src = (p: string) => readFileSync(p, "utf8");
+
+  it("หัวการ์ดหน้าตั้งค่าบัญชีมาจาก TAX_ACCOUNTS_CARD", async () => {
+    const { TAX_ACCOUNTS_CARD, TAX_ACCOUNTS_WHERE } = await import("./taxAccounts");
+    expect(src("app/(app)/accounting/_components/SettingsTab.tsx")).toMatch(/title=\{`\$\{TAX_ACCOUNTS_CARD\}/);
+    expect(TAX_ACCOUNTS_WHERE.endsWith(TAX_ACCOUNTS_CARD)).toBe(true);
+  });
+
+  it("🪤 ห้ามเขียนชื่อการ์ดเองในข้อความชี้ทาง (เคยเขียนชื่อที่ไม่มีอยู่บนจอ)", () => {
+    for (const p of ["lib/accounting/calc.ts", "app/(app)/bar/_components/BarSettingsTab.tsx", "app/(app)/accounting/_components/ApArTab.tsx"]) {
+      expect(src(p)).not.toContain("บัญชีที่นับเข้าระบบภาษี");
+    }
+  });
+});

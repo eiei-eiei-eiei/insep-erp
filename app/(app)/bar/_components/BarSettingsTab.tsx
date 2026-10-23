@@ -6,6 +6,7 @@ import { promptPayError, promptPayPayload } from "@/lib/bar/promptpay";
 import { hasSaleWindow } from "@/lib/bar/businessDate";
 import { Card, Field, TextInput, Select, Msg, useSaver, MissingHint, SuggestInput } from "@/lib/shared/ui";
 import { saveBarSettingsAction } from "../actions";
+import { TAX_ACCOUNTS_CARD, TAX_ACCOUNTS_WHERE } from "@/lib/accounting/taxAccounts";
 import { ReceiptLayoutCard } from "./ReceiptLayoutCard";
 import type { ReceiptLayout } from "@/lib/bar/layout";
 
@@ -282,10 +283,10 @@ function TaxAccountWarn({ name, accounts }: { name: string; accounts: { name: st
   if (!name || !accounts.some((b) => b.name === name && !b.countedInTax)) return null;
   return (
     <p className="mt-1 text-xs text-warn">
-      ⚠️ บัญชี <b>{name}</b> ยังไม่ได้ถูกติ๊กว่า <b>นับเข้าระบบภาษี</b> — ลงบัญชีจะสำเร็จ แต่ยอดนี้จะ{" "}
+      ⚠️ บัญชี <b>{name}</b> ยังไม่อยู่ใน <b>{TAX_ACCOUNTS_CARD}</b> — ลงบัญชีจะสำเร็จ แต่ยอดนี้จะ{" "}
       <b>ไม่ขึ้นใน ภพ.30</b>
       <br />
-      ไปติ๊กที่ <b>บัญชี → ตั้งค่า → บัญชีที่นับเข้าระบบภาษี</b>
+      ไปเพิ่มบัญชีนี้ที่ <b>{TAX_ACCOUNTS_WHERE}</b>
     </p>
   );
 }
