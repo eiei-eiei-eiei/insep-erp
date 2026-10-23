@@ -6,6 +6,7 @@ import { nextMonth, prevMonth } from "@/lib/accounting/taxPay";
 import { toFilingMethod } from "@/lib/accounting/taxFiling";
 import { DUE_STAGES, type DueStage } from "@/lib/shared/period";
 import { effectiveTaxAccounts } from "@/lib/accounting/taxAccounts";
+import { cashDateOf } from "@/lib/accounting/calc";
 import {
   EXCISE_REMINDER_ACTION,
   exciseRemindersFor,
@@ -155,11 +156,14 @@ export async function GET(req: NextRequest) {
     const to = `${nextMonth(months[0])}-01`;
     const { data: whtTx, error: whtErr } = await admin
       .from("transactions")
-      .select("transaction_date, entity_id, account_name, status, ap_ar_status, wht_amount, type")
+      .select("transaction_date, settled_on, entity_id, account_name, status, ap_ar_status, wht_amount, type")
       .eq("tenant_id", t.id)
       .gt("wht_amount", 0)
-      .gte("transaction_date", from)
-      .lt("transaction_date", to);
+      // D123 — บิลค้างที่เคลียแล้วนับเดือนที่จ่ายจริง (settled_on) → ต้องดึงทั้ง 2 ช่วง
+      .or(
+        `and(transaction_date.gte.${from},transaction_date.lt.${to}),` +
+          `and(settled_on.gte.${from},settled_on.lt.${to})`,
+      );
     // 🚨 อ่านไม่ได้ ≠ ไม่มีการหักภาษี — เงียบไปคือเตือนหายทั้งเดือน ต้องดังให้เห็นใน log + ผลลัพธ์
     if (whtErr) {
       report.push({ tenant: t.slug, job: "tax", sent: false, keys: [], lines: [`ERROR: อ่านบิลหัก ณ ที่จ่ายไม่สำเร็จ — ${whtErr.message}`] });
@@ -170,7 +174,7 @@ export async function GET(req: NextRequest) {
       if (tx.status !== "ปกติ" || tx.ap_ar_status) continue;
       if (tx.type !== "รายจ่าย") continue;
       if (!taxAccounts.has(String(tx.account_name ?? ""))) continue;
-      whtSet.add(`${tx.entity_id ?? ""}|${String(tx.transaction_date ?? "").slice(0, 7)}`);
+      whtSet.add(`${tx.entity_id ?? ""}|${String(cashDateOf(tx) ?? "").slice(0, 7)}`);
     }
 
     const items: Item<TaxReminder>[] = [];

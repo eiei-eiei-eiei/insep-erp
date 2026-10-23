@@ -25,7 +25,7 @@ import { toFilingMethod, type TaxFilingRow } from "@/lib/accounting/taxFiling";
 
 // คอลัมน์ transactions ที่ใช้ทุกรายงาน
 const TX_COLS =
-  "tx_id, transaction_date, type, account_name, category, contact_name, contact_id, description, base_amount, discount, amount_after_discount, vat_amount, wht_rate, wht_amount, net_amount, tax_invoice_no, tax_invoice_date, status, entity_id, ap_ar_status, payment_date, transfer_id, po_group_id, installment_no, installment_total, due_date, source, receipt_image_url, advance_for_entity, advance_status, advance_clear_id, advance_src_tx";
+  "tx_id, transaction_date, type, account_name, category, contact_name, contact_id, description, base_amount, discount, amount_after_discount, vat_amount, wht_rate, wht_amount, net_amount, tax_invoice_no, tax_invoice_date, status, entity_id, ap_ar_status, payment_date, settled_on, transfer_id, po_group_id, installment_no, installment_total, due_date, source, receipt_image_url, advance_for_entity, advance_status, advance_clear_id, advance_src_tx";
 
 async function db() {
   return createClient();
@@ -180,6 +180,9 @@ export async function getApAr(entityId: string) {
         ? `${(r as unknown as { installment_no?: number }).installment_no}/${(r as unknown as { installment_total?: number }).installment_total ?? ""}`
         : "",
       poGroupId: (r as unknown as { po_group_id?: string }).po_group_id ?? "",
+      // D123 — ไว้เตือนตอนกดชำระเข้าบัญชีนอกระบบภาษี (settleVatWarn)
+      taxInvoiceNo: r.tax_invoice_no ?? "",
+      vatAmount: Number(r.vat_amount) || 0,
     };
     if (r.ap_ar_status === "AP") {
       payable.push(rec);
@@ -235,6 +238,8 @@ export type ApArRow = {
   amount: number;
   installment: string;
   poGroupId: string;
+  taxInvoiceNo: string;
+  vatAmount: number;
 };
 export type SalesOutstandingRow = {
   quNo: string;

@@ -64,3 +64,24 @@ describe("A8 — accountStatement", () => {
     expect(s.closingBalance).toBe(1500);
   });
 });
+
+describe("A23 — บิลค้างที่เคลียแล้ว เงินเข้า/ออกตามวันที่เคลีย (D123)", () => {
+  // ตั้งค้างรับ 10/10 แล้วกดชำระเข้า กสิกร วันที่ 10/11
+  const paid: LedgerTx = { tx_id: "S1", transaction_date: "2026-10-10", type: "รายรับ", account_name: "กสิกร", category: "ขาย", contact_name: "A", description: "", net_amount: 700, transfer_id: null, status: "ปกติ", ap_ar_status: null, settled_on: "2026-11-10" };
+  const meta: AccountMeta[] = [{ accountName: "กสิกร", openingBalance: 0, entityIds: [] }];
+  const bal = (p: string, xs: LedgerTx[]) => accountBalances(p, xs, meta, "ALL", TAX).balances.find((b) => b.accountType === "กสิกร")!.balance;
+
+  it("ยอดสิ้นเดือน ต.ค. ยังไม่รวม · สิ้นเดือน พ.ย. รวม", () => {
+    expect(bal("2026-10", [paid])).toBe(0);
+    expect(bal("2026-11", [paid])).toBe(700);
+  });
+  it("statement: ขึ้นในเดือนที่จ่าย ลงวันที่จ่าย", () => {
+    expect(accountStatement("กสิกร", "2026-10", [paid], 0).rows).toHaveLength(0);
+    const nov = accountStatement("กสิกร", "2026-11", [paid], 0);
+    expect(nov.rows.map((r) => r.date)).toEqual(["2026-11-10"]);
+    expect(nov.closingBalance).toBe(700);
+  });
+  it("ไม่มี settled_on = วันที่รายการเหมือนเดิมทุกตัวอักษร", () => {
+    expect(bal("2026-10", [{ ...paid, settled_on: null }])).toBe(700);
+  });
+});

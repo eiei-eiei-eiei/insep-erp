@@ -27,6 +27,8 @@ import {
   previousVat,
   whtReport,
   dashboardData,
+  cashDateOf,
+  settleVatWarn,
   type Tx,
   type ContactMap,
   type TaxSummaryRow,
@@ -53,8 +55,8 @@ const txs: Tx[] = [
   { tx_id: "P1", transaction_date: "2026-07-08", type: "รายจ่าย", account_name: "บัญชีบริษัท", category: "ค่าบริการ", contact_name: "นายสมชาย", amount_after_discount: 2000, vat_amount: 140, wht_rate: 3, wht_amount: 60, net_amount: 2080, tax_invoice_no: "B-1", tax_invoice_date: null, status: "ปกติ", entity_id: EID, ap_ar_status: null },
   // ซื้อ WHT นิติบุคคล ไม่มี VAT (เข้า ภงด.53 แต่ไม่เข้า ภพ.30)
   { tx_id: "P2", transaction_date: "2026-07-15", type: "รายจ่าย", account_name: "บัญชีบริษัท", category: "ค่าขนส่ง", contact_name: "บริษัท ขนส่ง จำกัด", amount_after_discount: 1000, vat_amount: 0, wht_rate: 1, wht_amount: 10, net_amount: 990, tax_invoice_no: "", tax_invoice_date: null, status: "ปกติ", entity_id: EID, ap_ar_status: null },
-  // AP/AR ค้าง — ต้องหลุดทุกจุด
-  { tx_id: "AR1", transaction_date: "2026-07-11", type: "รายรับ", account_name: "บัญชีบริษัท", category: "ขาย", contact_name: "ลูกค้า A", amount_after_discount: 9999, vat_amount: 700, wht_rate: 0, wht_amount: 0, net_amount: 10699, tax_invoice_no: "X", tax_invoice_date: "2026-07-11", status: "ปกติ", entity_id: EID, ap_ar_status: "AR" },
+  // AP/AR ค้าง **ที่ยังไม่มีเลขใบกำกับ** — ต้องหลุดทุกจุด (บิลค้างที่มีใบกำกับแล้วนับ ภพ.30 ตั้งแต่ D123 — ดู A23)
+  { tx_id: "AR1", transaction_date: "2026-07-11", type: "รายรับ", account_name: "บัญชีบริษัท", category: "ขาย", contact_name: "ลูกค้า A", amount_after_discount: 9999, vat_amount: 700, wht_rate: 0, wht_amount: 0, net_amount: 10699, tax_invoice_no: "", tax_invoice_date: "2026-07-11", status: "ปกติ", entity_id: EID, ap_ar_status: "AR" },
   // เช็คราคา — account ว่าง → หลุด
   { tx_id: "PC1", transaction_date: "2026-07-09", type: "เช็คราคา", account_name: "", category: "เช็คราคา", contact_name: "ลูกค้า A", amount_after_discount: 0, vat_amount: 0, wht_rate: 0, wht_amount: 0, net_amount: 0, tax_invoice_no: "", tax_invoice_date: null, status: "ปกติ", entity_id: EID, ap_ar_status: null },
   // ยกเลิก — หลุด
@@ -406,5 +408,80 @@ describe("A21 — ช่องราคาช่องเดียว (D113)", (
     expect(unitPriceHeader("in")).toContain("รวม VAT");
     expect(unitPriceHeader("ex")).toContain("ไม่รวม VAT");
     expect(itemsHintText("ex")).not.toContain("พิมพ์ในช่องไหน");
+  });
+});
+
+// ── A23 (D123) — ภาษีตามใบกำกับ + เงินเข้า/ออกตามวันที่เคลีย ────────────────────
+describe("A23 — บิลค้างที่ออกใบกำกับแล้วเข้า ภพ.30 · เคลียแล้วใช้วันที่จ่ายจริง (D123)", () => {
+  const base = {
+    category: "ขาย", wht_rate: 0, wht_amount: 0, tax_invoice_date: null as string | null,
+    status: "ปกติ", entity_id: EID, settled_on: null as string | null,
+  };
+  // บิลขายค้างรับ ออกใบกำกับ 10/10 ยังไม่ได้เงิน
+  const arOpen: Tx = { ...base, tx_id: "AR-OPEN", transaction_date: "2026-10-10", type: "รายรับ", account_name: null, contact_name: "ลูกค้า A", amount_after_discount: 1000, vat_amount: 70, net_amount: 1070, tax_invoice_no: "INV-10", ap_ar_status: "AR" };
+  // บิลเดียวกันหลังกดชำระ 10/11 — แถวเดิม วันที่รายการเดิม (fn_settle_apar)
+  const arPaid: Tx = { ...arOpen, account_name: "บัญชีบริษัท", ap_ar_status: null, settled_on: "2026-11-10" };
+  const arNoInv: Tx = { ...arOpen, tx_id: "AR-NOINV", tax_invoice_no: "" };
+  const apOpen: Tx = { ...base, tx_id: "AP-OPEN", transaction_date: "2026-10-12", type: "รายจ่าย", account_name: null, contact_name: "บริษัท ผู้ขาย จำกัด", category: "ค่าบริการ", amount_after_discount: 2000, vat_amount: 140, wht_rate: 3, wht_amount: 60, net_amount: 2080, tax_invoice_no: "B-10", ap_ar_status: "AP" };
+  const apPaid: Tx = { ...apOpen, account_name: "บัญชีบริษัท", ap_ar_status: null, settled_on: "2026-11-05" };
+
+  it("บิลค้างที่มีเลขใบกำกับ นับเข้า ภพ.30 เดือนของวันที่รายการ (ทั้งขายและซื้อ)", () => {
+    const r = taxReport("2026-10", EID, 0, [arOpen, apOpen], {}, TAX_ACCOUNTS);
+    expect(r.totalSalesAmount).toBe(1000);
+    expect(r.totalPurchaseAmount).toBe(2000);
+    // ★ สูตร VAT เดิมทุกตัวอักษร: คิดจากยอดรวม × 7%
+    expect(r.totalSalesVat).toBe(70);
+    expect(r.totalPurchaseVat).toBe(140);
+  });
+
+  it("บิลค้างที่ยังไม่มีเลขใบกำกับ ไม่นับ", () => {
+    expect(taxReport("2026-10", EID, 0, [arNoInv], {}, TAX_ACCOUNTS).sales).toHaveLength(0);
+  });
+
+  it("🚩 กดชำระคนละเดือน: บิลยังอยู่เดือนเดิม ไม่โผล่ในเดือนที่จ่าย (ไม่นับซ้ำ)", () => {
+    expect(taxReport("2026-10", EID, 0, [arPaid], {}, TAX_ACCOUNTS).totalSalesAmount).toBe(1000);
+    expect(taxReport("2026-11", EID, 0, [arPaid], {}, TAX_ACCOUNTS).sales).toHaveLength(0);
+  });
+
+  it("บิลปกติ (ไม่ค้าง) ยังต้องอยู่ในบัญชีระบบภาษีเหมือนเดิม", () => {
+    const outside: Tx = { ...arPaid, tx_id: "OUT", account_name: "เงินสดย่อย" };
+    expect(taxReport("2026-10", EID, 0, [outside], {}, TAX_ACCOUNTS).sales).toHaveLength(0);
+  });
+
+  it("บิลค้าง/ยกเลิก/กิจการอื่น", () => {
+    expect(taxReport("2026-10", EID, 0, [{ ...arOpen, status: "ยกเลิก" }], {}, TAX_ACCOUNTS).sales).toHaveLength(0);
+    expect(taxReport("2026-10", EID, 0, [{ ...arOpen, entity_id: "EID01" }], {}, TAX_ACCOUNTS).sales).toHaveLength(0);
+  });
+
+  it("cashDateOf: เคลียแล้วใช้วันที่เคลีย · นอกนั้นวันที่รายการ (ไม่อ่าน payment_date)", () => {
+    expect(cashDateOf(arPaid)).toBe("2026-11-10");
+    expect(cashDateOf(arOpen)).toBe("2026-10-10");
+    expect(cashDateOf({ transaction_date: "2026-10-10", settled_on: null, payment_date: "2026-12-01" } as never)).toBe("2026-10-10");
+  });
+
+  it("ภงด.3/53: บิลค้างจ่ายไม่นับ · เคลียแล้วนับเดือนที่จ่ายจริง", () => {
+    expect(whtReport("2026-10", EID, [apOpen], {}, TAX_ACCOUNTS).pnd53).toHaveLength(0);
+    expect(whtReport("2026-10", EID, [apPaid], {}, TAX_ACCOUNTS).pnd53).toHaveLength(0);
+    const nov = whtReport("2026-11", EID, [apPaid], {}, TAX_ACCOUNTS);
+    expect(nov.pnd53TotalWht).toBe(60);
+    expect(nov.pnd53[0].date).toBe("05/11/69");
+  });
+
+  it("50ทวิ ค้างออก ย้ายไปเดือนที่จ่าย แต่ยอดแดชบอร์ดคงเดิม", () => {
+    const oct = dashboardData("2026-10", EID, [apPaid], TAX_ACCOUNTS, new Set());
+    expect(oct.dash.expense).toBe(2000);
+    expect(oct.whtPending).toHaveLength(0);
+    const nov = dashboardData("2026-11", EID, [apPaid], TAX_ACCOUNTS, new Set());
+    expect(nov.dash.expense).toBe(0);
+    expect(nov.whtPending.map((p) => p.transactionId)).toEqual(["AP-OPEN"]);
+    expect(nov.whtPending[0].transactionDateISO).toBe("2026-11-05");
+  });
+
+  it("settleVatWarn: เตือนเฉพาะบิลมีใบกำกับ + VAT ที่ชำระเข้าบัญชีนอกระบบภาษี", () => {
+    expect(settleVatWarn(arOpen, "เงินสดย่อย", TAX_ACCOUNTS)).toMatch(/หลุดจาก ภพ\.30/);
+    expect(settleVatWarn(arOpen, "บัญชีบริษัท", TAX_ACCOUNTS)).toBeNull();
+    expect(settleVatWarn(arNoInv, "เงินสดย่อย", TAX_ACCOUNTS)).toBeNull();
+    expect(settleVatWarn({ ...arOpen, vat_amount: 0 }, "เงินสดย่อย", TAX_ACCOUNTS)).toBeNull();
+    expect(settleVatWarn(arOpen, "", TAX_ACCOUNTS)).toBeNull();
   });
 });

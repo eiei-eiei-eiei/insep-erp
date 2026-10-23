@@ -4,6 +4,9 @@
  *
  * A1  taxReport      ภพ.30 (Reports.js generateTaxReportHTML)
  * A2  guard          ข้ามแถว ap_ar_status != null + status 'ยกเลิก' (cash basis)
+ *                    — ยกเว้น ภพ.30 ตั้งแต่ D123 (ดู A23)
+ * A23 ภาษีตามใบกำกับ  ภพ.30 นับบิลค้างที่มีเลขใบกำกับแล้ว · ยอดเงิน/ภงด.3/53 ของบิลที่เคลียแล้ว
+ *                    ใช้วันที่เคลีย (settled_on) — D123
  * A3  entryCalc      VAT/WHT ฝั่งกรอกฟอร์ม (_js_entry.html calculateSummary)
  * A4  itemTotal      ส่วนลด item (Phase A) — total = qty×exVat − ส่วนลดบาท
  * A10 whtReport      ภงด.3/53 (Reports.js generateWHTReportHTML)
@@ -392,6 +395,8 @@ export type Tx = {
   status: string;
   entity_id: string;
   ap_ar_status: string | null;
+  /** D123 — วันที่กดชำระบิลค้าง (null = ไม่เคยค้าง หรือเคลียก่อนมีคอลัมน์นี้) */
+  settled_on?: string | null;
 };
 
 export type ContactInfo = { tax_id?: string | null; branch?: string | null; address?: string | null };
@@ -418,6 +423,49 @@ function passesTaxGuard(tx: Tx, entityId: string, taxAccounts: Set<string>): boo
     inScope(tx.entity_id, entityId) &&
     taxAccounts.has(tx.account_name ?? "")
   );
+}
+
+/**
+ * A23 (D123) — วันที่เงินเข้า/ออกจริง: บิลค้างที่กดชำระแล้วใช้วันที่ชำระ · นอกนั้นใช้วันที่รายการ
+ * ★ ใช้กับยอดเงิน/statement (ledger.ts) และ ภงด.3/53 (หัก ณ ที่จ่ายเกิดตอนจ่ายเงิน)
+ * 🚨 ห้ามใช้กับ ภพ.30 — ภาษีขาย/ซื้อเกิดตามใบกำกับ ใช้วันที่รายการเสมอ (กติกาเหล็ก)
+ * 🚨 อ่าน `settled_on` ไม่ใช่ `payment_date` — ช่องหลังถูกเขียนตอนออก 50ทวิ ด้วย (ดู migration 0088)
+ */
+export function cashDateOf(tx: { transaction_date: string | null; settled_on?: string | null }): string | null {
+  return tx.settled_on || tx.transaction_date;
+}
+
+/** บิลค้างที่ออก/ได้รับใบกำกับภาษีแล้ว — ภาษีเกิดแล้วแม้ยังไม่จ่ายเงิน */
+export function hasTaxInvoice(tx: { tax_invoice_no: string | null }): boolean {
+  return String(tx.tax_invoice_no ?? "").trim() !== "";
+}
+
+/**
+ * A23 (D123) — ด่านของ ภพ.30 เท่านั้น
+ * บิลปกติ: เหมือน A2 ทุกตัวอักษร (ต้องอยู่ในบัญชีระบบภาษี)
+ * บิลค้าง (AP/AR): นับเมื่อ **มีเลขใบกำกับภาษีแล้ว** · ไม่ถามบัญชี (ยังไม่มีเงินเข้า/ออก = ยังไม่มีบัญชี)
+ *   ★ กดชำระแล้วบิลยังเป็นแถวเดิม เดือนเดิม (fn_settle_apar ไม่แตะวันที่รายการ) ⇒ ไม่มีวันนับซ้ำ
+ *   🪤 ชำระเข้าบัญชีที่ไม่อยู่ในระบบภาษี = บิลหลุดจาก ภพ.30 หลังชำระ → หน้าชำระเตือน (settleVatWarn)
+ */
+function passesVatGuard(tx: Tx, entityId: string, taxAccounts: Set<string>): boolean {
+  if (tx.status !== "ปกติ" || !inScope(tx.entity_id, entityId)) return false;
+  if (tx.ap_ar_status) return hasTaxInvoice(tx);
+  return taxAccounts.has(tx.account_name ?? "");
+}
+
+/**
+ * คำเตือนตอนกดชำระบิลค้าง: บิลที่นับเข้า ภพ.30 แล้วจะหลุดออก ถ้าเลือกบัญชีนอกระบบภาษี
+ * คืน null เมื่อไม่มีอะไรต้องเตือน (ประโยคตัดสินที่นี่ ไม่ใช่ในคอมโพเนนต์ — D84/D91)
+ */
+export function settleVatWarn(
+  tx: { tax_invoice_no: string | null; vat_amount: number | string },
+  accountName: string,
+  taxAccounts: Set<string>,
+): string | null {
+  if (!accountName || num(tx.vat_amount) <= 0 || !hasTaxInvoice(tx)) return null;
+  if (taxAccounts.has(accountName)) return null;
+  return `บัญชี "${accountName}" ไม่ได้นับเข้าระบบภาษี — กดชำระแล้วบิลนี้จะหลุดจาก ภพ.30 ของเดือนที่ออกใบกำกับ ` +
+    "(ถ้าตั้งใจให้นับ ให้เลือกบัญชีอื่น หรือไปติ๊กบัญชีนี้ที่ บัญชี → ตั้งค่า → บัญชีที่นับเข้าระบบภาษี)";
 }
 
 // ── A1: ภพ.30 ────────────────────────────────────────────────────────────────
@@ -465,7 +513,7 @@ export function taxReport(
   let tPAmt = 0;
 
   for (const tx of txs) {
-    if (!passesTaxGuard(tx, entityId, taxAccounts)) continue;
+    if (!passesVatGuard(tx, entityId, taxAccounts)) continue;
     if (num(tx.vat_amount) <= 0) continue;
     if (monthOf(tx.transaction_date) !== period) continue;
 
@@ -590,11 +638,13 @@ export function whtReport(
     if (!passesTaxGuard(tx, entityId, taxAccounts)) continue;
     if (tx.type !== "รายจ่าย") continue;
     if (num(tx.wht_amount) <= 0) continue;
-    if (monthOf(tx.transaction_date) !== period) continue;
+    // D123 — หัก ณ ที่จ่ายเกิดตอนจ่ายเงิน: บิลค้างที่เคลียแล้วเข้าเดือนที่จ่ายจริง
+    const payDate = cashDateOf(tx);
+    if (monthOf(payDate) !== period) continue;
 
     const cInfo = resolveContact(tx, contactMap);
     const rec: WhtReportRow = {
-      date: formatDateBE(tx.transaction_date, "/"),
+      date: formatDateBE(payDate, "/"),
       taxId: formatTaxId(cInfo.tax_id),
       contactName: tx.contact_name ?? "",
       category: tx.category ?? "",
@@ -661,7 +711,11 @@ export function dashboardData(
     if (!passesTaxGuard(tx, entityId, taxAccounts)) continue;
     const filterDate = tx.tax_invoice_date || tx.transaction_date;
     if (!filterDate) continue;
-    if (monthOf(filterDate) !== period) continue;
+    // D123 — 50ทวิ ค้างออกของบิลค้างที่เคลียแล้ว อยู่เดือนที่จ่ายจริง · ยอดแดชบอร์ดคงเดิม (filterDate)
+    const pendDate = tx.settled_on || filterDate;
+    const inDash = monthOf(filterDate) === period;
+    const inPend = monthOf(pendDate) === period;
+    if (!inDash && !inPend) continue;
 
     const amount = num(tx.amount_after_discount);
     const net = num(tx.net_amount);
@@ -669,18 +723,22 @@ export function dashboardData(
     const whtAmount = num(tx.wht_amount);
 
     if (tx.type === "รายรับ") {
+      if (!inDash) continue;
       income += amount;
       netIncome += net;
       vatOut += vat;
     } else if (tx.type === "รายจ่าย") {
-      expense += amount;
-      netExpense += net;
-      vatIn += vat;
-      if (whtAmount > 0 && !issuedTxIds.has(tx.tx_id)) {
+      if (inDash) {
+        expense += amount;
+        netExpense += net;
+        vatIn += vat;
+      }
+      if (inPend && whtAmount > 0 && !issuedTxIds.has(tx.tx_id)) {
         whtPending.push({
           transactionId: tx.tx_id,
-          displayDate: formatDateBE(filterDate, "/"),
-          transactionDateISO: String(tx.transaction_date ?? "").substring(0, 10),
+          displayDate: formatDateBE(pendDate, "/"),
+          // ★ ค่าตั้งต้นของ "วันที่จ่าย" บนฟอร์ม 50ทวิ — บิลที่เคลียแล้วใช้วันที่จ่ายจริง
+          transactionDateISO: String(tx.settled_on || tx.transaction_date || "").substring(0, 10),
           contactName: tx.contact_name ?? "",
           contactId: tx.contact_id ?? "",
           category: tx.category ?? "",

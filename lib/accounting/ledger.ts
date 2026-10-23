@@ -7,7 +7,7 @@
  *   golden test = ledger.test.ts
  */
 
-import { num } from "./calc";
+import { num, cashDateOf } from "./calc";
 
 export type LedgerTx = {
   tx_id: string;
@@ -21,6 +21,8 @@ export type LedgerTx = {
   transfer_id: string | null;
   status: string;
   ap_ar_status: string | null;
+  /** D123 — บิลค้างที่กดชำระแล้ว: เงินเข้า/ออกวันนี้ ไม่ใช่วันที่รายการ */
+  settled_on?: string | null;
 };
 
 export type AccountMeta = {
@@ -89,7 +91,7 @@ export function accountBalances(
   for (const tx of txs) {
     if (tx.status !== "ปกติ") continue;
     if (tx.ap_ar_status) continue;
-    const mo = monthOf(tx.transaction_date);
+    const mo = monthOf(cashDateOf(tx)); // D123 — วันที่เงินเข้า/ออกจริง
     if (!mo || mo > upToPeriod) continue; // ถึงสิ้นเดือน upToPeriod เท่านั้น
 
     const accName = String(tx.account_name ?? "").trim();
@@ -174,7 +176,7 @@ export function accountStatement(
     if (tx.status !== "ปกติ") continue;
     if (tx.ap_ar_status) continue;
     if (String(tx.account_name ?? "").trim() !== accountType) continue;
-    const iso = String(tx.transaction_date ?? "").substring(0, 10);
+    const iso = String(cashDateOf(tx) ?? "").substring(0, 10); // D123 — วันที่เงินเข้า/ออกจริง
     if (!iso) continue;
     const { debit, credit, effect } = txEffect(tx.type, num(tx.net_amount));
 
