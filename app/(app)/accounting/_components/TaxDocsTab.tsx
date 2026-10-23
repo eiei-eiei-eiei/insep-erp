@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { taxReportHtml, whtReportHtml } from "@/lib/accounting/reportHtml";
-import { isCorporate } from "@/lib/accounting/calc";
+import { isCorporate, missingInvoiceListText } from "@/lib/accounting/calc";
 import { buildWht50PrintData } from "@/lib/accounting/wht";
 import type { Wht50Doc } from "@/lib/pdf/wht50";
 import { WHT_TEMPLATE_KEY, FONT_KEY } from "@/lib/pdf/keys"; // ค่าคงที่เท่านั้น — ไม่ดึง pdf-lib เข้า bundle
@@ -20,6 +20,7 @@ import {
   listTaxSummariesAction,
   deleteTaxSummaryAction,
   getReportRunsAction,
+  getMissingInvoicesAction,
 } from "../actions";
 import { getPdfAssetUrl } from "../../actions";
 import { ReportChecklist } from "../../_components/ReportChecklist";
@@ -80,6 +81,8 @@ export function TaxDocsTab({
   const [wht, setWht] = useState<WhtBundle | null>(null);
   const [summaries, setSummaries] = useState<Summaries>([]);
   const [runs, setRuns] = useState<Record<string, string>>({});
+  // D124 — บิลซื้อมี VAT ที่ยังไม่กรอกเลขใบกำกับ (นับอยู่ใน ภพ.30 แล้ว · ทาง ก)
+  const [missing, setMissing] = useState<Awaited<ReturnType<typeof getMissingInvoicesAction>>>([]);
   // 🚨 D89 — โหลดข้อมูลของเอกสารยื่นไม่สำเร็จ ต้องบอก ไม่ใช่โชว์ยอดที่ขาดข้อมูล
   const [loadErr, setLoadErr] = useState(false);
   // ★ กดสร้างแบบแล้วสถานะ "สร้างแล้ว" ของการ์ดชำระภาษีต้องเปลี่ยนตาม (เงื่อนไขปุ่มจ่าย)
@@ -104,10 +107,11 @@ export function TaxDocsTab({
     getForwardedVatAction(period, realEntity).then(setFwd);
     listTaxSummariesAction(realEntity).then(setSummaries);
     getReportRunsAction(period, realEntity).then(setRuns);
+    getMissingInvoicesAction(period, realEntity).then(setMissing);
   }
   useEffect(() => {
     if (!active) return;
-    if (!realEntity) { setWht(null); setFwd(null); setSummaries([]); setRuns({}); return; }
+    if (!realEntity) { setWht(null); setFwd(null); setSummaries([]); setRuns({}); setMissing([]); return; }
     let alive = true;
     // 🚨 D89 — 4 ก้อนนี้ป้อนเอกสารที่ยื่นสรรพากร · อ่านไม่ได้ต้องขึ้นแถบแดง
     //    ไม่ใช่ปล่อยให้หน้าจอโชว์ยอดที่ขาดข้อมูลแล้วผู้ใช้กดพิมพ์
@@ -117,10 +121,11 @@ export function TaxDocsTab({
       getForwardedVatAction(period, realEntity),
       listTaxSummariesAction(realEntity),
       getReportRunsAction(period, realEntity),
+      getMissingInvoicesAction(period, realEntity),
     ])
-      .then(([w, f, s, r]) => {
+      .then(([w, f, s, r, m]) => {
         if (!alive) return;
-        setWht(w); setFwd(f); setSummaries(s); setRuns(r);
+        setWht(w); setFwd(f); setSummaries(s); setRuns(r); setMissing(m);
       })
       .catch(() => { if (alive) setLoadErr(true); });
     return () => { alive = false; };
@@ -220,6 +225,7 @@ export function TaxDocsTab({
             <h3 className="mb-1 font-semibold text-ink">ภพ.30 — รายงานภาษีซื้อ-ขาย</h3>
             <p className="mb-2 text-sm text-muted">ภาษีซื้อยกมา (เดือนก่อน): <b>{fwd === null ? "…" : fmt(fwd)}</b> <span className="text-xs text-faint">← เช็คว่าตรงกับ ภพ.30 เดือนก่อน</span></p>
             <button onClick={genPhorPor30} disabled={busy} className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-on-brand disabled:opacity-50">สร้าง ภพ.30</button>
+            <MissingInvoiceList rows={missing} />
           </div>
         ) : (
           <div className={box}>
@@ -391,5 +397,36 @@ function EditRow({ h, entityId, onSaved, onReprint, busy }: {
         </td></tr>
       )}
     </>
+  );
+}
+
+/**
+ * D124 (ทาง ก) — บิลซื้อมี VAT ที่ยังไม่กรอกเลขใบกำกับ **นับอยู่ใน ภพ.30 แล้ว** แต่ต้องเห็นทุกใบ
+ * ★ หัวข้อ/วิธีแก้ตัดสินใน lib (`missingInvoiceListText`) · ไม่มีบิล = ไม่ render อะไร
+ */
+function MissingInvoiceList({ rows }: { rows: { txId: string; date: string; contactName: string; description: string; amount: number; vat: number }[] }) {
+  const t = missingInvoiceListText(rows.length, rows.reduce((s, r) => s + r.vat, 0));
+  if (!t) return null;
+  return (
+    <div className="mt-3 rounded-lg border border-warn-line bg-warn-bg p-2 text-xs">
+      <p className="font-medium text-warn">⚠️ {t.title}</p>
+      <p className="mt-0.5 text-muted">{t.howTo}</p>
+      <div className="mt-2 max-h-56 overflow-auto">
+        <table className="tbl">
+          <thead><tr className="text-left text-faint"><th>วันที่</th><th>คู่ค้า</th><th>รายละเอียด</th><th className="num">ยอด</th><th className="num">VAT</th></tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.txId} title={r.txId}>
+                <td className="whitespace-nowrap">{r.date}</td>
+                <td>{r.contactName || "-"}</td>
+                <td>{r.description || "-"}</td>
+                <td className="num">{fmt(r.amount)}</td>
+                <td className="num">{fmt(r.vat)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }

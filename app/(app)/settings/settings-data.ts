@@ -4,6 +4,7 @@ import { brandingFromSettings, type Branding } from "@/lib/shared/branding";
 import type { EditLogRow } from "@/lib/shared/editLog";
 import { mustRead } from "@/lib/shared/dbError";
 import { getTenantPlan } from "@/lib/shared/tenant-plan";
+import { activeAccountNames } from "@/lib/accounting/bankAccounts";
 import { DOC_GROUPS, type DocEntityParam, type DocNumberingRow } from "@/lib/shared/docNumbering";
 
 /**
@@ -98,7 +99,7 @@ export async function getCompanySettings(): Promise<{
       .from("app_settings")
       .select("kind, value")
       .in("kind", ["sales_doc_entity", "sales_revenue_entity", "sales_revenue_account"]),
-    supabase.from("bank_accounts").select("account_name").order("account_name"),
+    supabase.from("bank_accounts").select("account_name, active").order("account_name"),
   ]);
   const byKind = (k: string) => (settings.data ?? []).filter((x) => x.kind === k).map((x) => x.value as string);
   return {
@@ -107,7 +108,8 @@ export async function getCompanySettings(): Promise<{
     docEntityId: byKind("sales_doc_entity")[0] ?? byKind("sales_revenue_entity")[0] ?? "",
     revenueEntityId: byKind("sales_revenue_entity")[0] ?? "",
     revenueAccountName: byKind("sales_revenue_account")[0] ?? "",
-    accounts: (accounts.data ?? []).map((a) => a.account_name as string),
+    // ★ D125: ตัดบัญชีที่ปิดใช้ออก แต่คงบัญชีรับรายได้ขายที่ตั้งไว้อยู่แล้ว
+    accounts: activeAccountNames((accounts.data ?? []) as { account_name: string; active: boolean | null }[], byKind("sales_revenue_account")[0]),
   };
 }
 

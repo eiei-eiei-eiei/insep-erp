@@ -4,9 +4,8 @@ import { Fragment, useState } from "react";
 import { getApArAction, settleApArAction, voidTransactionAction } from "../actions";
 import type { Bootstrap } from "./types";
 import { AdvanceCard } from "./AdvanceCard";
+import { accountsFor } from "@/lib/accounting/bankAccounts";
 import { Card, Field, Msg, Select, TextInput, fmt, todayISO, useSaver, useRead, LoadError } from "./ui";
-import { settleVatWarn } from "@/lib/accounting/calc";
-import { effectiveTaxAccounts } from "@/lib/accounting/taxAccounts";
 
 type ApAr = Awaited<ReturnType<typeof getApArAction>>;
 
@@ -16,9 +15,7 @@ export function ApArTab({ boot, entityId, active }: { boot: Bootstrap; entityId:
   const [settleId, setSettleId] = useState<string | null>(null);
   const [acc, setAcc] = useState("");
   const [payDate, setPayDate] = useState(todayISO());
-  const accountOptions = boot.accounts.filter((a) => entityId === "ALL" || (a.entity_ids ?? []).length === 0 || (a.entity_ids ?? []).includes(entityId));
-  // D123 — ชุดบัญชีระบบภาษีที่มีผลจริง (ไม่ได้ตั้ง = ทุกบัญชี) ไว้เตือนตอนชำระ
-  const taxAccounts = effectiveTaxAccounts(boot.taxAccountsSet, boot.accounts.map((a) => a.account_name));
+  const accountOptions = accountsFor(boot.accounts, entityId);
 
   // 🚨 D89 — รับ throw จากชั้นอ่าน ไม่งั้นหน้าลูกหนี้-เจ้าหนี้ค้างที่ "กำลังโหลด…"
   const { data, loading, err, reload } = useRead<ApAr>(
@@ -80,10 +77,6 @@ export function ApArTab({ boot, entityId, active }: { boot: Bootstrap; entityId:
                           <Field label="วันที่ชำระ"><TextInput type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} /></Field>
                           <button onClick={() => doSettle(r.transactionId)} disabled={pending} className="rounded-lg bg-brand px-4 py-2 text-sm text-on-brand disabled:opacity-50">ยืนยันชำระ</button>
                         </div>
-                        {(() => {
-                          const w = settleVatWarn({ tax_invoice_no: r.taxInvoiceNo, vat_amount: r.vatAmount }, acc, taxAccounts);
-                          return w ? <p className="mt-2 text-xs text-warn">{w}</p> : null;
-                        })()}
                         <p className="mt-1 text-xs text-faint">
                           ยอดเงินในบัญชีจะขยับในวันที่ชำระ · บิลยังอยู่ในรายงานภาษีเดือนเดิม ({r.date.slice(0, 7)}) ไม่ย้ายตามวันที่ชำระ
                         </p>

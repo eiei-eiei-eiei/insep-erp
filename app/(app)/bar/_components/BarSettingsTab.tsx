@@ -6,7 +6,6 @@ import { promptPayError, promptPayPayload } from "@/lib/bar/promptpay";
 import { hasSaleWindow } from "@/lib/bar/businessDate";
 import { Card, Field, TextInput, Select, Msg, useSaver, MissingHint, SuggestInput } from "@/lib/shared/ui";
 import { saveBarSettingsAction } from "../actions";
-import { TAX_ACCOUNTS_CARD, TAX_ACCOUNTS_WHERE } from "@/lib/accounting/taxAccounts";
 import { ReceiptLayoutCard } from "./ReceiptLayoutCard";
 import type { ReceiptLayout } from "@/lib/bar/layout";
 
@@ -221,13 +220,6 @@ export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: ()
               ยังไม่มีบัญชีเงินในระบบ — ไปเพิ่มที่ <b>บัญชี → บัญชี &amp; เงินสด</b> ก่อน
             </p>
           )}
-          {/**
-            * 🚨 **รูซ้อนที่ต้องอุดพร้อมกัน** — ต่อให้ลงบัญชีสำเร็จ ถ้าบัญชีนี้ไม่ได้ถูกนับเข้า
-            *    ระบบภาษี ยอดบาร์จะ **หายจาก ภพ.30 ทั้งเดือนโดยไม่มีอะไรฟ้อง**
-            *    (`passesTaxGuard()` กรองด้วย `taxAccounts.has(account_name)` — กติกา D93)
-            * D116 — บัญชีเงินสดก็โดนกติกาเดียวกัน ต้องเตือนทั้งสองช่อง
-            */}
-          <TaxAccountWarn name={revenueAccount} accounts={data.bankAccounts} />
 
           {/* D116 — เงินสดเก็บหมุนในร้าน ไม่ได้ฝากธนาคาร → ลงบัญชีแยกได้ */}
           <Field label="บัญชีที่ยอดเงินสดเข้า">
@@ -243,7 +235,6 @@ export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: ()
           <p className="mt-1 text-xs text-faint">
             ถ้าเงินสดเก็บไว้หมุนในร้าน ให้เลือกบัญชีเงินสด (เช่น เงินสดในร้าน) — ยอดในบัญชีธนาคารของแอปจะตรงกับเงินที่เข้าธนาคารจริง
           </p>
-          <TaxAccountWarn name={cashAccount} accounts={data.bankAccounts} />
 
           <Field label="หมวดรายรับ">
             <SuggestInput
@@ -278,15 +269,3 @@ export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: ()
   );
 }
 
-/** เตือนเมื่อบัญชีที่เลือกยังไม่ถูกนับเข้าระบบภาษี (ยอดจะไม่ขึ้นใน ภพ.30 · D93/D96) */
-function TaxAccountWarn({ name, accounts }: { name: string; accounts: { name: string; countedInTax: boolean }[] }) {
-  if (!name || !accounts.some((b) => b.name === name && !b.countedInTax)) return null;
-  return (
-    <p className="mt-1 text-xs text-warn">
-      ⚠️ บัญชี <b>{name}</b> ยังไม่อยู่ใน <b>{TAX_ACCOUNTS_CARD}</b> — ลงบัญชีจะสำเร็จ แต่ยอดนี้จะ{" "}
-      <b>ไม่ขึ้นใน ภพ.30</b>
-      <br />
-      ไปเพิ่มบัญชีนี้ที่ <b>{TAX_ACCOUNTS_WHERE}</b>
-    </p>
-  );
-}

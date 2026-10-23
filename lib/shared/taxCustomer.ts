@@ -67,3 +67,21 @@ export function validateNewCustomer(input: NewCustomerInput): string | null {
   }
   return null;
 }
+
+/**
+ * D125 — แปลงคู่ค้าที่บันทึกไว้แล้ว กลับเป็นช่องของฟอร์ม (ฟอร์มแก้คู่ค้าในหน้าตั้งค่าบัญชี)
+ * · ไม่มีเลขภาษี + ไม่มีสาขา = ลูกค้าทั่วไป (noTaxId)
+ * · "สำนักงานใหญ่" / ว่าง / "00000" = สำนักงานใหญ่
+ * · นอกนั้นดึงตัวเลขออกมาเป็นเลขสาขา (ข้อมูลเก่าอาจเขียน "สาขา 2" หรือ "00002")
+ *   🪤 ไม่มีตัวเลขเลย (เช่น "สาขาบางนา") → คืน branchNumber ว่าง ⇒ validateNewCustomer ฟ้องให้กรอก
+ *      ไม่เดาว่าเป็นสำนักงานใหญ่ (เดาผิด = ใบกำกับพิมพ์สาขาผิดเงียบ ๆ)
+ */
+export function branchFormOf(branch: string | null | undefined, taxId: string | null | undefined):
+  Pick<NewCustomerInput, "branchMode" | "branchNumber" | "noTaxId"> {
+  const b = String(branch ?? "").trim();
+  const t = String(taxId ?? "").trim();
+  if (!t && !b) return { branchMode: "hq", branchNumber: "", noTaxId: true };
+  if (!b || b === "สำนักงานใหญ่" || /^0+$/.test(b)) return { branchMode: "hq", branchNumber: "", noTaxId: false };
+  const digits = (b.match(/\d+/g) ?? []).join("");
+  return { branchMode: "branch", branchNumber: digits ? String(Number(digits)) : "", noTaxId: false };
+}

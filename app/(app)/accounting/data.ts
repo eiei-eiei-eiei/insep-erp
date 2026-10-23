@@ -6,6 +6,7 @@ import {
   whtReport,
   dashboardData,
   previousVat,
+  missingInvoicePurchases,
   type Tx,
   type ContactMap,
   type TaxSummaryRow,
@@ -18,8 +19,9 @@ import {
 } from "@/lib/accounting/ledger";
 import { ADVANCE_TYPE, ADVANCE_REFUND_TYPE, type AdvanceRow } from "@/lib/accounting/advance";
 import { fetchAllRows } from "@/lib/shared/paginate";
-import { effectiveTaxAccounts } from "@/lib/accounting/taxAccounts";
 import { mustRead } from "@/lib/shared/dbError";
+import { getTenantPlan } from "@/lib/shared/tenant-plan";
+import { hasModule } from "@/lib/shared/workspaces";
 import { taxDueBoard } from "@/lib/accounting/taxPay";
 import { toFilingMethod, type TaxFilingRow } from "@/lib/accounting/taxFiling";
 
@@ -56,27 +58,6 @@ async function fetchAllTransactions(
   );
 }
 
-/**
- * ชื่อบัญชีในระบบภาษี (`app_settings` kind='tax_account')
- *
- * 🚨 ของเดิม fallback เป็นชื่อตายตัว "บัญชีบริษัท" — D89 เขียนเตือนไว้แล้วว่าอันตราย
- *    แต่ยังไม่ได้แก้ · ผลจริงที่เจอตอนเทสลูกค้าใหม่ (2026-09-05): ลูกค้าตั้งชื่อบัญชีเอง
- *    → บิลถูกกรองออกหมด → **แดชบอร์ด 0.00 ทุกช่อง และ ภพ.30 = 0 ทั้งที่ขายจริง**
- *    ตอนนี้ "ยังไม่ได้ตั้ง = นับทุกบัญชีเงินในระบบ" (ดู lib/accounting/taxAccounts)
- * ★ กิจการที่ตั้งไว้แล้วไม่ขยับ — เส้นทางนั้นไม่แตะค่าปริยายเลย
- */
-async function loadTaxAccounts(supabase: Awaited<ReturnType<typeof db>>): Promise<Set<string>> {
-  // "ไม่ได้ตั้งค่า" (ลิสต์ว่าง) กับ "อ่านไม่ได้" ต้องแยกกันให้ขาด (D89)
-  const [saved, banks] = await Promise.all([
-    supabase.from("app_settings").select("value").eq("kind", "tax_account"),
-    supabase.from("bank_accounts").select("account_name"),
-  ]);
-  return effectiveTaxAccounts(
-    mustRead(saved, "รายชื่อบัญชีในระบบภาษี").map((r) => r.value as string),
-    mustRead(banks, "รายชื่อบัญชีเงิน").map((r) => r.account_name as string),
-  );
-}
-
 /** map ชื่อคู่ค้า → {tax_id, branch, address} */
 async function loadContactMap(supabase: Awaited<ReturnType<typeof db>>): Promise<ContactMap> {
   // 🚨 D89 — ว่างเพราะอ่านไม่ได้ = ช่องเลขผู้เสียภาษีบน ภพ.30/ภงด. ว่างทั้งแบบ
@@ -97,16 +78,17 @@ async function loadContactMap(supabase: Awaited<ReturnType<typeof db>>): Promise
 /** ข้อมูลตั้งต้นหน้าบัญชี (dropdowns + role) */
 export async function getBootstrap() {
   const supabase = await db();
-  const [{ data: user }, entities, accounts, settings, contacts, materials] = await Promise.all([
+  const [{ data: user }, entities, accounts, settings, contacts, materials, plan] = await Promise.all([
     supabase.auth.getUser(),
     supabase
       .from("entities")
       .select("entity_id, name, excise_id, is_vat, name_eng, tax_id, branch, address, phone, bank_line")
       .order("entity_id"),
-    supabase.from("bank_accounts").select("account_name, entity_ids, opening_balance, kind").order("account_name"),
+    supabase.from("bank_accounts").select("account_id, account_name, entity_ids, opening_balance, kind, active").order("account_name"),
     supabase.from("app_settings").select("kind, value, sort").order("sort"),
     supabase.from("contacts").select("contact_id, name, tax_id, branch, address, contact_type, roles").order("name"),
     supabase.from("materials").select("material_id, name, unit").order("material_id"),
+    getTenantPlan(),
   ]);
 
   let role = "viewer";
@@ -117,10 +99,7 @@ export async function getBootstrap() {
 
   const s = settings.data ?? [];
   const byKind = (k: string) => s.filter((x) => x.kind === k).map((x) => x.value as string);
-  // D80 — ค่าปริยายที่คำนวณในโค้ด **ห้ามแสดงปนกับค่าที่บันทึกไว้จริงในช่องที่แก้ได้**
-  //        (ของเดิมโชว์ "บัญชีบริษัท" เป็น chip ที่มีปุ่ม ✕ ทั้งที่ไม่มีแถวใน DB →
-  //         กดลบขึ้น "ลบแล้ว" สีเขียว แล้วรีเฟรชมันกลับมา)
-  const taxAccountsSet = byKind("tax_account");
+  // 🚨 D124 — ไม่อ่านค่าตั้ง "บัญชีในระบบภาษี" (kind tax_account) แล้ว (ภาษีขึ้นกับกิจการ + เอกสาร ไม่ใช่บัญชี) แถวเก่าใน DB ทิ้งไว้ได้ ไม่มีใครอ่าน
   // D80: หมวดที่จุดชนวนรับวัตถุดิบเข้าสต็อกผลิต — ตั้งเองได้ ไม่ตั้ง = ค่าปริยายในโค้ด
   const forwardCatsSet = byKind(FORWARD_CAT_KIND);          // ที่ลูกค้าตั้งเองจริง ๆ (อาจว่าง)
   const forwardCats = forwardCatsOf(forwardCatsSet);        // ที่มีผลจริง (ว่าง = ค่าปริยาย)
@@ -134,9 +113,10 @@ export async function getBootstrap() {
     expenseCats: byKind("expense_cat"),
     incomeCats: byKind("income_cat"),
     whtRates: byKind("wht_rate"),
-    taxAccountsSet,
     forwardCats,
     forwardCatsSet,
+    // D125 — การ์ดหมวดรับวัตถุดิบเข้าสต็อกผลิต ไม่มีความหมายถ้าไม่ได้ซื้อโมดูลผลิต
+    hasProduction: hasModule(plan.modules, "production"),
     // ★ แบรนด์ / กิจการบนเอกสาร / LINE ไม่อยู่ที่นี่แล้ว — ย้ายไป app/(app)/settings/settings-data.ts (D63)
   };
 }
@@ -144,15 +124,14 @@ export async function getBootstrap() {
 /** A11 — Dashboard + WHT pending (issuedTxIds จาก wht_certificates.tx_ids) */
 export async function getDashboard(period: string, entityId: string) {
   const supabase = await db();
-  const [txAll, taxAccounts, wht] = await Promise.all([
+  const [txAll, wht] = await Promise.all([
     fetchAllTransactions(supabase),
-    loadTaxAccounts(supabase),
     supabase.from("wht_certificates").select("tx_ids"),
   ]);
   const issued = new Set<string>();
   // 🚨 D89 — ว่างเพราะอ่านไม่ได้ = บิลที่ออกใบ 50ทวิ ไปแล้วโผล่ซ้ำในคิว "รอออก 50ทวิ"
   for (const w of mustRead(wht, "ประวัติใบ 50 ทวิ")) for (const id of (w.tx_ids as string[]) ?? []) if (id) issued.add(id);
-  return dashboardData(period, entityId, txAll as unknown as Tx[], taxAccounts, issued);
+  return dashboardData(period, entityId, txAll as unknown as Tx[], issued);
 }
 
 /** A2/A5 — AP/AR ค้าง + (union) ยอดค้างจากออเดอร์ขาย (read-only, แก้ T2) */
@@ -180,9 +159,6 @@ export async function getApAr(entityId: string) {
         ? `${(r as unknown as { installment_no?: number }).installment_no}/${(r as unknown as { installment_total?: number }).installment_total ?? ""}`
         : "",
       poGroupId: (r as unknown as { po_group_id?: string }).po_group_id ?? "",
-      // D123 — ไว้เตือนตอนกดชำระเข้าบัญชีนอกระบบภาษี (settleVatWarn)
-      taxInvoiceNo: r.tax_invoice_no ?? "",
-      vatAmount: Number(r.vat_amount) || 0,
     };
     if (r.ap_ar_status === "AP") {
       payable.push(rec);
@@ -238,8 +214,6 @@ export type ApArRow = {
   amount: number;
   installment: string;
   poGroupId: string;
-  taxInvoiceNo: string;
-  vatAmount: number;
 };
 export type SalesOutstandingRow = {
   quNo: string;
@@ -335,10 +309,9 @@ export async function getAdvances(entityId: string) {
 /** A8 — ยอดคงเหลือทุกบัญชี ณ สิ้นเดือน */
 export async function getBalances(upToPeriod: string, entityId: string) {
   const supabase = await db();
-  const [txAll, accRes, taxAccounts] = await Promise.all([
+  const [txAll, accRes] = await Promise.all([
     fetchAllTransactions(supabase),
     supabase.from("bank_accounts").select("account_name, entity_ids, opening_balance"),
-    loadTaxAccounts(supabase),
   ]);
   // 🚨 D89 — ว่าง = ยอดยกมาหายทั้งระบบ → ยอดคงเหลือทุกบัญชีผิด
   const accounts: AccountMeta[] = mustRead(accRes, "ทะเบียนบัญชีเงิน").map((a) => ({
@@ -346,7 +319,7 @@ export async function getBalances(upToPeriod: string, entityId: string) {
     openingBalance: Number(a.opening_balance) || 0,
     entityIds: (a.entity_ids as string[]) ?? [],
   }));
-  return accountBalances(upToPeriod, txAll as unknown as LedgerTx[], accounts, entityId, taxAccounts);
+  return accountBalances(upToPeriod, txAll as unknown as LedgerTx[], accounts, entityId);
 }
 
 /** A8 — statement บัญชีรายเดือน */
@@ -671,10 +644,9 @@ export async function getReportRuns(month: string, entityId: string): Promise<Re
 /** ชุดข้อมูล ภพ.30 / ภงด. สำหรับ PDF (เรียกจาก /reports) */
 export async function getTaxReportBundle(period: string, entityId: string) {
   const supabase = await db();
-  const [txAll, contactMap, taxAccounts, summaries, entity] = await Promise.all([
+  const [txAll, contactMap, summaries, entity] = await Promise.all([
     fetchAllTransactions(supabase),
     loadContactMap(supabase),
-    loadTaxAccounts(supabase),
     supabase.from("tax_summaries").select("report_month, forwarded_vat_out, entity_id, created_at"),
     supabase.from("entities").select("name, tax_id, branch, excise_id").eq("entity_id", entityId).maybeSingle(),
   ]);
@@ -685,8 +657,8 @@ export async function getTaxReportBundle(period: string, entityId: string) {
     entity: mustRead<{ name: string; tax_id: string; branch: string; excise_id: string } | null>(
       entity, "ข้อมูลกิจการบนแบบยื่น",
     ) ?? { name: "", tax_id: "", branch: "", excise_id: "" },
-    taxReport: taxReport(period, entityId, fwdIn, txs, contactMap, taxAccounts),
-    whtReport: whtReport(period, entityId, txs, contactMap, taxAccounts),
+    taxReport: taxReport(period, entityId, fwdIn, txs, contactMap),
+    whtReport: whtReport(period, entityId, txs, contactMap),
     forwardedVatIn: fwdIn,
   };
 }
@@ -710,10 +682,9 @@ function nextMonthStart(month: string): string {
  */
 export async function getTaxPayBoard(period: string, entityId: string) {
   const supabase = await db();
-  const [txAll, contactMap, taxAccounts, summariesRes, entityRes, runs, paysRes, filesRes] = await Promise.all([
+  const [txAll, contactMap, summariesRes, entityRes, runs, paysRes, filesRes] = await Promise.all([
     fetchAllTransactions(supabase),
     loadContactMap(supabase),
-    loadTaxAccounts(supabase),
     supabase.from("tax_summaries").select("report_month, net_payable, forwarded_vat_out, entity_id, created_at"),
     supabase.from("entities").select("is_vat, filing_method").eq("entity_id", entityId).maybeSingle(),
     getReportRuns(period, entityId),
@@ -737,8 +708,8 @@ export async function getTaxPayBoard(period: string, entityId: string) {
   const summaryRows = mustRead(summariesRes, "ยอดภาษีที่ยื่นไว้");
   const summaries = summaryRows as unknown as TaxSummaryRow[];
   const fwdIn = previousVat(period, entityId, summaries);
-  const tr = taxReport(period, entityId, fwdIn, txs, contactMap, taxAccounts);
-  const wr = whtReport(period, entityId, txs, contactMap, taxAccounts);
+  const tr = taxReport(period, entityId, fwdIn, txs, contactMap);
+  const wr = whtReport(period, entityId, txs, contactMap);
 
   // ยอดที่ "แช่ไว้" ตอนกดสร้าง ภพ.30 ของงวดนี้ (แถวล่าสุด) — null = ยังไม่เคยสร้าง
   const summaryOfPeriod = summaryRows
@@ -830,3 +801,68 @@ export async function getTaxPayBoard(period: string, entityId: string) {
     filings,
   };
 }
+
+/**
+ * D124 — บิลซื้อเดือนนี้ที่มี VAT แต่ยังไม่กรอกเลขใบกำกับ (นับอยู่ใน ภพ.30 — ทาง ก)
+ * ★ ตัดสินด้วย `missingInvoicePurchases()` ซึ่งใช้ด่านเดียวกับ ภพ.30 ⇒ ลิสต์ = บิลที่อยู่ในตัวเลขจริงพอดี
+ */
+export async function getMissingInvoices(period: string, entityId: string) {
+  const supabase = await db();
+  const txs = await fetchAllTransactions(supabase, (q) => q.gt("vat_amount", 0).in("type", ["รายจ่าย", "บันทึกภาษี"]));
+  return missingInvoicePurchases(period, entityId, txs as unknown as Tx[])
+    .sort((a, b) => String(a.transaction_date).localeCompare(String(b.transaction_date)))
+    .map((t) => ({
+      txId: t.tx_id,
+      date: t.transaction_date ?? "",
+      contactName: t.contact_name ?? "",
+      description: t.description ?? "",
+      amount: Number(t.amount_after_discount) || 0,
+      vat: Number(t.vat_amount) || 0,
+    }));
+}
+
+/**
+ * D125 — การ์ดบัญชีเงินในหน้าตั้งค่า: ทะเบียนบัญชี + การใช้งาน (ลบได้ไหม) + ยอดคงเหลือปัจจุบัน
+ * ★ การใช้งานมาจาก `fn_bank_account_usage()` (definer — นับบิลของทุกกิจการ ไม่ใช่แค่ที่ผู้ใช้เห็น)
+ * ★ ยอดคงเหลือใช้ `accountBalances` ตัวเดียวกับแท็บ บัญชี & เงินสด (ไม่มีสูตรชุดที่สอง)
+ */
+export async function getBankAccountAdmin() {
+  const supabase = await db();
+  const [accRes, usageRes, txAll] = await Promise.all([
+    supabase
+      .from("bank_accounts")
+      .select("account_id, account_name, entity_ids, kind, opening_balance, opening_date, active")
+      .order("account_name"),
+    supabase.rpc("fn_bank_account_usage"),
+    fetchAllTransactions(supabase),
+  ]);
+  const rows = mustRead(accRes, "ทะเบียนบัญชีเงิน");
+  const usage = mustRead(usageRes, "การใช้งานบัญชีเงิน") as {
+    account_name: string; tx_count: number; pay_count: number; leg_count: number; setting_kinds: string[] | null;
+  }[];
+  const bal = accountBalances(
+    "9999-12",
+    txAll as unknown as LedgerTx[],
+    rows.map((a) => ({ accountName: a.account_name as string, openingBalance: Number(a.opening_balance) || 0, entityIds: [] })),
+    "ALL",
+  );
+  const balOf = new Map(bal.balances.map((b) => [b.accountType, b.balance]));
+  const useOf = new Map(usage.map((u) => [u.account_name, u]));
+  return rows.map((a) => {
+    const u = useOf.get(a.account_name as string);
+    return {
+      accountId: a.account_id as string,
+      accountName: a.account_name as string,
+      entityIds: ((a.entity_ids as string[] | null) ?? []),
+      kind: (a.kind as string | null) ?? "",
+      openingBalance: Number(a.opening_balance) || 0,
+      openingDate: (a.opening_date as string | null) ?? "",
+      active: a.active !== false,
+      balance: balOf.get(a.account_name as string) ?? null,
+      usage: u
+        ? { txCount: u.tx_count, payCount: u.pay_count, legCount: u.leg_count, settingKinds: u.setting_kinds ?? [] }
+        : undefined,
+    };
+  });
+}
+export type BankAccountAdminRow = Awaited<ReturnType<typeof getBankAccountAdmin>>[number];

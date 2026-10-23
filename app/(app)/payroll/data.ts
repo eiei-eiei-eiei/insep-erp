@@ -97,7 +97,7 @@ export async function getPayrollConfig(): Promise<{
     supabase.from("pay_variables").select("*").order("sort"),
     supabase.from("pay_post_legs").select("*").order("sort"),
     supabase.from("pay_rates").select("*").order("effective_from", { ascending: false }),
-    supabase.from("bank_accounts").select("account_name").order("account_name"),
+    supabase.from("bank_accounts").select("account_name, active").order("account_name"),
     // ★ ข้อเสนอแนะเท่านั้น — ขาลงบัญชียัง "พิมพ์เองได้" ตามที่ตัดสินไว้ใน D67
     //   (ที่นั่นเข้าใจว่าผู้ใช้ไม่อยากได้ดร็อปดาวน์เลย · จริง ๆ คืออยากได้ทั้งพิมพ์เองและมีตัวช่วย)
     // 🪤 D85: บทบาท payroll/payroll_manager **อ่าน transactions ไม่ได้แล้ว** → RLS คืน []
@@ -121,7 +121,11 @@ export async function getPayrollConfig(): Promise<{
     groups: list("pay_group"),
     entityId: one("payroll_entity"),
     payAccount: one("payroll_pay_account"),
-    bankAccounts: (accts.data ?? []).map((a) => a.account_name as string),
+    // ★ D125: ตัดบัญชีที่ปิดใช้ออก แต่คงบัญชีที่ตั้งไว้แล้ว (บัญชีจ่ายหลัก + ของขาลงบัญชี)
+    bankAccounts: (accts.data ?? [])
+      .filter((a) => a.active !== false || a.account_name === one("payroll_pay_account")
+        || (legs.data ?? []).some((l) => (l as { account_name?: string }).account_name === a.account_name))
+      .map((a) => a.account_name as string),
     expenseCategories: uniqSorted([
       ...list("expense_cat"),
       ...(cats.data ?? []).map((r) => r.category as string | null),

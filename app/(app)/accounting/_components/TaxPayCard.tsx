@@ -12,6 +12,7 @@
  */
 
 import { useState } from "react";
+import { accountsFor } from "@/lib/accounting/bankAccounts";
 import {
   canPay,
   canUnpay,
@@ -358,9 +359,7 @@ function PayModal({
   onSaved: () => void;
 }) {
   const pref = prefs[row.kind] ?? {};
-  const visibleAccounts = accounts.filter(
-    (a) => !a.entity_ids || a.entity_ids.length === 0 || a.entity_ids.includes(entityId),
-  );
+  const visibleAccounts = accountsFor(accounts, entityId);
   const [payDate, setPayDate] = useState(todayISO());
   const [amount, setAmount] = useState<number | "">(row.amount);
   const [surcharge, setSurcharge] = useState<number | "">("");

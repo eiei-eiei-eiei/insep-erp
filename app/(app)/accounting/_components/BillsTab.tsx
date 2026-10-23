@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { searchBillsAction, getBillDetailAction, voidTransactionAction, updateTransactionAction, getItemHistoryAction } from "../actions";
-import { entryCalc, itemTotal, detectVatMode, unitPriceOf, unitPriceHeader, lineTotalHeader, itemsHintText } from "@/lib/accounting/calc";
+import { entryCalc, itemTotal, detectVatMode, unitPriceOf, unitPriceHeader, lineTotalHeader, itemsHintText, missingInvoiceWarn } from "@/lib/accounting/calc";
 import { taxDateOnNoChange, taxDateOnTxDateChange } from "@/lib/accounting/entryForm";
 import { qn, emptyItem, makeItemHandlers, buildItemInputs, useBillAmounts, hasContent, type BillItem } from "./billItems";
 import { VatModeCard } from "./VatModeCard";
+import { accountsFor } from "@/lib/accounting/bankAccounts";
+import { MissingInvoiceWarn } from "./MissingInvoiceWarn";
 import type { Bootstrap } from "./types";
 import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, fmt, useSaver, EscToClose, useRead, LoadError } from "./ui";
 import { can, toRole } from "@/lib/shared/roles";
@@ -270,7 +272,8 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
   const cats = type === "รายรับ" ? boot.incomeCats : boot.expenseCats;
   const itemCatOptions = useMemo(() => [...new Set([...itemHist.itemCategories, ...items.map((it) => it.itemCategory).filter(Boolean)])], [itemHist.itemCategories, items]);
   const itemJobOptions = useMemo(() => [...new Set([...itemHist.itemJobs, ...items.map((it) => it.itemJob).filter(Boolean)])], [itemHist.itemJobs, items]);
-  const accountOptions = boot.accounts.filter((a) => { const ids = a.entity_ids ?? []; return ids.length === 0 || ids.includes(entId); });
+  // ★ D125: บัญชีที่ปิดใช้ไปแล้วแต่เป็นของบิลนี้ ต้องยังอยู่ในช่อง (ไม่งั้นกดบันทึกแล้วบิลหลุดบัญชี)
+  const accountOptions = accountsFor(boot.accounts, entId, accountName);
   const norm = (s: string) => s.trim().toLowerCase();
   const nameMatches = boot.contacts.filter((c) => norm(c.name) === norm(contactName));
   const multiBranch = nameMatches.length > 1;
@@ -369,6 +372,8 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
               <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={hasWht} onChange={(e) => setHasWht(e.target.checked)} /> หัก ณ ที่จ่าย</label>
               {hasWht && <Field label="อัตรา WHT (%)"><NumBox value={whtRate} blankZero onChange={(v) => setWhtRate(v === "" ? 0 : v)} /></Field>}
             </div>
+            {/* D124 — เตือนเหมือนฟอร์มบันทึก (ทาง ก: ยังนับเข้า ภพ.30) */}
+            <MissingInvoiceWarn text={missingInvoiceWarn(type, hasVat, taxInvoiceNo)} />
 
             <div className="mt-3 flex items-center justify-between">
               <span className="text-xs text-faint">ยอดคำนวณ</span>

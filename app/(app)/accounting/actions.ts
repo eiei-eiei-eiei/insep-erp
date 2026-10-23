@@ -17,11 +17,13 @@ import {
   listInstallmentGroups,
   getWhtBundle,
   getTaxReportBundle,
+  getMissingInvoices,
   getRecentBillsByContact,
   getItemHistory,
   getReportRuns,
   getTaxPayBoard,
   getAdvances,
+  getBankAccountAdmin,
 } from "./data";
 
 export type SaveResult = { ok: boolean; error?: string; data?: unknown };
@@ -74,6 +76,10 @@ export async function getWhtBundleAction(period: string, entityId: string) {
 }
 export async function getTaxReportBundleAction(period: string, entityId: string) {
   return getTaxReportBundle(period, entityId);
+}
+/** D124 — บิลซื้อมี VAT ที่ยังไม่กรอกเลขใบกำกับ (ลิสต์บนการ์ด ภพ.30) */
+export async function getMissingInvoicesAction(period: string, entityId: string) {
+  return getMissingInvoices(period, entityId);
 }
 
 /** ข้อมูลหัวกระดาษ 50ทวิ (ผู้หัก) + ผู้ถูกหัก (จากชื่อคู่ค้า) */
@@ -466,48 +472,83 @@ export async function deleteSettingAction(kind: string, value: string): Promise<
   revalidatePath("/accounting");
   return { ok: true };
 }
+/**
+ * D125 — เพิ่ม/แก้บัญชีเงิน
+ * · ไม่ส่ง `accountId` = เพิ่มใหม่ (ชื่อซ้ำ = error · เลิก upsert ตามชื่อแบบเดิมที่แยก "เพิ่ม" กับ "แก้" ไม่ออก)
+ * · ส่ง `accountId` = แก้บัญชีนั้น · ชื่อเปลี่ยน → `fn_rename_bank_account` ตามไปแก้ทุกบิล/ค่าตั้งก่อน
+ *   🚨 ห้าม update account_name ตรง ๆ — บิลอ้างบัญชีด้วยชื่อ (บิลเก่าจะหลุดบัญชีทั้งหมด)
+ */
 export async function saveBankAccountAction(input: {
   accountId?: string;
   accountName: string;
   entityIds: string[];
   kind?: string;
   openingBalance: number;
+  openingDate?: string | null;
 }): Promise<SaveResult> {
   const supabase = await db();
   const name = input.accountName.trim();
   if (!name) return fail("กรอกชื่อบัญชี");
-  // มีชื่อบัญชีนี้แล้ว → อัปเดตตามชื่อ (D23#3 upsert by ชื่อ) ไม่สร้าง id ใหม่ กัน account_name ซ้ำ (unique)
-  const { data: existing } = await supabase.from("bank_accounts").select("account_id").eq("account_name", name).maybeSingle();
-  if (existing?.account_id || input.accountId) {
-    const { error } = await supabase.from("bank_accounts").update({
-      entity_ids: input.entityIds,
-      kind: input.kind ?? null,
-      opening_balance: input.openingBalance,
-    }).eq("account_name", name);
+  const fields = {
+    entity_ids: input.entityIds,
+    kind: input.kind?.trim() || null,
+    opening_balance: input.openingBalance,
+    opening_date: input.openingDate || null,
+  };
+
+  if (input.accountId) {
+    const cur = mustRead<{ account_name: string } | null>(
+      await supabase.from("bank_accounts").select("account_name").eq("account_id", input.accountId).maybeSingle(),
+      "บัญชีเงิน",
+    );
+    if (!cur) return fail("ไม่พบบัญชีนี้ (อาจถูกลบไปแล้ว) — รีเฟรชหน้า");
+    let renamed: Record<string, unknown> | null = null;
+    if (cur.account_name !== name) {
+      const { data, error } = await supabase.rpc("fn_rename_bank_account", { p_old: cur.account_name, p_new: name });
+      if (error) return fail(mapDbError(error));
+      renamed = data as Record<string, unknown>;
+    }
+    // 🪤 RLS ไม่ผ่าน = update 0 แถวโดยไม่ error → ต้องนับแถวที่แก้จริง
+    const { data: upd, error } = await supabase.from("bank_accounts").update(fields).eq("account_id", input.accountId).select("account_id");
     if (error) return fail(mapDbError(error));
+    if (!upd?.length) return fail("แก้บัญชีนี้ไม่ได้ — ต้องมีสิทธิ์ตั้งค่าบัญชี และเห็นทุกกิจการที่ผูกกับบัญชีนี้");
     revalidatePath("/accounting");
-    return { ok: true, data: { updated: true } };
+    return { ok: true, data: { updated: true, renamed } };
   }
+
+  const { data: dup } = await supabase.from("bank_accounts").select("account_id").eq("account_name", name).maybeSingle();
+  if (dup) return fail(`มีบัญชีชื่อ "${name}" อยู่แล้ว — กด แก้ไข ที่แถวนั้นแทน`);
   const { data: seq, error: e } = await supabase.rpc("next_serial", { p_key: "BANK_ACC" });
   if (e) return fail(mapDbError(e));
   const accountId = "ACC-" + String(seq).padStart(3, "0");
-  const { error } = await supabase.from("bank_accounts").insert({
-    account_id: accountId,
-    account_name: name,
-    entity_ids: input.entityIds,
-    kind: input.kind ?? null,
-    opening_balance: input.openingBalance,
-  });
+  const { error } = await supabase.from("bank_accounts").insert({ account_id: accountId, account_name: name, active: true, ...fields });
   if (error) return fail(mapDbError(error));
   revalidatePath("/accounting");
-  return { ok: true, data: { updated: false } };
+  return { ok: true, data: { updated: false, accountId } };
 }
-export async function deleteBankAccountAction(accountId: string): Promise<SaveResult> {
+
+/** D125 — ปิดใช้/เปิดใช้ (บัญชีที่มีบิลแล้วลบไม่ได้ ใช้ตัวนี้แทน) */
+export async function setBankAccountActiveAction(accountId: string, active: boolean): Promise<SaveResult> {
   const supabase = await db();
-  const { error } = await supabase.from("bank_accounts").delete().eq("account_id", accountId);
+  const { data, error } = await supabase.from("bank_accounts").update({ active }).eq("account_id", accountId).select("account_id");
+  if (error) return fail(mapDbError(error));
+  if (!data?.length) return fail("เปลี่ยนสถานะบัญชีนี้ไม่ได้ — ต้องมีสิทธิ์ตั้งค่าบัญชี");
+  revalidatePath("/accounting");
+  return { ok: true };
+}
+
+/** D125 — ลบ · DB ตรวจซ้ำว่าไม่มีอะไรอ้างถึง (`fn_delete_bank_account`) */
+export async function deleteBankAccountAction(accountName: string): Promise<SaveResult> {
+  const supabase = await db();
+  const { error } = await supabase.rpc("fn_delete_bank_account", { p_name: accountName });
   if (error) return fail(mapDbError(error));
   revalidatePath("/accounting");
   return { ok: true };
+}
+
+/** D125 — ข้อมูลสำหรับการ์ดบัญชีเงินในหน้าตั้งค่า (การใช้งาน + ยอดคงเหลือปัจจุบัน) */
+export async function getBankAccountAdminAction() {
+  return getBankAccountAdmin();
 }
 export async function updateContactAction(input: {
   contactId: string;

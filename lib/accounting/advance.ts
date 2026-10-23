@@ -115,14 +115,14 @@ export function staleInvoiceWarn(rows: AdvanceRow[], clearDate: string): string 
   );
 }
 
+import { accountsFor } from "./bankAccounts";
+
 type AccountLike = { account_name: string; entity_ids: string[] | null };
 
 /** บัญชีที่ใช้กับกิจการนี้ได้ (entity_ids ว่าง = ใช้ร่วมทุกกิจการ) — กติกาเดียวกับ SQL */
 export function accountsOf<T extends AccountLike>(accounts: T[], entityId: string): T[] {
-  return accounts.filter((a) => {
-    const ids = a.entity_ids ?? [];
-    return ids.length === 0 || ids.includes(entityId);
-  });
+  // ★ D125 — กติกาเดียวกับทุกช่องเลือกบัญชี (ตัดบัญชีที่ปิดใช้ด้วย)
+  return accountsFor(accounts, entityId);
 }
 
 /** กิจการที่สำรองจ่ายให้ได้ = ทุกกิจการที่ไม่ใช่คนจ่าย */

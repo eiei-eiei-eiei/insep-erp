@@ -11,12 +11,13 @@
  * A4  itemTotal      ส่วนลด item (Phase A) — total = qty×exVat − ส่วนลดบาท
  * A10 whtReport      ภงด.3/53 (Reports.js generateWHTReportHTML)
  * A11 dashboardData  Dashboard + WHT pending (Reports.js getDashboardAndWhtData)
- * A13 เช็คราคา        type/account ว่าง → ไม่อยู่ใน taxAccounts → หลุดทุกจุดโดยอัตโนมัติ
+ * A13 เช็คราคา        type 'เช็คราคา' ไม่ใช่รายรับ/รายจ่าย → ทุกรายงานกรองทิ้งด้วย type อยู่แล้ว
+ * A24 ไม่กรองบัญชี     รายงานภาษี/แดชบอร์ดตัดสินจากกิจการ + เอกสาร ไม่ถามว่าเงินเข้า/ออกบัญชีไหน
+ *                    · บิลซื้อมี VAT ไม่มีเลขใบกำกับ ยังนับแต่ต้องลิสต์ให้เห็น — D124
  * A21 vatMode        โหมดกรอกราคา "รวม VAT" (D98) — ค่าปริยาย "ex" = เส้นทางเดิมทุกตัวอักษร
  */
 
 import { vatFromGross } from "../shared/vat";
-import { TAX_ACCOUNTS_WHERE } from "./taxAccounts";
 
 // ── helpers ────────────────────────────────────────────────────────────────
 /** parse ตัวเลข (รองรับ string มีคอมม่า) — เหมือน num() เดิม */
@@ -414,16 +415,13 @@ function resolveContact(tx: { contact_id?: string | null; contact_name: string |
 import { formatTaxId, formatBranch } from "../shared/format";
 
 /**
- * A2 — guard cash basis: เข้ารายงานเฉพาะแถวปกติที่ไม่ใช่ AP/AR ค้าง
- * และบัญชีอยู่ในระบบภาษี (taxAccounts) + อยู่ในขอบเขตกิจการ
+ * A2 — guard cash basis: เข้ารายงานเฉพาะแถวปกติที่ไม่ใช่ AP/AR ค้าง + อยู่ในขอบเขตกิจการ
+ * 🚨 A24 (D124) — **ไม่มีตัวกรองบัญชีแล้ว** (เดิม: บัญชีต้องอยู่ใน "บัญชีในระบบภาษี")
+ *   ภาษีขึ้นกับกิจการ + เอกสาร ไม่ได้ขึ้นกับว่าเงินเข้า/ออกบัญชีไหน — เงินส่วนตัวแยกด้วย "กิจการ"
+ *   (กิจการส่วนตัว · สำรองจ่าย D119) ไม่ใช่ด้วยรายชื่อบัญชี
  */
-function passesTaxGuard(tx: Tx, entityId: string, taxAccounts: Set<string>): boolean {
-  return (
-    tx.status === "ปกติ" &&
-    !tx.ap_ar_status &&
-    inScope(tx.entity_id, entityId) &&
-    taxAccounts.has(tx.account_name ?? "")
-  );
+function passesTaxGuard(tx: Tx, entityId: string): boolean {
+  return tx.status === "ปกติ" && !tx.ap_ar_status && inScope(tx.entity_id, entityId);
 }
 
 /**
@@ -436,37 +434,54 @@ export function cashDateOf(tx: { transaction_date: string | null; settled_on?: s
   return tx.settled_on || tx.transaction_date;
 }
 
-/** บิลค้างที่ออก/ได้รับใบกำกับภาษีแล้ว — ภาษีเกิดแล้วแม้ยังไม่จ่ายเงิน */
+/** มีเลขใบกำกับภาษีบันทึกไว้หรือยัง */
 export function hasTaxInvoice(tx: { tax_invoice_no: string | null }): boolean {
   return String(tx.tax_invoice_no ?? "").trim() !== "";
 }
 
 /**
- * A23 (D123) — ด่านของ ภพ.30 เท่านั้น
- * บิลปกติ: เหมือน A2 ทุกตัวอักษร (ต้องอยู่ในบัญชีระบบภาษี)
- * บิลค้าง (AP/AR): นับเมื่อ **มีเลขใบกำกับภาษีแล้ว** · ไม่ถามบัญชี (ยังไม่มีเงินเข้า/ออก = ยังไม่มีบัญชี)
+ * A23/A24 — ด่านของ ภพ.30 เท่านั้น
+ * บิลปกติ: นับทุกใบของกิจการนั้น (D124 ไม่ถามบัญชีแล้ว)
+ * บิลค้าง (AP/AR): นับเมื่อ **มีเลขใบกำกับภาษีแล้ว** (D123)
  *   ★ กดชำระแล้วบิลยังเป็นแถวเดิม เดือนเดิม (fn_settle_apar ไม่แตะวันที่รายการ) ⇒ ไม่มีวันนับซ้ำ
- *   🪤 ชำระเข้าบัญชีที่ไม่อยู่ในระบบภาษี = บิลหลุดจาก ภพ.30 หลังชำระ → หน้าชำระเตือน (settleVatWarn)
  */
-function passesVatGuard(tx: Tx, entityId: string, taxAccounts: Set<string>): boolean {
+function passesVatGuard(tx: Tx, entityId: string): boolean {
   if (tx.status !== "ปกติ" || !inScope(tx.entity_id, entityId)) return false;
   if (tx.ap_ar_status) return hasTaxInvoice(tx);
-  return taxAccounts.has(tx.account_name ?? "");
+  return true;
+}
+
+/** ประเภทบิลที่เป็นภาษีซื้อใน ภพ.30 */
+export function isPurchaseType(type: string | null | undefined): boolean {
+  return type === "รายจ่าย" || type === "บันทึกภาษี";
 }
 
 /**
- * คำเตือนตอนกดชำระบิลค้าง: บิลที่นับเข้า ภพ.30 แล้วจะหลุดออก ถ้าเลือกบัญชีนอกระบบภาษี
- * คืน null เมื่อไม่มีอะไรต้องเตือน (ประโยคตัดสินที่นี่ ไม่ใช่ในคอมโพเนนต์ — D84/D91)
+ * A24 (D124) — บิลซื้อเดือนนั้นที่มี VAT แต่ยัง **ไม่ได้กรอกเลขใบกำกับ**
+ * ★ ผู้ใช้ตัดสิน (ทาง ก): ยังนับเข้า ภพ.30 — ข้อมูลเก่าส่วนใหญ่มีใบกำกับจริงแต่ตอนคีย์ไม่ได้กรอกเลข
+ *   ไม่นับ = ภาษีซื้อของเดือนที่ยื่นไปแล้วหายเงียบ ๆ · แต่ **ต้องลิสต์ให้เห็นทุกใบ**
+ * ★ ใช้ด่านเดียวกับ ภพ.30 (passesVatGuard) ⇒ ลิสต์นี้คือบิลที่อยู่ในตัวเลขจริงพอดี ไม่ขาดไม่เกิน
  */
-export function settleVatWarn(
-  tx: { tax_invoice_no: string | null; vat_amount: number | string },
-  accountName: string,
-  taxAccounts: Set<string>,
-): string | null {
-  if (!accountName || num(tx.vat_amount) <= 0 || !hasTaxInvoice(tx)) return null;
-  if (taxAccounts.has(accountName)) return null;
-  return `บัญชี "${accountName}" ไม่ได้นับเข้าระบบภาษี — กดชำระแล้วบิลนี้จะหลุดจาก ภพ.30 ของเดือนที่ออกใบกำกับ ` +
-    `(ถ้าตั้งใจให้นับ ให้เลือกบัญชีอื่น หรือเพิ่มบัญชีนี้ที่ ${TAX_ACCOUNTS_WHERE})`;
+export function missingInvoicePurchases(period: string, entityId: string, txs: Tx[]): Tx[] {
+  return txs.filter((tx) =>
+    passesVatGuard(tx, entityId) && isPurchaseType(tx.type) && num(tx.vat_amount) > 0 &&
+    !hasTaxInvoice(tx) && monthOf(tx.transaction_date) === period,
+  );
+}
+
+/** คำเตือนตอนบันทึก/แก้บิล — คืน null เมื่อไม่มีอะไรต้องเตือน (ประโยคตัดสินใน lib · D84/D91) */
+export function missingInvoiceWarn(type: string, hasVat: boolean, taxInvoiceNo: string | null | undefined): string | null {
+  if (!isPurchaseType(type) || !hasVat || String(taxInvoiceNo ?? "").trim() !== "") return null;
+  return "มี VAT แต่ยังไม่กรอกเลขใบกำกับ — บิลนี้จะนับเป็นภาษีซื้อใน ภพ.30 · ภาษีซื้อใช้ได้เฉพาะบิลที่มีใบกำกับภาษีเต็มรูปในนามกิจการ ถ้าไม่มีใบจริงให้เอาติ๊ก VAT ออก (VAT จะรวมเป็นต้นทุน)";
+}
+
+/** หัวข้อ + วิธีแก้ของลิสต์บนการ์ด ภพ.30 — null เมื่อไม่มีบิลค้างกรอก (D124) */
+export function missingInvoiceListText(count: number, vatTotal: number): { title: string; howTo: string } | null {
+  if (count <= 0) return null;
+  return {
+    title: `บิลซื้อ ${count} ใบ มี VAT แต่ยังไม่กรอกเลขใบกำกับ — ภาษีซื้อ ${vatTotal.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท นับอยู่ใน ภพ.30 เดือนนี้แล้ว`,
+    howTo: "แก้ที่ บัญชี → ค้นบิล → แก้ไข · มีใบกำกับจริง = กรอกเลขใบกำกับ · ไม่มีใบจริง = เอาติ๊ก VAT ออก (ภาษีซื้อจะลดลง)",
+  };
 }
 
 // ── A1: ภพ.30 ────────────────────────────────────────────────────────────────
@@ -506,7 +521,6 @@ export function taxReport(
   forwardedVatIn: number,
   txs: Tx[],
   contactMap: ContactMap,
-  taxAccounts: Set<string>,
 ): TaxReport {
   const sales: TaxReportRow[] = [];
   const purchases: TaxReportRow[] = [];
@@ -514,7 +528,7 @@ export function taxReport(
   let tPAmt = 0;
 
   for (const tx of txs) {
-    if (!passesVatGuard(tx, entityId, taxAccounts)) continue;
+    if (!passesVatGuard(tx, entityId)) continue;
     if (num(tx.vat_amount) <= 0) continue;
     if (monthOf(tx.transaction_date) !== period) continue;
 
@@ -630,13 +644,12 @@ export function whtReport(
   entityId: string,
   txs: Tx[],
   contactMap: ContactMap,
-  taxAccounts: Set<string>,
 ): WhtReport {
   const pnd3: WhtReportRow[] = [];
   const pnd53: WhtReportRow[] = [];
 
   for (const tx of txs) {
-    if (!passesTaxGuard(tx, entityId, taxAccounts)) continue;
+    if (!passesTaxGuard(tx, entityId)) continue;
     if (tx.type !== "รายจ่าย") continue;
     if (num(tx.wht_amount) <= 0) continue;
     // D123 — หัก ณ ที่จ่ายเกิดตอนจ่ายเงิน: บิลค้างที่เคลียแล้วเข้าเดือนที่จ่ายจริง
@@ -697,7 +710,6 @@ export function dashboardData(
   period: string,
   entityId: string,
   txs: Tx[],
-  taxAccounts: Set<string>,
   issuedTxIds: Set<string>,
 ): DashboardData {
   let income = 0;
@@ -709,7 +721,7 @@ export function dashboardData(
   const whtPending: DashPending[] = [];
 
   for (const tx of txs) {
-    if (!passesTaxGuard(tx, entityId, taxAccounts)) continue;
+    if (!passesTaxGuard(tx, entityId)) continue;
     const filterDate = tx.tax_invoice_date || tx.transaction_date;
     if (!filterDate) continue;
     // D123 — 50ทวิ ค้างออกของบิลค้างที่เคลียแล้ว อยู่เดือนที่จ่ายจริง · ยอดแดชบอร์ดคงเดิม (filterDate)

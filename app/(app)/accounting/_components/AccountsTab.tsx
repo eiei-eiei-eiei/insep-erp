@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getBalancesAction, getStatementAction, saveTransferAction } from "../actions";
 import type { Bootstrap } from "./types";
+import { accountsFor } from "@/lib/accounting/bankAccounts";
 import { Badge, Card, Field, Msg, NumBox, SaveButton, Select, TextInput, fmt, todayISO, useSaver, useRead, LoadError } from "./ui";
 
 type Balances = Awaited<ReturnType<typeof getBalancesAction>>;
@@ -21,7 +22,7 @@ export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstra
   const [note, setNote] = useState("");
 
   // บัญชีที่เลือกได้ในหน้าโอน = เฉพาะที่ผูกกับกิจการนี้ (ว่าง = ใช้ร่วมทุกกิจการ)
-  const accountOptions = boot.accounts.filter((a) => entityId === "ALL" || (a.entity_ids ?? []).length === 0 || (a.entity_ids ?? []).includes(entityId));
+  const accountOptions = accountsFor(boot.accounts, entityId);
 
   // 🚨 D89 — ยอดคงเหลือทุกบัญชีมาจากที่นี่ · อ่านไม่ได้ต้องฟ้อง ไม่ใช่โชว์ยอดที่ขาดยอดยกมา
   const { data: bal, err, reload } = useRead<Balances>(
@@ -57,7 +58,7 @@ export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstra
               <tbody>
                 {bal.balances.map((b) => (
                   <tr key={b.accountType}>
-                    <td>{b.accountType}{b.isTaxAccount ? <Badge tone="neutral" className="ml-1">ภาษี</Badge> : null}{b.shared ? <Badge tone="neutral" className="ml-1">ใช้ร่วม</Badge> : null}</td>
+                    <td>{b.accountType}{b.shared ? <Badge tone="neutral" className="ml-1">ใช้ร่วม</Badge> : null}</td>
                     <td className="num">{fmt(b.openingBalance)}</td>
                     <td className="text-ok num">{fmt(b.totalIn)}</td>
                     <td className="text-crit num">{fmt(b.totalOut)}</td>
@@ -68,7 +69,7 @@ export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstra
                 <tr className="border-t-2 border-line font-semibold"><td>รวมทุกบัญชี</td><td colSpan={3}></td><td className="num">{fmt(bal.grandTotal)}</td><td></td></tr>
               </tbody>
             </table>
-            <p className="mt-1 text-xs text-faint">ป้าย “ภาษี” = บัญชีในระบบภาษี · “ใช้ร่วม” = ใช้ได้หลายกิจการ</p>
+            <p className="mt-1 text-xs text-faint">ป้าย “ใช้ร่วม” = ใช้ได้หลายกิจการ</p>
           </div>
         )}
       </Card>

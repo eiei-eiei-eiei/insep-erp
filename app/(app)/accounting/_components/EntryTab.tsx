@@ -10,12 +10,15 @@ import {
   lineTotalHeader,
   unitPriceHeader,
   itemsHintText,
+  missingInvoiceWarn,
   type VatMode,
 } from "@/lib/accounting/calc";
 import { taxDateOnNoChange, taxDateOnTxDateChange, shouldRefreshDraftDate, isAddRowKey, ITEM_KEYS_HINT } from "@/lib/accounting/entryForm";
 // ตรรกะแถวรายการ/ยอดบิล ใช้ร่วมกับฟอร์มแก้บิล (BillsTab → EditBillModal)
 import { qn, emptyItem, makeItemHandlers, buildItemInputs, useBillAmounts, hasContent, type BillItem } from "./billItems";
 import { VatModeCard } from "./VatModeCard";
+import { accountsFor } from "@/lib/accounting/bankAccounts";
+import { MissingInvoiceWarn } from "./MissingInvoiceWarn";
 import {
   saveTransactionAction,
   saveInstallmentsAction,
@@ -220,10 +223,8 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   }
 
   // บัญชี: แสดงเฉพาะที่ผูกกับกิจการนี้ (entity_ids ว่าง = ใช้ร่วมทุกกิจการ)
-  const accountOptions = boot.accounts.filter((a) => {
-    const ids = a.entity_ids ?? [];
-    return ids.length === 0 || ids.includes(effEntity);
-  });
+  // ★ D125: ตัดบัญชีที่ปิดใช้ออก แต่คงค่าที่เลือกอยู่ (ร่างที่ค้างไว้) ไม่ให้หายเงียบ ๆ
+  const accountOptions = accountsFor(boot.accounts, effEntity, accountName);
   // คู่ค้า: รายรับ→ลูกค้า, รายจ่าย→ผู้ขาย · เว้นว่าง/"ทั้งสอง" = โผล่ทั้งคู่
   const contactOptions = contacts.filter((c) => {
     const t = (c.contact_type ?? "").trim();
@@ -524,6 +525,8 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
             </label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={hasWht} onChange={(e) => setHasWht(e.target.checked)} /> หัก ณ ที่จ่าย</label>
           </div>
+          {/* D124 — บิลซื้อมี VAT ไม่มีเลขใบกำกับ ยังนับเข้า ภพ.30 (ทาง ก) — เตือน ไม่บล็อก */}
+          <MissingInvoiceWarn text={missingInvoiceWarn(type, effHasVat, taxInvoiceNo)} />
           {hasWht && (
             <div className="mt-2"><Field label="อัตรา WHT (%)">
               <Select value={whtRate} onChange={(e) => setWhtRate(Number(e.target.value))}>

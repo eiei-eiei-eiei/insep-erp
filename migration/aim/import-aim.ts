@@ -71,7 +71,6 @@ const proof = accountBalances(
   txs as unknown as LedgerTx[],
   t.bank_accounts.map((a) => ({ accountName: a.account_name as string, openingBalance: Number(a.opening_balance) || 0, entityIds: a.entity_ids as string[] })),
   "ALL",
-  new Set(),
 );
 console.log("\n── ยอดคงเหลือทุกบัญชี (ทั้งหมดถึงปัจจุบัน) ──");
 console.log("  บัญชี                         แอปเดิม          proof        ต่าง");
@@ -85,7 +84,6 @@ for (const a of t.bank_accounts) {
 }
 
 // ── 2. ภพ.30 ─────────────────────────────────────────────────────────────────
-const allAcc = new Set(t.bank_accounts.map((a) => a.account_name as string));
 const isVatEnt = new Map(t.entities.map((e) => [e.entity_id as string, e.is_vat as boolean]));
 /** แบบแอปเดิม (40_reports.js): ปกติ + VAT > 0 + กิจการ + เดือนของวันที่รายการ — ไม่สนสถานะค้าง/บัญชี */
 const legacyVat = (entity: string, month: string, sales: boolean) => {
@@ -104,7 +102,7 @@ console.log("  กิจการ เดือน     │ ภาษีขาย:
 for (const s of [...t.tax_summaries].sort((a, b) => String(a.entity_id + "" + a.report_month).localeCompare(String(b.entity_id + "" + b.report_month)))) {
   const ent = s.entity_id as string;
   const mon = s.report_month as string;
-  const r = taxReport(mon, ent, 0, txs as unknown as Tx[], {}, allAcc);
+  const r = taxReport(mon, ent, 0, txs as unknown as Tx[], {});
   const mark = (a: number, b: number) => (Math.abs(a - b) < 0.005 ? "✓" : "✗");
   const fs = Number(s.total_sales_vat) || 0, fp = Number(s.total_purchase_vat) || 0;
   const ls = legacyVat(ent, mon, true), lp = legacyVat(ent, mon, false);
@@ -124,7 +122,8 @@ const filed = new Set(t.tax_summaries.map((s) => `${s.entity_id}|${s.report_mont
 const diffs = txs.filter((x) =>
   x.status === "ปกติ" && Number(x.vat_amount) > 0 && ["รายรับ", "รายจ่าย"].includes(x.type) &&
   isVatEnt.get(x.entity_id) !== false &&
-  (Boolean(x.ap_ar_status) || !allAcc.has(String(x.account_name ?? ""))),
+  // D124 — ไม่ถามบัญชีแล้ว · เหลือแค่บิลค้างที่ยังไม่มีเลขใบกำกับ (D123)
+  Boolean(x.ap_ar_status) && !String(x.tax_invoice_no ?? "").trim(),
 );
 console.log(`\n── บิลที่แอปเดิมนับเข้า ภพ.30 แต่ proof ยังไม่นับ (${diffs.length} ใบ) — ไปแก้รายบิลในแอป ──`);
 for (const x of diffs.sort((a, b) => (a.entity_id + a.transaction_date).localeCompare(b.entity_id + b.transaction_date))) {

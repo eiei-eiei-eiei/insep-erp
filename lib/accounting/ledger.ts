@@ -71,7 +71,6 @@ export type AccountBalance = {
   totalIn: number;
   totalOut: number;
   balance: number;
-  isTaxAccount: boolean;
   shared: boolean;
 };
 
@@ -84,7 +83,6 @@ export function accountBalances(
   txs: LedgerTx[],
   accounts: AccountMeta[],
   entityId: string,
-  taxAccounts: Set<string>,
 ): { balances: AccountBalance[]; grandTotal: number; upToPeriod: string } {
   const accMap: Record<string, { totalIn: number; totalOut: number }> = {};
 
@@ -136,7 +134,6 @@ export function accountBalances(
       totalIn,
       totalOut,
       balance,
-      isTaxAccount: taxAccounts.has(name),
       shared: ids.length > 1,
     };
   });

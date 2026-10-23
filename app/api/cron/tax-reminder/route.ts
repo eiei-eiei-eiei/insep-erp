@@ -5,7 +5,6 @@ import { taxRemindersFor, reminderMessage, type TaxReminder } from "@/lib/accoun
 import { nextMonth, prevMonth } from "@/lib/accounting/taxPay";
 import { toFilingMethod } from "@/lib/accounting/taxFiling";
 import { DUE_STAGES, type DueStage } from "@/lib/shared/period";
-import { effectiveTaxAccounts } from "@/lib/accounting/taxAccounts";
 import { cashDateOf } from "@/lib/accounting/calc";
 import {
   EXCISE_REMINDER_ACTION,
@@ -114,9 +113,7 @@ export async function GET(req: NextRequest) {
 
   // ── งานที่ 1: ภาษีสรรพากร (D88) — ตรรกะเดิมทั้งดุ้น ห่อเป็นฟังก์ชันเท่านั้น ──────
   async function taxPart(t: Tn, entities: Ent[]) {
-    const [setRes, bankRes, fileRes] = await Promise.all([
-      admin.from("app_settings").select("value").eq("tenant_id", t.id).eq("kind", "tax_account"),
-      admin.from("bank_accounts").select("account_name").eq("tenant_id", t.id),
+    const [fileRes] = await Promise.all([
       /**
        * 🚨 D95 — ตัวปิดเสียงคือ `tax_filings` (ประกาศว่ายื่นแล้ว) **ไม่ใช่ `report_runs`**
        *    `report_runs` แปลว่า *กดพิมพ์แล้ว* — กดดูตัวเลขกลางเดือนแล้วการเตือนหายตลอดกาล
@@ -129,13 +126,6 @@ export async function GET(req: NextRequest) {
         .in("period", months)
         .is("reopened_at", null),
     ]);
-
-    // บัญชีในระบบภาษี — 🚨 ต้องใช้กฎ **ตัวเดียวกับแอป** (`effectiveTaxAccounts`)
-    //    หลุดจากกันเมื่อไหร่ = เตือนเดือนที่ไม่ต้องยื่น หรือเงียบในเดือนที่ต้องยื่น
-    const taxAccounts = effectiveTaxAccounts(
-      (setRes.data ?? []).map((r) => String(r.value)),
-      (bankRes.data ?? []).map((r) => String(r.account_name)),
-    );
 
     // 🚨 อ่านไม่ได้ ≠ ยังไม่ยื่น — เดาว่ายังไม่ยื่นแล้วส่ง = สแปมเตือนงวดที่ยื่นไปแล้ว (D89)
     if (fileRes.error) {
@@ -156,7 +146,7 @@ export async function GET(req: NextRequest) {
     const to = `${nextMonth(months[0])}-01`;
     const { data: whtTx, error: whtErr } = await admin
       .from("transactions")
-      .select("transaction_date, settled_on, entity_id, account_name, status, ap_ar_status, wht_amount, type")
+      .select("transaction_date, settled_on, entity_id, status, ap_ar_status, wht_amount, type")
       .eq("tenant_id", t.id)
       .gt("wht_amount", 0)
       // D123 — บิลค้างที่เคลียแล้วนับเดือนที่จ่ายจริง (settled_on) → ต้องดึงทั้ง 2 ช่วง
@@ -173,7 +163,7 @@ export async function GET(req: NextRequest) {
     for (const tx of whtTx ?? []) {
       if (tx.status !== "ปกติ" || tx.ap_ar_status) continue;
       if (tx.type !== "รายจ่าย") continue;
-      if (!taxAccounts.has(String(tx.account_name ?? ""))) continue;
+      // 🚨 D124 — ไม่กรองบัญชีแล้ว · กฎเดียวกับ whtReport (กิจการ + เอกสาร) หลุดจากกัน = เตือนผิดเดือน
       whtSet.add(`${tx.entity_id ?? ""}|${String(cashDateOf(tx) ?? "").slice(0, 7)}`);
     }
 

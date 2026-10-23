@@ -61,12 +61,12 @@ const accts = [
 
 describe("A22 — ยอดเงินครบวง", () => {
   it("สิ้น ก.ย. (ยังไม่เคลีย): บัญชีส่วนตัวลดแล้ว · บัญชีบริษัทยังไม่ขยับ", () => {
-    const r = accountBalances("2026-09", cycle, accts, "ALL", new Set());
+    const r = accountBalances("2026-09", cycle, accts, "ALL");
     expect(r.balances.find((b) => b.accountType === "กสิกร ส่วนตัว")!.balance).toBe(39300);
     expect(r.balances.find((b) => b.accountType === "กสิกร เอม")!.balance).toBe(100000);
   });
   it("สิ้น ต.ค. (เคลียแล้ว): ส่วนตัวกลับเท่าเดิม · บริษัทลด 10,700", () => {
-    const r = accountBalances("2026-10", cycle, accts, "ALL", new Set());
+    const r = accountBalances("2026-10", cycle, accts, "ALL");
     expect(r.balances.find((b) => b.accountType === "กสิกร ส่วนตัว")!.balance).toBe(50000);
     expect(r.balances.find((b) => b.accountType === "กสิกร เอม")!.balance).toBe(89300);
   });
@@ -86,30 +86,29 @@ const T = (p: Partial<Tx>): Tx => ({
   wht_rate: 3, wht_amount: 300, net_amount: 10400, tax_invoice_no: "IV-1", tax_invoice_date: "2026-09-25",
   status: "ปกติ", entity_id: "EID02", ap_ar_status: null, ...p,
 });
-const ALL_ACC = new Set(["กสิกร ส่วนตัว", "กสิกร เอม"]);
 
 describe("A22 — สำรองจ่ายไม่เข้ารายงานของคนจ่าย", () => {
   const txs = [T({ tx_id: "A1" }), T({ tx_id: "R1", type: "รับคืนสำรองจ่าย", vat_amount: 0, wht_amount: 0 })];
   it("ภพ.30 ของคนจ่าย: ไม่มีภาษีซื้อจากบิลสำรองจ่าย", () => {
-    const r = taxReport("2026-09", "EID02", 0, txs, {}, ALL_ACC);
+    const r = taxReport("2026-09", "EID02", 0, txs, {});
     expect(r.purchases).toHaveLength(0);
     expect(r.sales).toHaveLength(0);
   });
   it("ภงด.3/53 ของคนจ่าย: ไม่มีแถว", () => {
-    const w = whtReport("2026-09", "EID02", txs, {}, ALL_ACC);
+    const w = whtReport("2026-09", "EID02", txs, {});
     expect(w.pnd3).toHaveLength(0);
     expect(w.pnd53).toHaveLength(0);
   });
   it("แดชบอร์ดของคนจ่าย: รายรับ/รายจ่าย/VAT เป็น 0 และไม่มีคิวรอออก 50ทวิ", () => {
-    const d = dashboardData("2026-09", "EID02", txs, ALL_ACC, new Set());
+    const d = dashboardData("2026-09", "EID02", txs, new Set());
     expect(d.dash).toEqual({ income: 0, expense: 0, netIncome: 0, netExpense: 0, vatOut: 0, vatIn: 0 });
     expect(d.whtPending).toHaveLength(0);
   });
   it("positive control: บิลของบริษัทที่เกิดจากการเคลีย (รายจ่าย) เข้า ภพ.30 เดือนที่เคลีย", () => {
     const bill = T({ tx_id: "B1", type: "รายจ่าย", entity_id: "EID01", account_name: "กสิกร เอม", transaction_date: "2026-10-10" });
-    expect(taxReport("2026-10", "EID01", 0, [bill], {}, ALL_ACC).purchases).toHaveLength(1);
+    expect(taxReport("2026-10", "EID01", 0, [bill], {}).purchases).toHaveLength(1);
     // ภพ.30 เลือกเดือนด้วย transaction_date (กติกาเหล็ก) ⇒ เดือนที่ออกใบกำกับไม่ได้รับไป
-    expect(taxReport("2026-09", "EID01", 0, [bill], {}, ALL_ACC).purchases).toHaveLength(0);
+    expect(taxReport("2026-09", "EID01", 0, [bill], {}).purchases).toHaveLength(0);
   });
 });
 

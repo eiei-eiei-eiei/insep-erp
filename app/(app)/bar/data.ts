@@ -5,8 +5,8 @@ import { can, toRole } from "@/lib/shared/roles";
 import { unpostedDays, type UnpostedDay } from "@/lib/bar/posting";
 import { defaultLayout, type ReceiptLayout } from "@/lib/bar/layout";
 import { businessDate } from "@/lib/bar/businessDate";
-import { taxAccountsAreDefault } from "@/lib/accounting/taxAccounts";
 import { getTenantPlan } from "@/lib/shared/tenant-plan";
+import { accountsFor } from "@/lib/accounting/bankAccounts";
 import { hasModule } from "@/lib/shared/workspaces";
 import type { BarCategory, BarItem, BarMenu, SaleWindow } from "@/lib/bar/types";
 import type { PromptPayType } from "@/lib/bar/promptpay";
@@ -98,11 +98,9 @@ export type BarBoot = {
   openSales: BarOpenSale[];
   /**
    * บัญชีเงินที่เลือกให้รายได้บาร์เข้าได้ (D96 เฟส E)
-   * `countedInTax` = บัญชีนี้ถูกนับเข้า ภพ.30 หรือยัง
-   * 🚨 ต้องรู้ตรงนี้ เพราะเลือกบัญชีที่ไม่ถูกนับ = **ยอดบาร์หายจาก ภพ.30 ทั้งที่ลงบัญชีสำเร็จ**
-   *    (`passesTaxGuard()` ของ lib/accounting/calc กรองด้วย `taxAccounts.has(account_name)`)
+   * ★ D124 — ไม่มี "บัญชีนอกระบบภาษี" แล้ว ยอดบาร์เข้า ภพ.30 ตามกิจการของบาร์เสมอ ไม่ว่าเลือกบัญชีไหน
    */
-  bankAccounts: { name: string; countedInTax: boolean }[];
+  bankAccounts: { name: string }[];
   /** ซื้อโมดูลบัญชีไว้ไหม — ไม่ได้ซื้อ = ซ่อนทั้งการ์ดลงบัญชี (บาร์ต้องขายแยกได้) */
   hasAccounting: boolean;
   /** วันที่ขายแล้วแต่ยังไม่ได้ลงบัญชี — **ไม่รวมวันขายของตอนนี้** (ยังขายอยู่) */
@@ -267,7 +265,7 @@ export async function getBarBootstrap(): Promise<BarBoot> {
   let unposted: UnpostedDay[] = [];
   if (hasAccounting) {
     const [banks, closed, posts] = await Promise.all([
-      supabase.from("bank_accounts").select("account_name, entity_ids").order("account_name"),
+      supabase.from("bank_accounts").select("account_name, entity_ids, active").order("account_name"),
       supabase
         .from("bar_sale")
         .select("business_date, grand_total")
@@ -283,18 +281,11 @@ export async function getBarBootstrap(): Promise<BarBoot> {
 
     const bankRows = mustRead({ data: banks.data, error: banks.error }, "บัญชีเงิน");
     // ★ กรองบัญชีที่ผูกกับกิจการของบาร์ · `entity_ids` ว่าง = ใช้ได้ทุกกิจการ (กติกาเดิมของ 0001)
-    const forBar = bankRows.filter((b) => {
-      const ids = (b.entity_ids as string[] | null) ?? [];
-      return ids.length === 0 || ids.includes(entityId);
-    });
-    const savedTax = many("tax_account");
-    // 🚨 ไม่ได้ตั้ง = **นับทุกบัญชี** ไม่ใช่ไม่นับอะไรเลย (กติกา D93 · effectiveTaxAccounts)
-    const allCounted = taxAccountsAreDefault(savedTax);
-    const taxSet = new Set(savedTax.map((x) => String(x ?? "").trim()).filter(Boolean));
-    bankAccounts = forBar.map((b) => ({
-      name: b.account_name as string,
-      countedInTax: allCounted || taxSet.has(b.account_name as string),
-    }));
+    // ★ D125: ตัดบัญชีที่ปิดใช้ออก แต่คงบัญชีที่ตั้งไว้อยู่แล้ว (ไม่งั้นช่องว่างแล้วกดบันทึก = ล้างค่าตั้ง)
+    const rows = bankRows as { account_name: string; entity_ids: string[] | null; active: boolean | null }[];
+    const keep = new Set([settings.revenueAccount, settings.cashAccount].filter(Boolean));
+    const forBar = rows.filter((b) => keep.has(b.account_name) || accountsFor([b], entityId).length > 0);
+    bankAccounts = forBar.map((b) => ({ name: b.account_name }));
 
     unposted = unpostedDays(
       mustRead({ data: closed.data, error: closed.error }, "บิลที่ปิดแล้ว").map((x) => ({

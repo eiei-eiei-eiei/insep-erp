@@ -1,8 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { txEffect, accountBalances, accountStatement, type LedgerTx, type AccountMeta } from "./ledger";
 
-const TAX = new Set(["กสิกร"]);
-
 const accounts: AccountMeta[] = [
   { accountName: "กสิกร", openingBalance: 1000, entityIds: ["EID99"] },
   { accountName: "เงินสด", openingBalance: 0, entityIds: [] }, // ว่าง = เห็นทุกกิจการ
@@ -34,12 +32,12 @@ describe("A7 — txEffect", () => {
 });
 
 describe("A8 — accountBalances", () => {
-  const r = accountBalances("2026-07", txs, accounts, "EID99", TAX);
+  const r = accountBalances("2026-07", txs, accounts, "EID99");
   it("ยอด = opening + in − out, ข้าม future/AP/ยกเลิก", () => {
     const k = r.balances.find((b) => b.accountType === "กสิกร")!;
-    expect(k).toMatchObject({ openingBalance: 1000, totalIn: 1000, totalOut: 500, balance: 1500, isTaxAccount: true, shared: false });
+    expect(k).toMatchObject({ openingBalance: 1000, totalIn: 1000, totalOut: 500, balance: 1500, shared: false });
     const cash = r.balances.find((b) => b.accountType === "เงินสด")!;
-    expect(cash).toMatchObject({ totalIn: 350, totalOut: 0, balance: 350, isTaxAccount: false });
+    expect(cash).toMatchObject({ totalIn: 350, totalOut: 0, balance: 350 });
   });
   it("filter บัญชีตามกิจการ (SCB ของ EID01 ไม่แสดง)", () => {
     expect(r.balances.map((b) => b.accountType)).not.toContain("SCB");
@@ -69,7 +67,7 @@ describe("A23 — บิลค้างที่เคลียแล้ว เ�
   // ตั้งค้างรับ 10/10 แล้วกดชำระเข้า กสิกร วันที่ 10/11
   const paid: LedgerTx = { tx_id: "S1", transaction_date: "2026-10-10", type: "รายรับ", account_name: "กสิกร", category: "ขาย", contact_name: "A", description: "", net_amount: 700, transfer_id: null, status: "ปกติ", ap_ar_status: null, settled_on: "2026-11-10" };
   const meta: AccountMeta[] = [{ accountName: "กสิกร", openingBalance: 0, entityIds: [] }];
-  const bal = (p: string, xs: LedgerTx[]) => accountBalances(p, xs, meta, "ALL", TAX).balances.find((b) => b.accountType === "กสิกร")!.balance;
+  const bal = (p: string, xs: LedgerTx[]) => accountBalances(p, xs, meta, "ALL").balances.find((b) => b.accountType === "กสิกร")!.balance;
 
   it("ยอดสิ้นเดือน ต.ค. ยังไม่รวม · สิ้นเดือน พ.ย. รวม", () => {
     expect(bal("2026-10", [paid])).toBe(0);

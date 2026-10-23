@@ -11,7 +11,15 @@ export type Entity = {
   phone?: string | null;
   bank_line?: string | null;
 };
-export type AccountRow = { account_name: string; entity_ids: string[]; opening_balance: number; kind: string | null };
+export type AccountRow = {
+  account_id?: string;
+  account_name: string;
+  entity_ids: string[];
+  opening_balance: number;
+  kind: string | null;
+  /** D125 — false = ปิดใช้ (ไม่โผล่ในช่องเลือกบัญชีของบิลใหม่) · ว่าง = ใช้อยู่ */
+  active?: boolean | null;
+};
 export type Contact = {
   contact_id: string;
   name: string;
@@ -32,13 +40,12 @@ export type Bootstrap = {
   expenseCats: string[];
   incomeCats: string[];
   whtRates: string[];
-  /** บัญชีในระบบภาษี **ที่ผู้ใช้ตั้งเองจริง ๆ** (ว่าง = ยังไม่ตั้ง → ระบบนับทุกบัญชีเงิน)
-   *  🚨 อย่าเปลี่ยนกลับไปเป็น "ค่าที่มีผล" — ค่าปริยายที่คำนวณในโค้ดห้ามโผล่เป็น chip ที่ลบได้ (D80) */
-  taxAccountsSet: string[];
   /** หมวดรายจ่ายที่จุดชนวน "รับวัตถุดิบเข้าสต็อกผลิต" (D80) — ตั้งได้ที่แท็บตั้งค่า */
   forwardCats: string[];
   /** ★ ที่ลูกค้าตั้งเองจริง ๆ (ว่างได้) — หน้าตั้งค่าต้องใช้ตัวนี้ ไม่ใช่ forwardCats
    *  🪤 โชว์ค่าปริยายเป็น chip = ผู้ใช้นึกว่าบันทึกแล้ว พอเพิ่มตัวที่ 2 ค่าปริยายหลุดเงียบ ๆ (D74) */
   forwardCatsSet: string[];
+  /** D125 — ซื้อโมดูลผลิตไหม (ซ่อนการ์ดหมวดรับวัตถุดิบเข้าสต็อกผลิตถ้าไม่ได้ซื้อ) */
+  hasProduction: boolean;
   // ★ branding / docEntityId / line ย้ายไปหน้าตั้งค่ากลาง /settings แล้ว (D63)
 };
