@@ -12,6 +12,9 @@ import { menuOrderError, menuOrderUpdates, menuQtyMap, orderColumn, type OrderVi
 import { fetchAllRows } from "@/lib/shared/paginate";
 import { unitLockReason, type ReceiveRow, type AdjustRow, type NewItemRow, type ItemEditRow } from "@/lib/bar/stockBatch";
 import type { CartLine, SaleWindow } from "@/lib/bar/types";
+import type { ReceiveRecord } from "@/lib/bar/receiveHistory";
+import { can } from "@/lib/shared/roles";
+import { currentRole } from "@/lib/shared/guard";
 import { getBarBootstrap } from "./data";
 
 /**
@@ -978,6 +981,37 @@ export async function itemMovesAction(itemId: string): Promise<Res> {
     .limit(100);
   if (error) return { ok: false, error: mapDbError(error) };
   return okOf(data ?? []);
+}
+
+/**
+ * ประวัติราคารับของของวัตถุดิบตัวหนึ่ง (D126) — อ่าน `bar_receive` ที่เก็บมาตั้งแต่ 0064
+ * 🚨 **เฉพาะคนที่เห็นต้นทุน (`bar.config`)** — ตรวจที่นี่ ไม่ใช่ซ่อนปุ่มอย่างเดียว
+ *    หลักเดียวกับ `stripCost()` ใน data.ts: พนักงานบาร์ต้องไม่ได้รับตัวเลขราคาตั้งแต่ชั้นข้อมูล
+ */
+export async function itemReceivesAction(itemId: string): Promise<Res> {
+  if (!can(await currentRole(), "bar.config")) return { ok: false, error: "ไม่มีสิทธิ์ดูราคาต้นทุน" };
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("bar_receive")
+    .select("id, doc_date, qty_pack, qty, cost_total, source, note")
+    .eq("entity_id", entity)
+    .eq("item_id", itemId)
+    .order("doc_date", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(100);
+  if (error) return { ok: false, error: mapDbError(error) };
+  const rows: ReceiveRecord[] = (data ?? []).map((r) => ({
+    id: Number(r.id),
+    docDate: String(r.doc_date),
+    qtyPack: r.qty_pack === null ? null : Number(r.qty_pack),
+    qty: Number(r.qty),
+    costTotal: Number(r.cost_total),
+    source: r.source ?? null,
+    note: r.note ?? null,
+  }));
+  return okOf(rows);
 }
 
 export async function issueReceiptAction(saleNo: string): Promise<Res> {

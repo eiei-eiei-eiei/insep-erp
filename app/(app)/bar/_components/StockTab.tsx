@@ -12,18 +12,9 @@ import {
 } from "@/lib/bar/stockBatch";
 import { Card, Msg, TextInput, NumBox, Select, Field, Badge, Empty, EscToClose, fmt, useSaver } from "@/lib/shared/ui";
 import {
-  receiveBatchAction, adjustBatchAction, addItemsAction, updateItemsAction, itemMovesAction,
+  receiveBatchAction, adjustBatchAction, addItemsAction, updateItemsAction,
 } from "../actions";
-
-type MoveRow = {
-  id: number;
-  moved_at: string;
-  delta: number;
-  qty_after: number;
-  reason: string;
-  ref_no: string | null;
-  note: string | null;
-};
+import { ItemHistoryModal } from "./ItemHistoryModal";
 
 /**
  * สต็อกบาร์ (D96 · D103 · D104)
@@ -38,7 +29,6 @@ export function StockTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
   const { msg, setMsg } = useSaver();
   const [busy, setBusy] = useState(false);
   const [openItem, setOpenItem] = useState<string | null>(null);
-  const [moves, setMoves] = useState<MoveRow[]>([]);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState(false);
 
@@ -63,17 +53,6 @@ export function StockTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
     } finally {
       setBusy(false);
     }
-  }
-
-  async function showMoves(itemId: string) {
-    if (openItem === itemId) {
-      setOpenItem(null);
-      return;
-    }
-    setOpenItem(itemId);
-    const r = await itemMovesAction(itemId);
-    setMoves(r.ok ? ((r.data as MoveRow[]) ?? []) : []);
-    if (!r.ok) setMsg({ ok: false, text: r.error ?? "โหลดประวัติไม่สำเร็จ" });
   }
 
   const low = data.items.filter((i) => i.active !== false && isLowStock(i));
@@ -161,7 +140,7 @@ export function StockTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
                       {/* 🚨 ต้นทุนไม่ได้ถูกส่งมาให้พนักงานบาร์ตั้งแต่ชั้น data.ts — ไม่ใช่ซ่อนด้วย CSS */}
                       {data.canSeeCost && <td className="text-right">{fmt(i.costPerUnit)}</td>}
                       <td className="text-right">
-                        <button type="button" onClick={() => showMoves(i.itemId)} className="text-xs text-muted underline">
+                        <button type="button" onClick={() => setOpenItem(i.itemId)} className="text-xs text-muted underline">
                           ประวัติ
                         </button>
                       </td>
@@ -172,45 +151,17 @@ export function StockTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
             </div>
             {data.items.length === 0 && <Empty>— ยังไม่มีวัตถุดิบ —</Empty>}
 
-            {openItem && (
-              <div className="mt-3 rounded-lg bg-raised p-3">
-                <div className="mb-2 text-sm font-medium text-ink">
-                  ประวัติ — {data.items.find((i) => i.itemId === openItem)?.name}
-                </div>
-                {moves.length === 0 ? (
-                  <Empty>— ยังไม่มีความเคลื่อนไหว —</Empty>
-                ) : (
-                  <table className="tbl">
-                    <thead>
-                      <tr>
-                        <th>เมื่อไร</th>
-                        <th>เหตุผล</th>
-                        <th className="text-right">เปลี่ยน</th>
-                        <th className="text-right">คงเหลือ</th>
-                        <th>อ้างอิง</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {moves.map((m) => (
-                        <tr key={m.id}>
-                          <td className="text-sm">{new Date(m.moved_at).toLocaleString("th-TH")}</td>
-                          <td className="text-sm">{m.reason}</td>
-                          <td className={`text-right ${Number(m.delta) < 0 ? "text-crit" : "text-ok"}`}>
-                            {Number(m.delta) > 0 ? "+" : ""}
-                            {numText(Number(m.delta))}
-                          </td>
-                          <td className="text-right">{numText(Number(m.qty_after))}</td>
-                          <td className="text-sm text-muted">{m.ref_no ?? m.note ?? ""}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            )}
           </>
         )}
       </Card>
+
+      {openItem && (
+        <ItemHistoryModal
+          item={data.items.find((i) => i.itemId === openItem) ?? null}
+          canSeeCost={data.canSeeCost}
+          onClose={() => setOpenItem(null)}
+        />
+      )}
 
       {canWrite && <ReceiveCard boot={data} busy={busy} onRun={run} />}
       {canWrite && <CountCard boot={data} busy={busy} onRun={run} />}
