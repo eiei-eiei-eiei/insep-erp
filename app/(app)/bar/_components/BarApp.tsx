@@ -7,6 +7,7 @@ import { reloadBarAction } from "../actions";
 import { PosTab } from "./PosTab";
 import { StockTab } from "./StockTab";
 import { MenuTab } from "./MenuTab";
+import { LabTab } from "./LabTab";
 import { HistoryTab } from "./HistoryTab";
 import { CustomerTab } from "./CustomerTab";
 import { DashboardTab } from "./DashboardTab";
@@ -121,6 +122,11 @@ export function BarApp({ boot }: { boot: BarBoot }) {
       {allowed.includes("menu") && visited.has("menu") && (
         <div className={show("menu")}>
           <MenuTab boot={data} onReload={reload} />
+        </div>
+      )}
+      {allowed.includes("lab") && visited.has("lab") && (
+        <div className={show("lab")}>
+          <LabTab boot={data} onReload={reload} />
         </div>
       )}
       {allowed.includes("history") && visited.has("history") && (

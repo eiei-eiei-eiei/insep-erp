@@ -25,6 +25,8 @@ const TABLES = [
   "bar_category", "bar_item", "bar_customer", "bar_menu", "bar_recipe", "bar_customer_fav",
   // D127 — เหล้าประจำบ้าน/ชุดตกแต่ง (แม่ก่อนลูก: item → house_slot → recipe_slot)
   "bar_house_slot", "bar_recipe_slot", "bar_garnish",
+  // D129 — ห้องทดลอง (แม่ก่อนลูก: category/recipe → use → use_line)
+  "bar_lab_category", "bar_lab_recipe", "bar_lab_use", "bar_lab_use_line",
   "bar_receive", "bar_sale", "bar_sale_item", "bar_move", "bar_post",
   "pay_inputs", "pay_components", "pay_rates", "pay_variables", "pay_post_legs",
   "employees", "payroll_periods", "payroll_items",

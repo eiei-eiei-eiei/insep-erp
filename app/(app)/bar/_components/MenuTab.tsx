@@ -357,17 +357,23 @@ function CategoryEditor({
   );
 }
 
-function MenuModal({
-  boot, menuId, busy, onClose, onSave,
+/**
+ * ★ D129 — ห้องทดลองใช้ป๊อปอัพนี้ตอน "ส่งขึ้นเมนูขาย" (`prefill` = ชื่อ + สูตรรอบที่เลือก)
+ *   ห้ามก๊อปไปทำป๊อปอัพใหม่ (บทเรียน billItems D42 · แก้ที่หนึ่งแล้วอีกที่ไม่ตาม)
+ */
+export function MenuModal({
+  boot, menuId, busy, onClose, onSave, prefill, title,
 }: {
   boot: BarBoot;
   menuId: string | null;
   busy: boolean;
   onClose: () => void;
   onSave: (input: Parameters<typeof saveMenuAction>[0]) => void;
+  prefill?: { name: string; rows: RecipeDraftRow[] };
+  title?: string;
 }) {
   const cur: BarMenu | undefined = boot.menus.find((m) => m.menuId === menuId);
-  const [name, setName] = useState(cur?.name ?? "");
+  const [name, setName] = useState(cur?.name ?? prefill?.name ?? "");
   // 🐛 D96 — เดิมเป็น input type=number ดิบ: ลบเลข 0 ที่ค้างอยู่ไม่ได้เลย (ผู้ใช้แจ้งเอง)
   const [price, setPrice] = useState<number | "">(cur?.price ?? "");
   const [categoryId, setCategoryId] = useState(cur?.categoryId ?? CUSTOM_CATEGORY_ID);
@@ -379,7 +385,11 @@ function MenuModal({
   // D111 — แก้/เอาออกได้ (สร้างจากบิลผิดคน = เดิมแก้ไม่ได้เลย)
   const [createdFor, setCreatedFor] = useState(cur?.createdFor ?? "");
   const [rows, setRows] = useState<RecipeDraftRow[]>(
-    cur?.recipe.length ? draftFromRecipe(cur.recipe) : [blankRecipeRow(), blankRecipeRow()],
+    cur?.recipe.length
+      ? draftFromRecipe(cur.recipe)
+      : prefill?.rows.length
+        ? prefill.rows.map((r) => ({ ...r }))
+        : [blankRecipeRow(), blankRecipeRow()],
   );
   const recipe = cleanRecipe(rows);
   const nPrice = price === "" ? 0 : price;
@@ -391,7 +401,7 @@ function MenuModal({
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="w-full max-w-lg rounded-xl bg-card p-5">
-        <h3 className="mb-3 text-lg font-bold text-ink">{cur ? "แก้เมนู" : "เมนูใหม่"}</h3>
+        <h3 className="mb-3 text-lg font-bold text-ink">{title ?? (cur ? "แก้เมนู" : "เมนูใหม่")}</h3>
 
         <div className="grid gap-2 sm:grid-cols-3">
           <Field label="ชื่อเมนู">

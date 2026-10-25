@@ -98,6 +98,8 @@ export const BAR_TABS: SubTab[] = [
   { slug: "pos", label: "ขาย", cap: "bar.write" },
   { slug: "stock", label: "สต็อก" },
   { slug: "menu", label: "เมนู & สูตร" },
+  // D129 — ลองชงสูตรใหม่/ทำคอนเทนต์ ตัดสต็อก → ต้องเขียนได้ (ตัวเลขทุนซ่อนจากคนที่ไม่มี bar.config ที่ชั้น data)
+  { slug: "lab", label: "ห้องทดลอง", cap: "bar.write" },
   { slug: "history", label: "ประวัติบิล" },
   { slug: "customer", label: "ลูกค้า" },
   // 🚨 แดชบอร์ดโชว์ **ต้นทุนและกำไร** → ต้อง `bar.config` · พนักงานบาร์ต้องไม่เห็น

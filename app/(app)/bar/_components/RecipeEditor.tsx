@@ -45,7 +45,13 @@ export function RecipeEditor({
   isVat,
   price,
   onUsePrice,
+  mode = "menu",
 }: {
+  /**
+   * D129 — "lab" = ป๊อปอัพลองชงในห้องทดลอง: ไม่มีประโยค "บันทึกได้แต่ไม่ตัดสต็อก" (ที่นั่นบันทึกไม่ได้ถ้าไม่มีสูตร)
+   * และไม่มีราคาแนะนำ/ปุ่มใช้ราคานี้ (ไม่มีช่องราคา — ปุ่มที่กดแล้วไม่เกิดอะไรแย่กว่าไม่มีปุ่ม) โชว์แค่ทุนต่อแก้ว
+   */
+  mode?: "menu" | "lab";
   items: readonly BarItem[];
   slots: readonly HouseSlot[];
   garnishes: readonly BarGarnish[];
@@ -188,7 +194,7 @@ export function RecipeEditor({
         ＋ เพิ่มบรรทัด
       </button>
 
-      {recipe.length === 0 && (
+      {recipe.length === 0 && mode === "menu" && (
         <p className="mt-2 text-xs text-warn">
           ยังไม่ใส่สูตร — บันทึกได้ แต่เมนูนี้จะ <b>ไม่ตัดสต็อกและต้นทุนเป็น 0</b>
         </p>
@@ -207,7 +213,17 @@ export function RecipeEditor({
         </p>
       )}
 
-      {recipe.length > 0 && (
+      {recipe.length > 0 && mode === "lab" && canSeeCost && (
+        <div className="mt-3 rounded-lg bg-raised p-3 text-sm text-ink">
+          ทุนต่อแก้ว <b>{fmt(cost.total)}</b> บาท
+          {cost.missing > 0 && (
+            <div className="mt-1 text-xs text-warn">
+              มี {cost.missing} วัตถุดิบที่ยังไม่มีต้นทุน — ทุนที่เห็น <b>ต่ำกว่าความจริง</b>
+            </div>
+          )}
+        </div>
+      )}
+      {recipe.length > 0 && mode === "menu" && (
         <PriceSuggest
           cost={cost.total}
           missing={cost.missing}

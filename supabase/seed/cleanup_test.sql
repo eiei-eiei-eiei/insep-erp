@@ -83,6 +83,12 @@ delete from bar_recipe_slot  where menu_id like 'T-%'
    or slot_id in (select slot_id from bar_house_slot where item_id like 'T-%' or name like '%ทดสอบ%');
 delete from bar_house_slot   where item_id like 'T-%' or name like '%ทดสอบ%';
 delete from bar_garnish      where item_id like 'T-%' or name like '%ทดสอบ%';
+-- ★ D129 — ห้องทดลอง: รายการที่แตะวัตถุดิบ/เมนูทดสอบ หรือสูตร/งานที่ชื่อมี "ทดสอบ" (บรรทัด cascade ตามรายการ)
+delete from bar_lab_use where use_id in (select use_id from bar_lab_use_line where item_id like 'T-%' or menu_id like 'T-%')
+   or recipe_id in (select recipe_id from bar_lab_recipe where name like '%ทดสอบ%')
+   or event_name like '%ทดสอบ%';
+delete from bar_lab_recipe   where name like '%ทดสอบ%';
+delete from bar_lab_category where name like '%ทดสอบ%' and not is_system;
 delete from bar_recipe       where menu_id like 'T-%' or item_id like 'T-%';
 delete from bar_menu         where menu_id like 'T-%' or name like '%ทดสอบ%';
 delete from bar_customer     where customer_id like 'T-%' or name like '%ทดสอบ%';

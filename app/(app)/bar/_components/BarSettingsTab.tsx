@@ -8,6 +8,7 @@ import { Card, Field, TextInput, Select, Msg, useSaver, MissingHint, SuggestInpu
 import { saveBarSettingsAction } from "../actions";
 import { ReceiptLayoutCard } from "./ReceiptLayoutCard";
 import { QuickPickSettings } from "./QuickPickSettings";
+import { LabCategoriesCard } from "./LabTab";
 import type { ReceiptLayout } from "@/lib/bar/layout";
 
 /** ชวนเลือก — ★ พิมพ์เองได้เสมอ ผังบัญชีของแต่ละเจ้าไม่เหมือนกัน (บทเรียน D80-B2) */
@@ -269,7 +270,11 @@ export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: ()
 
       {/* D127 — เหล้าประจำบ้าน · ชุดตกแต่ง · ใช้บ่อย (บันทึกแยกทีละการ์ด) · ต้องตั้งกิจการก่อน (ของผูกกิจการ) */}
       {s.entityId ? (
-        <QuickPickSettings boot={data} onReload={onReload} />
+        <>
+          <QuickPickSettings boot={data} onReload={onReload} />
+          {/* D129 — หมวดการใช้ของห้องทดลอง */}
+          <LabCategoriesCard boot={data} />
+        </>
       ) : (
         <p className="text-xs text-faint lg:col-span-2">
           ตั้ง <b>กิจการของบาร์</b> แล้วกดบันทึกก่อน ถึงจะตั้งเหล้าประจำบ้าน/ชุดตกแต่ง/วัตถุดิบใช้บ่อยได้

@@ -924,7 +924,18 @@ export async function dashboardAction(input: { from: string; to: string; prev?: 
     .eq("status", "เปิดอยู่");
   if (openBills.error) return { ok: false, error: mapDbError(openBills.error) };
 
+  // D129 — ทุนที่ใช้ในห้องทดลอง (แยกบรรทัด · ไม่หักจากกำไรขั้นต้นของการขาย)
+  const [labUses, labCats] = await Promise.all([
+    supabase.from("bar_lab_use").select("use_id, business_date, category_id, cost_total")
+      .eq("entity_id", entity).gte("business_date", input.from).lte("business_date", input.to),
+    supabase.from("bar_lab_category").select("category_id, name, sort, is_system").eq("entity_id", entity),
+  ]);
+  if (labUses.error) return { ok: false, error: mapDbError(labUses.error) };
+  if (labCats.error) return { ok: false, error: mapDbError(labCats.error) };
+
   return okOf({
+    labUses: labUses.data ?? [],
+    labCats: labCats.data ?? [],
     sales: sales.data ?? [],
     prevSales,
     lines,
@@ -1148,4 +1159,212 @@ export async function savePinsAction(itemIds: string[]): Promise<Res> {
   const entity = await barEntity();
   if (!entity) return { ok: false, error: NO_ENTITY };
   return rpc("fn_bar_save_pins", { p_entity: entity, p_items: itemIds });
+}
+
+// ── D129: ห้องทดลอง (ลองชงสูตรใหม่ · ใช้ทำคอนเทนต์) ──────────────────────────────
+// ★ การเขียนทุกอย่างผ่าน RPC definer ใน 0091 (ตารางไม่มี policy เขียน) — ที่นี่แค่ส่งต่อ
+// 🚨 ตัวเลขทุนส่งให้เฉพาะคนที่มี bar.config — พนักงานบาร์ได้ 0 ตั้งแต่ชั้นนี้ (ไม่ใช่ซ่อนด้วย CSS · D96)
+
+/** ข้อมูลห้องทดลองทั้งหมดของกิจการบาร์ (หมวด · การ์ดสูตร · รายการพร้อมบรรทัด) */
+export async function labDataAction(): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  const supabase = await createClient();
+  const canSeeCost = can(await currentRole(), "bar.config");
+  const { data: auth } = await supabase.auth.getUser();
+  try {
+    const [cats, recipes, uses, lines] = await Promise.all([
+      supabase.from("bar_lab_category").select("category_id, name, sort, is_system").eq("entity_id", entity)
+        .order("sort").order("category_id"),
+      supabase.from("bar_lab_recipe").select("recipe_id, name, status, menu_id, created_at").eq("entity_id", entity),
+      fetchAllRows<Record<string, unknown>>(
+        async (from, to) => {
+          const { data, error, count } = await supabase
+            .from("bar_lab_use")
+            .select("use_id, used_at, business_date, category_id, recipe_id, round_no, glasses, event_name, note, cost_total, created_by",
+              { count: from === 0 ? "exact" : undefined })
+            .eq("entity_id", entity)
+            .order("use_id")
+            .range(from, to);
+          return { data, error, count };
+        },
+        { label: "รายการห้องทดลอง" },
+      ),
+      fetchAllRows<Record<string, unknown>>(
+        async (from, to) => {
+          const { data, error, count } = await supabase
+            .from("bar_lab_use_line")
+            .select("use_id, line_no, kind, item_id, slot_id, menu_id, lab_recipe_id, label, unit, qty, cost",
+              { count: from === 0 ? "exact" : undefined })
+            .eq("entity_id", entity)
+            .order("use_id")
+            .order("line_no")
+            .range(from, to);
+          return { data, error, count };
+        },
+        { label: "บรรทัดห้องทดลอง" },
+      ),
+    ]);
+    // 🚨 อ่านไม่ได้ ≠ ไม่มีข้อมูล (D89)
+    if (cats.error) return { ok: false, error: mapDbError(cats.error) };
+    if (recipes.error) return { ok: false, error: mapDbError(recipes.error) };
+    const cost = (v: unknown) => (canSeeCost ? Number(v) || 0 : 0);
+    const byUse = new Map<string, unknown[]>();
+    for (const l of lines) {
+      const k = l.use_id as string;
+      const list = byUse.get(k) ?? [];
+      list.push({
+        lineNo: Number(l.line_no),
+        kind: l.kind,
+        itemId: (l.item_id as string) ?? null,
+        slotId: (l.slot_id as string) ?? null,
+        menuId: (l.menu_id as string) ?? null,
+        labRecipeId: (l.lab_recipe_id as string) ?? null,
+        label: l.label,
+        unit: (l.unit as string) ?? null,
+        qty: Number(l.qty),
+        cost: cost(l.cost),
+      });
+      byUse.set(k, list);
+    }
+    return okOf({
+      me: auth.user?.id ?? null,
+      canSeeCost,
+      categories: (cats.data ?? []).map((c) => ({
+        categoryId: c.category_id, name: c.name, sort: Number(c.sort), isSystem: Boolean(c.is_system),
+      })),
+      recipes: (recipes.data ?? []).map((r) => ({
+        recipeId: r.recipe_id, name: r.name, status: r.status, menuId: r.menu_id ?? null, createdAt: r.created_at,
+      })),
+      uses: uses.map((u) => ({
+        useId: u.use_id,
+        usedAt: u.used_at,
+        businessDate: u.business_date,
+        categoryId: u.category_id,
+        recipeId: u.recipe_id ?? null,
+        roundNo: u.round_no == null ? null : Number(u.round_no),
+        glasses: u.glasses == null ? null : Number(u.glasses),
+        eventName: u.event_name ?? null,
+        note: u.note ?? null,
+        costTotal: cost(u.cost_total),
+        createdBy: u.created_by ?? null,
+        lines: byUse.get(u.use_id as string) ?? [],
+      })),
+    });
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "อ่านข้อมูลห้องทดลองไม่สำเร็จ" };
+  }
+}
+
+/** บรรทัดสูตร (ขวดตรง/ช่อง House) → รูปที่ RPC รับ */
+const recipeArg = (recipe: BarRecipeLine[]) =>
+  recipe
+    .filter((r) => (r.slotId || r.itemId) && r.qty > 0)
+    .map((r) => (r.slotId !== undefined ? { slot_id: r.slotId, qty: r.qty } : { item_id: r.itemId, qty: r.qty }));
+
+/** ลองชง 1 รอบ — recipeId ว่าง = สูตรใหม่ */
+export async function labRoundAction(input: {
+  recipeId: string | null;
+  name: string;
+  glasses: number;
+  recipe: BarRecipeLine[];
+  note?: string | null;
+  /** รอบขายของร้าน — วันขายคิดฝั่ง TS (golden B6) แบบเดียวกับตอนปิดบิล */
+  window?: SaleWindow | null;
+}): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  return rpc("fn_bar_lab_round", {
+    p_entity: entity,
+    p_recipe_id: input.recipeId || null,
+    p_name: input.name.trim(),
+    p_glasses: input.glasses,
+    p_lines: recipeArg(input.recipe),
+    p_note: input.note?.trim() || null,
+    p_business_date: businessDate(new Date(), input.window ?? null),
+  });
+}
+
+/** ใช้เมนูที่มี / สูตรทดลอง / วัตถุดิบเดี่ยว (คอนเทนต์ และหมวดอื่น ๆ) */
+export async function labUseAction(input: {
+  categoryId: string;
+  eventName?: string | null;
+  note?: string | null;
+  menus: { menuId: string; qty: number }[];
+  recipes: { recipeId: string; qty: number }[];
+  items: { itemId: string; qty: number }[];
+  window?: SaleWindow | null;
+}): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  return rpc("fn_bar_lab_use", {
+    p_entity: entity,
+    p_category_id: input.categoryId,
+    p_event: input.eventName?.trim() || null,
+    p_note: input.note?.trim() || null,
+    p_menus: input.menus.map((m) => ({ menu_id: m.menuId, qty: m.qty })),
+    p_recipes: input.recipes.map((r) => ({ recipe_id: r.recipeId, qty: r.qty })),
+    p_items: input.items.map((i) => ({ item_id: i.itemId, qty: i.qty })),
+    p_business_date: businessDate(new Date(), input.window ?? null),
+  });
+}
+
+export async function labDeleteUseAction(useId: string): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  return rpc("fn_bar_lab_delete_use", { p_entity: entity, p_use_id: useId });
+}
+
+export async function labUpdateUseAction(input: { useId: string; note: string; eventName?: string | null }): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  return rpc("fn_bar_lab_update_use", {
+    p_entity: entity, p_use_id: input.useId, p_note: input.note, p_event: input.eventName ?? null,
+  });
+}
+
+export async function labUpdateRecipeAction(input: { recipeId: string; name: string; status: string }): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  return rpc("fn_bar_lab_update_recipe", {
+    p_entity: entity, p_recipe_id: input.recipeId, p_name: input.name, p_status: input.status,
+  });
+}
+
+/** ส่งขึ้นเมนูขาย — ข้อมูลชุดเดียวกับ saveMenuAction แล้วผูกการ์ดสูตร (transaction เดียวใน SQL) */
+export async function labPromoteAction(recipeId: string, input: Parameters<typeof saveMenuAction>[0]): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  if (!input.name.trim()) return { ok: false, error: "ตั้งชื่อเมนูก่อน" };
+  return rpc("fn_bar_lab_promote", {
+    p_entity: entity,
+    p_recipe_id: recipeId,
+    p_menu: {
+      menu_id: null,
+      name: input.name.trim(),
+      price: input.price,
+      category_id: input.categoryId || null,
+      fixed_cost: input.fixedCost ?? null,
+      method: input.method?.trim() || null,
+      glass: input.glass?.trim() || null,
+      note: input.note?.trim() || null,
+      created_for: input.createdFor || null,
+    },
+    p_recipe: recipeArg(input.recipe),
+  });
+}
+
+export async function labAddCategoryAction(name: string): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  return rpc("fn_bar_lab_add_category", { p_entity: entity, p_name: name });
+}
+
+export async function labSaveCategoriesAction(rows: { categoryId: string; name: string }[]): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  return rpc("fn_bar_lab_save_categories", {
+    p_entity: entity,
+    p_rows: rows.map((r) => ({ category_id: r.categoryId, name: r.name.trim() })),
+  });
 }

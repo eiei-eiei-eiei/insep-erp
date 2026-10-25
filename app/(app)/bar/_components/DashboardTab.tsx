@@ -13,6 +13,7 @@ import {
 import { businessDate } from "@/lib/bar/businessDate";
 import { Card, Msg, TextInput, Field, Badge, Empty, fmt, useSaver, useConfirm } from "@/lib/shared/ui";
 import { dashboardAction, postDayAction, unpostDayAction } from "../actions";
+import { labSummary, labDashboardText, labCategories, type LabUse } from "@/lib/bar/lab";
 import { unpostedText, unpostedTotal } from "@/lib/bar/posting";
 import { CASH_METHOD, accountForMethod } from "@/lib/bar/payMethods";
 import { customerLabel } from "@/lib/bar/customerName";
@@ -57,6 +58,7 @@ export function DashboardTab({ boot, onReload }: { boot: BarBoot; onReload: () =
   const [posts, setPosts] = useState<PostRow[]>([]);
   const [customers, setCustomers] = useState<CustRow[]>([]);
   const [openBills, setOpenBills] = useState(0);
+  const [labText, setLabText] = useState("");
   /**
    * ช่วงของข้อมูลที่โหลดมาแล้ว
    * 🪤 ของเดิมคิดตัวเลขจากช่องวันที่สดแต่ข้อมูลเป็นของช่วงเดิมจนกว่าจะกด "ดูยอด"
@@ -83,6 +85,8 @@ export function DashboardTab({ boot, onReload }: { boot: BarBoot; onReload: () =
         posts: PostRow[];
         customers: CustRow[];
         openBills: number;
+        labUses: Record<string, unknown>[];
+        labCats: Record<string, unknown>[];
       };
       setSales(d.sales.map(toSale));
       setPrevSales((d.prevSales ?? []).map(toSale));
@@ -100,6 +104,26 @@ export function DashboardTab({ boot, onReload }: { boot: BarBoot; onReload: () =
       setPosts(d.posts);
       setCustomers(d.customers);
       setOpenBills(d.openBills ?? 0);
+      setLabText(
+        labDashboardText(
+          labSummary(
+            (d.labUses ?? []).map((u) => ({
+              useId: u.use_id as string, usedAt: "", businessDate: u.business_date as string,
+              categoryId: u.category_id as string, recipeId: null, roundNo: null, glasses: null,
+              eventName: null, note: null, costTotal: Number(u.cost_total), createdBy: null, lines: [],
+            }) as LabUse),
+            labCategories(
+              (d.labCats ?? []).map((c) => ({
+                categoryId: c.category_id as string, name: c.name as string, sort: Number(c.sort), isSystem: Boolean(c.is_system),
+              })),
+            ),
+            [],
+            r.from,
+            r.to,
+          ),
+          fmt,
+        ),
+      );
       setLoadedKey(`${r.from}|${r.to}`);
     } finally {
       setBusy(false);
@@ -268,6 +292,8 @@ export function DashboardTab({ boot, onReload }: { boot: BarBoot; onReload: () =
             ต้นทุน {fmt(s.cost)} · เฉลี่ยต่อบิล {s.avgPerBill === null ? "—" : fmt(s.avgPerBill)} ·
             ▲▼ เทียบกับ {prevNote(range.from, range.to, p)}
           </p>
+          {/* D129 — ทุนห้องทดลอง แยกบรรทัด (ไม่ได้หักจากกำไรขั้นต้นข้างบน · ประโยคตัดสินใน lib) */}
+          {labText && <p className="-mt-2 text-xs text-muted">{labText}</p>}
 
           <Card title="ยอดรายวัน และการลงบัญชี">
             <p className="mb-2 text-sm text-muted">
