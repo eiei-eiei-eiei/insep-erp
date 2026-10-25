@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import type { BarBoot } from "../data";
 import type { BarItem } from "@/lib/bar/types";
 import { stockText, isLowStock, packToBase, numText } from "@/lib/bar/units";
@@ -10,7 +11,15 @@ import {
   recipeUseCount, slotNamesByItem, unitLockReason, unitLabel, lowToBase,
   type ReceiveDraft, type NewItemDraft, type NewItemRow, type CountDraft, type ItemEditDraft, type QtyUnit,
 } from "@/lib/bar/stockBatch";
-import { Card, Msg, TextInput, NumBox, Select, Field, Badge, Empty, EscToClose, fmt, useSaver } from "@/lib/shared/ui";
+import {
+  Card, Msg, TextInput, NumBox, Select, Field, Badge, Empty, EscToClose, Combobox, fmt, useSaver,
+} from "@/lib/shared/ui";
+import {
+  STOCK_VIEW_LABEL, parseStockView, itemPasses, countPasses, countRowFilled, visibleRows,
+  hiddenPendingCount, hiddenPendingText, noMatchText,
+  ITEM_FILTER_LABEL, COUNT_FILTER_LABEL,
+  type StockView, type ItemFilter, type CountFilter,
+} from "@/lib/bar/stockNav";
 import {
   receiveBatchAction, adjustBatchAction, addItemsAction, updateItemsAction,
 } from "../actions";
@@ -23,6 +32,12 @@ import { ItemHistoryModal } from "./ItemHistoryModal";
  *    รับของ / นับสต็อก ซึ่งเขียน `bar_move` คู่กันเสมอ
  *    (หลักเดียวกับ D93 ที่ไม่ยอมให้แก้ตัวเลขบน log_distill ตรง ๆ — ตัวเลขต้องมีร่องรอย)
  *    โหมด "แก้ไข" ของตารางวัตถุดิบจึงไม่มีช่องยอดคงเหลือ/ต้นทุน
+ *
+ * ── D128: แถบสลับส่วน + ช่องค้น ───────────────────────────────────────────────
+ * · แสดงทีละส่วน (วัตถุดิบ | รับของเข้า | นับสต็อก) ผูกกับ URL `?view=` (ผู้ใช้เลือกแบบ B)
+ * · 🚨 ทุกส่วน **mount ค้างไว้ แค่ซ่อนด้วย CSS** — สลับส่วนแล้วของที่กรอกค้างต้องไม่หาย
+ *   ส่วนที่มีของค้างขึ้นจุดเหลืองบนแถบ (การ์ดรายงานขึ้นมาผ่าน `onDirty`)
+ * · การกรอง/ตัดสินทั้งหมดอยู่ที่ lib/bar/stockNav.ts (golden B25) — ที่นี่แค่วาด
  */
 export function StockTab({ boot, onReload }: { boot: BarBoot; onReload: () => Promise<void> }) {
   const data = boot;
@@ -31,8 +46,34 @@ export function StockTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
   const [openItem, setOpenItem] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState(false);
+  // ช่องค้น/ตัวกรองของตารางวัตถุดิบ — ใช้ร่วมทั้งโหมดดูและโหมดแก้ไข (สลับโหมดแล้วไม่ต้องพิมพ์ใหม่)
+  const [itemQuery, setItemQuery] = useState("");
+  const [itemFilter, setItemFilter] = useState<ItemFilter>("all");
 
   const canWrite = data.canWrite;
+  // ส่วนรับของ/นับสต็อกมีเฉพาะคนที่เขียนได้ — ลิงก์ ?view=count ของคนดูอย่างเดียว ตกกลับไปวัตถุดิบ
+  const views: StockView[] = canWrite ? ["items", "receive", "count"] : ["items"];
+  const sp = useSearchParams();
+  const [view, setViewState] = useState<StockView>(() => {
+    const v = parseStockView(sp.get("view"));
+    return views.includes(v) ? v : "items";
+  });
+  const setView = (v: StockView) => {
+    setViewState(v);
+    // ★ อ่านจาก location ปัจจุบัน ไม่ใช่ `sp` ที่ถือไว้ (แท็บของบาร์เขียน ?tab= ทับด้วย replaceState)
+    const params = new URLSearchParams(window.location.search);
+    params.set("view", v);
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+  };
+  const [dirty, setDirty] = useState<Record<StockView, boolean>>({ items: false, receive: false, count: false });
+  const markDirty = useCallback(
+    (v: StockView, d: boolean) => setDirty((p) => (p[v] === d ? p : { ...p, [v]: d })),
+    [],
+  );
+  // 🪤 ต้องคงที่ — การ์ดเรียกใน useEffect (มี cleanup) ถ้าเป็น arrow ใหม่ทุก render = วนตั้ง false/true ไม่จบ
+  const dirtyItems = useCallback((d: boolean) => markDirty("items", d), [markDirty]);
+  const dirtyReceive = useCallback((d: boolean) => markDirty("receive", d), [markDirty]);
+  const dirtyCount = useCallback((d: boolean) => markDirty("count", d), [markDirty]);
 
   async function run(fn: () => Promise<{ ok: boolean; error?: string }>, okText: string) {
     setBusy(true);
@@ -69,11 +110,48 @@ export function StockTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
         </div>
       )}
 
+      {views.length > 1 && (
+        <div className="grid grid-cols-3 overflow-hidden rounded-lg border border-line bg-card" role="tablist">
+          {views.map((v) => (
+            <button
+              key={v}
+              type="button"
+              role="tab"
+              aria-selected={view === v}
+              onClick={() => setView(v)}
+              className={`min-h-[44px] px-2 py-2 text-sm sm:min-h-0 ${
+                view === v ? "bg-brand-soft font-semibold text-brand" : "text-muted hover:bg-raised"
+              }`}
+            >
+              {STOCK_VIEW_LABEL[v]}
+              {v === "items" && <span className="text-faint"> ({data.items.length})</span>}
+              {/* 🚨 ส่วนที่ซ่อนอยู่มีของกรอกค้าง — สลับไปแล้วของไม่หาย แต่ต้องรู้ว่ายังไม่ได้บันทึก */}
+              {dirty[v] && (
+                <span className="ml-1 inline-block h-2 w-2 rounded-full bg-warn align-middle" title="มีที่กรอกไว้ ยังไม่ได้บันทึก" />
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className={view === "items" ? "" : "hidden"}>
       <Card title="วัตถุดิบในบาร์">
+        <SearchBar
+          query={itemQuery}
+          onQuery={setItemQuery}
+          filter={itemFilter}
+          onFilter={setItemFilter}
+          labels={ITEM_FILTER_LABEL}
+          shown={data.items.filter((i) => itemPasses(i, itemQuery, itemFilter)).length}
+          total={data.items.length}
+        />
         {editing ? (
           <ItemsEditor
             boot={data}
             busy={busy}
+            query={itemQuery}
+            filter={itemFilter}
+            onDirty={dirtyItems}
             onCancel={() => setEditing(false)}
             onRun={run}
             onDone={() => setEditing(false)}
@@ -115,7 +193,7 @@ export function StockTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
                   </tr>
                 </thead>
                 <tbody>
-                  {data.items.map((i) => (
+                  {data.items.filter((i) => itemPasses(i, itemQuery, itemFilter)).map((i) => (
                     <tr key={i.itemId}>
                       <td>
                         <span className="text-ink">{i.name}</span>
@@ -150,10 +228,14 @@ export function StockTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
               </table>
             </div>
             {data.items.length === 0 && <Empty>— ยังไม่มีวัตถุดิบ —</Empty>}
+            {data.items.length > 0 && !data.items.some((i) => itemPasses(i, itemQuery, itemFilter)) && (
+              <Empty>{noMatchText(data.items.length)}</Empty>
+            )}
 
           </>
         )}
       </Card>
+      </div>
 
       {openItem && (
         <ItemHistoryModal
@@ -163,8 +245,17 @@ export function StockTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
         />
       )}
 
-      {canWrite && <ReceiveCard boot={data} busy={busy} onRun={run} />}
-      {canWrite && <CountCard boot={data} busy={busy} onRun={run} />}
+      {/* ★ mount ค้างไว้ทั้งคู่ แค่ซ่อน — สลับส่วนแล้วแถวที่กรอกไว้ต้องอยู่ครบ */}
+      {canWrite && (
+        <div className={view === "receive" ? "" : "hidden"}>
+          <ReceiveCard boot={data} busy={busy} onRun={run} onDirty={dirtyReceive} />
+        </div>
+      )}
+      {canWrite && (
+        <div className={view === "count" ? "" : "hidden"}>
+          <CountCard boot={data} busy={busy} onRun={run} onDirty={dirtyCount} />
+        </div>
+      )}
 
       {adding && (
         <NewItemsModal
@@ -186,6 +277,65 @@ export function StockTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
             }
           }}
         />
+      )}
+    </div>
+  );
+}
+
+/**
+ * ช่องค้น + ชิปตัวกรอง ของแต่ละส่วน (D128) — ★ ประกาศนอกคอมโพเนนต์อื่นเสมอ (D71)
+ * แสดง "แสดง X จาก Y" เมื่อกรองอยู่ ให้รู้ว่ายังมีแถวที่มองไม่เห็น
+ */
+function SearchBar<F extends string>({
+  query, onQuery, filter, onFilter, labels, shown, total,
+}: {
+  query: string;
+  onQuery: (q: string) => void;
+  filter: F;
+  onFilter: (f: F) => void;
+  labels: Record<F, string>;
+  shown: number;
+  total: number;
+}) {
+  const filtering = query.trim() !== "" || filter !== (Object.keys(labels)[0] as F);
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-2">
+      <div className="relative min-w-48 flex-1">
+        <TextInput
+          value={query}
+          onChange={(e) => onQuery(e.target.value)}
+          placeholder="ค้นชื่อวัตถุดิบ…"
+          aria-label="ค้นชื่อวัตถุดิบ"
+        />
+        {query && (
+          <button
+            type="button"
+            aria-label="ล้างคำค้น"
+            onClick={() => onQuery("")}
+            className="absolute right-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded text-muted hover:text-ink"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {(Object.keys(labels) as F[]).map((f) => (
+          <button
+            key={f}
+            type="button"
+            onClick={() => onFilter(f)}
+            className={`min-h-[44px] rounded-full border px-3 py-1 text-xs sm:min-h-0 ${
+              filter === f ? "border-brand-line bg-brand-soft text-brand" : "border-line bg-card text-muted hover:bg-raised"
+            }`}
+          >
+            {labels[f]}
+          </button>
+        ))}
+      </div>
+      {filtering && (
+        <span className="text-xs text-faint">
+          แสดง {shown} จาก {total}
+        </span>
       )}
     </div>
   );
@@ -228,10 +378,13 @@ function UnitToggle({
  * · ค่าเตือนกรอกเป็นหน่วยซื้อได้ ระบบแปลงเก็บเป็นหน่วยฐาน
  */
 function ItemsEditor({
-  boot, busy, onCancel, onRun, onDone,
+  boot, busy, query, filter, onDirty, onCancel, onRun, onDone,
 }: {
   boot: BarBoot;
   busy: boolean;
+  query: string;
+  filter: ItemFilter;
+  onDirty: (d: boolean) => void;
   onCancel: () => void;
   onRun: OnRun;
   onDone: () => void;
@@ -243,6 +396,16 @@ function ItemsEditor({
   const plan = planItemEdits(rows, boot.items, used, via);
   const set = (idx: number, patch: Partial<ItemEditDraft>) =>
     setRows((rs) => rs.map((r, j) => (j === idx ? { ...r, ...patch } : r)));
+  // D128 — กรองด้วยข้อมูลที่บันทึกไว้ (ชื่อเดิม) ไม่ใช่ชื่อที่กำลังพิมพ์แก้ ⇒ แถวไม่หายไปกลางคันตอนแก้ชื่อ
+  const byId = new Map(boot.items.map((i) => [i.itemId, i]));
+  const shown = visibleRows(rows, (r) => itemPasses(byId.get(r.itemId)!, query, filter));
+  const hidden = hiddenPendingCount(plan.rows.map((r) => r.itemId), shown.map((x) => x.row.itemId));
+  const isDirty = plan.rows.length > 0;
+  useEffect(() => {
+    onDirty(isDirty);
+  }, [isDirty, onDirty]);
+  // ออกจากโหมดแก้ไข (ยกเลิก/บันทึกเสร็จ) = ไม่มีของค้างแล้ว
+  useEffect(() => () => onDirty(false), [onDirty]);
 
   return (
     <>
@@ -263,13 +426,15 @@ function ItemsEditor({
             </tr>
           </thead>
           <tbody>
-            {rows.map((r, idx) => {
+            {shown.map(({ row: r, no }) => {
+              const idx = no - 1;
               const item = boot.items.find((i) => i.itemId === r.itemId)!;
               const lock = unitLockReason(item, used.get(r.itemId) ?? 0, via.get(r.itemId));
               const lowBase = lowToBase(r.lowQty, r.lowUnit, r.packSize);
               return (
                 <tr key={r.itemId}>
-                  <td className="text-sm text-faint">{idx + 1}</td>
+                  {/* 🚨 เลขแถวเดิมแม้กรองอยู่ — ข้อความ error อ้างเลขนี้ (B25) */}
+                  <td className="text-sm text-faint">{no}</td>
                   <td>
                     <div className="w-44">
                       <TextInput value={r.name} onChange={(e) => set(idx, { name: e.target.value })} />
@@ -322,6 +487,8 @@ function ItemsEditor({
         </table>
       </div>
 
+      {shown.length === 0 && <Empty>{noMatchText(rows.length)}</Empty>}
+      {hidden > 0 && <p className="mt-2 text-xs text-warn">{hiddenPendingText(hidden)}</p>}
       {plan.errors.length > 0 && <p className="mt-2 text-xs text-warn">ยังบันทึกไม่ได้ — {errorsText(plan.errors)}</p>}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -387,9 +554,20 @@ const blanks = <T,>(n: number, blank: () => T) => Array.from({ length: n }, blan
  * ★ ช่องราคามีปุ่ม "ใช้ราคาล็อตก่อน" → กดผ่านเลยก็ได้พฤติกรรม "ราคากลาง"
  * 🚨 ทั้งชุดเข้าหมดหรือไม่เข้าเลย — ล้มแล้วแถวยังอยู่ครบ แก้แถวที่ error บอกแล้วกดใหม่
  */
-function ReceiveCard({ boot, busy, onRun }: { boot: BarBoot; busy: boolean; onRun: OnRun }) {
+function ReceiveCard({
+  boot, busy, onRun, onDirty,
+}: {
+  boot: BarBoot;
+  busy: boolean;
+  onRun: OnRun;
+  onDirty: (d: boolean) => void;
+}) {
   const [rows, setRows] = useState<K<ReceiveDraft>[]>(() => blanks(3, newReceive));
   const [source, setSource] = useState("");
+  const isDirty = rows.some((r) => r.itemId || r.qtyPack !== "" || r.costTotal !== "");
+  useEffect(() => {
+    onDirty(isDirty);
+  }, [isDirty, onDirty]);
 
   const plan = planReceive(rows, boot.items);
   const total = plan.rows.reduce((s, r) => s + r.costTotal, 0);
@@ -401,76 +579,69 @@ function ReceiveCard({ boot, busy, onRun }: { boot: BarBoot; busy: boolean; onRu
 
   return (
     <Card title="รับของเข้าบาร์">
-      <div className="overflow-x-auto">
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>วัตถุดิบ</th>
-              <th className="text-right">จำนวน (หน่วยซื้อ)</th>
-              <th>เป็นหน่วยฐาน</th>
-              <th className="text-right">ราคาที่จ่ายจริง (บาท)</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, idx) => {
-              const item = boot.items.find((i) => i.itemId === r.itemId);
-              const qtyBase = item && r.qtyPack !== "" ? packToBase(r.qtyPack, item.packSize) : 0;
-              // ราคาล็อตล่าสุดต่อหน่วย × ปริมาณที่กำลังจะรับ
-              const suggested = item ? Math.round(item.costPerUnit * qtyBase * 100) / 100 : 0;
-              return (
-                <tr key={r.k}>
-                  <td className="text-sm text-faint">{idx + 1}</td>
-                  <td>
-                    <div className="w-48">
-                      <Select value={r.itemId} onChange={(e) => set(idx, { itemId: e.target.value, costTotal: "" })}>
-                        <option value="">— เลือก —</option>
-                        {itemOptions(boot.items, rows, idx, true).map((i) => (
-                          <option key={i.itemId} value={i.itemId}>
-                            {i.name}
-                          </option>
-                        ))}
-                      </Select>
-                    </div>
-                  </td>
-                  <td>
-                    <div className="ml-auto w-24">
-                      <NumBox value={r.qtyPack} onChange={(v) => set(idx, { qtyPack: v })} blankZero />
-                    </div>
-                    {item?.packLabel && <div className="text-right text-xs text-faint">{item.packLabel}</div>}
-                  </td>
-                  <td className="text-sm text-muted">{item && qtyBase > 0 ? `${numText(qtyBase)} ${item.unit}` : "—"}</td>
-                  <td>
-                    <div className="ml-auto w-28">
-                      <NumBox value={r.costTotal} onChange={(v) => set(idx, { costTotal: v })} blankZero />
-                    </div>
-                    {boot.canSeeCost && suggested > 0 && r.costTotal === "" && (
-                      <button
-                        type="button"
-                        onClick={() => set(idx, { costTotal: suggested })}
-                        className="block w-full text-right text-xs text-muted underline"
-                      >
-                        ใช้ราคาล็อตก่อน ({fmt(suggested)})
-                      </button>
-                    )}
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      aria-label="ลบแถว"
-                      onClick={() => setRows((rs) => dropRow(rs, idx, newReceive))}
-                      className={iconBtn}
-                    >
-                      ✕
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      {/*
+        D128 — ช่องวัตถุดิบเป็น Combobox (พิมพ์ค้นแล้วกดเลือกจากรายการ · ตัวเดียวกับหน้าขาย)
+        🚨 ไม่เลือกให้เอง: พิมพ์ค้างไว้แล้วกดที่อื่นโดยไม่แตะรายการ = ช่องยังว่าง (เดาผิด = ของเข้าผิดขวดเงียบ ๆ)
+        🪤 เลิกใช้ตาราง: กล่องห่อตารางเลื่อนแนวนอนได้ (overflow) ⇒ ตัดป๊อปอัพรายการของ Combobox ทิ้ง
+           ใช้แถวแบบ flex ที่ตัดบรรทัดเองบนจอแคบแทน
+      */}
+      <div className="hidden gap-2 border-b border-line-soft pb-1 text-xs text-faint sm:flex">
+        <span className="w-6">#</span>
+        <span className="min-w-48 flex-1">วัตถุดิบ</span>
+        <span className="w-24 text-right">จำนวน (หน่วยซื้อ)</span>
+        <span className="w-28">เป็นหน่วยฐาน</span>
+        <span className="w-32 text-right">ราคาที่จ่ายจริง (บาท)</span>
+        <span className="w-7" />
       </div>
+      {rows.map((r, idx) => {
+        const item = boot.items.find((i) => i.itemId === r.itemId);
+        const qtyBase = item && r.qtyPack !== "" ? packToBase(r.qtyPack, item.packSize) : 0;
+        // ราคาล็อตล่าสุดต่อหน่วย × ปริมาณที่กำลังจะรับ
+        const suggested = item ? Math.round(item.costPerUnit * qtyBase * 100) / 100 : 0;
+        return (
+          <div key={r.k} className="flex flex-wrap items-start gap-2 border-b border-line-soft py-2">
+            <span className="w-6 pt-2 text-sm text-faint">{idx + 1}</span>
+            <div className="min-w-48 flex-1">
+              <Combobox
+                value={r.itemId}
+                onChange={(v) => set(idx, { itemId: v, costTotal: "" })}
+                options={itemOptions(boot.items, rows, idx, true).map((i) => ({
+                  value: i.itemId,
+                  label: `${i.name} (${i.unit})`,
+                }))}
+                placeholder="พิมพ์ค้นวัตถุดิบ แล้วกดเลือก…"
+              />
+            </div>
+            <div className="w-24">
+              <NumBox value={r.qtyPack} onChange={(v) => set(idx, { qtyPack: v })} blankZero placeholder="จำนวน" />
+              {item?.packLabel && <div className="text-right text-xs text-faint">{item.packLabel}</div>}
+            </div>
+            <div className="w-28 pt-2 text-sm text-muted">
+              {item && qtyBase > 0 ? `${numText(qtyBase)} ${item.unit}` : "—"}
+            </div>
+            <div className="w-32">
+              <NumBox value={r.costTotal} onChange={(v) => set(idx, { costTotal: v })} blankZero placeholder="ราคา" />
+              {boot.canSeeCost && suggested > 0 && r.costTotal === "" && (
+                <button
+                  type="button"
+                  onClick={() => set(idx, { costTotal: suggested })}
+                  className="block w-full text-right text-xs text-muted underline"
+                >
+                  ใช้ราคาล็อตก่อน ({fmt(suggested)})
+                </button>
+              )}
+            </div>
+            <button
+              type="button"
+              aria-label="ลบแถว"
+              onClick={() => setRows((rs) => dropRow(rs, idx, newReceive))}
+              className={`${iconBtn} mt-1.5`}
+            >
+              ✕
+            </button>
+          </div>
+        );
+      })}
       <button
         type="button"
         onClick={() => setRows((rs) => [...rs, newReceive()])}
@@ -521,20 +692,47 @@ function ReceiveCard({ boot, busy, onRun }: { boot: BarBoot; busy: boolean; onRu
  * ★ เลือกหน่วยที่กรอกได้ทีละแถว (ลูก/ขวด หรือ ml) ระบบแปลงเก็บเป็นหน่วยฐาน
  * ★ เก็บค่าที่กรอกไว้ตาม itemId ไม่ใช่ตามลำดับ — เพิ่มวัตถุดิบใหม่ระหว่างนับแล้วค่าไม่เลื่อนแถว
  */
-function CountCard({ boot, busy, onRun }: { boot: BarBoot; busy: boolean; onRun: OnRun }) {
+function CountCard({
+  boot, busy, onRun, onDirty,
+}: {
+  boot: BarBoot;
+  busy: boolean;
+  onRun: OnRun;
+  onDirty: (d: boolean) => void;
+}) {
   const [edits, setEdits] = useState<Record<string, CountDraft>>({});
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<CountFilter>("all");
   const items = countItems(boot.items);
   const defaults = new Map(countDrafts(boot.items).map((d) => [d.itemId, d]));
   const rows = items.map((i) => edits[i.itemId] ?? defaults.get(i.itemId)!);
   const plan = planCount(rows, boot.items);
   const set = (d: CountDraft, patch: Partial<CountDraft>) =>
     setEdits((e) => ({ ...e, [d.itemId]: { ...d, ...patch } }));
+  // D128 — กรองแค่ซ่อนแถวบนจอ · planCount ยังคิดจากทุกแถว (ของที่กรอกไว้แล้วถูกซ่อนก็ยังบันทึก)
+  const byId = new Map(boot.items.map((i) => [i.itemId, i]));
+  const shown = visibleRows(rows, (r) => countPasses(r, byId.get(r.itemId)!, query, filter));
+  const filled = rows.filter(countRowFilled).map((r) => r.itemId);
+  const hidden = hiddenPendingCount(filled, shown.map((x) => x.row.itemId));
+  const isDirty = filled.length > 0;
+  useEffect(() => {
+    onDirty(isDirty);
+  }, [isDirty, onDirty]);
 
   return (
     <Card title="นับสต็อก / ของเสีย / ชิม">
       <p className="mb-2 text-xs text-faint">
         กรอกเฉพาะตัวที่นับแล้วไม่ตรง — <b>ช่องที่เว้นว่างไว้ใช้ค่าในระบบ</b> · 0 = นับแล้วหมด
       </p>
+      <SearchBar
+        query={query}
+        onQuery={setQuery}
+        filter={filter}
+        onFilter={setFilter}
+        labels={COUNT_FILTER_LABEL}
+        shown={shown.length}
+        total={rows.length}
+      />
       <div className="overflow-x-auto">
         <table className="tbl">
           <thead>
@@ -549,12 +747,13 @@ function CountCard({ boot, busy, onRun }: { boot: BarBoot; busy: boolean; onRun:
             </tr>
           </thead>
           <tbody>
-            {rows.map((r, idx) => {
+            {shown.map(({ row: r, no }) => {
               const item = boot.items.find((i) => i.itemId === r.itemId)!;
               const pv = countPreview(r, item);
               return (
                 <tr key={r.itemId}>
-                  <td className="text-sm text-faint">{idx + 1}</td>
+                  {/* 🚨 เลขแถวเดิมแม้กรองอยู่ — ข้อความ error ของ planCount อ้างเลขนี้ (B25) */}
+                  <td className="text-sm text-faint">{no}</td>
                   <td className="text-sm text-ink">
                     {item.name}
                     {item.active === false && (
@@ -610,7 +809,9 @@ function CountCard({ boot, busy, onRun }: { boot: BarBoot; busy: boolean; onRun:
         </table>
       </div>
       {items.length === 0 && <Empty>— ยังไม่มีวัตถุดิบ —</Empty>}
+      {items.length > 0 && shown.length === 0 && <Empty>{noMatchText(items.length)}</Empty>}
 
+      {hidden > 0 && <p className="mt-2 text-xs text-warn">{hiddenPendingText(hidden)}</p>}
       {plan.errors.length > 0 && <p className="mt-2 text-xs text-warn">ยังบันทึกไม่ได้ — {errorsText(plan.errors)}</p>}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
