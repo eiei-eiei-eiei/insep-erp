@@ -21,6 +21,8 @@ export const TENANT_TABLES = [
   "sale_menu", "sales_orders", "sales_order_items", "warehouse_stock", "stock_moves",
   // D96 — บาร์/POS (แยกขาดจากสต็อก/เอกสารฝั่งผลิตและขายโดยตั้งใจ)
   "bar_category", "bar_item", "bar_customer", "bar_menu", "bar_recipe", "bar_customer_fav",
+  // D127 — เหล้าประจำบ้าน/ชุดตกแต่ง (แม่ก่อนลูก: item → house_slot → recipe_slot)
+  "bar_house_slot", "bar_recipe_slot", "bar_garnish",
   "bar_receive", "bar_sale", "bar_sale_item", "bar_move", "bar_post",
   "pay_inputs", "pay_components", "pay_rates", "pay_variables", "pay_post_legs",
   "employees", "payroll_periods", "payroll_items",
@@ -70,6 +72,9 @@ export const TABLE_LABEL_TH: Partial<Record<TenantTable, string>> = {
   bar_menu: "เมนูบาร์",
   bar_recipe: "สูตรเมนูบาร์",
   bar_customer_fav: "เมนูโปรดของลูกค้าบาร์",
+  bar_house_slot: "เหล้าประจำบ้าน (บาร์)",
+  bar_recipe_slot: "สูตรเมนูบาร์ (ช่องเหล้าประจำบ้าน)",
+  bar_garnish: "ชุดตกแต่ง (บาร์)",
   bar_receive: "รับของเข้าบาร์",
   bar_sale: "บิลขายบาร์",
   bar_sale_item: "รายการในบิลบาร์",
@@ -117,6 +122,8 @@ export const AUDITED_TABLES: readonly TenantTable[] = [
   //        และไม่ audit `bar_post` (เขียนผ่าน RPC ที่จดใครลง/ใครถอนไว้ในแถวตัวเอง)
   "bar_category", "bar_item", "bar_menu", "bar_recipe", "bar_customer",
   "bar_sale", "bar_sale_item",
+  // D127 — เปลี่ยนขวดในช่องเหล้าประจำบ้าน = ต้นทุนทุกเมนูที่อ้างช่องเปลี่ยน ⇒ ต้องตอบได้ว่าใครเปลี่ยนเมื่อไร
+  "bar_house_slot", "bar_recipe_slot", "bar_garnish",
   // D100 — เปลี่ยนรูปแบบแล้วเลขบนใบกำกับเปลี่ยน ⇒ ต้องตอบได้ว่าใครเปลี่ยนเมื่อไร
   "doc_numbering",
 ];
@@ -155,5 +162,7 @@ export const ENTITY_SCOPED_TABLES: readonly TenantTable[] = [
   // D96 — ทุกตารางของบาร์มี entity_id (บางตัว FK ตรงไป entities, ที่เหลือผ่านแม่ของมัน)
   //        ⇒ ต้องถูกลบก่อน `entities` ทั้งหมด
   "bar_category", "bar_item", "bar_customer", "bar_menu", "bar_recipe", "bar_customer_fav",
+  // D127 — เหล้าประจำบ้าน/ชุดตกแต่ง (แม่ก่อนลูก: item → house_slot → recipe_slot)
+  "bar_house_slot", "bar_recipe_slot", "bar_garnish",
   "bar_receive", "bar_sale", "bar_sale_item", "bar_move", "bar_post",
 ];

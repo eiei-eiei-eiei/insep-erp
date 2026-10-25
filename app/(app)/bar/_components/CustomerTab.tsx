@@ -9,6 +9,7 @@ import {
 } from "../actions";
 import { CustomerModal } from "./CustomerModal";
 import { customerNameParts } from "@/lib/bar/customerName";
+import { recipeText } from "@/lib/bar/houseSlot";
 
 type CardData = {
   favMenuIds: string[];
@@ -272,12 +273,7 @@ function CustomerCard({
               {menu && (
                 <span className="text-xs text-faint">
                   {menu.recipe.length > 0
-                    ? menu.recipe
-                        .map((r) => {
-                          const it = boot.items.find((i) => i.itemId === r.itemId);
-                          return `${it?.name ?? r.itemId} ${r.qty}${it?.unit ?? ""}`;
-                        })
-                        .join(" · ")
+                    ? recipeText(menu.recipe, boot.items, boot.houseSlots)
                     : "ยังไม่มีสูตร"}
                   {menu.glass ? ` · แก้ว ${menu.glass}` : ""}
                   {menu.method ? ` · ${menu.method}` : ""}

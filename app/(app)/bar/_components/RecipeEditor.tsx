@@ -8,27 +8,37 @@
  * ★ ช่องวัตถุดิบ **พิมพ์ค้นได้** (ผู้ใช้ขอ — ไล่หาในรายการยาวยาก) — `<datalist>` ของเบราว์เซอร์
  *   ขึ้นตัวเลือกตามที่พิมพ์ ใช้ได้ทั้งคอมและมือถือ · id ของ datalist มาจาก `useId()`
  *   🪤 id ซ้ำข้ามแท็บที่ mount ค้าง = ผูกเข้ารายการของอีกแท็บเงียบ ๆ (D77)
- * 🚨 พิมพ์ไม่ตรงวัตถุดิบไหน = **ยังไม่ได้เลือก** และบอกบนจอ — ไม่เดาจากคำบางส่วน (`matchItem`)
+ * 🚨 พิมพ์ไม่ตรงวัตถุดิบไหน = **ยังไม่ได้เลือก** และบอกบนจอ — ไม่เดาจากคำบางส่วน (`matchRef`)
  * ★ การตัดสิน/สูตรทั้งหมดอยู่ที่ lib/bar/menuPricing.ts (golden B19) — ที่นี่แค่วาด
+ *
+ * ── D127 ──────────────────────────────────────────────────────────────────────
+ * · บรรทัดอ้าง **ช่องเหล้าประจำบ้าน** ได้ (พิมพ์ชื่อช่อง หรือกดปุ่มลัด House) — ต้นทุนคิดจากขวดที่ช่องชี้อยู่
+ * · แถบปุ่มลัด 3 กลุ่ม (House / ใช้บ่อย / ตกแต่ง) — ตรรกะอยู่ที่ lib/bar/quickPick.ts (golden B24)
+ *   กดแล้วโฟกัสช่องจำนวนของบรรทัดนั้นให้ (มือถือ = คีย์บอร์ดตัวเลขขึ้นทันที)
+ * · บรรทัดซ้ำรวมเป็นบรรทัดเดียวตอนบันทึก (`cleanRecipe`) — บอกบนจอด้วย `duplicateRows`
  */
-import { useEffect, useId, useState } from "react";
-import type { BarItem } from "@/lib/bar/types";
-import { blankRecipeRow, cleanRecipe, danglingRows, type RecipeDraftRow } from "@/lib/bar/recipe";
+import { useEffect, useId, useRef, useState } from "react";
+import type { BarGarnish, BarItem, HouseSlot } from "@/lib/bar/types";
+import { blankRecipeRow, cleanRecipe, danglingRows, duplicateRows, type RecipeDraftRow } from "@/lib/bar/recipe";
 import {
   costPct,
   itemLabel,
-  matchItem,
+  matchRef,
   normalizeTargetPct,
   recipeCost,
   suggestPrice,
   DEFAULT_TARGET_PCT,
 } from "@/lib/bar/menuPricing";
+import { resolveRecipe, slotOption } from "@/lib/bar/houseSlot";
+import { applyPick, quickChips, type QuickChip, type QuickPick } from "@/lib/bar/quickPick";
 import { NumBox, TextInput, fmt } from "@/lib/shared/ui";
 
 const TARGET_KEY = "bar:targetCostPct";
 
 export function RecipeEditor({
   items,
+  slots,
+  garnishes,
   rows,
   setRows,
   canSeeCost,
@@ -37,6 +47,8 @@ export function RecipeEditor({
   onUsePrice,
 }: {
   items: readonly BarItem[];
+  slots: readonly HouseSlot[];
+  garnishes: readonly BarGarnish[];
   rows: RecipeDraftRow[];
   setRows: (fn: (p: RecipeDraftRow[]) => RecipeDraftRow[]) => void;
   canSeeCost: boolean;
@@ -45,28 +57,64 @@ export function RecipeEditor({
   onUsePrice: (p: number) => void;
 }) {
   const listId = useId();
+  const box = useRef<HTMLDivElement>(null);
+  const [focusAt, setFocusAt] = useState<number | null>(null);
   const active = items.filter((it) => it.active !== false);
   const byId = new Map(items.map((it) => [it.itemId, it]));
+  const bySlot = new Map(slots.map((s) => [s.slotId, s]));
   const setRow = (i: number, patch: Partial<RecipeDraftRow>) =>
     setRows((p) => p.map((r, j) => (j === i ? { ...r, ...patch } : r)));
 
   const recipe = cleanRecipe(rows);
-  const cost = recipeCost(recipe, items);
-  const costByItem = new Map(cost.lines.map((l) => [l.itemId, l]));
+  const cost = recipeCost(resolveRecipe(recipe, slots).lines, items);
   const dangling = danglingRows(rows);
+  const dup = duplicateRows(rows);
+  const chips = quickChips(slots, items, garnishes);
+
+  // กดปุ่มลัด → โฟกัสช่องจำนวนของบรรทัดนั้น (หลังวาดแถวใหม่เสร็จ)
+  useEffect(() => {
+    if (focusAt === null) return;
+    const el = box.current?.querySelector<HTMLInputElement>(`[data-qty-row="${focusAt}"] input`);
+    if (el) {
+      el.focus();
+      el.select();
+    }
+    setFocusAt(null);
+  }, [focusAt, rows]);
+
+  function pick(p: QuickPick) {
+    const r = applyPick(rows, p);
+    setRows(() => r.rows);
+    setFocusAt(r.focus);
+  }
+
+  /** ขวดที่บรรทัดนี้จะตัดจริง — บรรทัดช่อง = ขวดที่ช่องชี้อยู่ตอนนี้ */
+  const rowItem = (r: RecipeDraftRow) => {
+    if (r.slotId) {
+      const s = bySlot.get(r.slotId);
+      return s ? byId.get(s.itemId) : undefined;
+    }
+    return r.itemId ? byId.get(r.itemId) : undefined;
+  };
 
   return (
-    <>
+    <div ref={box}>
       <div className="mt-3 text-sm font-medium text-muted">สูตร (ตัดสต็อกตามนี้)</div>
+      <QuickBar chips={chips} onPick={pick} />
       <datalist id={listId}>
+        {slots.map((s) => (
+          <option key={s.slotId} value={slotOption(s)} />
+        ))}
         {active.map((it) => (
           <option key={it.itemId} value={itemLabel(it)} />
         ))}
       </datalist>
       {rows.map((r, i) => {
-        const it = r.itemId ? byId.get(r.itemId) : undefined;
-        const shown = r.text ?? (it ? itemLabel(it) : "");
-        const line = r.itemId && r.qty !== "" && r.qty > 0 ? costByItem.get(r.itemId) : undefined;
+        const slot = r.slotId ? bySlot.get(r.slotId) : undefined;
+        const it = rowItem(r);
+        const shown = r.text ?? (slot ? slotOption(slot) : it ? itemLabel(it) : "");
+        const qty = r.qty === "" ? 0 : r.qty;
+        const picked = Boolean(r.itemId || r.slotId);
         return (
           // 🐛 D96 (B-8) — บนจอแคบช่องวัตถุดิบเต็มบรรทัด ปริมาณ/ปุ่มลัดลงบรรทัดถัดไป
           <div key={i} className="mt-2">
@@ -75,11 +123,14 @@ export function RecipeEditor({
                 <TextInput
                   value={shown}
                   list={listId}
-                  placeholder="พิมพ์ชื่อวัตถุดิบ…"
-                  onChange={(e) => setRow(i, { text: e.target.value, itemId: matchItem(e.target.value, active) })}
+                  placeholder="พิมพ์ชื่อวัตถุดิบ / เหล้าประจำบ้าน…"
+                  onChange={(e) => {
+                    const m = matchRef(e.target.value, active, slots);
+                    setRow(i, { text: e.target.value, itemId: m.itemId, slotId: m.slotId });
+                  }}
                 />
               </div>
-              <div className="w-24">
+              <div className="w-24" data-qty-row={i}>
                 <NumBox value={r.qty} onChange={(v) => setRow(i, { qty: v })} blankZero placeholder="ปริมาณ" />
               </div>
               <div className="flex gap-1">
@@ -102,21 +153,27 @@ export function RecipeEditor({
                 ลบ
               </button>
             </div>
-            {shown.trim() && !r.itemId ? (
+            {shown.trim() && !picked ? (
               <div className="mt-0.5 text-xs text-warn">
                 ยังไม่ได้เลือก — พิมพ์แล้วเลือกจากรายการที่ขึ้นมา (ไม่มีในรายการ = ยังไม่ได้เพิ่มที่แท็บสต็อก)
               </div>
             ) : (
-              canSeeCost &&
-              line && (
+              picked && (
                 <div className="mt-0.5 text-xs text-muted">
-                  {line.noCost ? (
-                    <span className="text-warn">วัตถุดิบนี้ยังไม่มีต้นทุน (ยังไม่เคยรับของเข้า)</span>
-                  ) : (
-                    <>
-                      ต้นทุน {fmt(line.cost)} บาท
-                    </>
+                  {slot && (
+                    <span>
+                      ตอนนี้ตัด <b className="text-ink">{it ? `${it.name} (${it.unit})` : "— ไม่พบขวด"}</b> ·
+                      เปลี่ยนขวดได้ที่แท็บตั้งค่าบาร์{canSeeCost && it && qty > 0 ? " · " : ""}
+                    </span>
                   )}
+                  {canSeeCost &&
+                    it &&
+                    qty > 0 &&
+                    (it.costPerUnit > 0 ? (
+                      <>ต้นทุน {fmt(Math.round(qty * it.costPerUnit * 100) / 100)} บาท</>
+                    ) : (
+                      <span className="text-warn">วัตถุดิบนี้ยังไม่มีต้นทุน (ยังไม่เคยรับของเข้า)</span>
+                    ))}
                 </div>
               )
             )}
@@ -143,6 +200,12 @@ export function RecipeEditor({
           <b>ไม่ถูกบันทึก</b>
         </p>
       )}
+      {/* D127 — เดิมบรรทัดซ้ำทำให้บันทึกพังด้วยข้อความกำกวม ตอนนี้รวมให้ แต่ต้องบอก */}
+      {dup > 0 && (
+        <p className="mt-1 text-xs text-warn">
+          มี <b>{dup} บรรทัด</b> ที่เลือกของซ้ำกับบรรทัดอื่น — ตอนบันทึกจะ <b>รวมปริมาณเป็นบรรทัดเดียว</b>
+        </p>
+      )}
 
       {recipe.length > 0 && (
         <PriceSuggest
@@ -154,7 +217,51 @@ export function RecipeEditor({
           onUsePrice={onUsePrice}
         />
       )}
-    </>
+    </div>
+  );
+}
+
+/**
+ * แถบปุ่มลัด 3 กลุ่ม — กลุ่มที่ว่างไม่แสดง · ว่างทั้งหมด = บอกว่าตั้งได้ที่ไหน (D92: ระบบไม่ทำอะไรให้ ต้องบอกว่าทำไม)
+ * ★ ปุ่มสูง 44px บนจอแคบ (DESIGN_SYSTEM · touch target) · ขึ้นบรรทัดใหม่เองเมื่อจอแคบ
+ */
+function QuickBar({ chips, onPick }: { chips: ReturnType<typeof quickChips>; onPick: (p: QuickPick) => void }) {
+  const groups: [string, QuickChip[]][] = [
+    ["House", chips.house],
+    ["ใช้บ่อย", chips.pinned],
+    ["ตกแต่ง", chips.garnish],
+  ];
+  if (groups.every(([, g]) => g.length === 0)) {
+    return (
+      <p className="mt-1 text-xs text-faint">
+        ตั้งปุ่มลัด (เหล้าประจำบ้าน · วัตถุดิบใช้บ่อย · ชุดตกแต่ง) ได้ที่แท็บ ตั้งค่าบาร์
+      </p>
+    );
+  }
+  return (
+    <div className="mt-2 space-y-1.5">
+      {groups.map(
+        ([label, list]) =>
+          list.length > 0 && (
+            <div key={label} className="flex flex-wrap items-center gap-1.5">
+              <span className="w-14 shrink-0 text-xs text-faint">{label}</span>
+              {list.map((c) => (
+                <button
+                  key={c.key}
+                  type="button"
+                  title={c.hint}
+                  // title อย่างเดียว = โปรแกรมอ่านหน้าจออ่านคำอธิบายแทนชื่อปุ่ม (เจอตอนเทสเบราว์เซอร์)
+                  aria-label={`${c.label} — ${c.hint}`}
+                  onClick={() => onPick(c.pick)}
+                  className="min-h-[44px] rounded-full border border-line bg-card px-3 py-1 text-xs text-ink hover:bg-raised sm:min-h-0"
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          ),
+      )}
+    </div>
   );
 }
 

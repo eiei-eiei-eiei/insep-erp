@@ -98,41 +98,41 @@ describe("โหมดต้นทุนของเมนู — 3 แบบ", 
 
 describe("แผนตัดสต็อก", () => {
   it("รวมยอดต่อวัตถุดิบ แม้มาจากหลายเมนู", () => {
-    const plan = stockPlan([line("M1", 2), line("M2", 1)], MENUS);
+    const plan = stockPlan([line("M1", 2), line("M2", 1)], MENUS, []);
     const gin = plan.find((p) => p.itemId === "I-GIN")!;
     expect(gin.qty).toBe(30 * 2 + 700); // 760
     expect(plan.find((p) => p.itemId === "I-VER")!.qty).toBe(60);
   });
 
   it("เมนูที่ไม่มีสูตร **ไม่ปรากฏในแผนเลย** (ไม่ใช่ปรากฏด้วยยอด 0 — คนละความหมาย)", () => {
-    const plan = stockPlan([line("M3", 5), line("M4", 5)], MENUS);
+    const plan = stockPlan([line("M3", 5), line("M4", 5)], MENUS, []);
     expect(plan).toEqual([]);
   });
 
   it("🚨 ของแถมก็ตัดสต็อก — แถมแล้วเหล้าก็หายจากขวดจริง", () => {
-    const plan = stockPlan([line("M1", 1, { isComp: true })], MENUS);
+    const plan = stockPlan([line("M1", 1, { isComp: true })], MENUS, []);
     expect(plan.find((p) => p.itemId === "I-GIN")!.qty).toBe(30);
   });
 
   it("เมนูที่หาไม่เจอในทะเบียนถูกข้าม (ชื่อยังอยู่ในบิลเป็น snapshot)", () => {
-    expect(stockPlan([{ menuId: "ไม่มีจริง", menuName: "x", qty: 1, price: 1 }], MENUS)).toEqual([]);
+    expect(stockPlan([{ menuId: "ไม่มีจริง", menuName: "x", qty: 1, price: 1 }], MENUS, [])).toEqual([]);
   });
 
   it("ขายเป็นแก้วกับขายทั้งขวดใช้วัตถุดิบตัวเดียวกัน ต่างกันแค่ปริมาณ (ได้ฟรีจากโครงสูตร)", () => {
-    expect(stockPlan([line("M1", 1)], MENUS).find((p) => p.itemId === "I-GIN")!.qty).toBe(30);
-    expect(stockPlan([line("M2", 1)], MENUS).find((p) => p.itemId === "I-GIN")!.qty).toBe(700);
+    expect(stockPlan([line("M1", 1)], MENUS, []).find((p) => p.itemId === "I-GIN")!.qty).toBe(30);
+    expect(stockPlan([line("M2", 1)], MENUS, []).find((p) => p.itemId === "I-GIN")!.qty).toBe(700);
   });
 });
 
 describe("ของไม่พอ — เตือน ไม่บล็อก", () => {
   it("บอกว่าต้องใช้เท่าไร มีเท่าไร พร้อมหน่วย", () => {
-    const { short } = shortages([line("M1", 20)], MENUS, ITEMS); // เวอร์มุทต้อง 600 มี 300
+    const { short } = shortages([line("M1", 20)], MENUS, ITEMS, []); // เวอร์มุทต้อง 600 มี 300
     expect(short).toHaveLength(1);
     expect(short[0]).toMatchObject({ itemId: "I-VER", name: "เวอร์มุท", need: 600, have: 300, unit: "ml" });
   });
 
   it("พอดีเป๊ะ = ไม่ขาด (เส้นแบ่งอยู่ที่ 'น้อยกว่า' ไม่ใช่ 'น้อยกว่าหรือเท่ากับ')", () => {
-    const { short } = shortages([line("M2", 3)], MENUS, ITEMS); // 2100 ml พอดี
+    const { short } = shortages([line("M2", 3)], MENUS, ITEMS, []); // 2100 ml พอดี
     expect(short).toEqual([]);
   });
 
@@ -141,7 +141,7 @@ describe("ของไม่พอ — เตือน ไม่บล็อก"
       menuId: "M9", name: "ผี", price: 1, categoryId: "custom",
       recipe: [{ itemId: "I-หายไป", qty: 10 }],
     };
-    const { short, unknownItems } = shortages([{ menuId: "M9", menuName: "ผี", qty: 1, price: 1 }], [ghost], ITEMS);
+    const { short, unknownItems } = shortages([{ menuId: "M9", menuName: "ผี", qty: 1, price: 1 }], [ghost], ITEMS, []);
     expect(short).toEqual([]);
     expect(unknownItems).toEqual(["I-หายไป"]);
   });

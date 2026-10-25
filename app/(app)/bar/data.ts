@@ -8,7 +8,7 @@ import { businessDate } from "@/lib/bar/businessDate";
 import { getTenantPlan } from "@/lib/shared/tenant-plan";
 import { accountsFor } from "@/lib/accounting/bankAccounts";
 import { hasModule } from "@/lib/shared/workspaces";
-import type { BarCategory, BarItem, BarMenu, SaleWindow } from "@/lib/bar/types";
+import type { BarCategory, BarGarnish, BarItem, BarMenu, BarRecipeLine, HouseSlot, SaleWindow } from "@/lib/bar/types";
 import type { PromptPayType } from "@/lib/bar/promptpay";
 
 /**
@@ -94,6 +94,10 @@ export type BarBoot = {
   categories: BarCategory[];
   menus: BarMenu[];
   items: BarItem[];
+  /** ช่องเหล้าประจำบ้าน (D127) — สูตรอ้างช่องได้ แปลงเป็นขวดด้วย `resolveRecipe()` */
+  houseSlots: HouseSlot[];
+  /** ชุดตกแต่ง (D127) — ปุ่มลัดในหน้าสร้างเมนู */
+  garnishes: BarGarnish[];
   customers: BarCustomerRow[];
   openSales: BarOpenSale[];
   /**
@@ -210,6 +214,8 @@ export async function getBarBootstrap(): Promise<BarBoot> {
     categories: [],
     menus: [],
     items: [],
+    houseSlots: [],
+    garnishes: [],
     customers: [],
     openSales: [],
     bankAccounts: [],
@@ -226,7 +232,7 @@ export async function getBarBootstrap(): Promise<BarBoot> {
   //      เดาผิดแล้วยอดขายทั้งคืนไปลงบัญชีโรงกลั่น (ตระกูล D79)
   if (!entityId) return base;
 
-  const [cats, menus, recipes, items, customers, sales] = await Promise.all([
+  const [cats, menus, recipes, items, customers, sales, slotRecipes, slots, garnishes] = await Promise.all([
     supabase.from("bar_category").select("category_id, name, sort, is_system")
       // ตัวตัดสินรอง: sort ซ้ำจากข้อมูลเก่า (D101) ต้องไม่ทำให้ลำดับสลับไปมาทุกครั้งที่โหลด (บทเรียน D86)
       .eq("entity_id", entityId).order("sort").order("category_id"),
@@ -237,7 +243,7 @@ export async function getBarBootstrap(): Promise<BarBoot> {
     supabase.from("bar_recipe").select("menu_id, item_id, qty").eq("entity_id", entityId),
     supabase
       .from("bar_item")
-      .select("item_id, name, unit, qty, cost_per_unit, pack_size, pack_label, low_qty, active")
+      .select("item_id, name, unit, qty, cost_per_unit, pack_size, pack_label, low_qty, active, pin_sort")
       .eq("entity_id", entityId)
       .order("name"),
     supabase
@@ -252,6 +258,10 @@ export async function getBarBootstrap(): Promise<BarBoot> {
       .eq("entity_id", entityId)
       .eq("status", "เปิดอยู่")
       .order("opened_at"),
+    // D127 — บรรทัดสูตรที่อ้างช่องเหล้าประจำบ้าน · ช่อง · ชุดตกแต่ง
+    supabase.from("bar_recipe_slot").select("menu_id, slot_id, qty").eq("entity_id", entityId),
+    supabase.from("bar_house_slot").select("slot_id, name, item_id, sort").eq("entity_id", entityId),
+    supabase.from("bar_garnish").select("garnish_id, name, item_id, qty, sort").eq("entity_id", entityId),
   ]);
 
   /**
@@ -298,14 +308,19 @@ export async function getBarBootstrap(): Promise<BarBoot> {
   }
 
   const recipeRows = mustRead({ data: recipes.data, error: recipes.error }, "สูตรเมนู");
-  const byMenu = new Map<string, { itemId: string; qty: number }[]>();
-  for (const x of recipeRows) {
-    const k = x.menu_id as string;
+  const byMenu = new Map<string, BarRecipeLine[]>();
+  const pushLine = (k: string, line: BarRecipeLine) => {
     const list = byMenu.get(k);
-    const line = { itemId: x.item_id as string, qty: Number(x.qty) };
     if (list) list.push(line);
     else byMenu.set(k, [line]);
+  };
+  // ★ D127: บรรทัดช่องเหล้าประจำบ้านขึ้นก่อน (เหล้าฐานอยู่บนสุดของสูตร) — ไม่มีคอลัมน์ลำดับบรรทัดใน DB
+  //   🐛 เจอตอนเทสเบราว์เซอร์: เดิมต่อท้าย ⇒ กรอก House บรรทัดแรก เปิดแก้แล้วไปอยู่ท้ายสุด
+  // 🚨 อ่านไม่ได้ ≠ ไม่มีบรรทัดช่อง (D89) — ไม่งั้นเมนูที่ใช้ House Gin จะดูเหมือนไม่มีสูตร
+  for (const x of mustRead({ data: slotRecipes.data, error: slotRecipes.error }, "สูตรเมนู (เหล้าประจำบ้าน)")) {
+    pushLine(x.menu_id as string, { slotId: x.slot_id as string, qty: Number(x.qty) });
   }
+  for (const x of recipeRows) pushLine(x.menu_id as string, { itemId: x.item_id as string, qty: Number(x.qty) });
 
   const openSaleRows = mustRead({ data: sales.data, error: sales.error }, "บิลที่เปิดอยู่");
   let openSales: BarOpenSale[] = [];
@@ -381,9 +396,23 @@ export async function getBarBootstrap(): Promise<BarBoot> {
         packLabel: (i.pack_label as string) ?? null,
         lowQty: i.low_qty === null ? null : Number(i.low_qty),
         active: i.active !== false,
+        pinSort: i.pin_sort === null || i.pin_sort === undefined ? null : Number(i.pin_sort),
       })),
       base.canSeeCost,
     ),
+    houseSlots: mustRead({ data: slots.data, error: slots.error }, "เหล้าประจำบ้าน").map((x) => ({
+      slotId: x.slot_id as string,
+      name: x.name as string,
+      itemId: x.item_id as string,
+      sort: Number(x.sort),
+    })),
+    garnishes: mustRead({ data: garnishes.data, error: garnishes.error }, "ชุดตกแต่ง").map((x) => ({
+      garnishId: x.garnish_id as string,
+      name: x.name as string,
+      itemId: x.item_id as string,
+      qty: Number(x.qty),
+      sort: Number(x.sort),
+    })),
     customers: mustRead({ data: customers.data, error: customers.error }, "ลูกค้าบาร์").map((c) => ({
       customerId: c.customer_id as string,
       name: c.name as string,

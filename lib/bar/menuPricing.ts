@@ -13,7 +13,8 @@
  * ★ ราคาแนะนำ **ไม่เขียนทับราคาที่ผู้ใช้กรอกเอง** — เป็นปุ่ม "ใช้ราคานี้" เท่านั้น
  * ★ ต้นทุนเห็นเฉพาะผู้มีสิทธิ์ `bar.config` (stripCost ใน data.ts) — ไม่มีสิทธิ์ = ไม่มีตัวเลขให้คิด
  */
-import type { BarItem, BarRecipeLine } from "./types";
+import type { BarItem, BarItemLine, HouseSlot } from "./types";
+import { slotOption } from "./houseSlot";
 import { VAT_RATE } from "../shared/vat";
 
 export const DEFAULT_TARGET_PCT = 30;
@@ -38,6 +39,29 @@ export function matchItem(text: string, items: readonly BarItem[]): string {
   return hit?.itemId ?? "";
 }
 
+/**
+ * ข้อความที่พิมพ์ → วัตถุดิบ **หรือช่องเหล้าประจำบ้าน** (D127) · ไม่ตรง = ทั้งคู่ว่าง
+ * ★ ป้ายเต็มของช่องลงท้าย "(เหล้าประจำบ้าน)" เสมอ ⇒ ไม่ชนกับป้ายวัตถุดิบ "ชื่อ (หน่วย)"
+ * 🚨 พิมพ์ชื่อเปล่าที่ตรงทั้งช่องและวัตถุดิบ = **ไม่เลือกให้** (เลือกผิด = ตัดผิดขวดเงียบ ๆ) ให้เลือกจากรายการ
+ */
+export function matchRef(
+  text: string,
+  items: readonly BarItem[],
+  slots: readonly HouseSlot[],
+): { itemId: string; slotId?: string } {
+  const t = text.trim().toLowerCase();
+  if (!t) return { itemId: "" };
+  const fullItem = items.find((it) => itemLabel(it).toLowerCase() === t);
+  if (fullItem) return { itemId: fullItem.itemId };
+  const fullSlot = slots.find((s) => slotOption(s).toLowerCase() === t);
+  if (fullSlot) return { itemId: "", slotId: fullSlot.slotId };
+  const bareItem = items.find((it) => it.name.trim().toLowerCase() === t);
+  const bareSlot = slots.find((s) => s.name.trim().toLowerCase() === t);
+  if (bareItem && bareSlot) return { itemId: "" };
+  if (bareSlot) return { itemId: "", slotId: bareSlot.slotId };
+  return { itemId: bareItem?.itemId ?? "" };
+}
+
 export type RecipeCostLine = { itemId: string; qty: number; cost: number; noCost: boolean };
 
 /**
@@ -45,7 +69,7 @@ export type RecipeCostLine = { itemId: string; qty: number; cost: number; noCost
  * `noCost` = วัตถุดิบยังไม่มีต้นทุน (ยังไม่เคยรับของเข้า) → รวมแล้วต่ำกว่าจริง ต้องเตือน
  */
 export function recipeCost(
-  recipe: readonly BarRecipeLine[],
+  recipe: readonly BarItemLine[],
   items: readonly BarItem[],
 ): { lines: RecipeCostLine[]; total: number; missing: number } {
   const byId = new Map(items.map((it) => [it.itemId, it]));

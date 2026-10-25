@@ -23,6 +23,7 @@ import {
 } from "@/lib/bar/menuFilter";
 import { promptPayPayload, promptPayError } from "@/lib/bar/promptpay";
 import { customerLabel } from "@/lib/bar/customerName";
+import { recipeLines } from "@/lib/bar/houseSlot";
 import { buildReceipt } from "@/lib/bar/receipt";
 import {
   Card, Msg, TextInput, NumBox, Select, MissingHint, Badge, Empty, fmt, useSaver, useConfirm,
@@ -265,7 +266,7 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
   const discount = discountBaht(disc, barTotals(allLines, {}).subTotal);
   const totals = barTotals(allLines, { discount, roundCash: data.settings.roundCash });
   /** ★ ของขาดดูจาก **ถาด** เท่านั้น — รายการที่ส่งเข้าบิลแล้วตัดสต็อกไปเรียบร้อย */
-  const short = shortages(tray, data.menus, data.items);
+  const short = shortages(tray, data.menus, data.items, data.houseSlots);
   const ppTarget = { type: data.settings.promptPayType, id: data.settings.promptPayId };
   // ★ หน้าขายอยู่คนละแท็บกับที่ตั้งค่า จึงต้องบอกด้วยว่าไปตั้งที่ไหน
   const ppError = promptPayError(ppTarget, { showWhere: true });
@@ -1357,14 +1358,12 @@ function RecipeCard({ boot, menuId }: { boot: BarBoot; menuId: string }) {
     <div className="mt-2 rounded bg-raised p-2 text-xs">
       {mode === "recipe" ? (
         <ul className="mb-1">
-          {m.recipe.map((r) => {
-            const it = boot.items.find((i) => i.itemId === r.itemId);
-            return (
-              <li key={r.itemId} className="text-ink">
-                {it?.name ?? r.itemId} {r.qty} {it?.unit ?? ""}
-              </li>
-            );
-          })}
+          {/* D127 — บรรทัดช่องเหล้าประจำบ้านแสดงทั้งชื่อช่องและขวดที่ชี้อยู่ */}
+          {recipeLines(m.recipe, boot.items, boot.houseSlots).map((line, i) => (
+            <li key={i} className="text-ink">
+              {line}
+            </li>
+          ))}
         </ul>
       ) : (
         <div className="mb-1 text-muted">{mode === "fixed" ? "ต้นทุนตายตัว" : "ยังไม่ตั้งสูตร"}</div>
@@ -1488,6 +1487,8 @@ function NewMenuModal({
         {/* D110 — ช่องสูตรชุดเดียวกับแท็บ เมนู & สูตร: พิมพ์ค้นวัตถุดิบ + ต้นทุน + ราคาแนะนำ */}
         <RecipeEditor
           items={boot.items}
+          slots={boot.houseSlots}
+          garnishes={boot.garnishes}
           rows={rows}
           setRows={setRows}
           canSeeCost={boot.canSeeCost}

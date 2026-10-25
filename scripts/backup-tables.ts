@@ -23,6 +23,8 @@ const TABLES = [
   "transactions", "transaction_items", "tax_summaries", "tax_payments", "tax_filings", "wht_certificates",
   "sale_menu", "sales_orders", "sales_order_items", "warehouse_stock", "stock_moves",
   "bar_category", "bar_item", "bar_customer", "bar_menu", "bar_recipe", "bar_customer_fav",
+  // D127 — เหล้าประจำบ้าน/ชุดตกแต่ง (แม่ก่อนลูก: item → house_slot → recipe_slot)
+  "bar_house_slot", "bar_recipe_slot", "bar_garnish",
   "bar_receive", "bar_sale", "bar_sale_item", "bar_move", "bar_post",
   "pay_inputs", "pay_components", "pay_rates", "pay_variables", "pay_post_legs",
   "employees", "payroll_periods", "payroll_items",

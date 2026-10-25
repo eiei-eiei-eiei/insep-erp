@@ -9,8 +9,9 @@
  * ★ และแช่ **ณ ตอนสั่ง ไม่ใช่ตอนปิดบิล** — บิลค้าง 3 ชั่วโมงแล้วรับของใหม่ระหว่างนั้นได้
  *   ฟังก์ชันในไฟล์นี้จึงคืน "ต้นทุน ณ ขณะนี้" ให้ผู้เรียกเอาไปเก็บ ไม่ใช่ให้เรียกซ้ำทีหลัง
  */
-import type { BarItem, BarMenu, CartLine } from "./types";
+import type { BarItem, BarMenu, CartLine, HouseSlot } from "./types";
 import { menuMode } from "./recipe";
+import { resolveRecipe } from "./houseSlot";
 
 /**
  * ต้นทุนต่อหน่วยใหม่หลังรับของเข้า — ถัวเฉลี่ยถ่วงน้ำหนัก
@@ -46,11 +47,13 @@ const round2 = (v: number) => Math.round(v * 100) / 100;
  * · โหมด `unset`  → 0
  * 🚨 **ของแถมมีต้นทุนเท่าของขาย** — `isComp` ตัดแค่ยอดขาย ไม่ตัดต้นทุน
  *    ไม่งั้นแถมทั้งคืนแล้วกำไรยังสวย ทั้งที่เหล้าหายไปจริง
+ * ★ บรรทัดที่อ้างช่องเหล้าประจำบ้าน → ต้นทุนของขวดที่ช่องชี้อยู่ตอนนี้ (D127)
  */
 export function lineCost(
   line: CartLine,
   menus: readonly BarMenu[],
   items: readonly BarItem[],
+  slots: readonly HouseSlot[],
 ): number {
   if (!line.menuId) return 0;
   const menu = menus.find((m) => m.menuId === line.menuId);
@@ -60,7 +63,7 @@ export function lineCost(
   if (mode === "fixed") return round2((menu.fixedCost ?? 0) * line.qty);
   const byId = new Map(items.map((i) => [i.itemId, i]));
   let per = 0;
-  for (const r of menu.recipe) per += r.qty * (byId.get(r.itemId)?.costPerUnit ?? 0);
+  for (const r of resolveRecipe(menu.recipe, slots).lines) per += r.qty * (byId.get(r.itemId)?.costPerUnit ?? 0);
   return round2(per * line.qty);
 }
 
@@ -69,8 +72,9 @@ export function cartCost(
   cart: readonly CartLine[],
   menus: readonly BarMenu[],
   items: readonly BarItem[],
+  slots: readonly HouseSlot[],
 ): number {
-  return round2(cart.reduce((s, l) => s + lineCost(l, menus, items), 0));
+  return round2(cart.reduce((s, l) => s + lineCost(l, menus, items, slots), 0));
 }
 
 /**

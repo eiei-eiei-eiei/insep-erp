@@ -150,7 +150,7 @@ describe("① ตัดสต็อกตามสูตร ณ ตอนสั�
       menuId: "T-M1", name: "Negroni", price: 260, categoryId: "T-cocktail",
       recipe: [{ itemId: "T-GIN", qty: 30 }, { itemId: "T-VER", qty: 30 }],
     }];
-    const fromTs = cartCost([{ menuId: "T-M1", menuName: "x", qty: 3, price: 260 }], menus, items);
+    const fromTs = cartCost([{ menuId: "T-M1", menuName: "x", qty: 3, price: 260 }], menus, items, []);
 
     const open = await rpc(asA, "fn_bar_open_sale", { p_entity: E() });
     const saleNo = (open.data as { sale_no: string }).sale_no;

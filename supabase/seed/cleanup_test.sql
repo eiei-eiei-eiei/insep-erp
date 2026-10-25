@@ -76,6 +76,13 @@ delete from bar_sale      where sale_no in (select sale_no from _t_bar_sales);
 delete from bar_move         where item_id like 'T-%';
 delete from bar_receive      where item_id like 'T-%';
 delete from bar_customer_fav where customer_id like 'T-%' or menu_id like 'T-%';
+-- ★ D127 — ช่องเหล้าประจำบ้าน/ชุดตกแต่งที่สร้างจากหน้าจอได้ id 'HS-'/'GN-' (ไม่ใช่ T-)
+--    จึงจับด้วย "ชี้วัตถุดิบทดสอบ" หรือ "ชื่อมีคำว่า ทดสอบ" · 🚨 ต้องลบก่อน bar_item (FK restrict)
+--    และลบบรรทัดสูตรที่อ้างช่องพวกนั้นก่อนตัวช่อง (FK restrict)
+delete from bar_recipe_slot  where menu_id like 'T-%'
+   or slot_id in (select slot_id from bar_house_slot where item_id like 'T-%' or name like '%ทดสอบ%');
+delete from bar_house_slot   where item_id like 'T-%' or name like '%ทดสอบ%';
+delete from bar_garnish      where item_id like 'T-%' or name like '%ทดสอบ%';
 delete from bar_recipe       where menu_id like 'T-%' or item_id like 'T-%';
 delete from bar_menu         where menu_id like 'T-%' or name like '%ทดสอบ%';
 delete from bar_customer     where customer_id like 'T-%' or name like '%ทดสอบ%';

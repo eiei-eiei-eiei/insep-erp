@@ -7,7 +7,7 @@ import { stockText, isLowStock, packToBase, numText } from "@/lib/bar/units";
 import {
   planReceive, planNewItems, planCount, planItemEdits, errorsText, ADJUST_REASONS,
   blankReceive, blankNewItem, countItems, countDrafts, countPreview, editDrafts,
-  recipeUseCount, unitLockReason, unitLabel, lowToBase,
+  recipeUseCount, slotNamesByItem, unitLockReason, unitLabel, lowToBase,
   type ReceiveDraft, type NewItemDraft, type NewItemRow, type CountDraft, type ItemEditDraft, type QtyUnit,
 } from "@/lib/bar/stockBatch";
 import { Card, Msg, TextInput, NumBox, Select, Field, Badge, Empty, EscToClose, fmt, useSaver } from "@/lib/shared/ui";
@@ -237,8 +237,10 @@ function ItemsEditor({
   onDone: () => void;
 }) {
   const [rows, setRows] = useState<ItemEditDraft[]>(() => editDrafts(boot.items));
-  const used = recipeUseCount(boot.menus);
-  const plan = planItemEdits(rows, boot.items, used);
+  // ★ D127: นับเมนูที่ใช้ผ่านช่องเหล้าประจำบ้านด้วย + บอกทางแก้ให้ถูก (เปลี่ยนขวดของช่อง)
+  const used = recipeUseCount(boot.menus, boot.houseSlots);
+  const via = slotNamesByItem(boot.menus, boot.houseSlots);
+  const plan = planItemEdits(rows, boot.items, used, via);
   const set = (idx: number, patch: Partial<ItemEditDraft>) =>
     setRows((rs) => rs.map((r, j) => (j === idx ? { ...r, ...patch } : r)));
 
@@ -263,7 +265,7 @@ function ItemsEditor({
           <tbody>
             {rows.map((r, idx) => {
               const item = boot.items.find((i) => i.itemId === r.itemId)!;
-              const lock = unitLockReason(item, used.get(r.itemId) ?? 0);
+              const lock = unitLockReason(item, used.get(r.itemId) ?? 0, via.get(r.itemId));
               const lowBase = lowToBase(r.lowQty, r.lowUnit, r.packSize);
               return (
                 <tr key={r.itemId}>

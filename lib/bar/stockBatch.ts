@@ -14,7 +14,8 @@
  * · วัตถุดิบซ้ำในชุดเดียวกัน = error (ปรับยอดตัวเดียวกัน 2 แถว = แถวหลังทับแถวแรกเงียบ ๆ ·
  *   รับของซ้ำ 2 แถวมักเป็นกดเพิ่มแถวซ้ำโดยไม่ตั้งใจ = รับของเข้าสองเท่า)
  */
-import type { BarItem, BarMenu } from "./types";
+import type { BarItem, BarMenu, HouseSlot } from "./types";
+import { itemUses } from "./houseSlot";
 import { packToBase, numText } from "./units";
 
 export type RowError = { row: number; text: string };
@@ -261,11 +262,17 @@ export function editDrafts(items: readonly BarItem[]): ItemEditDraft[] {
   }));
 }
 
-/** วัตถุดิบตัวไหนถูกใช้ในสูตรกี่เมนู */
-export function recipeUseCount(menus: readonly BarMenu[]): Map<string, number> {
-  const m = new Map<string, number>();
-  for (const menu of menus) for (const line of menu.recipe) m.set(line.itemId, (m.get(line.itemId) ?? 0) + 1);
-  return m;
+/**
+ * วัตถุดิบตัวไหนถูกใช้ในสูตรกี่เมนู — **นับเมนูที่ใช้ผ่านช่องเหล้าประจำบ้านด้วย** (D127)
+ * 🚨 ไม่นับ = ขวดที่เป็น House Gin ของ 20 เมนูเปลี่ยนหน่วยได้ แล้วทุกเมนูตัดผิดหน่วยเงียบ ๆ
+ */
+export function recipeUseCount(menus: readonly BarMenu[], slots: readonly HouseSlot[]): Map<string, number> {
+  return new Map([...itemUses(menus, slots)].map(([id, u]) => [id, u.menus]));
+}
+
+/** ชื่อช่องเหล้าประจำบ้านที่ชี้ขวดนั้นและมีเมนูใช้อยู่ — ใช้บอกเหตุผลที่ล็อกหน่วยให้ถูกทาง */
+export function slotNamesByItem(menus: readonly BarMenu[], slots: readonly HouseSlot[]): Map<string, string[]> {
+  return new Map([...itemUses(menus, slots)].filter(([, u]) => u.viaSlots.length > 0).map(([id, u]) => [id, u.viaSlots]));
 }
 
 /**
@@ -274,9 +281,20 @@ export function recipeUseCount(menus: readonly BarMenu[]): Map<string, number> {
  *    และสูตรที่ตัด 45 (ml) จะตัด 45 ขวด — ตัวเลขไม่ขยับสักตัว แค่ความหมายเปลี่ยน ไม่มีอะไรฟ้อง
  * คืนเหตุผลที่ล็อก (บอกว่าต้องทำอะไรก่อน · D88) หรือ null = แก้ได้
  */
-export function unitLockReason(item: Pick<BarItem, "qty" | "unit">, usedIn: number): string | null {
+export function unitLockReason(
+  item: Pick<BarItem, "qty" | "unit">,
+  usedIn: number,
+  viaSlots: readonly string[] = [],
+): string | null {
   if (item.qty !== 0) return `ยังมียอดคงเหลือ ${numText(item.qty)} ${item.unit} — นับสต็อกให้เป็น 0 ก่อนถึงจะเปลี่ยนหน่วยได้`;
-  if (usedIn > 0) return `ใช้อยู่ในสูตร ${usedIn} เมนู — เอาออกจากสูตรก่อนถึงจะเปลี่ยนหน่วยได้`;
+  if (usedIn > 0) {
+    // ★ D127: ใช้ผ่านช่อง = ทางแก้คือเปลี่ยนขวดของช่อง ไม่ใช่ไล่แก้สูตรทีละเมนู (บอกทางให้ถูก · D88)
+    if (viaSlots.length > 0) {
+      return `ใช้อยู่ในสูตร ${usedIn} เมนู (รวมที่ใช้ผ่าน ${viaSlots.join(" · ")}) — ` +
+        `เปลี่ยนขวดของช่องนั้นในตั้งค่าบาร์ และเอาออกจากสูตรที่ใช้ตรง ๆ ก่อนถึงจะเปลี่ยนหน่วยได้`;
+    }
+    return `ใช้อยู่ในสูตร ${usedIn} เมนู — เอาออกจากสูตรก่อนถึงจะเปลี่ยนหน่วยได้`;
+  }
   return null;
 }
 
@@ -285,6 +303,7 @@ export function planItemEdits(
   drafts: readonly ItemEditDraft[],
   items: readonly BarItem[],
   used: ReadonlyMap<string, number>,
+  via: ReadonlyMap<string, readonly string[]> = new Map(),
 ): { rows: ItemEditRow[]; errors: RowError[] } {
   const rows: ItemEditRow[] = [];
   const errors: RowError[] = [];
@@ -308,7 +327,7 @@ export function planItemEdits(
       return void errors.push({ row, text: `"${name}" ซ้ำกับวัตถุดิบตัวอื่น` });
     if (!unit) return void errors.push({ row, text: `${name}: ระบุหน่วยที่สูตรใช้` });
     if (unit !== item.unit) {
-      const lock = unitLockReason(item, used.get(item.itemId) ?? 0);
+      const lock = unitLockReason(item, used.get(item.itemId) ?? 0, via.get(item.itemId));
       if (lock) return void errors.push({ row, text: `${name}: ${lock}` });
     }
     const packSize = hasPack(d.packSize) ? d.packSize : null;

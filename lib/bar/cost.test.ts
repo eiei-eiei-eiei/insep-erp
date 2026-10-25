@@ -58,20 +58,20 @@ describe("ถัวเฉลี่ยถ่วงน้ำหนักตอน�
 describe("ต้นทุนต่อบรรทัด — ตามโหมดของเมนู", () => {
   it("โหมดสูตร: Σ(ปริมาณ × ต้นทุนต่อหน่วย) × จำนวน", () => {
     // (30×1.2) + (30×0.8) = 60 ต่อแก้ว
-    expect(lineCost(L("M1", 1), MENUS, ITEMS)).toBe(60);
-    expect(lineCost(L("M1", 3), MENUS, ITEMS)).toBe(180);
+    expect(lineCost(L("M1", 1), MENUS, ITEMS, [])).toBe(60);
+    expect(lineCost(L("M1", 3), MENUS, ITEMS, [])).toBe(180);
   });
 
   it("โหมดต้นทุนตายตัว: ใช้ค่าที่ตั้งไว้ × จำนวน", () => {
-    expect(lineCost(L("M3", 2), MENUS, ITEMS)).toBe(70);
+    expect(lineCost(L("M3", 2), MENUS, ITEMS, [])).toBe(70);
   });
 
   it("โหมดยังไม่ตั้ง: ต้นทุน 0 (และหน้าจอต้องเตือน — ดู B2)", () => {
-    expect(lineCost(L("M4", 5), MENUS, ITEMS)).toBe(0);
+    expect(lineCost(L("M4", 5), MENUS, ITEMS, [])).toBe(0);
   });
 
   it("🚨 ของแถมมีต้นทุนเท่าของขาย — isComp ตัดแค่ยอดขาย ไม่ตัดต้นทุน", () => {
-    expect(lineCost(L("M1", 1, { isComp: true }), MENUS, ITEMS)).toBe(60);
+    expect(lineCost(L("M1", 1, { isComp: true }), MENUS, ITEMS, [])).toBe(60);
   });
 
   it("วัตถุดิบที่หาไม่เจอนับเป็น 0 ไม่ใช่ระเบิด (สูตรอ้างของที่ถูกลบไปแล้ว)", () => {
@@ -79,22 +79,22 @@ describe("ต้นทุนต่อบรรทัด — ตามโหม�
       menuId: "M9", name: "ผี", price: 1, categoryId: "custom",
       recipe: [{ itemId: "หายไป", qty: 10 }],
     };
-    expect(lineCost(L("M9", 1), [ghost], ITEMS)).toBe(0);
+    expect(lineCost(L("M9", 1), [ghost], ITEMS, [])).toBe(0);
   });
 
   it("เมนูที่ไม่มีในทะเบียน = 0", () => {
-    expect(lineCost(L("ไม่มี", 1), MENUS, ITEMS)).toBe(0);
+    expect(lineCost(L("ไม่มี", 1), MENUS, ITEMS, [])).toBe(0);
   });
 });
 
 describe("ต้นทุนทั้งบิล", () => {
   it("รวมทุกบรรทัดรวมของแถม", () => {
-    expect(cartCost([L("M1", 1), L("M3", 1), L("M1", 1, { isComp: true })], MENUS, ITEMS))
+    expect(cartCost([L("M1", 1), L("M3", 1), L("M1", 1, { isComp: true })], MENUS, ITEMS, []))
       .toBe(60 + 35 + 60);
   });
 
   it("บิลว่าง = 0", () => {
-    expect(cartCost([], MENUS, ITEMS)).toBe(0);
+    expect(cartCost([], MENUS, ITEMS, [])).toBe(0);
   });
 });
 

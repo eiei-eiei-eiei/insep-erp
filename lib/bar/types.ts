@@ -19,10 +19,33 @@ export type BarItem = {
   packLabel?: string | null;
   lowQty?: number | null;
   active?: boolean;
+  /** ลำดับในแถบปุ่มลัด "ใช้บ่อย" ของหน้าสร้างเมนู · null = ไม่ได้ปักหมุด (D127) */
+  pinSort?: number | null;
 };
 
-/** 1 บรรทัดในสูตร */
-export type BarRecipeLine = { itemId: string; qty: number };
+/**
+ * 1 บรรทัดในสูตร — อ้าง **ขวดตรง** (`itemId`) หรือ **ช่องเหล้าประจำบ้าน** (`slotId`) อย่างใดอย่างหนึ่ง (D127)
+ *
+ * 🚨 ช่องต้องถูกแปลงเป็นขวดก่อนคิดต้นทุน/ตัดสต็อกทุกครั้ง — `resolveRecipe()` ใน houseSlot.ts
+ *    ชนิดข้อมูลตั้งใจให้ `itemId` เป็น `string | undefined` ⇒ โค้ดที่หยิบ `itemId` ไปใช้ตรง ๆ
+ *    โดยไม่แปลงช่องก่อน **build ไม่ผ่าน** (บทเรียน D84 — ของใหม่ต้องไม่ตกเข้า else เงียบ ๆ)
+ */
+export type BarRecipeLine =
+  | { itemId: string; qty: number; slotId?: undefined }
+  | { slotId: string; qty: number; itemId?: undefined };
+
+/** บรรทัดสูตรที่แปลงช่องเป็นขวดแล้ว — ใช้คิดต้นทุน/ตัดสต็อก */
+export type BarItemLine = { itemId: string; qty: number };
+
+/**
+ * ช่องเหล้าประจำบ้าน (House Gin / House Vodka …) — ชี้ไปที่ขวด 1 ตัวเสมอ (D127)
+ * 🚨 `itemId` **ว่างไม่ได้** (ผู้ใช้เลือก: บังคับเลือกขวดตั้งแต่สร้าง) ⇒ ไม่มีสถานะ "ช่องว่าง"
+ *    ที่จะทำให้ขายแล้วต้นทุน 0 เงียบ ๆ
+ */
+export type HouseSlot = { slotId: string; name: string; itemId: string; sort: number };
+
+/** ชุดตกแต่ง — กดแล้วบวกจำนวนเข้าบรรทัดของวัตถุดิบนั้นในสูตร (D127) */
+export type BarGarnish = { garnishId: string; name: string; itemId: string; qty: number; sort: number };
 
 /**
  * เมนูขาย — โหมดต้นทุนตัดสินจาก `recipe` และ `fixedCost` (ดู `menuMode()` ใน recipe.ts)

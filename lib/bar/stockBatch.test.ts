@@ -204,7 +204,7 @@ describe("planItemEdits — B17 แก้ทุกรายการแล้ว
       { recipe: [{ itemId: "I-GIN", qty: 45 }] },
       { recipe: [{ itemId: "I-GIN", qty: 30 }, { itemId: "I-LIME", qty: 1 }] },
     ] as unknown as BarMenu[];
-    expect([...recipeUseCount(menus)]).toEqual([["I-GIN", 2], ["I-LIME", 1]]);
+    expect([...recipeUseCount(menus, [])]).toEqual([["I-GIN", 2], ["I-LIME", 1]]);
   });
 });
 

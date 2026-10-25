@@ -10,8 +10,13 @@ import { resolveLine } from "@/lib/bar/discount";
 import { nextCategorySort, sortUpdates, categoryEditsError, categoryNameUpdates } from "@/lib/bar/categoryOrder";
 import { menuOrderError, menuOrderUpdates, menuQtyMap, orderColumn, type OrderView } from "@/lib/bar/menuOrder";
 import { fetchAllRows } from "@/lib/shared/paginate";
-import { unitLockReason, type ReceiveRow, type AdjustRow, type NewItemRow, type ItemEditRow } from "@/lib/bar/stockBatch";
-import type { CartLine, SaleWindow } from "@/lib/bar/types";
+import {
+  unitLockReason, recipeUseCount, slotNamesByItem,
+  type ReceiveRow, type AdjustRow, type NewItemRow, type ItemEditRow,
+} from "@/lib/bar/stockBatch";
+import type { BarMenu, BarRecipeLine, CartLine, HouseSlot, SaleWindow } from "@/lib/bar/types";
+import type { SlotDraft } from "@/lib/bar/houseSlot";
+import type { GarnishDraft } from "@/lib/bar/quickPick";
 import type { ReceiveRecord } from "@/lib/bar/receiveHistory";
 import { can } from "@/lib/shared/roles";
 import { currentRole } from "@/lib/shared/guard";
@@ -240,7 +245,8 @@ export async function saveMenuAction(input: {
   glass?: string | null;
   note?: string | null;
   createdFor?: string | null;
-  recipe: { itemId: string; qty: number }[];
+  /** บรรทัดอ้างขวดตรง (itemId) หรือช่องเหล้าประจำบ้าน (slotId · D127) */
+  recipe: BarRecipeLine[];
 }): Promise<Res> {
   const entity = await barEntity();
   if (!entity) return { ok: false, error: NO_ENTITY };
@@ -258,7 +264,9 @@ export async function saveMenuAction(input: {
       note: input.note?.trim() || null,
       created_for: input.createdFor || null,
     },
-    p_recipe: input.recipe.filter((r) => r.itemId && r.qty > 0).map((r) => ({ item_id: r.itemId, qty: r.qty })),
+    p_recipe: input.recipe
+      .filter((r) => (r.slotId || r.itemId) && r.qty > 0)
+      .map((r) => (r.slotId !== undefined ? { slot_id: r.slotId, qty: r.qty } : { item_id: r.itemId, qty: r.qty })),
   });
 }
 
@@ -351,17 +359,27 @@ export async function updateItemsAction(rows: ItemEditRow[]): Promise<Res> {
   if (!entity) return { ok: false, error: NO_ENTITY };
   if (rows.length === 0) return { ok: false, error: "ยังไม่มีรายการที่เปลี่ยน" };
   const supabase = await createClient();
-  const [cur, rec] = await Promise.all([
+  const [cur, rec, recSlot, slotRows] = await Promise.all([
     supabase.from("bar_item").select("item_id, name, unit, qty").eq("entity_id", entity),
-    supabase.from("bar_recipe").select("item_id").eq("entity_id", entity),
+    supabase.from("bar_recipe").select("menu_id, item_id").eq("entity_id", entity),
+    // ★ D127: ขวดที่ใช้ผ่านช่องเหล้าประจำบ้านก็ต้องนับ ไม่งั้นเปลี่ยนหน่วยได้แล้วทุกเมนูที่อ้างช่องตัดผิดหน่วย
+    supabase.from("bar_recipe_slot").select("menu_id, slot_id").eq("entity_id", entity),
+    supabase.from("bar_house_slot").select("slot_id, name, item_id, sort").eq("entity_id", entity),
   ]);
   // 🚨 อ่านไม่ได้ ≠ ไม่มีอะไรขวาง (D89)
-  if (cur.error) return { ok: false, error: mapDbError(cur.error) };
-  if (rec.error) return { ok: false, error: mapDbError(rec.error) };
+  for (const r of [cur, rec, recSlot, slotRows]) if (r.error) return { ok: false, error: mapDbError(r.error) };
 
   const byId = new Map((cur.data ?? []).map((r) => [r.item_id as string, r]));
-  const used = new Map<string, number>();
-  for (const r of rec.data ?? []) used.set(r.item_id as string, (used.get(r.item_id as string) ?? 0) + 1);
+  const recipeOf = new Map<string, BarRecipeLine[]>();
+  const push = (k: string, l: BarRecipeLine) => recipeOf.set(k, [...(recipeOf.get(k) ?? []), l]);
+  for (const r of rec.data ?? []) push(r.menu_id as string, { itemId: r.item_id as string, qty: 1 });
+  for (const r of recSlot.data ?? []) push(r.menu_id as string, { slotId: r.slot_id as string, qty: 1 });
+  const menus = [...recipeOf.values()].map((recipe) => ({ recipe }) as BarMenu);
+  const slots: HouseSlot[] = (slotRows.data ?? []).map((x) => ({
+    slotId: x.slot_id as string, name: x.name as string, itemId: x.item_id as string, sort: Number(x.sort),
+  }));
+  const used = recipeUseCount(menus, slots);
+  const via = slotNamesByItem(menus, slots);
 
   const key = (s: string) => s.trim().toLowerCase();
   const finalName = new Map([...byId].map(([id, r]) => [id, r.name as string]));
@@ -378,7 +396,7 @@ export async function updateItemsAction(rows: ItemEditRow[]): Promise<Res> {
     if (key(r.name) !== key(prev.name as string) && (nameCount.get(key(r.name)) ?? 0) > 1)
       return { ok: false, error: `ชื่อ "${r.name}" ซ้ำกับวัตถุดิบตัวอื่น` };
     if (r.unit.trim() !== prev.unit) {
-      const lock = unitLockReason({ qty: Number(prev.qty), unit: prev.unit as string }, used.get(r.itemId) ?? 0);
+      const lock = unitLockReason({ qty: Number(prev.qty), unit: prev.unit as string }, used.get(r.itemId) ?? 0, via.get(r.itemId));
       if (lock) return { ok: false, error: `${r.name}: ${lock}` };
     }
   }
@@ -1094,4 +1112,40 @@ export async function saveBarSettingsAction(input: {
 
   revalidatePath("/bar");
   return { ok: true };
+}
+
+// ── D127: เหล้าประจำบ้าน · ชุดตกแต่ง · วัตถุดิบใช้บ่อย (การ์ดในแท็บตั้งค่าบาร์) ──────────────
+// ★ ด่านจริงอยู่ใน RPC (ทั้งชุดเป็น transaction เดียว · ตรวจชื่อซ้ำ/ขวดหาย/ลบช่องที่มีสูตรอ้าง/หน่วยไม่ตรง)
+//   หน้าจอตรวจด้วยฟังก์ชันใน lib/bar ก่อนกด (golden B23/B24) — ที่นี่แค่ส่งต่อ
+
+/** บันทึกช่องเหล้าประจำบ้านทั้งชุด (ลำดับ = ลำดับในลิสต์) */
+export async function saveHouseSlotsAction(rows: SlotDraft[]): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  return rpc("fn_bar_save_house_slots", {
+    p_entity: entity,
+    p_slots: rows.map((r) => ({ slot_id: r.slotId || null, name: r.name.trim(), item_id: r.itemId || null })),
+  });
+}
+
+/** บันทึกชุดตกแต่งทั้งชุด (ลำดับ = ลำดับในลิสต์) */
+export async function saveGarnishesAction(rows: GarnishDraft[]): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  return rpc("fn_bar_save_garnishes", {
+    p_entity: entity,
+    p_rows: rows.map((r) => ({
+      garnish_id: r.garnishId || null,
+      name: r.name.trim(),
+      item_id: r.itemId || null,
+      qty: r.qty === "" ? null : r.qty,
+    })),
+  });
+}
+
+/** วัตถุดิบใช้บ่อย — ลำดับ item_id ทั้งชุด · ตัวที่ไม่อยู่ในลำดับ = ถอดหมุด */
+export async function savePinsAction(itemIds: string[]): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  return rpc("fn_bar_save_pins", { p_entity: entity, p_items: itemIds });
 }

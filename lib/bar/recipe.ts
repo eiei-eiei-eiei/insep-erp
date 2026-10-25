@@ -12,7 +12,8 @@
  * 🚨 โหมด `unset` **ห้ามถูกข้ามเงียบ ๆ** — ต้องมีป้ายบนแถวและแถบรวมในแท็บเมนู
  *    ไม่งั้นมันค้างตลอดกาลแล้วกำไรพองขึ้นเรื่อย ๆ โดยไม่มีใครรู้ (บทเรียน D83/D86)
  */
-import type { BarItem, BarMenu, CartLine } from "./types";
+import type { BarItem, BarMenu, BarRecipeLine, CartLine, HouseSlot } from "./types";
+import { resolveRecipe } from "./houseSlot";
 
 export type MenuMode = "recipe" | "fixed" | "unset";
 
@@ -60,15 +61,20 @@ export type StockPlanLine = { itemId: string; qty: number };
  * · เมนูที่ไม่มีสูตร ไม่ปรากฏในแผน (ไม่ใช่ปรากฏด้วยยอด 0 — คนละความหมาย)
  * · 🚨 **ของแถมก็ตัดสต็อก** — แถมแล้วเหล้าก็หายจากขวดจริง
  * · เมนูที่หาไม่เจอใน `menus` ถูกข้าม (ชื่อยังอยู่ในบิลเป็น snapshot)
+ * · บรรทัดที่อ้างช่องเหล้าประจำบ้าน → ขวดที่ช่องชี้อยู่ตอนนี้ (D127 · `slots` บังคับส่ง — ลืมแล้ว build ไม่ผ่าน)
  */
-export function stockPlan(cart: readonly CartLine[], menus: readonly BarMenu[]): StockPlanLine[] {
+export function stockPlan(
+  cart: readonly CartLine[],
+  menus: readonly BarMenu[],
+  slots: readonly HouseSlot[],
+): StockPlanLine[] {
   const byId = new Map(menus.map((m) => [m.menuId, m]));
   const acc = new Map<string, number>();
   for (const line of cart) {
     if (!line.menuId) continue;
     const menu = byId.get(line.menuId);
     if (!menu || !deductsStock(menu)) continue;
-    for (const r of menu.recipe) {
+    for (const r of resolveRecipe(menu.recipe, slots).lines) {
       acc.set(r.itemId, (acc.get(r.itemId) ?? 0) + r.qty * line.qty);
     }
   }
@@ -88,11 +94,12 @@ export function shortages(
   cart: readonly CartLine[],
   menus: readonly BarMenu[],
   items: readonly BarItem[],
+  slots: readonly HouseSlot[],
 ): { short: Shortage[]; unknownItems: string[] } {
   const byId = new Map(items.map((i) => [i.itemId, i]));
   const short: Shortage[] = [];
   const unknownItems: string[] = [];
-  for (const p of stockPlan(cart, menus)) {
+  for (const p of stockPlan(cart, menus, slots)) {
     const item = byId.get(p.itemId);
     if (!item) {
       unknownItems.push(p.itemId);
@@ -132,28 +139,67 @@ export function mergeCart(cart: readonly CartLine[]): CartLine[] {
  * ⇒ ฟอร์มต้องยอมให้ช่อง **ว่าง** ได้ระหว่างพิมพ์ (ชนิด `number | ""`)
  *   แล้วค่อยกรองทิ้งตอนบันทึก — ที่นี่คือจุดกรองจุดเดียว ใช้ทั้งแท็บเมนูและปุ่ม ＋เมนูใหม่ ในหน้าขาย
  */
-/** `text` = ข้อความที่พิมพ์ในช่องค้นวัตถุดิบ (D110) — ยังไม่ตรงวัตถุดิบไหน = itemId ว่าง แต่ข้อความต้องไม่หาย */
-export type RecipeDraftRow = { itemId: string; qty: number | ""; text?: string };
+/**
+ * `text` = ข้อความที่พิมพ์ในช่องค้นวัตถุดิบ (D110) — ยังไม่ตรงวัตถุดิบไหน = itemId ว่าง แต่ข้อความต้องไม่หาย
+ * `slotId` = บรรทัดนี้อ้าง **ช่องเหล้าประจำบ้าน** แทนขวด (D127) — มีค่าเมื่อไร `itemId` ต้องว่าง
+ */
+export type RecipeDraftRow = { itemId: string; slotId?: string; qty: number | ""; text?: string };
 
 export const blankRecipeRow = (): RecipeDraftRow => ({ itemId: "", qty: "" });
 
+/** แถวสูตรที่บันทึกไว้ → แถวบนฟอร์ม */
+export function draftFromRecipe(recipe: readonly BarRecipeLine[]): RecipeDraftRow[] {
+  return recipe.map((r) => (r.slotId !== undefined ? { itemId: "", slotId: r.slotId, qty: r.qty } : { itemId: r.itemId, qty: r.qty }));
+}
+
+/** คีย์ของสิ่งที่แถวอ้าง ("" = ยังไม่ได้เลือก) — ใช้หาแถวซ้ำ */
+export function rowRefKey(r: Pick<RecipeDraftRow, "itemId" | "slotId">): string {
+  if (r.slotId) return `slot:${r.slotId}`;
+  if (r.itemId) return `item:${r.itemId}`;
+  return "";
+}
+
+const hasQty = (r: RecipeDraftRow) => r.qty !== "" && r.qty > 0;
+
 /**
- * แถวที่ใช้ได้จริง = เลือกวัตถุดิบแล้ว **และ** ปริมาณมากกว่า 0
+ * แถวที่ใช้ได้จริง = เลือกวัตถุดิบ/ช่องแล้ว **และ** ปริมาณมากกว่า 0
  *
  * 🚨 แถวที่กรอกปริมาณแต่ลืมเลือกวัตถุดิบ **ถูกทิ้งเงียบ ๆ ไม่ได้** —
  *    ฝั่งหน้าจอต้องเอา `danglingRows()` ไปเตือน (บทเรียน D79 ข้อ 2:
  *    แถวที่กรอกครึ่งเดียวเคยล้มการบันทึกทั้งใบโดยไม่บอกว่าแถวไหน)
+ *
+ * ★ D127: **แถวที่อ้างของเดียวกัน รวมเป็นบรรทัดเดียว (บวกปริมาณ)** —
+ *   🐛 เดิมเลือกวัตถุดิบเดียวกัน 2 บรรทัด → บันทึกชน PK แล้วขึ้นแค่ "มีข้อมูลนี้อยู่แล้ว" ไม่บอกว่าซ้ำตรงไหน
+ *   ชุดตกแต่งทำให้เจอบ่อยขึ้น (มะนาวในสูตร + มะนาวตกแต่ง) ⇒ รวมให้ แล้วหน้าจอบอกด้วย `duplicateRows()`
  */
-export function cleanRecipe(rows: readonly RecipeDraftRow[]): { itemId: string; qty: number }[] {
-  return rows
-    .filter((r): r is { itemId: string; qty: number } => Boolean(r.itemId) && r.qty !== "" && r.qty > 0)
-    .map((r) => ({ itemId: r.itemId, qty: r.qty }));
+export function cleanRecipe(rows: readonly RecipeDraftRow[]): BarRecipeLine[] {
+  const out: BarRecipeLine[] = [];
+  const at = new Map<string, number>();
+  for (const r of rows) {
+    const key = rowRefKey(r);
+    if (!key || !hasQty(r)) continue;
+    const qty = r.qty as number;
+    const i = at.get(key);
+    if (i !== undefined) {
+      out[i] = { ...out[i], qty: Math.round((out[i].qty + qty) * 10000) / 10000 };
+      continue;
+    }
+    at.set(key, out.length);
+    out.push(r.slotId ? { slotId: r.slotId, qty } : { itemId: r.itemId, qty });
+  }
+  return out;
+}
+
+/** แถวที่จะถูกรวมเข้ากับแถวอื่นตอนบันทึก (อ้างของเดียวกัน) — เอาไปบอกบนจอ */
+export function duplicateRows(rows: readonly RecipeDraftRow[]): number {
+  const valid = rows.filter((r) => rowRefKey(r) && hasQty(r));
+  return valid.length - new Set(valid.map(rowRefKey)).size;
 }
 
 /** แถวที่กรอกไม่ครบ (มีอย่างใดอย่างหนึ่ง แต่ไม่ครบคู่) — เอาไปเตือน ไม่ใช่บล็อก */
 export function danglingRows(rows: readonly RecipeDraftRow[]): number {
   return rows.filter((r) => {
-    const hasQty = r.qty !== "" && r.qty > 0;
-    return (Boolean(r.itemId) && !hasQty) || (!r.itemId && hasQty);
+    const ref = Boolean(rowRefKey(r));
+    return (ref && !hasQty(r)) || (!ref && hasQty(r));
   }).length;
 }
