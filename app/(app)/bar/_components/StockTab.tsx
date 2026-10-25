@@ -24,6 +24,7 @@ import {
   receiveBatchAction, adjustBatchAction, addItemsAction, updateItemsAction,
 } from "../actions";
 import { ItemHistoryModal } from "./ItemHistoryModal";
+import { PrepView } from "./PrepTab";
 
 /**
  * สต็อกบาร์ (D96 · D103 · D104)
@@ -52,7 +53,7 @@ export function StockTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
 
   const canWrite = data.canWrite;
   // ส่วนรับของ/นับสต็อกมีเฉพาะคนที่เขียนได้ — ลิงก์ ?view=count ของคนดูอย่างเดียว ตกกลับไปวัตถุดิบ
-  const views: StockView[] = canWrite ? ["items", "receive", "count"] : ["items"];
+  const views: StockView[] = canWrite ? ["items", "receive", "count", "prep"] : ["items"];
   const sp = useSearchParams();
   const [view, setViewState] = useState<StockView>(() => {
     const v = parseStockView(sp.get("view"));
@@ -65,7 +66,7 @@ export function StockTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
     params.set("view", v);
     window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
   };
-  const [dirty, setDirty] = useState<Record<StockView, boolean>>({ items: false, receive: false, count: false });
+  const [dirty, setDirty] = useState<Record<StockView, boolean>>({ items: false, receive: false, count: false, prep: false });
   const markDirty = useCallback(
     (v: StockView, d: boolean) => setDirty((p) => (p[v] === d ? p : { ...p, [v]: d })),
     [],
@@ -111,7 +112,7 @@ export function StockTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
       )}
 
       {views.length > 1 && (
-        <div className="grid grid-cols-3 overflow-hidden rounded-lg border border-line bg-card" role="tablist">
+        <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-line bg-card sm:grid-cols-4" role="tablist">
           {views.map((v) => (
             <button
               key={v}
@@ -256,6 +257,8 @@ export function StockTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
           <CountCard boot={data} busy={busy} onRun={run} onDirty={dirtyCount} />
         </div>
       )}
+      {/* D130 — ของทำเองในร้าน · ฟอร์มอยู่ในป๊อปอัพ ไม่มีของกรอกค้างบนหน้า ⇒ โหลดใหม่ทุกครั้งที่เปิดส่วนนี้ */}
+      {canWrite && view === "prep" && <PrepView boot={data} onReload={onReload} />}
 
       {adding && (
         <NewItemsModal

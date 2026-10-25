@@ -25,6 +25,8 @@ export const TENANT_TABLES = [
   "bar_house_slot", "bar_recipe_slot", "bar_garnish",
   // D129 — ห้องทดลอง (แม่ก่อนลูก: category/recipe → use → use_line)
   "bar_lab_category", "bar_lab_recipe", "bar_lab_use", "bar_lab_use_line",
+  // D130 — ของทำเอง (แม่ก่อนลูก: prep → input · batch → batch_line)
+  "bar_prep", "bar_prep_input", "bar_prep_batch", "bar_prep_batch_line",
   "bar_receive", "bar_sale", "bar_sale_item", "bar_move", "bar_post",
   "pay_inputs", "pay_components", "pay_rates", "pay_variables", "pay_post_legs",
   "employees", "payroll_periods", "payroll_items",
@@ -81,6 +83,10 @@ export const TABLE_LABEL_TH: Partial<Record<TenantTable, string>> = {
   bar_lab_recipe: "สูตรทดลอง (บาร์)",
   bar_lab_use: "การใช้ในห้องทดลอง (บาร์)",
   bar_lab_use_line: "บรรทัดการใช้ในห้องทดลอง (บาร์)",
+  bar_prep: "ของทำเองในร้าน (บาร์)",
+  bar_prep_input: "สูตรของทำเอง (บาร์)",
+  bar_prep_batch: "ล็อตของทำเอง (บาร์)",
+  bar_prep_batch_line: "วัตถุดิบในล็อตของทำเอง (บาร์)",
   bar_receive: "รับของเข้าบาร์",
   bar_sale: "บิลขายบาร์",
   bar_sale_item: "รายการในบิลบาร์",
@@ -132,6 +138,8 @@ export const AUDITED_TABLES: readonly TenantTable[] = [
   "bar_house_slot", "bar_recipe_slot", "bar_garnish",
   // D129 — ห้องทดลอง · ไม่ audit บรรทัด (รายละเอียดของรายการที่ audit อยู่แล้ว แบบ bar_move)
   "bar_lab_category", "bar_lab_recipe", "bar_lab_use",
+  // D130 — ของทำเอง · ไม่ audit บรรทัดล็อต (แบบเดียวกับห้องทดลอง)
+  "bar_prep", "bar_prep_input", "bar_prep_batch",
   // D100 — เปลี่ยนรูปแบบแล้วเลขบนใบกำกับเปลี่ยน ⇒ ต้องตอบได้ว่าใครเปลี่ยนเมื่อไร
   "doc_numbering",
 ];
@@ -174,5 +182,7 @@ export const ENTITY_SCOPED_TABLES: readonly TenantTable[] = [
   "bar_house_slot", "bar_recipe_slot", "bar_garnish",
   // D129 — ห้องทดลอง (แม่ก่อนลูก: category/recipe → use → use_line)
   "bar_lab_category", "bar_lab_recipe", "bar_lab_use", "bar_lab_use_line",
+  // D130 — ของทำเอง (แม่ก่อนลูก: prep → input · batch → batch_line)
+  "bar_prep", "bar_prep_input", "bar_prep_batch", "bar_prep_batch_line",
   "bar_receive", "bar_sale", "bar_sale_item", "bar_move", "bar_post",
 ];

@@ -26,8 +26,8 @@ const draft = (itemId: string, value: number | "" = ""): CountDraft => ({
 });
 
 describe("B25 · ส่วนที่แสดงผูกกับ URL", () => {
-  it("รู้จักครบ 3 ส่วน · ค่าแปลก/ว่าง = วัตถุดิบ (ลิงก์เก่าเปิดได้)", () => {
-    expect(STOCK_VIEWS.map(parseStockView)).toEqual(["items", "receive", "count"]);
+  it("รู้จักครบทุกส่วน · ค่าแปลก/ว่าง = วัตถุดิบ (ลิงก์เก่าเปิดได้)", () => {
+    expect(STOCK_VIEWS.map(parseStockView)).toEqual(["items", "receive", "count", "prep"]);
     expect(parseStockView(null)).toBe("items");
     expect(parseStockView("")).toBe("items");
     expect(parseStockView("COUNT")).toBe("items");
@@ -35,8 +35,8 @@ describe("B25 · ส่วนที่แสดงผูกกับ URL", () =>
   });
   it("ทุกส่วนมีชื่อไทย และชื่อไม่ซ้ำกัน", () => {
     const labels = STOCK_VIEWS.map((v) => STOCK_VIEW_LABEL[v]);
-    expect(labels).toEqual(["วัตถุดิบ", "รับของเข้า", "นับสต็อก"]);
-    expect(new Set(labels).size).toBe(3);
+    expect(labels).toEqual(["วัตถุดิบ", "รับของเข้า", "นับสต็อก", "ของทำเอง"]);
+    expect(new Set(labels).size).toBe(4);
   });
 });
 

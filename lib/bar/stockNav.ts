@@ -18,7 +18,7 @@ import type { BarItem } from "./types";
 import { isLowStock } from "./units";
 import type { CountDraft } from "./stockBatch";
 
-export const STOCK_VIEWS = ["items", "receive", "count"] as const;
+export const STOCK_VIEWS = ["items", "receive", "count", "prep"] as const;
 export type StockView = (typeof STOCK_VIEWS)[number];
 
 /** `Record` บังคับครบทุกส่วน — เพิ่มส่วนใหม่แล้วลืมตั้งชื่อ = build ไม่ผ่าน (D84) */
@@ -26,6 +26,8 @@ export const STOCK_VIEW_LABEL: Record<StockView, string> = {
   items: "วัตถุดิบ",
   receive: "รับของเข้า",
   count: "นับสต็อก",
+  // D130 — ของทำเองในร้าน (ไซรัป · infused): ของเข้าสต็อกด้วยการทำล็อต
+  prep: "ของทำเอง",
 };
 
 /** ค่าจาก URL → ส่วนที่แสดง · ค่าที่ไม่รู้จัก/ว่าง = วัตถุดิบ (ไม่ error · ลิงก์เก่าต้องยังเปิดได้) */

@@ -99,6 +99,8 @@ export const TENANT_TABLES = [
   "bar_house_slot", "bar_recipe_slot", "bar_garnish",
   // D129 — ห้องทดลอง (แม่ก่อนลูก: category/recipe → use → use_line)
   "bar_lab_category", "bar_lab_recipe", "bar_lab_use", "bar_lab_use_line",
+  // D130 — ของทำเอง (แม่ก่อนลูก: prep → input · batch → batch_line)
+  "bar_prep", "bar_prep_input", "bar_prep_batch", "bar_prep_batch_line",
   "bar_receive", "bar_sale", "bar_sale_item", "bar_move", "bar_post",
   "pay_inputs", "pay_components", "pay_rates", "pay_variables", "pay_post_legs",
   "employees", "payroll_periods", "payroll_items",

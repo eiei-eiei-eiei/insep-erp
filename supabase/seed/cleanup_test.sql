@@ -89,6 +89,19 @@ delete from bar_lab_use where use_id in (select use_id from bar_lab_use_line whe
    or event_name like '%ทดสอบ%';
 delete from bar_lab_recipe   where name like '%ทดสอบ%';
 delete from bar_lab_category where name like '%ทดสอบ%' and not is_system;
+-- ★ D130 — ของทำเอง: ตัวของทำเองได้ id 'I-…' (ไม่ใช่ T-) จึงจับด้วยชื่อที่มี "ทดสอบ"
+--    ลบล็อต/สูตร/ความเคลื่อนไหว/ราคารับของ ของมันก่อน แล้วค่อยลบตัววัตถุดิบ (FK restrict)
+create temp table if not exists _t_bar_prep on commit drop as
+  select p.item_id from bar_prep p
+    join bar_item i on i.tenant_id = p.tenant_id and i.entity_id = p.entity_id and i.item_id = p.item_id
+   where i.name like '%ทดสอบ%';
+delete from bar_prep_batch where item_id in (select item_id from _t_bar_prep)
+   or batch_id in (select batch_id from bar_prep_batch_line where input_item_id like 'T-%');
+delete from bar_prep_input where input_item_id like 'T-%';
+delete from bar_prep       where item_id in (select item_id from _t_bar_prep);
+delete from bar_move       where item_id in (select item_id from _t_bar_prep);
+delete from bar_receive    where item_id in (select item_id from _t_bar_prep);
+delete from bar_item       where item_id in (select item_id from _t_bar_prep);
 delete from bar_recipe       where menu_id like 'T-%' or item_id like 'T-%';
 delete from bar_menu         where menu_id like 'T-%' or name like '%ทดสอบ%';
 delete from bar_customer     where customer_id like 'T-%' or name like '%ทดสอบ%';

@@ -1368,3 +1368,146 @@ export async function labSaveCategoriesAction(rows: { categoryId: string; name: 
     p_rows: rows.map((r) => ({ category_id: r.categoryId, name: r.name.trim() })),
   });
 }
+
+// ── D130: ของทำเองในร้าน (ไซรัป · infused · cordial) ────────────────────────────
+// ★ เขียนผ่าน RPC definer ใน 0092 (ไม่มี policy เขียน) · ทุนส่งให้เฉพาะ bar.config (D96)
+
+/** ของทำเองทั้งหมด (สูตรมาตรฐาน) + ล็อตพร้อมบรรทัด + ธง "ล็อตนี้เป็นการเคลื่อนไหวล่าสุด" (ไว้ยกเลิก) */
+export async function prepDataAction(): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  const supabase = await createClient();
+  const canSeeCost = can(await currentRole(), "bar.config");
+  const [preps, inputs, batches, lines] = await Promise.all([
+    supabase.from("bar_prep").select("item_id, std_yield, note").eq("entity_id", entity),
+    supabase.from("bar_prep_input").select("item_id, input_item_id, line_no, qty").eq("entity_id", entity),
+    supabase
+      .from("bar_prep_batch")
+      .select("batch_id, item_id, status, multiplier, started_at, start_date, finish_date, yield_qty, cost_total, receive_id, note")
+      .eq("entity_id", entity),
+    supabase.from("bar_prep_batch_line").select("batch_id, line_no, input_item_id, label, unit, qty, cost").eq("entity_id", entity),
+  ]);
+  // 🚨 อ่านไม่ได้ ≠ ไม่มีข้อมูล (D89)
+  for (const r of [preps, inputs, batches, lines]) if (r.error) return { ok: false, error: mapDbError(r.error) };
+
+  // การเคลื่อนไหวล่าสุดของของทำเองแต่ละตัว — ล็อตที่เสร็จแล้วยกเลิกย้อนเป๊ะได้เฉพาะตอนเป็นตัวล่าสุด (ตรงกับ fn_bar_prep_cancel)
+  const prepIds = (preps.data ?? []).map((p) => p.item_id as string);
+  const lastMove = new Map<string, { reason: string; ref: string | null }>();
+  const lasts = await Promise.all(
+    prepIds.map((id) =>
+      supabase.from("bar_move").select("item_id, reason, ref_no").eq("entity_id", entity).eq("item_id", id)
+        .order("id", { ascending: false }).limit(1),
+    ),
+  );
+  for (const r of lasts) {
+    if (r.error) return { ok: false, error: mapDbError(r.error) };
+    const m = r.data?.[0];
+    if (m) lastMove.set(m.item_id as string, { reason: m.reason as string, ref: (m.ref_no as string) ?? null });
+  }
+
+  const money = (v: unknown) => (canSeeCost ? Number(v) || 0 : 0);
+  const linesOf = new Map<string, unknown[]>();
+  for (const l of lines.data ?? []) {
+    const list = linesOf.get(l.batch_id as string) ?? [];
+    list.push({
+      lineNo: Number(l.line_no), inputItemId: l.input_item_id, label: l.label, unit: l.unit ?? null,
+      qty: Number(l.qty), cost: money(l.cost),
+    });
+    linesOf.set(l.batch_id as string, list);
+  }
+  return okOf({
+    canSeeCost,
+    preps: (preps.data ?? []).map((p) => ({
+      itemId: p.item_id,
+      stdYield: Number(p.std_yield),
+      note: p.note ?? null,
+      inputs: (inputs.data ?? [])
+        .filter((i) => i.item_id === p.item_id)
+        .map((i) => ({ itemId: i.input_item_id, qty: Number(i.qty), lineNo: Number(i.line_no) })),
+    })),
+    batches: (batches.data ?? []).map((b) => {
+      const last = lastMove.get(b.item_id as string);
+      return {
+        batchId: b.batch_id,
+        itemId: b.item_id,
+        status: b.status,
+        multiplier: Number(b.multiplier),
+        startedAt: b.started_at,
+        startDate: b.start_date,
+        finishDate: b.finish_date ?? null,
+        yieldQty: b.yield_qty == null ? null : Number(b.yield_qty),
+        costTotal: money(b.cost_total),
+        note: b.note ?? null,
+        latest: b.receive_id != null && last?.reason === "รับเข้า" && last.ref === String(b.receive_id),
+        lines: linesOf.get(b.batch_id as string) ?? [],
+      };
+    }),
+  });
+}
+
+/** ตั้ง/แก้ของทำเอง — itemId ว่าง = สร้างวัตถุดิบใหม่ */
+export async function prepSaveAction(input: {
+  itemId: string | null;
+  name: string;
+  unit: string;
+  stdYield: number;
+  inputs: { itemId: string; qty: number }[];
+  note?: string | null;
+}): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  return rpc("fn_bar_prep_save", {
+    p_entity: entity,
+    p_item_id: input.itemId || null,
+    p_name: input.name.trim(),
+    p_unit: input.unit.trim(),
+    p_std_yield: input.stdYield,
+    p_inputs: input.inputs.map((i) => ({ item_id: i.itemId, qty: i.qty })),
+    p_note: input.note?.trim() || null,
+  });
+}
+
+export async function prepDeleteAction(itemId: string): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  return rpc("fn_bar_prep_delete", { p_entity: entity, p_item_id: itemId });
+}
+
+/** ทำล็อต — yieldQty มีค่า = ทำเสร็จแล้วเข้าสต็อกเลย · null = เริ่มแช่ */
+export async function prepStartAction(input: {
+  itemId: string;
+  multiplier: number;
+  inputs: { itemId: string; qty: number }[];
+  yieldQty: number | null;
+  note?: string | null;
+  window?: SaleWindow | null;
+}): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  return rpc("fn_bar_prep_start", {
+    p_entity: entity,
+    p_item_id: input.itemId,
+    p_multiplier: input.multiplier,
+    p_inputs: input.inputs.map((i) => ({ item_id: i.itemId, qty: i.qty })),
+    p_yield: input.yieldQty,
+    p_note: input.note?.trim() || null,
+    p_business_date: businessDate(new Date(), input.window ?? null),
+  });
+}
+
+export async function prepFinishAction(input: { batchId: string; yieldQty: number; window?: SaleWindow | null }): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  return rpc("fn_bar_prep_finish", {
+    p_entity: entity,
+    p_batch_id: input.batchId,
+    p_yield: input.yieldQty,
+    p_business_date: businessDate(new Date(), input.window ?? null),
+  });
+}
+
+export async function prepCancelAction(batchId: string): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  return rpc("fn_bar_prep_cancel", { p_entity: entity, p_batch_id: batchId });
+}
