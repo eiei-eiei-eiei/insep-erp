@@ -11,7 +11,7 @@ import { RecipeEditor, PriceSuggest } from "./RecipeEditor";
 import { lineCost } from "@/lib/bar/cost";
 import { searchMenus } from "@/lib/bar/menuFilter";
 import { customerLabel } from "@/lib/bar/customerName";
-import { Card, Msg, TextInput, NumBox, Select, Field, Badge, Empty, fmt, useSaver, useConfirm } from "@/lib/shared/ui";
+import { Card, TextInput, NumBox, Select, Field, Badge, Empty, fmt, useSaver, useConfirm } from "@/lib/shared/ui";
 import { saveMenuAction, saveCategoryAction, deleteCategoryAction, saveCategoriesAction } from "../actions";
 import { MenuOrderEditor } from "./MenuOrderEditor";
 
@@ -29,7 +29,7 @@ const MODE_LABEL: Record<string, string> = {
  */
 export function MenuTab({ boot, onReload }: { boot: BarBoot; onReload: () => Promise<void> }) {
   const data = boot;
-  const { msg, setMsg } = useSaver();
+  const { setMsg } = useSaver();
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("");
@@ -75,7 +75,6 @@ export function MenuTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pro
 
   return (
     <div className="space-y-4">
-      <Msg msg={msg} />
 
       {/* 🚨 แถบตามเก็บ — ต้องบอกจำนวนและกดเข้าไปดูได้ ไม่ใช่แค่เตือนลอย ๆ */}
       {unset.length > 0 && (

@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/lib/shared/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { correctAbvTo20C } from "@/lib/abv";
 import { closeBatchSummary } from "@/lib/production/calc";
@@ -15,7 +16,7 @@ import {
   startDistillRunAction, saveDistillReadingAction, deleteDistillRunAction,
 } from "../actions";
 import {
-  Card, Field, MissingHint, Msg, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver,
+  Card, Field, MissingHint, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver,
 } from "./ui";
 import { DISTILL_PHASES, type Material, type Product } from "./types";
 import { IconTrash } from "@/lib/shared/icons";
@@ -43,7 +44,8 @@ const f2 = (v: number) => v.toFixed(2);
  *    ไฟล์นี้แค่รับค่าและแสดงผล — ห้ามคำนวณหรือแต่งประโยคเองที่นี่ (D84/D88)
  */
 export function RedistillTab({ products, materials }: { products: Product[]; materials: Material[] }) {
-  const { pending, msg, run, setMsg } = useSaver();
+  const { pending, run, setMsg } = useSaver();
+  const { confirmNode, ask } = useConfirm();
 
   const [lots, setLots] = useState<RedistillLot[]>([]);
   const [rounds, setRounds] = useState<RedistillRound[]>([]);
@@ -210,9 +212,9 @@ export function RedistillTab({ products, materials }: { products: Product[]; mat
     );
   }
 
-  function delRound(r: RedistillRound) {
+  async function delRound(r: RedistillRound) {
     if (!lot) return;
-    if (!confirm(`ลบรอบที่ ${r.round_no} ของล็อต ${r.lot_no}? (วัตถุดิบที่ตัดไว้จะถูกคืนด้วย)`)) return;
+    if (!(await ask({ title: `ลบรอบที่ ${r.round_no} ของล็อต ${r.lot_no}?`, detail: "(วัตถุดิบที่ตัดไว้จะถูกคืนด้วย)", confirmText: "ลบรอบ", danger: true }))) return;
     const after = lotRounds.filter((x) => x.round_no !== r.round_no);
     run(
       () => deleteRedistillRoundAction({ lot, rounds: after, roundNo: r.round_no }),
@@ -276,23 +278,23 @@ export function RedistillTab({ products, materials }: { products: Product[]; mat
     );
   }
 
-  function reopenLot() {
+  async function reopenLot() {
     if (!lot) return;
-    if (!confirm(`ถอนการปิดล็อต ${lot.lot_no}? แถว "ปรุงเสร็จ" จะถูกลบออกจากฟอร์ม ภส.`)) return;
+    if (!(await ask({ title: `ถอนการปิดล็อต ${lot.lot_no}?`, detail: `แถว "ปรุงเสร็จ" จะถูกลบออกจากฟอร์ม ภส.`, confirmText: "ถอนการปิดล็อต", danger: true }))) return;
     run(() => reopenRedistillLotAction({ lot, rounds: lotRounds }), "ถอนการปิดล็อตแล้ว", load);
   }
 
-  function delLot() {
+  async function delLot() {
     if (!lot) return;
-    if (!confirm(`ลบล็อต ${lot.lot_no} ทั้งก้อน?\nจะลบรอบกลั่น · ค่าระหว่างกลั่น · วัตถุดิบที่ตัดไว้ · และแถวปรุงทั้ง 2 ท่อนบนฟอร์ม ภส.`)) return;
+    if (!(await ask({ title: `ลบล็อต ${lot.lot_no} ทั้งก้อน?`, detail: "จะลบรอบกลั่น · ค่าระหว่างกลั่น · วัตถุดิบที่ตัดไว้ · และแถวปรุงทั้ง 2 ท่อนบนฟอร์ม ภส.", confirmText: "ลบล็อต", danger: true }))) return;
     run(() => deleteRedistillLotAction(lot.lot_no), "ลบล็อตเรียบร้อย", () => { setLotNo(""); load(); });
   }
 
   // ── render ─────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-5">
+      {confirmNode}
       <Card title="กลั่นซ้ำ — เปิดล็อตใหม่ (ยกสุราออกจากถัง)">
-        <Msg msg={msg} />
         <p className="mb-3 text-xs text-faint">
           ยอดที่กรอกตรงนี้คือตัวเลขที่จะไปลงช่อง <b>&quot;ปริมาณที่นำไปปรุง&quot;</b> ของฟอร์ม ภส.๐๗-๐๒/๑(๑)
           ในวันที่ยกออก — ไม่ใช่ยอดที่ได้หลังกลั่นซ้ำ
@@ -571,8 +573,8 @@ export function RedistillTab({ products, materials }: { products: Product[]; mat
                             <td>{r.cum_vol ?? "—"}</td><td>{r.ferm_charge ?? "—"}</td>
                             <td>
                               <button
-                                onClick={() => {
-                                  if (!confirm(`ลบค่าที่บันทึก (หม้อ ${r.pot_no} · ${r.phase ?? ""})?`)) return;
+                                onClick={async () => {
+                                  if (!(await ask({ title: `ลบค่าที่บันทึก (หม้อ ${r.pot_no} · ${r.phase ?? ""})?`, confirmText: "ลบ", danger: true }))) return;
                                   run(() => deleteDistillRunAction(r.id), "ลบค่าเรียบร้อย", () => loadReadings(lot.lot_no));
                                 }}
                                 disabled={pending} className="text-crit hover:text-crit" title="ลบ">

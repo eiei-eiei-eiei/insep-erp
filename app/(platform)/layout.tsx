@@ -1,4 +1,5 @@
 import { requirePlatformAdmin } from "@/lib/platform/auth";
+import { ToastHost } from "@/lib/shared/toast";
 import { signOut } from "@/app/(app)/actions";
 import { PRODUCT_NAME } from "@/lib/shared/branding";
 import { IconLogout } from "@/lib/shared/icons";
@@ -37,6 +38,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+      <ToastHost />
     </div>
   );
 }

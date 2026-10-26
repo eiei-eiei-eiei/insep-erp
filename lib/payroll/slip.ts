@@ -1,4 +1,5 @@
 import type { PayLineItem } from "./types";
+import { showToast } from "../shared/toast";
 
 /**
  * lib/payroll/slip — สลิปเงินเดือน (HTML → หน้าต่างพิมพ์)
@@ -101,7 +102,7 @@ export function slipHtml(d: SlipData): string {
 export function printSlips(slips: SlipData[]): void {
   const w = window.open("", "_blank", "width=900,height=1200");
   if (!w) {
-    alert("เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — โปรดอนุญาต popup แล้วลองใหม่");
+    showToast({ ok: false, text: "เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — โปรดอนุญาต popup แล้วลองใหม่" });
     return;
   }
   w.document.open();

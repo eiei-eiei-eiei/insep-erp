@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { SalesBoot, CustomerRow, MenuRow, OrderRow, OrderItem } from "./types";
-import { Card, Combobox, MissingHint, Msg, NumBox, Select, TextInput, useSaver, fmt } from "./ui";
+import { Card, Combobox, MissingHint, NumBox, Select, TextInput, useSaver, fmt } from "./ui";
 import { quotationTotals, inclFromExVat } from "@/lib/sales/calc";
 import {
   saveQuotationAction,
@@ -40,7 +40,7 @@ export function QuotationTab({
   const [saleName, setSaleName] = useState("");
   const [showAddCust, setShowAddCust] = useState(false);
   const [showCustom, setShowCustom] = useState(false);
-  const { pending, msg, run, setMsg } = useSaver();
+  const { pending, run, setMsg } = useSaver();
 
   const customer = customers.find((c) => c.id === selCustId);
 
@@ -216,7 +216,6 @@ export function QuotationTab({
           <h2 className="font-semibold text-warn">ออเดอร์ (B2B)</h2>
           {editOrder && <span className="rounded bg-warn-bg px-2 py-0.5 text-xs text-warn">แก้ไข {editOrder.quNo}</span>}
         </div>
-        <Msg msg={msg} />
         <div className="mb-3 max-h-56 overflow-y-auto">
           {items.length === 0 ? (
             <div className="py-6 text-center text-sm text-faint">ยังไม่มีรายการ</div>

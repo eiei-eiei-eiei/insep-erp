@@ -1,5 +1,6 @@
 "use client";
 
+import { showToast } from "@/lib/shared/toast";
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { BarBoot } from "../data";
@@ -13,7 +14,7 @@ import {
   type ReceiveDraft, type NewItemDraft, type NewItemRow, type CountDraft, type ItemEditDraft, type QtyUnit,
 } from "@/lib/bar/stockBatch";
 import {
-  Card, Msg, TextInput, NumBox, Select, Field, Badge, Empty, EscToClose, Combobox, fmt, useSaver,
+  Card, TextInput, NumBox, Select, Field, Badge, Empty, EscToClose, Combobox, fmt, useSaver,
 } from "@/lib/shared/ui";
 import {
   STOCK_VIEW_LABEL, parseStockView, itemPasses, countPasses, countRowFilled, visibleRows,
@@ -43,7 +44,7 @@ import { PrepView } from "./PrepTab";
  */
 export function StockTab({ boot, onReload }: { boot: BarBoot; onReload: () => Promise<void> }) {
   const data = boot;
-  const { msg, setMsg } = useSaver();
+  const { setMsg } = useSaver();
   const [busy, setBusy] = useState(false);
   const [openItem, setOpenItem] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -104,7 +105,6 @@ export function StockTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
 
   return (
     <div className="space-y-4">
-      <Msg msg={msg} />
 
       {low.length > 0 && (
         <div className="rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">
@@ -856,7 +856,6 @@ function NewItemsModal({
   onSave: (rows: NewItemRow[]) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const [rows, setRows] = useState<K<NewItemDraft>[]>(() => blanks(3, newItem));
-  const [err, setErr] = useState<string | null>(null);
   const plan = planNewItems(rows, boot.items);
   const set = (idx: number, patch: Partial<NewItemDraft>) =>
     setRows((rs) => patchRow(rs, idx, patch, newItem, (r) => !!r.name.trim()));
@@ -951,20 +950,16 @@ function NewItemsModal({
         </button>
 
         {plan.errors.length > 0 && <p className="mt-2 text-xs text-warn">ยังบันทึกไม่ได้ — {errorsText(plan.errors)}</p>}
-        {/* ★ error ต้องอยู่ในป๊อปอัพ — ข้อความบนหน้าหลักโดนป๊อปอัพบัง (D71) */}
-        <div className="mt-2">
-          <Msg msg={err ? { ok: false, text: err } : null} />
-        </div>
+        {/* ★ D134 — ผลการบันทึกขึ้นป้ายลอยเหนือป๊อปอัพ (z สูงกว่า) จึงไม่โดนบังแบบที่ D71 เจอ */}
 
         <div className="mt-4 flex gap-2">
           <button
             type="button"
             disabled={busy || plan.rows.length === 0 || plan.errors.length > 0}
             onClick={async () => {
-              setErr(null);
               const r = await onSave(plan.rows);
               if (r.ok) onClose();
-              else setErr(r.error ?? "บันทึกไม่สำเร็จ");
+              else showToast({ ok: false, text: r.error ?? "บันทึกไม่สำเร็จ" });
             }}
             className="flex-1 rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
           >

@@ -38,7 +38,7 @@ import {
   pinnedItems,
   type GarnishDraft,
 } from "@/lib/bar/quickPick";
-import { Card, Msg, Select, TextInput, MissingHint, useSaver } from "@/lib/shared/ui";
+import { Card, Select, TextInput, MissingHint, useSaver } from "@/lib/shared/ui";
 import { saveGarnishesAction, saveHouseSlotsAction, savePinsAction } from "../actions";
 
 type Reload = () => Promise<void>;
@@ -49,12 +49,11 @@ const ARROW =
 
 export function QuickPickSettings({ boot, onReload }: { boot: BarBoot; onReload: Reload }) {
   // ★ ข้อความ "บันทึกแล้ว" อยู่ที่ตัวแม่ — การ์ดถูก remount หลังบันทึก ข้อความในการ์ดจะหายไปพร้อมการ์ด
-  const { msg, setMsg } = useSaver();
+  const { setMsg } = useSaver();
   const notify: Notify = (text) => setMsg({ ok: true, text });
   return (
     <>
       <div className="lg:col-span-2">
-        <Msg msg={msg} />
         <h3 className="mt-2 text-sm font-semibold text-ink">ปุ่มลัดในหน้าสร้างเมนู</h3>
         <p className="text-xs text-muted">
           3 การ์ดนี้ <b>บันทึกแยกทีละการ์ด</b> ด้วยปุ่มในการ์ดเอง (ไม่เกี่ยวกับปุ่ม บันทึกการตั้งค่า ด้านบน)
@@ -76,7 +75,7 @@ export function QuickPickSettings({ boot, onReload }: { boot: BarBoot; onReload:
 const optLabel = (it: BarItem) => `${it.name} (${it.unit})${it.active === false ? " · ปิดใช้แล้ว" : ""}`;
 
 function HouseSlotCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Reload; notify: Notify }) {
-  const { msg, setMsg } = useSaver();
+  const { setMsg } = useSaver();
   const [busy, setBusy] = useState(false);
   const initial: SlotDraft[] = orderedSlots(boot.houseSlots).map((s) => ({
     slotId: s.slotId,
@@ -103,7 +102,6 @@ function HouseSlotCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Re
 
   return (
     <Card title="เหล้าประจำบ้าน (House)">
-      <Msg msg={msg} />
       <p className="mb-2 text-xs text-muted">
         ตั้งชื่อช่อง แล้วเลือกขวดที่ใช้อยู่ตอนนี้ · สูตรอ้างช่องแทนขวดยี่ห้อได้ ·{" "}
         <b>เปลี่ยนขวด = ทุกเมนูที่อ้างช่องนี้เปลี่ยนทันที</b> (บิลเก่าไม่ขยับ) · ขวดหมดระบบปล่อยติดลบ ไม่สลับขวดให้เอง
@@ -180,7 +178,7 @@ function HouseSlotCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Re
 }
 
 function GarnishCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Reload; notify: Notify }) {
-  const { msg, setMsg } = useSaver();
+  const { setMsg } = useSaver();
   const [busy, setBusy] = useState(false);
   const initial: GarnishDraft[] = orderedGarnishes(boot.garnishes).map((g) => garnishDraftOf(g, boot.items));
   const [rows, setRows] = useState<GarnishDraft[]>(initial);
@@ -203,7 +201,6 @@ function GarnishCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Relo
 
   return (
     <Card title="ชุดตกแต่ง">
-      <Msg msg={msg} />
       <p className="mb-2 text-xs text-muted">
         กดชุดตกแต่งในหน้าสร้างเมนู = <b>เพิ่มเป็นบรรทัดของชุด</b> (กดซ้ำ = เพิ่มจำนวนชุด) ·{" "}
         <b>แก้ชุดที่นี่ = ทุกเมนูที่ใช้ชุดนี้เปลี่ยนตาม</b> (แก้วที่ขายไปแล้วไม่ขยับ) · จำนวนพิมพ์เศษส่วนได้ เช่น{" "}
@@ -295,7 +292,7 @@ function GarnishCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Relo
 }
 
 function PinCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Reload; notify: Notify }) {
-  const { msg, setMsg } = useSaver();
+  const { setMsg } = useSaver();
   const [busy, setBusy] = useState(false);
   const initial = pinnedItems(boot.items).map((i) => i.itemId);
   // ★ ตัวที่ปักไว้แต่ถูกปิดใช้ ไม่ขึ้นเป็นปุ่ม (pinnedItems ตัดทิ้ง) — ถอดหมุดให้ตอนบันทึกครั้งถัดไป
@@ -321,7 +318,6 @@ function PinCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Reload; 
 
   return (
     <Card title="วัตถุดิบใช้บ่อย">
-      <Msg msg={msg} />
       <p className="mb-2 text-xs text-muted">
         ขึ้นเป็นปุ่มลัดกลุ่ม <b>ใช้บ่อย</b> ในหน้าสร้างเมนู เรียงตามที่จัดที่นี่ (ไม่เรียงตามยอดใช้ — ปุ่มอยู่ที่เดิมเสมอ)
       </p>

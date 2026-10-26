@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { getBalancesAction, getStatementAction, saveTransferAction } from "../actions";
 import type { Bootstrap } from "./types";
 import { accountsFor } from "@/lib/accounting/bankAccounts";
-import { Badge, Card, Field, Msg, NumBox, SaveButton, Select, TextInput, fmt, todayISO, useSaver, useRead, LoadError } from "./ui";
+import { Badge, Card, Field, NumBox, SaveButton, Select, TextInput, fmt, todayISO, useSaver, useRead, LoadError } from "./ui";
 
 type Balances = Awaited<ReturnType<typeof getBalancesAction>>;
 type Statement = Awaited<ReturnType<typeof getStatementAction>>;
@@ -12,7 +12,7 @@ type Statement = Awaited<ReturnType<typeof getStatementAction>>;
 export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstrap; period: string; entityId: string; active: boolean }) {
   const [stmt, setStmt] = useState<Statement | null>(null);
   const [openAcc, setOpenAcc] = useState<string | null>(null);
-  const { pending, msg, run, setMsg } = useSaver();
+  const { pending, run, setMsg } = useSaver();
 
   // โอนระหว่างบัญชี
   const [from, setFrom] = useState("");
@@ -106,7 +106,7 @@ export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstra
           <Field label="วันที่"><TextInput type="date" value={tdate} onChange={(e) => setTdate(e.target.value)} /></Field>
           <div className="col-span-2 md:col-span-4"><Field label="หมายเหตุ"><TextInput value={note} onChange={(e) => setNote(e.target.value)} /></Field></div>
         </div>
-        <div className="mt-3"><Msg msg={msg} /><SaveButton pending={pending} onClick={doTransfer}>โอนเงิน</SaveButton></div>
+        <div className="mt-3"><SaveButton pending={pending} onClick={doTransfer}>โอนเงิน</SaveButton></div>
       </Card>
     </div>
   );

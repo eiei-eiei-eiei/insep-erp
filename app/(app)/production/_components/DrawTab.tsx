@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/lib/shared/ui";
 import { useEffect, useState } from "react";
 import { diluteCalc, isFermented } from "@/lib/production/calc";
 import {
@@ -9,7 +10,7 @@ import {
   updateDrawLogAction,
   deleteDrawLogAction,
 } from "../actions";
-import { Card, Field, MissingHint, Msg, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
+import { Card, Field, MissingHint, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import type { PendingBatch, Product } from "./types";
 import { IconEdit, IconTrash } from "@/lib/shared/icons";
 
@@ -39,7 +40,8 @@ export function DrawTab({
   batch: string;
   onBatchChange: (b: string) => void;
 }) {
-  const { pending: busy, msg, run } = useSaver();
+  const { pending: busy, run } = useSaver();
+  const { confirmNode, ask } = useConfirm();
   const [date, setDate] = useState(todayISO());
   const [productName, setProductName] = useState("");
   const [vol, setVol] = useState("");
@@ -130,8 +132,8 @@ export function DrawTab({
     );
   }
 
-  function del(r: RecentDraw) {
-    if (!confirm(`ลบรายการรินน้ำสุราแช่ ครั้งที่หมัก ${r.batch} (${String(r.draw_date).slice(0, 10)})?\nน้ำหมักของ batch นี้จะกลับมาเป็นยอดคงเหลือ`)) return;
+  async function del(r: RecentDraw) {
+    if (!(await ask({ title: `ลบรายการรินน้ำสุราแช่ ครั้งที่หมัก ${r.batch} (${String(r.draw_date).slice(0, 10)})?`, detail: `น้ำหมักของ batch นี้จะกลับมาเป็นยอดคงเหลือ`, confirmText: "ลบ", danger: true }))) return;
     run(() => deleteDrawLogAction(r.id as number), "ลบรายการเรียบร้อย", () => { loadRecent(); refreshRemaining(); });
   }
   function startEdit(r: RecentDraw) {
@@ -175,8 +177,8 @@ export function DrawTab({
 
   return (
     <div className="space-y-5">
+      {confirmNode}
       <Card title="รินน้ำสุราแช่ออกจากถังหมัก (1 ครั้งที่หมัก = 1 รายการ)">
-        <Msg msg={msg} />
         <div className="mb-4 flex flex-wrap items-center gap-3">
           {remaining !== null && (
             <span className="rounded-lg bg-raised px-3 py-1 text-sm text-muted">

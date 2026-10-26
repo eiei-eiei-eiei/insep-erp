@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Route } from "next";
 import {
-  Badge, Card, EscToClose, Field, Msg, NumBox, RowBtn, SaveButton, Select, TextInput, useConfirm, useSaver,
+  Badge, Card, EscToClose, Field, NumBox, RowBtn, SaveButton, Select, TextInput, useConfirm, useSaver,
 } from "@/lib/shared/ui";
 import {
   DOC_GROUPS, DOC_TYPE_INFO, DATE_FMTS, DATE_FMT_LABEL, ERAS, ERA_LABEL, RESETS, RESET_LABEL, SEPS, SEP_LABEL, PREFIX_RE,
@@ -146,7 +146,7 @@ function DocNumberEditor({
   const [next, setNext] = useState<number | "">("");
   const [pv, setPv] = useState<DocNumberPreview | null>(null);
   const seq = useRef(0);
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
   const { confirmNode, ask } = useConfirm();
   const info = DOC_TYPE_INFO[row.doc_type as DocType];
 
@@ -291,7 +291,6 @@ function DocNumberEditor({
         {blockReason && <p className="mt-3 text-sm text-crit">{blockReason}</p>}
 
         <div className="mt-4">
-          <Msg msg={msg} />
           <div className="flex flex-wrap items-center gap-2">
             <SaveButton pending={pending} disabled={!changed || !!blockReason || !pv?.ok} onClick={save}>
               บันทึก

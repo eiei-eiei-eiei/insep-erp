@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveBrandingAction } from "../actions";
 import { BRAND_COLORS, type BrandColor, type ColorMode } from "@/lib/shared/branding";
-import { Card, Field, MissingHint, Msg, SaveButton, Select, TextInput, useSaver } from "@/lib/shared/ui";
+import { Card, Field, MissingHint, SaveButton, Select, TextInput, useSaver } from "@/lib/shared/ui";
 
 /**
  * ตั้งค่าแบรนด์ของกิจการ (D43) — ชื่อ/สี/โลโก้/โหมดเริ่มต้น
@@ -18,7 +18,7 @@ export function BrandingCard({
   current: { name: string; color: BrandColor; logoUrl: string | null; defaultMode: ColorMode };
 }) {
   const router = useRouter();
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
   const [name, setName] = useState(current.name);
   const [color, setColor] = useState<BrandColor>(current.color);
   const [logoUrl, setLogoUrl] = useState(current.logoUrl ?? "");
@@ -34,7 +34,6 @@ export function BrandingCard({
 
   return (
     <Card title="แบรนด์ของกิจการ">
-      <Msg msg={msg} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="ชื่อที่แสดงบนแถบเมนู">
           <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="เช่น ร้านของฉัน" />

@@ -12,7 +12,6 @@ export {
   fmt0,
   cleanTaxId13,
   useSaver,
-  Msg,
   Field,
   Card,
   Stat,

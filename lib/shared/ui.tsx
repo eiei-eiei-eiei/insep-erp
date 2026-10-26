@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { showToast } from "./toast";
 
 import { missingText, type FieldCheck } from "./forms";
 
@@ -61,17 +62,35 @@ export function cleanTaxId13(raw: string | null | undefined): string | null {
  */
 export type UiMsg = { ok: boolean; text: string; warn?: boolean };
 
+/**
+ * ★ D134 — ทุกข้อความที่ผ่าน `run()` / `setMsg()` **ขึ้นเป็นป้ายลอยบนกลางจอ** (`showToast`)
+ *   ไม่มีแถบในการ์ดแล้ว (ผู้ใช้สั่ง: แถบเขียว "บันทึกแล้ว" ค้างในการ์ดทั้งที่เริ่มกรอกต่อแล้ว
+ *   และเลื่อนจอไปที่อื่นก็มองไม่เห็น) · `msg` ยังคืนให้เผื่อผู้เรียกใช้ตัดสินอย่างอื่น แต่ห้ามวาดลงการ์ด
+ */
 export function useSaver<R extends SaveResultLike = SaveResultLike>() {
   const [pending, startTransition] = useTransition();
-  const [msg, setMsg] = useState<UiMsg | null>(null);
+  const [msg, setMsgState] = useState<UiMsg | null>(null);
+  // onOk ตั้งข้อความเองไหม (เช่น เหลือง "บันทึกได้บางส่วน") — ถ้าตั้ง ไม่ต้องขึ้นป้ายเขียวซ้อน
+  const overridden = useRef(false);
+  const setMsg = useCallback((m: UiMsg | null) => {
+    setMsgState(m);
+    if (m) {
+      overridden.current = true;
+      showToast(m);
+    }
+  }, []);
 
   function run(fn: () => Promise<R>, okText: string, onOk?: (data?: unknown) => void) {
     setMsg(null);
     startTransition(async () => {
       const r = await fn();
       if (r.ok) {
-        setMsg({ ok: true, text: okText });
+        // 🪤 D134 — เดิมตั้งเขียวก่อนแล้ว onOk ทับด้วยเหลืองบนแถบเดียวกัน (เห็นแค่อันหลัง)
+        //    พอเป็นป้ายลอย สองข้อความจะขึ้นคู่กัน "สำเร็จ" กับ "สำเร็จบางส่วน" ขัดกันเอง
+        //    ⇒ เรียก onOk ก่อน แล้วขึ้นเขียวเฉพาะเมื่อ onOk ไม่ได้ตั้งข้อความเอง
+        overridden.current = false;
         onOk?.(r.data);
+        if (!overridden.current) setMsg({ ok: true, text: okText });
       } else {
         setMsg({ ok: false, text: r.error ?? "เกิดข้อผิดพลาด" });
       }
@@ -155,19 +174,10 @@ export function LoadError({ err, onRetry, what }: { err: boolean; onRetry?: () =
 }
 
 // ── layout ───────────────────────────────────────────────────────────────────
-export function Msg({ msg }: { msg: UiMsg | null }) {
-  if (!msg) return null;
-  const tone = msg.warn
-    ? "border-warn-line bg-warn-bg text-warn"
-    : msg.ok
-      ? "border-ok-line bg-ok-bg text-ok"
-      : "border-crit-line bg-crit-bg text-crit";
-  return (
-    <div role="status" className={`mb-3 rounded-lg border px-3 py-2 text-sm ${tone}`}>
-      {msg.text}
-    </div>
-  );
-}
+/*
+ * ★ D134 — `<Msg>` (แถบผลลัพธ์ในการ์ด) ถูกลบแล้ว · ผลการบันทึกขึ้นเป็นป้ายลอยผ่าน `useSaver` / `showToast`
+ *   🚨 อย่าเอาแถบในการ์ดกลับมา — ผู้ใช้สั่งเอาออกเอง (ค้างทั้งที่เริ่มงานถัดไปแล้ว)
+ */
 
 export function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -575,6 +585,12 @@ export type ConfirmOpts = {
   confirmText?: string;
   /** true = การกระทำทำลายข้อมูล → ปุ่มเป็นระดับ danger */
   danger?: boolean;
+  /**
+   * ข้อความบนปุ่มปิด (ปริยาย "ยกเลิก")
+   * 🪤 D134 — การกระทำที่ชื่อ "ยกเลิก…" (ยกเลิกออเดอร์/ยกเลิกบิล) ต้องส่ง `"กลับ"`
+   *    ไม่งั้นได้ปุ่ม [ยกเลิกออเดอร์] [ยกเลิก] คนอ่านไม่รู้ว่าปุ่มขวาคือยกเลิกออเดอร์หรือยกเลิกคำสั่ง
+   */
+  cancelText?: string;
 };
 
 export function useConfirm() {
@@ -621,7 +637,7 @@ export function useConfirm() {
             onClick={() => done(false)}
             className="rounded-lg border border-line bg-card px-3 py-2 text-sm text-ink"
           >
-            ยกเลิก
+            {opts.cancelText ?? "ยกเลิก"}
           </button>
         </div>
       </div>

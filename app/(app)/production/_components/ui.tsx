@@ -11,7 +11,6 @@ export {
   fmt,
   fmt0,
   useSaver,
-  Msg,
   Field,
   Card,
   Stat,

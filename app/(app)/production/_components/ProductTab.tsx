@@ -1,8 +1,9 @@
 "use client";
 
+import { useConfirm } from "@/lib/shared/ui";
 import { useEffect, useState } from "react";
 import { saveProductAction, getRecentProductsAction, deleteProductLogAction, updateProductLogAction } from "../actions";
-import { Card, Field, MissingHint, Msg, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
+import { Card, Field, MissingHint, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import { PRODUCT_TYPES, type Product } from "./types";
 import { IconEdit, IconTrash } from "@/lib/shared/icons";
 
@@ -10,7 +11,8 @@ type RecentProduct = Awaited<ReturnType<typeof getRecentProductsAction>>[number]
 type EditFields = { date: string; transType: string; productId: string; amount: string; note: string };
 
 export function ProductTab({ products }: { products: Product[] }) {
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
+  const { confirmNode, ask } = useConfirm();
   const [date, setDate] = useState(todayISO());
   const [transType, setTransType] = useState<string>("รับ");
   const [productId, setProductId] = useState("");
@@ -43,8 +45,8 @@ export function ProductTab({ products }: { products: Product[] }) {
       },
     );
   }
-  function del(r: RecentProduct) {
-    if (!confirm(`ลบรายการ ${prodName(r.product_id as string)} (${r.trans_type} ${r.amount} ขวด)? สต็อกจะปรับให้`)) return;
+  async function del(r: RecentProduct) {
+    if (!(await ask({ title: `ลบรายการ ${prodName(r.product_id as string)} (${r.trans_type} ${r.amount} ขวด)? สต็อกจะปรับให้`, confirmText: "ลบ", danger: true }))) return;
     run(() => deleteProductLogAction(r.id as number), "ลบรายการเรียบร้อย (สต็อกอัปเดตแล้ว)", loadRecent);
   }
   function startEdit(r: RecentProduct) {
@@ -71,8 +73,8 @@ export function ProductTab({ products }: { products: Product[] }) {
 
   return (
     <div className="space-y-5">
+      {confirmNode}
     <Card title="บรรจุ / จ่ายขวด (Log_Product → สต็อก)">
-      <Msg msg={msg} />
       <p className="mb-3 text-xs text-faint">
         &quot;รับ&quot; = บรรจุเข้าสต็อก (+) · ประเภทอื่นทั้งหมด = จ่ายออก (−)
       </p>

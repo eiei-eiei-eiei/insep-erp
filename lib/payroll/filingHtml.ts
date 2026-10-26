@@ -8,6 +8,7 @@
  * ★ เอกสารพวกนี้เป็น "ใบแนบ/สำเนาเก็บแฟ้ม" ไม่ใช่ฟอร์มราชการที่ต้องตรงพิกัด
  *   (ผู้ใช้กรอกตัวเลขในเว็บราชการเอง) → ไม่มีข้อผูกมัดเรื่องพิกัดแบบฟอร์ม ภส./50ทวิ
  */
+import { showToast } from "../shared/toast";
 import type { Pnd1Result, Sso110Result, Pnd1kResult } from "./filings";
 
 export type FilingEntity = {
@@ -187,7 +188,7 @@ export function pnd1kHtml(ent: FilingEntity, yearBE: number, r: Pnd1kResult): st
 export function printFilingDoc(title: string, bodyHtml: string): void {
   const w = window.open("", "_blank", "width=900,height=1200");
   if (!w) {
-    alert("เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — โปรดอนุญาต popup แล้วลองใหม่");
+    showToast({ ok: false, text: "เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — โปรดอนุญาต popup แล้วลองใหม่" });
     return;
   }
   w.document.open();

@@ -22,7 +22,7 @@ import {
 } from "@/lib/bar/prep";
 import { stockText, numText } from "@/lib/bar/units";
 import {
-  Card, Msg, TextInput, NumBox, Field, Badge, Empty, EscToClose, SuggestInput, LoadError,
+  Card, TextInput, NumBox, Field, Badge, Empty, EscToClose, SuggestInput, LoadError,
   fmt, useSaver, useRead, useConfirm,
 } from "@/lib/shared/ui";
 import {
@@ -49,7 +49,7 @@ const perUnitText = (v: number) => numText(v, 4);
 
 export function PrepView({ boot, onReload }: { boot: BarBoot; onReload: () => Promise<void> }) {
   const prep = useRead(loadPrep, [boot.entityId], { skip: !boot.entityId });
-  const { msg, setMsg } = useSaver();
+  const { setMsg } = useSaver();
   const { confirmNode, ask } = useConfirm();
   const [busy, setBusy] = useState(false);
   const [edit, setEdit] = useState<{ def: PrepDef | null } | null>(null);
@@ -106,7 +106,6 @@ export function PrepView({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
   return (
     <div className="space-y-4">
       {confirmNode}
-      <Msg msg={msg} />
 
       {soaking.length > 0 && (
         <Card title={`กำลังแช่ ${soaking.length} ล็อต`}>

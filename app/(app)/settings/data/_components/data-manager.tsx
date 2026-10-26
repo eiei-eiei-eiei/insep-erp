@@ -1,5 +1,6 @@
 "use client";
 
+import { showToast } from "@/lib/shared/toast";
 import { useState, useTransition } from "react";
 import { EscToClose } from "@/lib/shared/ui";
 import { downloadBlob, MIME } from "@/lib/shared/download";
@@ -28,7 +29,8 @@ const KIND_LABEL: Record<Kind, string> = {
  */
 export function DataManager() {
   const [pending, startTransition] = useTransition();
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // D134 — ผลการทำรายการขึ้นเป็นป้ายลอย (showToast) ไม่มีแถบในหน้าแล้ว
+  const setMsg = (m: { ok: boolean; text: string } | null) => { if (m) showToast(m); };
   const [result, setResult] = useState<ExportResult | null>(null);
   const [ask, setAsk] = useState<Kind | null>(null);
   const [password, setPassword] = useState("");
@@ -106,12 +108,6 @@ export function DataManager() {
           <li>ควรโหลดเก็บไว้เป็นระยะ โดยเฉพาะก่อนแก้ข้อมูลจำนวนมาก</li>
         </ul>
       </div>
-
-      {msg && (
-        <div className={`mb-4 rounded-lg px-4 py-2 text-sm ${msg.ok ? "bg-ok-bg text-ok" : "bg-crit-bg text-crit"}`}>
-          {msg.text}
-        </div>
-      )}
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2">
         <button

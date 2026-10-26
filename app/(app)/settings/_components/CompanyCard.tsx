@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveEntityInfoAction, saveDocEntityAction, saveSalesRevenueAction } from "../actions";
 import type { SettingsEntity } from "../settings-data";
-import { Card, Field, MissingHint, Msg, SaveButton, Select, TextArea, TextInput, useSaver } from "@/lib/shared/ui";
+import { Card, Field, MissingHint, SaveButton, Select, TextArea, TextInput, useSaver } from "@/lib/shared/ui";
 import { companyFromEntity } from "@/lib/sales/company";
 import { FILING_METHODS, FILING_METHOD_LABEL, toFilingMethod } from "@/lib/accounting/taxFiling";
 import { companyHeaderPreviewHtml } from "../../sales/_components/print";
@@ -44,7 +44,7 @@ export function CompanyCard({
   accounts: string[];
 }) {
   const router = useRouter();
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
   const doc = useSaver();
   const rev = useSaver();
 
@@ -106,7 +106,6 @@ export function CompanyCard({
             : "ค่าชุดนี้ขึ้นหัวเอกสารและฟอร์มราชการของระบบ"}
           {" "}(แก้ที่นี่ที่เดียว เอกสารทั้งระบบตรงกัน)
         </p>
-        <Msg msg={msg} />
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {multiEntity && (
@@ -227,7 +226,6 @@ export function CompanyCard({
             ใบเสนอราคา / ใบแจ้งหนี้ / ใบกำกับภาษี / ใบเสร็จ จะออกในนามกิจการนี้ — แยกจากช่อง
             &ldquo;กิจการที่กำลังแก้&rdquo; ด้านบนโดยตั้งใจ (แก้ข้อมูลอีกกิจการแล้วต้องไม่ย้ายผู้ออกเอกสารตาม)
           </p>
-          <Msg msg={doc.msg} />
           <div className="flex flex-wrap items-end gap-3">
             <Field label="ผู้ออกเอกสาร">
               <Select value={docId} onChange={(e) => setDocId(e.target.value)}>
@@ -259,7 +257,6 @@ export function CompanyCard({
           — <b>ไม่ตั้งค่า = กดรับเงินในแอปขายไม่ได้</b>
           {multiEntity && <> · แยกจาก &ldquo;กิจการที่ออกเอกสารการค้า&rdquo; ด้านบน ตั้งต่างกันได้</>}
         </p>
-        <Msg msg={rev.msg} />
         {accounts.length === 0 && (
           <p className="mb-3 rounded-lg border border-warn-line bg-warn-bg px-3 py-2 text-xs text-warn">
             ยังไม่มีบัญชีเงินในระบบ — เพิ่มก่อนที่ <b>บัญชี → ตั้งค่า → บัญชีเงิน</b>

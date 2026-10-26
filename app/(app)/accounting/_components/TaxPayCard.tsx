@@ -11,6 +11,7 @@
  *    ที่นี่แค่วาด — server action ตรวจซ้ำด้วยฟังก์ชันตัวเดียวกันก่อนเรียก RPC
  */
 
+import { useConfirm } from "@/lib/shared/ui";
 import { useState } from "react";
 import { accountsFor } from "@/lib/accounting/bankAccounts";
 import {
@@ -46,7 +47,6 @@ import {
   Field,
   fmt,
   MissingHint,
-  Msg,
   NumBox,
   RowBtn,
   SaveButton,
@@ -82,7 +82,8 @@ export function TaxPayCard({
   reloadKey: number;
 }) {
   const [open, setOpen] = useState<TaxDueRow | null>(null);
-  const { pending, msg, run, setMsg } = useSaver();
+  const { pending, run, setMsg } = useSaver();
+  const { confirmNode, ask } = useConfirm();
 
   // 🚨🚨 D89 — ถ้าอ่าน tax_payments ไม่ได้แล้วปล่อยผ่าน กระดานจะบอกว่า "ยังไม่เคยจ่าย"
   //    ทั้งที่จ่ายไปแล้ว → ผู้ใช้กดจ่ายซ้ำ · ต้องขึ้นแถบแดงและอย่าให้ตัดสินใจจากจอนี้
@@ -92,23 +93,27 @@ export function TaxPayCard({
     { skip: !entityId },
   );
 
-  function doUnpay(r: TaxDueRow) {
-    if (!window.confirm(
-      `ถอนการบันทึกจ่าย ${r.label} งวดนี้?\n\nบิล ${r.payment?.tx_id ?? ""} จะกลายเป็น "ยกเลิก" (ไม่ถูกลบ) และยอดเงินในบัญชีจะกลับไปเท่าก่อนจ่าย`,
-    )) return;
+  async function doUnpay(r: TaxDueRow) {
+    if (!(await ask({
+      title: `ถอนการบันทึกจ่าย ${r.label} งวดนี้?`,
+      detail: `บิล ${r.payment?.tx_id ?? ""} จะกลายเป็น "ยกเลิก" (ไม่ถูกลบ) และยอดเงินในบัญชีจะกลับไปเท่าก่อนจ่าย`,
+      confirmText: "ถอนการจ่าย",
+      cancelText: "กลับ",
+      danger: true,
+    }))) return;
     // ★ D95 — จงใจไม่ถอน "ยื่นแล้ว" ตามไปด้วย: ถอนจ่ายเพราะกรอกยอดผิด ไม่ได้แปลว่าไม่ได้ยื่น
     run(() => unpayTaxAction(r.kind, r.period, entityId), "ถอนการบันทึกจ่ายแล้ว — บิลถูกยกเลิก", load);
   }
 
   // ── D95 "ยื่นแล้ว" ── ปุ่มนี้ไม่แตะเงินหรือบิลใด ๆ เป็นการบันทึกเหตุการณ์ล้วน ๆ
-  function doFile(r: TaxDueRow) {
+  async function doFile(r: TaxDueRow) {
     const warn = fileWithoutFormWarn(r.formCreated);
     if (
-      !window.confirm(
-        `บันทึกว่ายื่น ${r.label} งวด ${r.period} แล้ว?\n\n` +
-          `ระบบจะหยุดเตือนงวดนี้เข้ากลุ่ม LINE (ไม่เกี่ยวกับการจ่ายเงิน)` +
-          (warn ? `\n\n⚠ ${warn}` : ""),
-      )
+      !(await ask({
+        title: `บันทึกว่ายื่น ${r.label} งวด ${r.period} แล้ว?`,
+        detail: `ระบบจะหยุดเตือนงวดนี้เข้ากลุ่ม LINE (ไม่เกี่ยวกับการจ่ายเงิน)` + (warn ? `\n\n⚠ ${warn}` : ""),
+        confirmText: "บันทึกว่ายื่นแล้ว",
+      }))
     ) return;
     run(
       () => fileTaxAction({ kind: r.kind, period: r.period, entityId, filedOn: todayISO() }),
@@ -116,10 +121,13 @@ export function TaxPayCard({
       load,
     );
   }
-  function doUnfile(r: TaxDueRow) {
-    if (!window.confirm(
-      `ถอนการบันทึกยื่น ${r.label} งวด ${r.period}?\n\nระบบจะกลับมาเตือนงวดนี้เข้ากลุ่ม LINE อีกครั้ง`,
-    )) return;
+  async function doUnfile(r: TaxDueRow) {
+    if (!(await ask({
+      title: `ถอนการบันทึกยื่น ${r.label} งวด ${r.period}?`,
+      detail: "ระบบจะกลับมาเตือนงวดนี้เข้ากลุ่ม LINE อีกครั้ง",
+      confirmText: "ถอนการบันทึกยื่น",
+      cancelText: "กลับ",
+    }))) return;
     run(() => unfileTaxAction(r.kind, r.period, entityId), "ถอนการบันทึกยื่นแล้ว — ระบบจะเตือนงวดนี้อีกครั้ง", load);
   }
 
@@ -128,6 +136,7 @@ export function TaxPayCard({
 
   return (
     <div className={box}>
+      {confirmNode}
       <h3 className="mb-1 font-semibold text-ink">ยื่นและชำระภาษี</h3>
       {/* 🚨 D89 — อ่านประวัติจ่ายไม่ได้ = กระดานอาจบอกว่า "ยังไม่เคยจ่าย" ทั้งที่จ่ายแล้ว */}
       <LoadError err={err} onRetry={load} what="สถานะการชำระภาษี" />
@@ -148,7 +157,6 @@ export function TaxPayCard({
           ? ""
           : " · ยังไม่ได้ตั้งวิธียื่นของกิจการนี้ — ระบบใช้กำหนดของกระดาษ (ตั้งได้ที่ ตั้งค่า → กิจการ)"}
       </p>
-      <Msg msg={msg} />
 
       {!board ? (
         <p className="text-sm text-faint">กำลังโหลด…</p>
@@ -368,7 +376,7 @@ function PayModal({
   const [surchargeCategory, setSurchargeCategory] = useState(pref.surchargeCategory || DEFAULT_SURCHARGE_CAT);
   const [contactName, setContactName] = useState(pref.contactName || DEFAULT_TAX_PAYEE);
   const [note, setNote] = useState("");
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
 
   const amt = Number(amount) || 0;
   const sur = Number(surcharge) || 0;
@@ -416,7 +424,6 @@ function PayModal({
         <p className="mb-3 text-xs text-faint">
           {taxTxDescription(row.kind, row.period)} · กำหนดยื่น {formatDateThai(row.due.paper)} (ออนไลน์ถึง {formatDateThai(row.due.efiling)})
         </p>
-        <Msg msg={msg} />
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="วันที่จ่าย (วันที่เงินออกจากบัญชี)">

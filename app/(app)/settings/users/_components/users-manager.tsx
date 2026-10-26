@@ -1,5 +1,6 @@
 "use client";
 
+import { showToast } from "@/lib/shared/toast";
 import { useState, useTransition } from "react";
 import { ROLE_LABEL, ROLE_HINT, type Role } from "@/lib/shared/roles";
 import { rolesFor } from "@/lib/shared/moduleScope";
@@ -7,7 +8,6 @@ import { PASSWORD_MIN } from "@/lib/shared/password";
 import {
   Card,
   EscToClose,
-  Msg,
   MissingHint,
   RowBtn,
   SaveButton,
@@ -62,7 +62,8 @@ export function UsersManager({
   // ป๊อปอัพจำกัดกิจการ: null = ทุกกิจการ
   const [scope, setScope] = useState<string[] | null>(null);
   const [pending, startTransition] = useTransition();
-  const [msg, setMsg] = useState<UiMsg | null>(null);
+  // D134 — ผลการทำรายการขึ้นเป็นป้ายลอย (showToast) ไม่มีแถบในหน้าแล้ว
+  const setMsg = (m: UiMsg | null) => { if (m) showToast(m); };
 
   // ฟอร์มสร้างผู้ใช้
   const [username, setUsername] = useState("");
@@ -115,7 +116,6 @@ export function UsersManager({
         เฉพาะเจ้าของกิจการ (main)
       </p>
 
-      <Msg msg={msg} />
 
       {/* สร้างผู้ใช้ใหม่ */}
       <Card className="mb-8">

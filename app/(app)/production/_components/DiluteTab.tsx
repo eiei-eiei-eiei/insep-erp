@@ -1,9 +1,10 @@
 "use client";
 
+import { useConfirm } from "@/lib/shared/ui";
 import { useEffect, useState } from "react";
 import { diluteCalc, isFermented } from "@/lib/production/calc";
 import { getRemainingDistillVolAction, saveDiluteAction, getRecentDilutesAction, deleteDiluteLogAction, updateDiluteLogAction } from "../actions";
-import { Card, Field, MissingHint, Msg, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
+import { Card, Field, MissingHint, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import type { Product } from "./types";
 import { AbvCalcCard } from "./AbvCalcCard";
 import { IconEdit, IconTrash } from "@/lib/shared/icons";
@@ -12,7 +13,8 @@ type RecentDilute = Awaited<ReturnType<typeof getRecentDilutesAction>>[number];
 type EditFields = { date: string; productName: string; bottleSize: string; startVol: string; startAbv: string; water: string; finalVol: string; finalAbv: string; note: string };
 
 export function DiluteTab({ products }: { products: Product[] }) {
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
+  const { confirmNode, ask } = useConfirm();
   const [date, setDate] = useState(todayISO());
   const [productName, setProductName] = useState("");
   const [remaining, setRemaining] = useState<number | null>(null);
@@ -37,8 +39,8 @@ export function DiluteTab({ products }: { products: Product[] }) {
   function loadRecent() { getRecentDilutesAction().then((r) => setRecent(r as RecentDilute[])); }
   function refreshRemaining() { if (productName) getRemainingDistillVolAction(productName).then(setRemaining); }
   useEffect(() => { loadRecent(); }, []);
-  function del(r: RecentDilute) {
-    if (!confirm(`ลบรายการปรุง ${r.product_name} (${String(r.dilute_date).slice(0, 10)})?`)) return;
+  async function del(r: RecentDilute) {
+    if (!(await ask({ title: `ลบรายการปรุง ${r.product_name} (${String(r.dilute_date).slice(0, 10)})?`, confirmText: "ลบ", danger: true }))) return;
     run(() => deleteDiluteLogAction(r.id as number), "ลบรายการเรียบร้อย", () => { loadRecent(); refreshRemaining(); });
   }
   function startEdit(r: RecentDilute) {
@@ -130,10 +132,10 @@ export function DiluteTab({ products }: { products: Product[] }) {
 
   return (
     <div className="space-y-5">
+      {confirmNode}
     <AbvCalcCard onUse={(abv20) => recalc("v1", { c1: abv20 })} />
 
     <Card title="ปรุง / ปรับดีกรี (C1·V1 = C2·V2)">
-      <Msg msg={msg} />
       <div className="mb-4 flex flex-wrap items-center gap-4">
         <label className="flex items-center gap-2 text-sm text-muted">
           <input type="checkbox" checked={calcMode} onChange={(e) => setCalcMode(e.target.checked)} />

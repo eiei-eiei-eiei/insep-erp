@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { BarBoot, BarCustomerRow } from "../data";
-import { Card, Msg, TextInput, Badge, Empty, fmt, useSaver, useConfirm } from "@/lib/shared/ui";
+import { Card, TextInput, Badge, Empty, fmt, useSaver, useConfirm } from "@/lib/shared/ui";
 import {
   saveCustomerAction, deleteCustomerAction, toggleFavAction,
   customerCardAction, exportConsentedAction,
@@ -28,7 +28,7 @@ type CardData = {
  */
 export function CustomerTab({ boot, onReload }: { boot: BarBoot; onReload: () => Promise<void> }) {
   const data = boot;
-  const { msg, setMsg } = useSaver();
+  const { setMsg } = useSaver();
   const { confirmNode, ask } = useConfirm();
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState("");
@@ -110,7 +110,6 @@ export function CustomerTab({ boot, onReload }: { boot: BarBoot; onReload: () =>
   return (
     <div className="space-y-4">
       {confirmNode}
-      <Msg msg={msg} />
 
       <Card title="ลูกค้าบาร์">
         <div className="mb-3 flex flex-wrap items-center gap-2">

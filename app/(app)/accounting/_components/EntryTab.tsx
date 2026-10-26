@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/lib/shared/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   itemTotal,
@@ -27,7 +28,7 @@ import {
   getItemHistoryAction,
 } from "../actions";
 import type { Bootstrap, Contact } from "./types";
-import { Card, Field, Msg, NumBox, NumInput, SaveButton, Select, TextInput, cleanTaxId13, fmt, todayISO, useSaver, EscToClose } from "./ui";
+import { Card, Field, NumBox, NumInput, SaveButton, Select, TextInput, cleanTaxId13, fmt, todayISO, useSaver, EscToClose } from "./ui";
 import { IconTrash } from "@/lib/shared/icons";
 import { isForwardCat } from "@/lib/accounting/forwardCats";
 import { ADVANCE_TYPE, advanceTargets } from "@/lib/accounting/advance";
@@ -54,7 +55,8 @@ type Draft = {
 };
 
 export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entityId: string; ambiguous: boolean }) {
-  const { pending, msg, run, setMsg } = useSaver();
+  const { pending, run, setMsg } = useSaver();
+  const { confirmNode, ask } = useConfirm();
   // เมื่อ header เลือก "ทุกกิจการ" → กิจการปลายทางกำกวม ให้ผู้ใช้เลือกชัดเจนในฟอร์ม (กันบันทึกเข้ากิจการผิดเงียบ ๆ)
   const [pickedEntity, setPickedEntity] = useState(entityId);
   const effEntity = ambiguous ? (pickedEntity || entityId) : entityId;
@@ -321,6 +323,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
 
   return (
     <div className="space-y-4" onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); doSave(); } }}>
+      {confirmNode}
       <div ref={billCardRef}>
       <Card title="ข้อมูลบิล">
         {ambiguous ? (
@@ -421,7 +424,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
         )}
 
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <button type="button" onClick={() => { if (confirm("ล้างฟอร์มทั้งหมด? (ข้อมูลที่กรอกค้างจะหาย)")) clearForm(); }} className="inline-flex items-center gap-1 text-xs text-faint transition hover:text-crit"><IconTrash size={14} />ล้างฟอร์ม</button>
+          <button type="button" onClick={async () => { if (await ask({ title: "ล้างฟอร์มทั้งหมด?", detail: "(ข้อมูลที่กรอกค้างจะหาย)", confirmText: "ล้างฟอร์ม" })) clearForm(); }} className="inline-flex items-center gap-1 text-xs text-faint transition hover:text-crit"><IconTrash size={14} />ล้างฟอร์ม</button>
           {isCost && <span className="text-xs text-warn">{category} — จะรับวัตถุดิบเข้าสต็อกผลิตอัตโนมัติ (ชื่อรายการต้องตรง master)</span>}
         </div>
       </Card>
@@ -580,7 +583,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
               <div className={`text-xs ${Math.abs(instSumPct - 100) < 0.01 ? "text-faint" : "text-crit"}`}>รวม {instSumPct}% (ต้อง 100%)</div>
             </div>
           )}
-          <div className="mt-4"><Msg msg={msg} /><SaveButton pending={pending} onClick={doSave}>บันทึก</SaveButton><span className="ml-2 text-xs text-faint">หรือกด Ctrl+Enter</span></div>
+          <div className="mt-4"><SaveButton pending={pending} onClick={doSave}>บันทึก</SaveButton><span className="ml-2 text-xs text-faint">หรือกด Ctrl+Enter</span></div>
         </Card>
 
         <Card title="เครื่องคิดถอด WHT (จากยอดสุทธิ)">
@@ -616,7 +619,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
 }
 
 function ContactModal({ defaultName, onClose, onSaved }: { defaultName: string; onClose: () => void; onSaved: (c: Contact) => void }) {
-  const { pending, msg, run, setMsg } = useSaver();
+  const { pending, run, setMsg } = useSaver();
   const [name, setName] = useState(defaultName);
   const [taxId, setTaxId] = useState("");
   const [branch, setBranch] = useState("สำนักงานใหญ่");
@@ -648,7 +651,6 @@ function ContactModal({ defaultName, onClose, onSaved }: { defaultName: string; 
           <Field label="ประเภท"><Select value={contactType} onChange={(e) => setContactType(e.target.value)}><option>ทั้งสอง</option><option>ผู้ขาย</option><option>ลูกค้า</option></Select></Field>
         </div>
         <p className="mt-1 text-xs text-faint">“ทั้งสอง” = เป็นได้ทั้งผู้ขายและลูกค้า → โผล่ทั้งรายรับและรายจ่าย</p>
-        <Msg msg={msg} />
         <div className="mt-3 flex justify-end gap-2">
           <button onClick={onClose} className="rounded-lg border border-line px-4 py-2 text-sm">ยกเลิก</button>
           <SaveButton pending={pending} onClick={save}>เพิ่ม</SaveButton>

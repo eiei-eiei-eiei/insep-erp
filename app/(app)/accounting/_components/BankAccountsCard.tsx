@@ -18,7 +18,7 @@ import {
 } from "../actions";
 import type { BankAccountAdminRow } from "../data";
 import type { Bootstrap } from "./types";
-import { Badge, Card, Field, Msg, NumBox, SaveButton, TextInput, fmt, useSaver, useRead, LoadError, EscToClose } from "./ui";
+import { Badge, Card, Field, NumBox, SaveButton, TextInput, fmt, useSaver, useRead, LoadError, EscToClose } from "./ui";
 import { SuggestInput, useConfirm } from "@/lib/shared/ui";
 import {
   accountNameError,
@@ -43,7 +43,7 @@ type Form = {
 
 export function BankAccountsCard({ boot }: { boot: Bootstrap }) {
   const router = useRouter();
-  const { pending, msg, run, setMsg } = useSaver();
+  const { pending, run, setMsg } = useSaver();
   const { ask, confirmNode } = useConfirm();
   const { data, err, reload } = useRead(() => getBankAccountAdminAction(), []);
   const [form, setForm] = useState<Form | null>(null);
@@ -170,7 +170,6 @@ export function BankAccountsCard({ boot }: { boot: Bootstrap }) {
           </p>
         </div>
       )}
-      {!form && <Msg msg={msg} />}
 
       {form && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setForm(null); }}>
@@ -202,7 +201,6 @@ export function BankAccountsCard({ boot }: { boot: Bootstrap }) {
               ) : null}
             </div>
             {formErr && <p className="mt-2 text-sm text-crit">{formErr}</p>}
-            <Msg msg={msg} />
             <div className="mt-3 flex justify-end gap-2">
               <button onClick={() => setForm(null)} className="rounded-lg border border-line px-4 py-2 text-sm">ยกเลิก</button>
               <SaveButton pending={pending} onClick={save}>บันทึก</SaveButton>

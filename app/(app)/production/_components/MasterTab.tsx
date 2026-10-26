@@ -1,8 +1,9 @@
 "use client";
 
+import { useConfirm } from "@/lib/shared/ui";
 import { useState } from "react";
 import { upsertMaster, deleteMaster, type MasterTable } from "../master-actions";
-import { Card, Msg, useSaver } from "./ui";
+import { Card, useSaver } from "./ui";
 import type { Container, Material, Product } from "./types";
 import { LIQUOR_PROCESS } from "@/lib/production/calc";
 
@@ -70,7 +71,8 @@ function CrudSection({
   rows: Record<string, unknown>[];
 }) {
   const pk = fields.find((f) => f.pk)!.key;
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
+  const { confirmNode, ask } = useConfirm();
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [editPk, setEditPk] = useState<string | null>(null);
   const [editRow, setEditRow] = useState<Record<string, string>>({});
@@ -101,7 +103,7 @@ function CrudSection({
 
   return (
     <Card title={title}>
-      <Msg msg={msg} />
+      {confirmNode}
       <div className="overflow-x-auto">
         <table className="tbl">
           <thead>
@@ -202,7 +204,7 @@ function CrudSection({
                         <button onClick={() => startEdit(row)} className="mr-1 rounded border border-line px-2 py-1 text-muted hover:bg-raised">แก้</button>
                         <button
                           disabled={pending}
-                          onClick={() => { if (window.confirm(`ลบ "${id}" ?`)) run(() => deleteMaster(table, id), "ลบแล้ว"); }}
+                          onClick={async () => { if (await ask({ title: `ลบ "${id}" ?`, confirmText: "ลบ", danger: true })) run(() => deleteMaster(table, id), "ลบแล้ว"); }}
                           className="rounded border border-crit-line px-2 py-1 text-crit hover:bg-crit-bg"
                         >
                           ลบ

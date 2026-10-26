@@ -16,7 +16,10 @@ describe("ApArTab — แถวชำระ (D123)", () => {
     expect(src.match(/setSettleId\(r\.transactionId/g)).toBeNull();
   });
 
-  it("ข้อความผลลัพธ์ต้องมีที่แสดงนอกแถวชำระ (แถวปิดตอนสำเร็จ)", () => {
-    expect(src).toMatch(/settleId === null && <Msg msg=\{msg\} \/>/);
+  // ★ D134 — เดิมล็อกว่าแถบข้อความต้องอยู่นอกแถวชำระ (แถวปิดตอนสำเร็จ ข้อความหายไปกับแถว)
+  //   ตอนนี้ผลการชำระขึ้นเป็นป้ายลอยบนกลางจอผ่าน useSaver ⇒ ไม่ผูกกับแถวที่ปิดไปแล้วอีก
+  it("ผลการชำระขึ้นเป็นป้ายลอยผ่าน run() ของ useSaver — ไม่มีแถบในแถว/การ์ด", () => {
+    expect(src).toMatch(/run\(\(\) => settleApArAction\(/);
+    expect(src).not.toMatch(/<Msg\b/);
   });
 });

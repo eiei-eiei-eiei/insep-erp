@@ -1,8 +1,10 @@
 "use client";
 
+import { showToast } from "@/lib/shared/toast";
+import { useConfirm } from "@/lib/shared/ui";
 import { useEffect, useRef, useState } from "react";
 import type { SalesBoot, OrderRow, OrderItem } from "./types";
-import { Card, Msg, StatusBadge, TextInput, useSaver, fmt, LoadError } from "./ui";
+import { Card, StatusBadge, TextInput, useSaver, fmt, LoadError } from "./ui";
 import { todayISO } from "./ui";
 import { getOrdersAction, getOrderItemsAction, processOrderActionAction, cancelOrderAction, voidDepositInvoiceAction } from "../actions";
 import type { OrderAction, ActionPayload } from "@/lib/sales/orders";
@@ -33,7 +35,8 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
   const [tab, setTab] = useState<"open" | "closed">("open");
   const [search, setSearch] = useState("");
   const [dialog, setDialog] = useState<{ order: OrderRow; action: OrderAction } | null>(null);
-  const { msg, setMsg } = useSaver();
+  const { setMsg } = useSaver();
+  const { confirmNode, ask } = useConfirm();
   const [err, setErr] = useState(false);
 
   const firstLoad = useRef(true);
@@ -69,7 +72,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
 
   async function doPrintFirst(o: OrderRow) {
     const w = openPrintWindow(); // เปิดก่อน await กัน popup blocker (มือถือ/iPad)
-    if (!w) { alert("เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — โปรดอนุญาต popup แล้วลองใหม่"); return; }
+    if (!w) { showToast({ ok: false, text: "เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — โปรดอนุญาต popup แล้วลองใหม่" }); return; }
     const items = await loadItems(o.quNo);
     let docs: string[];
     if (o.status === "รอชำระมัดจำ") docs = ["invoice-deposit"]; // D45 — ใบแจ้งหนี้ค่ามัดจำ
@@ -80,7 +83,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
   }
   async function doPrintClosed(o: OrderRow) {
     const w = openPrintWindow();
-    if (!w) { alert("เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — โปรดอนุญาต popup แล้วลองใหม่"); return; }
+    if (!w) { showToast({ ok: false, text: "เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — โปรดอนุญาต popup แล้วลองใหม่" }); return; }
     const items = await loadItems(o.quNo);
     let docs: string[];
     if (o.deposit > 0) docs = ["tax-invoice-balance"];
@@ -90,7 +93,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
   }
   async function doReprintQuotation(o: OrderRow) {
     const w = openPrintWindow();
-    if (!w) { alert("เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — โปรดอนุญาต popup แล้วลองใหม่"); return; }
+    if (!w) { showToast({ ok: false, text: "เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — โปรดอนุญาต popup แล้วลองใหม่" }); return; }
     const items = await loadItems(o.quNo);
     let estDiscount = roundTo2(o.subTotal + o.vatAmount - o.grandTotal);
     if (Math.abs(estDiscount) < 0.1) estDiscount = 0;
@@ -117,8 +120,14 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
     }, w);
   }
 
-  function voidDepositInvoice(o: OrderRow) {
-    if (!confirm(`ยกเลิกใบแจ้งหนี้มัดจำ ${o.depInvNo || ""} ของ ${o.quNo}?\nออเดอร์จะกลับไปสถานะ "รอคอนเฟิร์ม" (แก้ใบเสนอราคาต่อได้) · เลขใบที่ออกไปแล้วถือเป็นยกเลิก`)) return;
+  async function voidDepositInvoice(o: OrderRow) {
+    if (!(await ask({
+      title: `ยกเลิกใบแจ้งหนี้มัดจำ ${o.depInvNo || ""} ของ ${o.quNo}?`,
+      detail: `ออเดอร์จะกลับไปสถานะ "รอคอนเฟิร์ม" (แก้ใบเสนอราคาต่อได้) · เลขใบที่ออกไปแล้วถือเป็นยกเลิก`,
+      confirmText: "ยกเลิกใบแจ้งหนี้มัดจำ",
+      cancelText: "กลับ",
+      danger: true,
+    }))) return;
     setMsg(null);
     voidDepositInvoiceAction(o.quNo).then((r) => {
       if (r.ok) {
@@ -128,8 +137,14 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
     });
   }
 
-  function cancel(o: OrderRow) {
-    if (!confirm(`ยกเลิกออเดอร์ ${o.quNo}? ระบบจะย้อนรายการบัญชี/สต็อกที่เกิดแล้วให้`)) return;
+  async function cancel(o: OrderRow) {
+    if (!(await ask({
+      title: `ยกเลิกออเดอร์ ${o.quNo}?`,
+      detail: "ระบบจะย้อนรายการบัญชี/สต็อกที่เกิดแล้วให้",
+      confirmText: "ยกเลิกออเดอร์",
+      cancelText: "กลับ",
+      danger: true,
+    }))) return;
     setMsg(null);
     cancelOrderAction(o.quNo).then((r) => {
       if (!r.ok) { setMsg({ ok: false, text: r.error ?? "ยกเลิกไม่สำเร็จ" }); return; }
@@ -194,6 +209,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
 
   return (
     <Card>
+      {confirmNode}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="flex gap-1 rounded-lg border border-line p-0.5">
           <button onClick={() => setTab("open")} className={`rounded px-3 py-1.5 text-sm font-semibold transition ${tab === "open" ? "bg-brand-soft text-brand" : "text-muted hover:text-ink"}`}>
@@ -212,7 +228,6 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
         </button>
         <span className="ml-auto text-xs text-faint">พบ {filtered.length} รายการ</span>
       </div>
-      <Msg msg={msg} />
 
       {loading ? (
         <div className="py-10 text-center text-faint">กำลังโหลด…</div>
@@ -385,7 +400,7 @@ function PaymentDialog({
   const [chequeBank, setChequeBank] = useState("");
   const [chequeNo, setChequeNo] = useState("");
   const [chequeDate, setChequeDate] = useState("");
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
 
   function submit() {
     let chequeDetails = "";
@@ -419,7 +434,6 @@ function PaymentDialog({
             &times;
           </button>
         </div>
-        <Msg msg={msg} />
         <div className="space-y-3 text-sm">
           <div className="rounded bg-raised p-2 text-muted">
             {order.quNo} · {order.customerName}

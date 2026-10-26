@@ -27,7 +27,7 @@ import {
   type LabCategory, type LabRecipe, type LabUse, type LabStatus, type RecipeFilter, type UseDraft,
 } from "@/lib/bar/lab";
 import {
-  Card, Msg, TextInput, NumBox, Select, Field, Badge, Empty, EscToClose, Combobox, SuggestInput, LoadError,
+  Card, TextInput, NumBox, Select, Field, Badge, Empty, EscToClose, Combobox, SuggestInput, LoadError,
   fmt, useSaver, useRead, useConfirm,
 } from "@/lib/shared/ui";
 import {
@@ -58,7 +58,7 @@ async function loadLab(): Promise<LabData> {
 
 export function LabTab({ boot, onReload }: { boot: BarBoot; onReload: () => Promise<void> }) {
   const lab = useRead(loadLab, [boot.entityId], { skip: !boot.entityId });
-  const { msg, setMsg } = useSaver();
+  const { setMsg } = useSaver();
   const { confirmNode, ask } = useConfirm();
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState<View>("recipes");
@@ -101,7 +101,6 @@ export function LabTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
   return (
     <div className="space-y-4">
       {confirmNode}
-      <Msg msg={msg} />
       <p className="text-xs text-faint">
         ของที่ใช้ที่นี่<b>ตัดสต็อก</b>และ<b>จำทุน ณ ตอนนั้น</b>ไว้ — ไม่เป็นบิล ไม่เข้ายอดขาย ไม่ลงบัญชี
         (ตอนซื้อวัตถุดิบเข้าบาร์ลงค่าใช้จ่ายไปแล้ว)
@@ -904,7 +903,7 @@ function SumTable({ title, rows }: { title: string; rows: { key: string; name: s
  */
 export function LabCategoriesCard({ boot }: { boot: BarBoot }) {
   const lab = useRead(loadLab, [boot.entityId], { skip: !boot.entityId });
-  const { msg, setMsg } = useSaver();
+  const { setMsg } = useSaver();
   const [busy, setBusy] = useState(false);
   const [rows, setRows] = useState<LabCategory[] | null>(null);
   if (!lab.data) return null;
@@ -918,7 +917,6 @@ export function LabCategoriesCard({ boot }: { boot: BarBoot }) {
 
   return (
     <Card title="หมวดการใช้ (ห้องทดลอง)">
-      <Msg msg={msg} />
       <p className="mb-2 text-xs text-muted">
         ใช้แยกทุนในหน้า <b>สรุปต้นทุน</b> · เพิ่มหมวดได้จากแท็บห้องทดลองเลย · การ์ดนี้ไว้เปลี่ยนชื่อ/จัดลำดับ/ลบ
       </p>

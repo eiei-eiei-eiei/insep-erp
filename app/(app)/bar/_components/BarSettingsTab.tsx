@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { BarBoot } from "../data";
 import { promptPayError, promptPayPayload } from "@/lib/bar/promptpay";
 import { hasSaleWindow } from "@/lib/bar/businessDate";
-import { Card, Field, TextInput, Select, Msg, useSaver, MissingHint, SuggestInput } from "@/lib/shared/ui";
+import { Card, Field, TextInput, Select, useSaver, MissingHint, SuggestInput } from "@/lib/shared/ui";
 import { saveBarSettingsAction } from "../actions";
 import { ReceiptLayoutCard } from "./ReceiptLayoutCard";
 import { QuickPickSettings } from "./QuickPickSettings";
@@ -28,7 +28,7 @@ const PP_TYPES: { value: string; label: string }[] = [
  */
 export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: () => Promise<void> }) {
   const data = boot;
-  const { msg, setMsg } = useSaver();
+  const { setMsg } = useSaver();
   const [busy, setBusy] = useState(false);
 
   const s = data.settings;
@@ -95,7 +95,6 @@ export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: ()
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Card title="กิจการของบาร์">
-        <Msg msg={msg} />
         <Field label="รายได้บาร์เข้ากิจการไหน">
           <Select value={entityId} onChange={(e) => setEntityId(e.target.value)}>
             <option value="">— ยังไม่ได้ตั้ง —</option>

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveLineAction, clearLineAction } from "../actions";
-import { Card, Field, Msg, SaveButton, TextInput, useSaver } from "@/lib/shared/ui";
+import { Card, Field, SaveButton, TextInput, useSaver } from "@/lib/shared/ui";
 
 /**
  * แจ้งเตือน LINE ของกิจการนี้ (0033)
@@ -23,7 +23,7 @@ export function LineCard({
   events: string[];
 }) {
   const router = useRouter();
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
   const [groupId, setGroupId] = useState(current.groupId);
   const [token, setToken] = useState("");
   const [editingToken, setEditingToken] = useState(!current.hasToken);
@@ -53,7 +53,6 @@ export function LineCard({
 
   return (
     <Card title="แจ้งเตือน LINE">
-      <Msg msg={msg} />
 
       <p className="mb-3 text-xs text-faint">
         {events.length > 0 ? `ระบบจะส่งข้อความเข้ากลุ่ม LINE ที่ตั้งไว้เมื่อ: ${events.join(" · ")}` : "ระบบจะส่งข้อความเข้ากลุ่ม LINE ที่ตั้งไว้"}

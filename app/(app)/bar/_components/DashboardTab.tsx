@@ -11,7 +11,7 @@ import {
   RANGE_LABEL, TOP_SORT_LABEL, type RangeKey, type TopSort, type DayRow,
 } from "@/lib/bar/dashDays";
 import { businessDate } from "@/lib/bar/businessDate";
-import { Card, Msg, TextInput, Field, Badge, Empty, fmt, useSaver, useConfirm } from "@/lib/shared/ui";
+import { Card, TextInput, Field, Badge, Empty, fmt, useSaver, useConfirm } from "@/lib/shared/ui";
 import { dashboardAction, postDayAction, unpostDayAction } from "../actions";
 import { labSummary, labDashboardText, labCategories, type LabUse } from "@/lib/bar/lab";
 import { unpostedText, unpostedTotal } from "@/lib/bar/posting";
@@ -46,7 +46,7 @@ const dayLabel = (d: string) =>
  *   → แถบวันค้างย้ายขึ้นบนสุด · ช่วงสำเร็จรูป + โหลดเองเมื่อเปลี่ยนช่วง · เทียบช่วงก่อน
  */
 export function DashboardTab({ boot, onReload }: { boot: BarBoot; onReload: () => Promise<void> }) {
-  const { msg, setMsg } = useSaver();
+  const { setMsg } = useSaver();
   const { confirmNode, ask } = useConfirm();
   const [busy, setBusy] = useState(false);
   // ★ "วันนี้" = วันขายปัจจุบันตามรอบที่ตั้งไว้ ไม่ใช่วันปฏิทิน (ตีหนึ่งยังเป็นคืนเดิม)
@@ -215,7 +215,6 @@ export function DashboardTab({ boot, onReload }: { boot: BarBoot; onReload: () =
   return (
     <div className="space-y-4">
       {confirmNode}
-      <Msg msg={msg} />
 
       {/* ── แถบวันค้าง (ย้ายขึ้นบนสุดใน D115 — เดิมอยู่ล่างสุดของหน้า) ── */}
       {boot.unposted.length > 0 && (

@@ -1,5 +1,6 @@
 "use client";
 
+import { showToast } from "@/lib/shared/toast";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // 🔴 ห้าม import pdf-lib / lib/pdf/excise แบบ static ที่นี่ — แท็บนี้อยู่ในแอปผลิตแล้ว
 //    static import = ทุกคนที่เปิดแอปผลิตต้องโหลด pdf-lib + fontkit ทั้งที่ส่วนใหญ่ไม่ได้ออกฟอร์ม
@@ -93,7 +94,8 @@ export function ExciseTab({ active, role }: { active: boolean; role: Role }) {
   const [entityId, setEntityId] = useState("");
   const [month, setMonth] = useState(nowMonth());
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // D134 — ผลการทำรายการขึ้นเป็นป้ายลอย (showToast) ไม่มีแถบในหน้าแล้ว
+  const setMsg = (m: { ok: boolean; text: string } | null) => { if (m) showToast(m); };
 
   // เลือกรายการต่อฟอร์ม (default เลือกทั้งหมด — เติมให้ตอนตัวเลือกโหลดเสร็จ)
   const [sel0701, setSel0701] = useState<string[]>([]);
@@ -137,7 +139,9 @@ export function ExciseTab({ active, role }: { active: boolean; role: Role }) {
   const [lots, setLots] = useState<{ lots: RedistillLot[]; rounds: RedistillRound[] } | null>(null);
   const [mc, setMc] = useState<MonthCloseView | null>(null);
   const [mcErr, setMcErr] = useState<string | null>(null);
-  const [mcMsg, setMcMsg] = useState<{ text: string; tone: "ok" | "warn" | "err" } | null>(null);
+  const setMcMsg = (m: { text: string; tone: "ok" | "warn" | "err" } | null) => {
+    if (m) showToast({ ok: m.tone !== "err", warn: m.tone === "warn", text: m.text });
+  };
   const [mcBusy, setMcBusy] = useState(false);
   const [mcNote, setMcNote] = useState("");
 
@@ -347,10 +351,6 @@ export function ExciseTab({ active, role }: { active: boolean; role: Role }) {
         </button>
       </div>
 
-      {msg && (
-        <div className={`mb-4 rounded-lg px-3 py-2 text-sm ${msg.ok ? "bg-ok-bg text-ok" : "bg-crit-bg text-crit"}`}>{msg.text}</div>
-      )}
-
       <div className="mb-4">
         <ReportChecklist
           title="เช็กลิสต์ฟอร์มสรรพสามิตของเดือนนี้"
@@ -380,19 +380,6 @@ export function ExciseTab({ active, role }: { active: boolean; role: Role }) {
           </div>
 
           {mcErr && <div className="mb-2 rounded-lg border border-crit-line bg-crit-bg px-3 py-2 text-sm text-crit">{mcErr}</div>}
-          {mcMsg && (
-            <div
-              className={`mb-2 rounded-lg border px-3 py-2 text-sm ${
-                mcMsg.tone === "err"
-                  ? "border-crit-line bg-crit-bg text-crit"
-                  : mcMsg.tone === "warn"
-                    ? "border-warn-line bg-warn-bg text-warn"
-                    : "border-ok-line bg-ok-bg text-ok"
-              }`}
-            >
-              {mcMsg.text}
-            </div>
-          )}
 
           <p className="mb-3 text-xs text-faint">
             การกดสร้าง PDF <b>ไม่ล็อกอะไร</b> — พิมพ์บัญชีประจำวันให้เจ้าหน้าที่ตรวจได้ตลอด ·

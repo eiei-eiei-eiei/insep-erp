@@ -26,7 +26,7 @@ import { customerLabel } from "@/lib/bar/customerName";
 import { recipeLines, refsOf } from "@/lib/bar/houseSlot";
 import { buildReceipt } from "@/lib/bar/receipt";
 import {
-  Card, Msg, TextInput, NumBox, Select, MissingHint, Badge, Empty, fmt, useSaver, useConfirm,
+  Card, TextInput, NumBox, Select, MissingHint, Badge, Empty, fmt, useSaver, useConfirm,
 } from "@/lib/shared/ui";
 import {
   IconPrint, IconTrash, IconClose, IconMoney, IconCheck, IconPlus, IconAlert,
@@ -78,7 +78,7 @@ type Discounts = Record<string, DiscountInput>;
  */
 export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Promise<void> }) {
   const data = boot;
-  const { msg, setMsg } = useSaver();
+  const { setMsg } = useSaver();
   const { confirmNode, ask } = useConfirm();
   const [busy, setBusy] = useState(false);
 
@@ -664,7 +664,6 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
               </button>
 
               <Card title={booth ? "ขายเร็ว (บูธ)" : sale ? `บิล ${sale.tabName || sale.saleNo}` : "ยังไม่ได้เลือกบิล"}>
-                <Msg msg={msg} />
 
                 {!key && !justClosed && <Empty>— เปิดบิลใหม่หรือเลือกบิลที่เปิดอยู่ก่อน —</Empty>}
 

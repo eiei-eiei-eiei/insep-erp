@@ -3,7 +3,7 @@
 import { salesProductionText } from "@/lib/sales/productionText";
 import { useState } from "react";
 import type { CustomerRow } from "./types";
-import { Msg, NumInput, TextInput, useSaver } from "./ui";
+import { NumInput, TextInput, useSaver } from "./ui";
 import { saveCustomerAction } from "../actions";
 import { IconPlus } from "@/lib/shared/icons";
 import { validateNewCustomer, branchToSave, taxIdToSave, hidesBranch } from "@/lib/sales/customer";
@@ -25,7 +25,7 @@ export function AddCustomerModal({ onClose, onAdded, hasProduction }: { onClose:
   const [creditTerm, setCreditTerm] = useState(0);
   const [isExport, setIsExport] = useState(false);
   const [noTaxId, setNoTaxId] = useState(false);
-  const { pending, msg, run, setMsg } = useSaver();
+  const { pending, run, setMsg } = useSaver();
 
   // กติกาอยู่ใน lib/sales/customer (มีเทส) — ที่นี่เหลือแค่การวาดหน้าจอ
   const form = { name, taxId, branchMode, branchNumber, noTaxId, isExport };
@@ -55,7 +55,6 @@ export function AddCustomerModal({ onClose, onAdded, hasProduction }: { onClose:
             &times;
           </button>
         </div>
-        <Msg msg={msg} />
         <div className="space-y-3">
           <TextInput placeholder="ชื่อบริษัท / ลูกค้า *" value={name} onChange={(e) => setName(e.target.value)} />
           <textarea placeholder="ที่อยู่จดทะเบียน *" value={address} onChange={(e) => setAddress(e.target.value)} rows={2} className="w-full rounded-lg border border-line p-2 text-sm outline-none focus:border-brand" />

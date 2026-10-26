@@ -1,9 +1,10 @@
 "use client";
 
+import { showToast } from "@/lib/shared/toast";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Card, Field, Select, NumBox, TextInput, Empty, Stat, RowBtn, SaveButton, Msg, useSaver, fmt, EscToClose, LoadError,
+  Card, Field, Select, NumBox, TextInput, Empty, Stat, RowBtn, SaveButton, useSaver, fmt, EscToClose, LoadError,
 } from "@/lib/shared/ui";
 import {
   pnd1Rows, sso110Rows, pnd1kRows, wht50Totals, yearBEfromCE, empDisplayName, countsForFiling,
@@ -192,7 +193,7 @@ function CopyBtn({ headers, rows }: { headers: string[]; rows: (string | number)
           setDone(true);
           setTimeout(() => setDone(false), 2000);
         } catch {
-          alert("คัดลอกไม่สำเร็จ — เบราว์เซอร์ไม่อนุญาต");
+          showToast({ ok: false, text: "คัดลอกไม่สำเร็จ — เบราว์เซอร์ไม่อนุญาต" });
         }
       }}
     >
@@ -429,7 +430,7 @@ function Wht50View({
   onIssued: () => void;
 }) {
   const router = useRouter();
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
   const [target, setTarget] = useState<{ empId: string; name: string } | null>(null);
   const [docNo, setDocNo] = useState("");
   const [issueDate, setIssueDate] = useState(new Date().toISOString().slice(0, 10));
@@ -455,7 +456,6 @@ function Wht50View({
         <br />
         ★ เลขที่เอกสารต่อเนื่อง<b>ชุดเดียวกับใบ 50ทวิ ของคู่ค้า</b>ในแท็บบัญชี
       </p>
-      <Msg msg={msg} />
 
       <div className="overflow-x-auto">
         <table className="tbl">

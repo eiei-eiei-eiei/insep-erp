@@ -1,8 +1,9 @@
 "use client";
 
+import { useConfirm } from "@/lib/shared/ui";
 import { useEffect, useState } from "react";
 import { getNextBatchNumberAction, saveFermentAction, getRecentFermentsAction, deleteFermentBatchAction } from "../actions";
-import { Card, Field, MissingHint, Msg, NumInput, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
+import { Card, Field, MissingHint, NumInput, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import type { Container, Material, Product } from "./types";
 import { IconTrash } from "@/lib/shared/icons";
 
@@ -18,7 +19,8 @@ export function FermentTab({
   containers: Container[];
   products: Product[];
 }) {
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
+  const { confirmNode, ask } = useConfirm();
   const [date, setDate] = useState(todayISO());
   const [productName, setProductName] = useState("");
   const [batch, setBatch] = useState("");
@@ -41,8 +43,8 @@ export function FermentTab({
     const v = parseFloat(vol) || 0, q = parseFloat(qty) || 0;
     if (v > 0 && q > 0) setRows((prev) => prev.map((r, i) => (i === 0 ? { ...r, amount: (v * q).toFixed(2) } : r)));
   }
-  function del(r: RecentFerment) {
-    if (!confirm(`ลบ batch หมัก "${r.batch}" (${r.productName})?\nระบบจะคืนวัตถุดิบที่เบิก + ลบค่าติดตามหมัก · ถ้ากลั่นไปแล้วจะลบไม่ได้`)) return;
+  async function del(r: RecentFerment) {
+    if (!(await ask({ title: `ลบ batch หมัก "${r.batch}" (${r.productName})?`, detail: `ระบบจะคืนวัตถุดิบที่เบิก + ลบค่าติดตามหมัก · ถ้ากลั่นไปแล้วจะลบไม่ได้`, confirmText: "ลบ batch", danger: true }))) return;
     run(() => deleteFermentBatchAction(r.batch), `ลบ batch ${r.batch} + คืนวัตถุดิบเรียบร้อย`, loadRecent);
   }
 
@@ -96,8 +98,8 @@ export function FermentTab({
 
   return (
     <div className="space-y-5">
+      {confirmNode}
     <Card title="ลงหมัก (Log_Ferment + เบิกวัตถุดิบอัตโนมัติ)">
-      <Msg msg={msg} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Field label="วันที่ลงหมัก">
           <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />

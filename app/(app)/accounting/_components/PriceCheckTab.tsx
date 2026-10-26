@@ -4,12 +4,12 @@ import { useState } from "react";
 import { inVatFromExVat } from "@/lib/accounting/calc";
 import { saveTransactionAction, type TxItemInput } from "../actions";
 import type { Bootstrap } from "./types";
-import { Card, Field, Msg, NumInput, SaveButton, TextInput, fmt, todayISO, useSaver } from "./ui";
+import { Card, Field, NumInput, SaveButton, TextInput, fmt, todayISO, useSaver } from "./ui";
 
 type Item = { itemName: string; quantity: number; exVat: number };
 
 export function PriceCheckTab({ boot, entityId }: { boot: Bootstrap; entityId: string }) {
-  const { pending, msg, run, setMsg } = useSaver();
+  const { pending, run, setMsg } = useSaver();
   const [date, setDate] = useState(todayISO());
   const [contact, setContact] = useState("");
   const [note, setNote] = useState("");
@@ -66,7 +66,7 @@ export function PriceCheckTab({ boot, entityId }: { boot: Bootstrap; entityId: s
         </tbody>
       </table>
       <button onClick={() => setItems((p) => [...p, { itemName: "", quantity: 1, exVat: 0 }])} className="mt-2 text-sm text-muted">+ เพิ่มรายการ</button>
-      <div className="mt-3"><Msg msg={msg} /><SaveButton pending={pending} onClick={doSave}>บันทึกเช็คราคา</SaveButton></div>
+      <div className="mt-3"><SaveButton pending={pending} onClick={doSave}>บันทึกเช็คราคา</SaveButton></div>
     </Card>
   );
 }

@@ -3,7 +3,7 @@
 import { salesProductionText } from "@/lib/sales/productionText";
 import { useMemo, useState } from "react";
 import type { SalesBoot, CustomerRow, MenuRow, OrderItem } from "./types";
-import { Card, Combobox, MissingHint, Msg, Select, fmt, useSaver } from "./ui";
+import { Card, Combobox, MissingHint, Select, fmt, useSaver } from "./ui";
 import { AddCustomerModal } from "./CustomerFields";
 import { posTotals, stockShortages, mergeCart } from "@/lib/sales/pos";
 import { posSaleAction, savePosWalkinContactAction, getSalesBootstrapAction } from "../actions";
@@ -41,7 +41,7 @@ export function PosTab({ boot, canWrite }: { boot: SalesBoot; canWrite: boolean 
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [pickCustomer, setPickCustomer] = useState(false);
-  const { msg, setMsg } = useSaver();
+  const { setMsg } = useSaver();
   const [busy, setBusy] = useState(false);
 
   const isVat = boot.isVat;
@@ -234,7 +234,6 @@ export function PosTab({ boot, canWrite }: { boot: SalesBoot; canWrite: boolean 
           <IconCart size={18} className="text-brand" />
           <h2 className="font-semibold text-ink">บิลหน้าร้าน</h2>
         </div>
-        <Msg msg={msg} />
 
         {/* ลูกค้า */}
         {!walkinId && !pickCustomer ? (

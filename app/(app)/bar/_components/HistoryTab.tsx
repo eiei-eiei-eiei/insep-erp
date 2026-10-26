@@ -6,7 +6,7 @@ import type { CartLine } from "@/lib/bar/types";
 import { barTotals } from "@/lib/bar/totals";
 import { buildReceipt } from "@/lib/bar/receipt";
 import { customerLabel } from "@/lib/bar/customerName";
-import { Card, Msg, TextInput, Field, Badge, Empty, fmt, useSaver, useConfirm, todayISO } from "@/lib/shared/ui";
+import { Card, TextInput, Field, Badge, Empty, fmt, useSaver, useConfirm, todayISO } from "@/lib/shared/ui";
 import { searchSalesAction, issueReceiptAction, voidSaleAction, voidLineAction } from "../actions";
 
 type SaleRow = {
@@ -54,7 +54,7 @@ const daysAgo = (n: number) => {
  *   หน้าจอขึ้นปุ่มเทาพร้อมบอกว่าต้องกดอะไรแทน (ซ่อนปุ่มแย่กว่าปุ่มเทา · D86)
  */
 export function HistoryTab({ boot, onReload }: { boot: BarBoot; onReload: () => Promise<void> }) {
-  const { msg, setMsg } = useSaver();
+  const { setMsg } = useSaver();
   const { confirmNode, ask } = useConfirm();
   const [busy, setBusy] = useState(false);
   const [from, setFrom] = useState(daysAgo(7));
@@ -158,7 +158,6 @@ export function HistoryTab({ boot, onReload }: { boot: BarBoot; onReload: () => 
   return (
     <div className="space-y-4">
       {confirmNode}
-      <Msg msg={msg} />
 
       <Card title="ค้นบิล">
         <div className="flex flex-wrap items-end gap-2">

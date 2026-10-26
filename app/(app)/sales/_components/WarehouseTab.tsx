@@ -3,7 +3,7 @@
 import { salesProductionText, type SalesProductionText } from "@/lib/sales/productionText";
 import { useEffect, useRef, useState } from "react";
 import type { WarehouseOrder, StockItem } from "./types";
-import { Badge, Card, Msg, NumInput, Select, TextInput, fmt, useSaver, LoadError } from "./ui";
+import { Badge, Card, NumInput, Select, TextInput, fmt, useSaver, LoadError } from "./ui";
 import { getPendingWarehouseAction, getWarehouseStockAction, confirmFulfillmentAction, manualStockMoveAction } from "../actions";
 import { printSalesDocs, type CompanyInfo, type OrderLike } from "./print";
 import { can, toRole } from "@/lib/shared/roles";
@@ -34,7 +34,7 @@ export function WarehouseTab({ role, company, active, hasProduction }: { role: s
 function PendingOrders({ canWrite, company, active, txt }: { canWrite: boolean; company: CompanyInfo; active: boolean; txt: SalesProductionText }) {
   const [orders, setOrders] = useState<WarehouseOrder[]>([]);
   const [loading, setLoading] = useState(true);
-  const { msg, setMsg } = useSaver();
+  const { setMsg } = useSaver();
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState(false);
   const firstLoad = useRef(true);
@@ -73,7 +73,7 @@ function PendingOrders({ canWrite, company, active, txt }: { canWrite: boolean; 
     setAsk(o);
   }
 
-  function confirm(o: WarehouseOrder, date: string) {
+  function confirmShip(o: WarehouseOrder, date: string) {
     setAsk(null);
     setMsg(null);
     setBusy(o.quNo);
@@ -96,7 +96,6 @@ function PendingOrders({ canWrite, company, active, txt }: { canWrite: boolean; 
 
   return (
     <div className="space-y-3">
-      <Msg msg={msg} />
       {ask && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40 p-4"
@@ -123,7 +122,7 @@ function PendingOrders({ canWrite, company, active, txt }: { canWrite: boolean; 
                 type="button"
                 autoFocus
                 disabled={!!shipErr}
-                onClick={() => confirm(ask, shipDate)}
+                onClick={() => confirmShip(ask, shipDate)}
                 className="flex-1 rounded-lg bg-brand px-3 py-2 text-sm font-medium text-on-brand disabled:opacity-50"
               >
                 ยืนยันจัดส่ง &amp; ตัดสต็อก
@@ -188,7 +187,7 @@ function StockPanel({ canWrite, active, txt }: { canWrite: boolean; active: bool
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState({ itemCode: "", actionType: "IN" as "IN" | "OUT" | "ADJUST", qty: 1, refNo: "", remarks: "" });
-  const { msg, setMsg } = useSaver();
+  const { setMsg } = useSaver();
   const [pending, setPending] = useState(false);
   const [err, setErr] = useState(false);
   const firstLoad = useRef(true);
@@ -235,7 +234,6 @@ function StockPanel({ canWrite, active, txt }: { canWrite: boolean; active: bool
     <div className="space-y-4">
       {canWrite && (
         <Card title="ปรับสต็อกทั่วไป (manual)">
-          <Msg msg={msg} />
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
             <Select value={form.itemCode} onChange={(e) => setForm({ ...form, itemCode: e.target.value })}>
               <option value="">— เลือกสินค้าทั่วไป —</option>

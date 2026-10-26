@@ -6,7 +6,6 @@ import {
   Card,
   Empty,
   Field,
-  Msg,
   NumBox,
   RowBtn,
   SaveButton,
@@ -15,8 +14,7 @@ import {
   TableWrap,
   TextInput,
   fmt,
-  useSaver,
-} from "@/lib/shared/ui";
+  useSaver, useConfirm } from "@/lib/shared/ui";
 import { IconAlert } from "@/lib/shared/icons";
 import { formatDateThai } from "@/lib/shared/format";
 import {
@@ -314,7 +312,8 @@ function BillingPanel({
 // ── หน้าหลัก ─────────────────────────────────────────────────────────────────
 
 export function BillingManager({ rows, todayISO }: { rows: BillingRow[]; todayISO: string }) {
-  const { pending, msg, run, setMsg } = useSaver();
+  const { pending, run, setMsg } = useSaver();
+  const { confirmNode, ask } = useConfirm();
   const [openId, setOpenId] = useState<string | null>(null);
 
   const open = rows.find((r) => r.tenantId === openId) ?? null;
@@ -333,6 +332,7 @@ export function BillingManager({ rows, todayISO }: { rows: BillingRow[]; todayIS
 
   return (
     <div className="space-y-5">
+      {confirmNode}
       <div>
         <h1 className="text-2xl font-bold text-ink">ค่างวดลูกค้า</h1>
         <p className="text-sm text-faint">
@@ -346,7 +346,6 @@ export function BillingManager({ rows, todayISO }: { rows: BillingRow[]; todayIS
         <Stat label="รายได้ต่อเดือน (เทียบเท่า)" value={`${fmt(mrr)} ฿`} tone="green" />
       </div>
 
-      <Msg msg={msg} />
 
       {missing.length > 0 && (
         <div className="flex items-start gap-2 rounded-lg border border-warn-line bg-warn-bg p-4">
@@ -442,20 +441,27 @@ export function BillingManager({ rows, todayISO }: { rows: BillingRow[]; todayIS
               "บันทึกการจ่ายแล้ว — เลื่อนวันครบกำหนดไปอีก 1 รอบ",
             );
           }}
-          onVoid={() => {
+          onVoid={async () => {
             setMsg(null);
-            if (!window.confirm("ย้อนรายการจ่ายล่าสุด?\nวันครบกำหนดจะถอยกลับไป 1 รอบ")) return;
+            if (!(await ask({ title: "ย้อนรายการจ่ายล่าสุด?", detail: "วันครบกำหนดจะถอยกลับไป 1 รอบ", confirmText: "ย้อนรายการจ่าย", danger: true }))) return;
             run(
               () => voidPaymentAction({ tenantId: open.tenantId, slug: open.slug }),
               "ย้อนรายการล่าสุดแล้ว",
             );
           }}
-          onActive={(active) => {
+          onActive={async (active) => {
             setMsg(null);
-            const warn = active
-              ? `คืนสิทธิ์การใช้งานให้ "${open.name}"?`
-              : `ระงับการใช้งานของ "${open.name}"?\nผู้ใช้ทุกคนของกิจการนี้จะเข้าระบบไม่ได้ทันที (ข้อมูลไม่ถูกลบ)`;
-            if (!window.confirm(warn)) return;
+            const ok = await ask(
+              active
+                ? { title: `คืนสิทธิ์การใช้งานให้ "${open.name}"?`, confirmText: "คืนสิทธิ์" }
+                : {
+                    title: `ระงับการใช้งานของ "${open.name}"?`,
+                    detail: "ผู้ใช้ทุกคนของกิจการนี้จะเข้าระบบไม่ได้ทันที (ข้อมูลไม่ถูกลบ)",
+                    confirmText: "ระงับการใช้งาน",
+                    danger: true,
+                  },
+            );
+            if (!ok) return;
             run(
               () => setActiveAction({ tenantId: open.tenantId, slug: open.slug, active }),
               active ? "คืนสิทธิ์การใช้งานแล้ว" : "ระงับการใช้งานแล้ว",

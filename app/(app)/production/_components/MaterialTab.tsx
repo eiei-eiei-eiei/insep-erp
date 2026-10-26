@@ -1,8 +1,9 @@
 "use client";
 
+import { useConfirm } from "@/lib/shared/ui";
 import { useEffect, useState } from "react";
 import { saveMaterialAction, getRecentMaterialsAction, deleteMaterialLogAction, updateMaterialLogAction } from "../actions";
-import { Card, Field, MissingHint, Msg, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
+import { Card, Field, MissingHint, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import { MATERIAL_TYPES, type Material } from "./types";
 import { IconEdit, IconTrash } from "@/lib/shared/icons";
 
@@ -10,7 +11,8 @@ type RecentMaterial = Awaited<ReturnType<typeof getRecentMaterialsAction>>[numbe
 type EditFields = { date: string; transType: string; materialId: string; amount: string; docRef: string; note: string };
 
 export function MaterialTab({ materials }: { materials: Material[] }) {
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
+  const { confirmNode, ask } = useConfirm();
   const [date, setDate] = useState(todayISO());
   const [transType, setTransType] = useState<string>("รับ");
   const [materialId, setMaterialId] = useState("");
@@ -46,8 +48,8 @@ export function MaterialTab({ materials }: { materials: Material[] }) {
       },
     );
   }
-  function del(r: RecentMaterial) {
-    if (!confirm(`ลบรายการ ${matName(r.material_id as string)} (${r.trans_type} ${r.amount})?`)) return;
+  async function del(r: RecentMaterial) {
+    if (!(await ask({ title: `ลบรายการ ${matName(r.material_id as string)} (${r.trans_type} ${r.amount})?`, confirmText: "ลบ", danger: true }))) return;
     run(() => deleteMaterialLogAction(r.id as number), "ลบรายการเรียบร้อย", loadRecent);
   }
   function startEdit(r: RecentMaterial) {
@@ -75,8 +77,8 @@ export function MaterialTab({ materials }: { materials: Material[] }) {
 
   return (
     <div className="space-y-5">
+      {confirmNode}
     <Card title="บันทึกวัตถุดิบ (รับ/จ่าย)">
-      <Msg msg={msg} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Field label="วันที่">
           <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />

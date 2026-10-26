@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/lib/shared/ui";
 import { useCallback, useEffect, useState } from "react";
 import { correctAbvTo20C } from "@/lib/abv";
 import { closeBatchSummary } from "@/lib/production/calc";
@@ -12,7 +13,7 @@ import {
   getClosedBatchesAction,
   reopenDistillBatchAction,
 } from "../actions";
-import { Card, Field, Msg, NumInput, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
+import { Card, Field, NumInput, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import { LineChart } from "./LineChart";
 import { chartColor } from "@/lib/shared/chart";
 import { DISTILL_PHASES, type PendingBatch } from "./types";
@@ -60,7 +61,8 @@ export function DistillTab({
    * ★ กรองที่นี่ ไม่ใช่ที่ getPendingBatches — ฟังก์ชันนั้นใช้ร่วมกับแท็บติดตามหมักด้วย
    */
   const batches = allBatches.filter((b) => !b.fermented);
-  const { pending, msg, run, setMsg } = useSaver();
+  const { pending, run, setMsg } = useSaver();
+  const { confirmNode, ask } = useConfirm();
   const setBatch = onBatchChange;
   const [readings, setReadings] = useState<RunRow[]>([]);
   const [activeRun, setActiveRun] = useState<{ runId: string; potNo: number } | null>(null);
@@ -112,8 +114,8 @@ export function DistillTab({
     loadReadings(batch);
   }, [batch, loadReadings]);
 
-  function delReading(r: RunRow) {
-    if (!confirm(`ลบค่าที่บันทึก (หม้อ ${r.pot_no} · ${r.phase ?? ""})?`)) return;
+  async function delReading(r: RunRow) {
+    if (!(await ask({ title: `ลบค่าที่บันทึก (หม้อ ${r.pot_no} · ${r.phase ?? ""})?`, confirmText: "ลบ", danger: true }))) return;
     run(() => deleteDistillRunAction(r.id), "ลบค่าเรียบร้อย", () => loadReadings(batch));
   }
 
@@ -200,8 +202,8 @@ export function DistillTab({
 
   return (
     <div className="space-y-5">
+      {confirmNode}
       <Card title="กลั่น — เลือก batch">
-        <Msg msg={msg} />
         {batches.length === 0 && (
           <p className="text-sm text-warn">ไม่มี batch รอกลั่น (ลงหมักก่อน)</p>
         )}
@@ -409,7 +411,8 @@ export function DistillTab({
  *    (ซึ่งมีปุ่มลบรายแถวอยู่แล้ว) ก็หายตามไปด้วย = แก้อะไรไม่ได้เลยสักทาง
  */
 function ReopenCard({ onDone }: { onDone: (batch: string) => void }) {
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
+  const { confirmNode, ask } = useConfirm();
   const [rows, setRows] = useState<ClosedBatch[]>([]);
   const [open, setOpen] = useState(false);
 
@@ -422,19 +425,20 @@ function ReopenCard({ onDone }: { onDone: (batch: string) => void }) {
     if (open) load();
   }, [open, load]);
 
-  function doReopen(r: ClosedBatch) {
+  async function doReopen(r: ClosedBatch) {
     // 🪤 ปรุง/บรรจุ ไม่มีคอลัมน์อ้าง batch เลย → เช็คให้ไม่ได้จริง ต้องให้คนตัดสิน
     if (
-      !confirm(
-        [
-          `ถอนการปิด batch ${r.batch}?`,
-          "",
+      !(await ask({
+        title: `ถอนการปิด batch ${r.batch}?`,
+        confirmText: "ถอนการปิด batch",
+        danger: true,
+        detail: [
           `ค่าที่บันทึกไว้ตอนนี้: ${r.vol.toLocaleString()} ล. · ${r.abv}%`,
           "",
           "batch จะกลับเข้าคิวกลั่นให้แก้ค่าแล้วปิดใหม่",
           "ถ้าปรุง/บรรจุจาก batch นี้ไปแล้ว ตัวเลขพวกนั้นไม่ถูกแตะ — ต้องไล่แก้เอง",
         ].join(String.fromCharCode(10)),
-      )
+      }))
     ) {
       return;
     }
@@ -446,7 +450,7 @@ function ReopenCard({ onDone }: { onDone: (batch: string) => void }) {
 
   return (
     <Card title="แก้ batch ที่ปิดไปแล้ว">
-      <Msg msg={msg} />
+      {confirmNode}
       {!open ? (
         <button
           type="button"

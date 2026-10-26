@@ -1,8 +1,9 @@
 "use client";
 
+import { useConfirm } from "@/lib/shared/ui";
 import { useCallback, useEffect, useState } from "react";
 import { getFermentMonitorAction, saveFermentMonitorAction, updateFermentMonitorAction, deleteFermentMonitorAction } from "../actions";
-import { Card, Field, MissingHint, Msg, NumInput, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
+import { Card, Field, MissingHint, NumInput, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import { LineChart } from "./LineChart";
 import { chartColor } from "@/lib/shared/chart";
 import type { PendingBatch } from "./types";
@@ -28,7 +29,8 @@ export function MonitorTab({
   batch: string;              // batch ร่วมของ workspace (เลือกครั้งเดียวใช้ทุกแท็บ)
   onBatchChange: (b: string) => void;
 }) {
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
+  const { confirmNode, ask } = useConfirm();
   const setBatch = onBatchChange;
   const [date, setDate] = useState(todayISO());
   const [time, setTime] = useState("");
@@ -85,8 +87,8 @@ export function MonitorTab({
       () => { setEditId(null); load(batch); },
     );
   }
-  function del(r: MonitorRow) {
-    if (!confirm("ลบค่าวัดแถวนี้?")) return;
+  async function del(r: MonitorRow) {
+    if (!(await ask({ title: "ลบค่าวัดแถวนี้?", confirmText: "ลบ", danger: true }))) return;
     run(() => deleteFermentMonitorAction(r.id), "ลบค่าวัดเรียบร้อย", () => load(batch));
   }
 
@@ -94,8 +96,8 @@ export function MonitorTab({
 
   return (
     <div className="space-y-5">
+      {confirmNode}
       <Card title="ติดตามการหมัก (pH / Brix / อุณหภูมิ)">
-        <Msg msg={msg} />
         {batches.length === 0 && (
           <p className="mb-3 text-sm text-warn">ยังไม่มี batch ที่กำลังหมัก (ลงหมักก่อน)</p>
         )}

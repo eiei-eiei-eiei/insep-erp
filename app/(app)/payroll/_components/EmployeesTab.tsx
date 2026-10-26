@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, useSaver, Empty, EscToClose } from "@/lib/shared/ui";
+import { Card, Field, NumBox, SaveButton, Select, TextInput, useSaver, Empty, EscToClose } from "@/lib/shared/ui";
 import { saveEmployeeAction } from "../actions";
 import type { EmployeeRow } from "../data";
 import type { PayrollConfig } from "./PayrollApp";
@@ -25,7 +25,7 @@ function blank(): Partial<EmployeeRow> {
 
 export function EmployeesTab({ config, initial }: { config: PayrollConfig; initial: EmployeeRow[] }) {
   const router = useRouter();
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
   const [edit, setEdit] = useState<Partial<EmployeeRow> | null>(null);
   const [q, setQ] = useState("");
 
@@ -69,7 +69,6 @@ export function EmployeesTab({ config, initial }: { config: PayrollConfig; initi
             + เพิ่มพนักงาน
           </button>
         </div>
-        <Msg msg={msg} />
 
         <div className="overflow-x-auto">
           <table className="tbl">

@@ -2,17 +2,16 @@
 
 import { can, capHolderText, type Role } from "@/lib/shared/roles";
 import { recomputeStockAction } from "../actions";
-import { Card, Msg, useSaver } from "./ui";
+import { Card, useSaver } from "./ui";
 import type { StockRow } from "./types";
 
 export function StockTab({ stock, role }: { stock: StockRow[]; role: Role }) {
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
   // ด่านจริงอยู่ใน recompute_stock_product (0074 · D99) — ตรงนี้แค่ไม่ปล่อยให้กดแล้วค่อยเจอ error
   const mayRepair = can(role, "prod.write");
 
   return (
     <Card title="สต็อกขวดคงเหลือ (stock_product)">
-      <Msg msg={msg} />
       <div className="mb-3">
         <button
           type="button"

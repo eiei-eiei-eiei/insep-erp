@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/lib/shared/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { searchBillsAction, getBillDetailAction, voidTransactionAction, updateTransactionAction, getItemHistoryAction } from "../actions";
 import { entryCalc, itemTotal, detectVatMode, unitPriceOf, unitPriceHeader, lineTotalHeader, itemsHintText, missingInvoiceWarn } from "@/lib/accounting/calc";
@@ -9,7 +10,7 @@ import { VatModeCard } from "./VatModeCard";
 import { accountsFor } from "@/lib/accounting/bankAccounts";
 import { MissingInvoiceWarn } from "./MissingInvoiceWarn";
 import type { Bootstrap } from "./types";
-import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, fmt, useSaver, EscToClose, useRead, LoadError } from "./ui";
+import { Card, Field, NumBox, SaveButton, Select, TextInput, fmt, useSaver, EscToClose, useRead, LoadError } from "./ui";
 import { can, toRole } from "@/lib/shared/roles";
 import { ADVANCE_TYPE, ADVANCE_REFUND_TYPE, advanceStatusLabel } from "@/lib/accounting/advance";
 import { entityMoveBlock, entityMoveError, entityMoveWarnings, entityMoveSavedText, type MoveTx } from "@/lib/accounting/entityMove";
@@ -47,8 +48,9 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
   const [detail, setDetail] = useState<Detail | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
   // viewer: ดูได้ แต่ซ่อนปุ่มแก้/ยกเลิก (กัน RLS error ตอนกดแล้วโดนปฏิเสธ)
+  const { confirmNode, ask } = useConfirm();
   const readOnly = !can(toRole(boot.role), "acct.write");
 
   // ดึงข้อมูลใหม่เมื่อฟิลเตอร์เปลี่ยน/กลับเข้าแท็บ — โชว์ผลเดิมค้างระหว่างโหลด (loading เฉพาะครั้งแรก)
@@ -68,8 +70,8 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
   }, [rows, text]);
 
   async function openDetail(txId: string) { setDetail(null); setDetail(await getBillDetailAction(txId)); }
-  function doVoid(txId: string) {
-    if (!confirm("ยกเลิกบิลนี้? (soft-delete ทั้งกลุ่มถ้าเป็นงวด/โอน)")) return;
+  async function doVoid(txId: string) {
+    if (!(await ask({ title: "ยกเลิกบิลนี้?", detail: "(soft-delete ทั้งกลุ่มถ้าเป็นงวด/โอน)", confirmText: "ยกเลิกบิล", cancelText: "กลับ", danger: true }))) return;
     run(() => voidTransactionAction(txId), "ยกเลิกเรียบร้อย", () => { setDetail(null); reload(); });
   }
 
@@ -86,6 +88,7 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
 
   return (
     <div className="space-y-4">
+      {confirmNode}
       <Card title="ค้นบิล">
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <Field label="ค้นจากรายละเอียดบิล"><TextInput value={text} onChange={(e) => setText(e.target.value)} placeholder="พิมพ์เพื่อกรองทันที…" /></Field>
@@ -98,7 +101,6 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
             <label className="flex items-center gap-1"><input type="checkbox" checked={includeVoid} onChange={(e) => setIncludeVoid(e.target.checked)} /> รวมที่ยกเลิก</label>
           </div>
         </div>
-        <Msg msg={msg} />
       </Card>
 
       <Card title={`ผลลัพธ์ (${shown.length})`}>
@@ -186,7 +188,7 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
 // ── แก้ไขบิลเดี่ยว (โหลด detail → ฟอร์มแก้ไข → fn_edit_transaction) ────────────────
 // รายการสินค้า/ยอด ใช้ตรรกะชุดเดียวกับฟอร์มบันทึก (billItems.ts) — กันเลขตอนแก้ ≠ ตอนสร้าง
 function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: Bootstrap; onClose: () => void; onSaved: () => void }) {
-  const { pending, msg, run, setMsg } = useSaver();
+  const { pending, run, setMsg } = useSaver();
   const [loading, setLoading] = useState(true);
   // D119 — บิลสำรองจ่ายแก้ได้ แต่เปลี่ยนประเภทไม่ได้ (DB บล็อกด้วย)
   const [type, setType] = useState<"รายรับ" | "รายจ่าย" | typeof ADVANCE_TYPE>("รายจ่าย");
@@ -449,7 +451,6 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
             <p className="mt-1 text-xs text-faint">
               * คงสถานะชำระ (AP/AR) และกลุ่มงวด/โอนไว้เดิม · ดูย้อนหลังได้ที่ <b>ตั้งค่า → ประวัติการแก้ไข</b>
             </p>
-            <Msg msg={msg} />
             <div className="mt-3 flex justify-end gap-2">
               <button onClick={onClose} className="rounded-lg border border-line px-4 py-2 text-sm">ยกเลิก</button>
               <SaveButton pending={pending} onClick={save}>บันทึกการแก้ไข</SaveButton>

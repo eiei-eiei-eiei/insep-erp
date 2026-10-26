@@ -11,6 +11,7 @@
  *    ตั้งค่าที่ บัญชี › ตั้งค่า › ข้อมูลบนเอกสารการค้า
  * ⚠️ ไฟล์นี้ห้ามผูกกับธีมแอป (ต้องดำบนขาวเสมอ) — เปิดโหมดมืดแล้วพิมพ์ต้องไม่ได้กระดาษพื้นดำ
  */
+import { showToast } from "@/lib/shared/toast";
 import { reverseCalcPrint, roundTo2 } from "@/lib/sales/calc";
 import { formatThaiDate } from "@/lib/sales/orders";
 import { branchLabel, type CompanyInfo } from "@/lib/sales/company";
@@ -211,7 +212,7 @@ function openPrint(inner: string, pre?: Window | null) {
   // pre ที่ส่งเข้ามา (แม้เป็น null) = caller เปิดเอง; ไม่ส่ง = เปิดใหม่ (backward-compat)
   const w = pre !== undefined ? pre : window.open("", "_blank", "width=900,height=1200");
   if (!w) {
-    alert("เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — โปรดอนุญาต popup แล้วลองใหม่");
+    showToast({ ok: false, text: "เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — โปรดอนุญาต popup แล้วลองใหม่" });
     return;
   }
   w.document.open();
@@ -271,10 +272,13 @@ function openPrint(inner: string, pre?: Window | null) {
 function ensureCompany(c: CompanyInfo, w?: Window | null): boolean {
   if (c?.name) return true;
   if (w) w.close();
-  alert(
-    "ยังไม่ได้ตั้งข้อมูลกิจการที่ใช้ออกเอกสาร — หัวกระดาษจะว่าง\n\n" +
-      "ไปที่ บัญชี › ตั้งค่า › ข้อมูลบนเอกสารการค้า แล้วเลือกกิจการ + กรอกชื่อ/ที่อยู่/เลขภาษี ก่อน",
-  );
+  // D134 — เดิมเป็น alert() (เบราว์เซอร์บล็อกได้ = ข้อความหายเงียบ) · ที่ชี้ไปบอก "บัญชี › ตั้งค่า" ย้ายแล้วตั้งแต่ D63
+  showToast({
+    ok: false,
+    text:
+      "ยังไม่ได้ตั้งข้อมูลกิจการที่ใช้ออกเอกสาร — หัวกระดาษจะว่าง\n" +
+      "ไปที่ ตั้งค่า → กิจการ แล้วเลือกผู้ออกเอกสาร + กรอกชื่อ/ที่อยู่/เลขภาษี ก่อน",
+  });
   return false;
 }
 

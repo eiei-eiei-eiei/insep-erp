@@ -1,7 +1,8 @@
 "use client";
 
+import { useConfirm } from "@/lib/shared/ui";
 import { useEffect, useRef, useState } from "react";
-import { Card, Msg, NumBox, NumInput, Select, TextInput, useSaver, fmt, LoadError } from "./ui";
+import { Card, NumBox, NumInput, Select, TextInput, useSaver, fmt, LoadError } from "./ui";
 import { getSaleMenuAction, getMenuLinkOptionsAction, saveSaleMenuAction, deleteSaleMenuAction } from "../actions";
 import type { SaleMenuRow } from "../data";
 
@@ -18,7 +19,8 @@ export function MenuTab({ active, hasProduction }: { active: boolean; hasProduct
   const [opts, setOpts] = useState<LinkOpts>({ products: [], warehouse: [] });
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<{ id: number; menuName: string; price: number; category: string; productId: string; multiplier: number }>({ ...empty });
-  const { pending, msg, run, setMsg } = useSaver();
+  const { pending, run, setMsg } = useSaver();
+  const { confirmNode, ask } = useConfirm();
   const [err, setErr] = useState(false);
   const firstLoad = useRef(true);
 
@@ -57,8 +59,8 @@ export function MenuTab({ active, hasProduction }: { active: boolean; hasProduct
       refresh();
     });
   }
-  function del(r: SaleMenuRow) {
-    if (!confirm(`ลบเมนู "${r.menuName}"?`)) return;
+  async function del(r: SaleMenuRow) {
+    if (!(await ask({ title: `ลบเมนู "${r.menuName}"?`, confirmText: "ลบเมนู", danger: true }))) return;
     run(() => deleteSaleMenuAction(r.id), "ลบเมนูแล้ว", () => {
       if (form.id === r.id) reset();
       refresh();
@@ -69,6 +71,7 @@ export function MenuTab({ active, hasProduction }: { active: boolean; hasProduct
 
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
+      {confirmNode}
       <Card title="เมนูขาย (sale_menu)">
         {loading ? (
           <div className="py-8 text-center text-faint">กำลังโหลด…</div>
@@ -121,7 +124,6 @@ export function MenuTab({ active, hasProduction }: { active: boolean; hasProduct
       </Card>
 
       <Card title={form.id ? "แก้ไขเมนู" : "เพิ่มเมนูใหม่"}>
-        <Msg msg={msg} />
         <div className="space-y-3 text-sm">
           <label className="block">
             <span className="mb-1 block text-muted">ชื่อเมนู *</span>

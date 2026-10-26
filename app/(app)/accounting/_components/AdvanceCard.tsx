@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { getAdvancesAction, clearAdvancesAction, unclearAdvancesAction, advanceToPersonalAction } from "../actions";
 import type { Bootstrap } from "./types";
-import { Card, Field, Msg, Select, TextInput, fmt, todayISO, useSaver, useRead, LoadError } from "./ui";
+import { Card, Field, Select, TextInput, fmt, todayISO, useSaver, useRead, LoadError } from "./ui";
 import { useConfirm } from "@/lib/shared/ui";
 import { can, toRole } from "@/lib/shared/roles";
 import {
@@ -23,7 +23,7 @@ type Data = Awaited<ReturnType<typeof getAdvancesAction>>;
  * ★ ด่าน/ข้อความตัดสินใน lib/accounting/advance (มีเทส A22) · ตัวตัดสินจริงคือ RPC ใน 0086
  */
 export function AdvanceCard({ boot, entityId, active }: { boot: Bootstrap; entityId: string; active: boolean }) {
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
   const { confirmNode, ask } = useConfirm();
   const role = toRole(boot.role);
   const canWrite = can(role, "acct.write");
@@ -76,7 +76,6 @@ export function AdvanceCard({ boot, entityId, active }: { boot: Bootstrap; entit
     <>
       {confirmNode}
       <Card title={`สำรองจ่ายรอเบิกคืน — รวม ${fmt(total)} บาท`}>
-        <Msg msg={msg} />
         {groups.length === 0 ? (
           <p className="text-sm text-faint">ไม่มีบิลสำรองจ่ายรอเบิกคืน · บันทึกได้ที่แท็บบันทึก เลือกประเภท <b>สำรองจ่าย</b></p>
         ) : (

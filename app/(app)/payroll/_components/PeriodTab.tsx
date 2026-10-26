@@ -1,8 +1,9 @@
 "use client";
 
+import { showToast } from "@/lib/shared/toast";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, useSaver, Empty, fmt } from "@/lib/shared/ui";
+import { Card, Field, NumBox, SaveButton, Select, TextInput, useSaver, Empty, fmt, useConfirm } from "@/lib/shared/ui";
 import { calcPayrollLine } from "@/lib/payroll/calc";
 import { ratesOn } from "@/lib/payroll/sso";
 import { printSlips, type SlipData } from "@/lib/payroll/slip";
@@ -43,7 +44,8 @@ export function PeriodTab({
   active: boolean;
 }) {
   const router = useRouter();
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
+  const { confirmNode, ask } = useConfirm();
   const now = new Date();
 
   const [periodId, setPeriodId] = useState(periods[0]?.periodId ?? "");
@@ -172,15 +174,15 @@ export function PeriodTab({
   }
 
   function doPost(legCode: string, name: string, date: string) {
-    if (!date) { alert("เลือกวันที่ลงบัญชีก่อน"); return; }
+    if (!date) { showToast({ ok: false, text: "เลือกวันที่ลงบัญชีก่อน" }); return; }
     run(() => postPayrollAction(periodId, legCode, date), `ลงบัญชี${name}แล้ว`, () => {
       load(periodId);
       router.refresh();
     });
   }
 
-  function doUnpost(legCode: string, name: string) {
-    if (!confirm(`ถอนการลงบัญชี${name}? รายการในบัญชีจะถูกเปลี่ยนเป็น "ยกเลิก" (ไม่ได้ลบทิ้ง)`)) return;
+  async function doUnpost(legCode: string, name: string) {
+    if (!(await ask({ title: `ถอนการลงบัญชี${name}?`, detail: `รายการในบัญชีจะถูกเปลี่ยนเป็น "ยกเลิก" (ไม่ได้ลบทิ้ง)`, confirmText: "ถอนการลงบัญชี", cancelText: "กลับ", danger: true }))) return;
     run(() => unpostPayrollAction(periodId, legCode), "ถอนแล้ว", () => {
       load(periodId);
       router.refresh();
@@ -213,7 +215,7 @@ export function PeriodTab({
         net: l?.net ?? it.net,
       };
     });
-    if (slips.length === 0) { alert("งวดนี้ยังไม่มีพนักงาน"); return; }
+    if (slips.length === 0) { showToast({ ok: false, text: "งวดนี้ยังไม่มีพนักงาน" }); return; }
     printSlips(slips);
   }
 
@@ -236,6 +238,7 @@ export function PeriodTab({
 
   return (
     <div className="space-y-4">
+      {confirmNode}
       <Card title="เลือก / สร้างงวด">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-5">
           <Field label="งวดที่มีอยู่">
@@ -272,7 +275,6 @@ export function PeriodTab({
             สร้างงวด / เติมพนักงานที่ยังไม่มี
           </SaveButton>
         </div>
-        <Msg msg={msg} />
       </Card>
 
       {period && (
@@ -384,10 +386,8 @@ export function PeriodTab({
                             {!locked && (
                               <button
                                 disabled={pending}
-                                onClick={() => {
-                                  if (confirm(`เอา ${nameOf(it, employees)} ออกจากงวดนี้?
-
-ค่าที่กรอกไว้ของคนนี้ในงวดจะหายไปด้วย`)) {
+                                onClick={async () => {
+                                  if (await ask({ title: `เอา ${nameOf(it, employees)} ออกจากงวดนี้?`, detail: "ค่าที่กรอกไว้ของคนนี้ในงวดจะหายไปด้วย", confirmText: "เอาออก" })) {
                                     run(() => removePeriodLineAction(periodId, it.empId), "เอาออกจากงวดแล้ว", () => load(periodId));
                                   }
                                 }}

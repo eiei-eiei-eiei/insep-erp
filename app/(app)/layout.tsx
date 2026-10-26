@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { ToastHost } from "@/lib/shared/toast";
 import { createClient } from "@/lib/supabase/server";
 import { workspacesFor } from "@/lib/shared/workspaces";
 import { can, toRole } from "@/lib/shared/roles";
@@ -91,6 +92,8 @@ export default async function AppLayout({
       />
       {/* pb ล่างบนมือถือ กันเนื้อหาโดน bottom-tab บัง */}
       <main className="mx-auto max-w-6xl px-4 py-6 pb-24 md:pb-6">{children}</main>
+      {/* D134 — ป้ายแจ้งผลลอยบนกลางจอ (ทุกหน้าที่ใช้ useSaver/showToast) */}
+      <ToastHost />
     </div>
   );
 }

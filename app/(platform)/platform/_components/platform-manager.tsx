@@ -5,15 +5,13 @@ import {
   Card,
   Empty,
   Field,
-  Msg,
   RowBtn,
   SaveButton,
   Select,
   TableWrap,
   TextInput,
   Badge,
-  useSaver,
-} from "@/lib/shared/ui";
+  useSaver, useConfirm } from "@/lib/shared/ui";
 import { IconAlert, IconCheck, IconPlus } from "@/lib/shared/icons";
 import { formatDateThai } from "@/lib/shared/format";
 import { BRAND_COLORS } from "@/lib/shared/branding";
@@ -302,9 +300,11 @@ function TenantPanel({
   const quotaFull = t.entities.length >= t.maxEntities;
   const slugNorm = slug.trim().toLowerCase();
   const renameDirty = slugNorm !== t.slug || name.trim() !== t.name;
+  const { confirmNode, ask } = useConfirm();
 
   return (
     <Card className="space-y-6">
+      {confirmNode}
       <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-line-soft pb-3">
         <div>
           <h2 className="text-base font-bold text-ink">{t.name}</h2>
@@ -414,19 +414,18 @@ function TenantPanel({
                     <button
                       type="button"
                       disabled={pending}
-                      onClick={() => {
+                      onClick={async () => {
                         const to = !e.isVat;
                         const warn = to
                           ? "จะออกใบกำกับภาษีได้ และมี ภพ.30 ให้ยื่น"
                           : "จะออกใบกำกับภาษีไม่ได้อีก (ระบบบล็อกที่ฐานข้อมูลตาม ม.86/13) เอกสารขายจะเป็นใบเสร็จรับเงินแทน";
-                        const ask = [
-                          `เปลี่ยน ${e.entityId} เป็น "${to ? "จด VAT" : "ไม่จด VAT"}"?`,
-                          "",
-                          warn,
-                          "",
-                          "เอกสารที่ออกไปแล้วไม่ถูกแก้ย้อนหลัง",
-                        ].join("\n");
-                        if (!confirm(ask)) return;
+                        const ok = await ask({
+                          title: `เปลี่ยน ${e.entityId} เป็น "${to ? "จด VAT" : "ไม่จด VAT"}"?`,
+                          detail: [warn, "", "เอกสารที่ออกไปแล้วไม่ถูกแก้ย้อนหลัง"].join("\n"),
+                          confirmText: to ? "เปลี่ยนเป็นจด VAT" : "เปลี่ยนเป็นไม่จด VAT",
+                          danger: !to,
+                        });
+                        if (!ok) return;
                         onSetVat(e.entityId, to);
                       }}
                       className="rounded border border-line px-2 py-1 text-xs text-muted hover:border-brand disabled:opacity-50"
@@ -547,7 +546,8 @@ function TenantPanel({
 // ── หน้าหลัก ─────────────────────────────────────────────────────────────────
 
 export function PlatformManager({ tenants }: { tenants: TenantRow[] }) {
-  const { pending, msg, run, setMsg } = useSaver();
+  const { pending, run, setMsg } = useSaver();
+  const { confirmNode, ask } = useConfirm();
   const [showNew, setShowNew] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [secret, setSecret] = useState<{ title: string; username: string; password: string } | null>(
@@ -566,6 +566,7 @@ export function PlatformManager({ tenants }: { tenants: TenantRow[] }) {
 
   return (
     <div className="space-y-5">
+      {confirmNode}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-ink">ลูกค้าทั้งหมด</h1>
@@ -582,7 +583,6 @@ export function PlatformManager({ tenants }: { tenants: TenantRow[] }) {
       </div>
 
       {secret && <SecretPanel secret={secret} onClose={() => setSecret(null)} />}
-      <Msg msg={msg} />
 
       {showNew && (
         <Card title="รับลูกค้าใหม่">
@@ -677,13 +677,15 @@ export function PlatformManager({ tenants }: { tenants: TenantRow[] }) {
               `${entityId} เปลี่ยนเป็น ${isVat ? "จด VAT" : "ไม่จด VAT"} แล้ว`,
             )
           }
-          onReset={(userId, username) => {
+          onReset={async (userId, username) => {
             setMsg(null);
             if (
-              !window.confirm(
-                `รีเซ็ตรหัสผ่านของ "${username}"?\n` +
-                  "รหัสเดิมจะใช้ไม่ได้ทันที และเจ้าตัวต้องตั้งรหัสใหม่ตอนล็อกอินครั้งถัดไป",
-              )
+              !(await ask({
+                title: `รีเซ็ตรหัสผ่านของ "${username}"?`,
+                detail: "รหัสเดิมจะใช้ไม่ได้ทันที และเจ้าตัวต้องตั้งรหัสใหม่ตอนล็อกอินครั้งถัดไป",
+                confirmText: "รีเซ็ตรหัสผ่าน",
+                danger: true,
+              }))
             )
               return;
             run(

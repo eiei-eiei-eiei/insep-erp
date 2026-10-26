@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, Field, Msg, NumBox, SaveButton, Select, SuggestInput, TextInput, useSaver, Empty, EscToClose } from "@/lib/shared/ui";
+import { Card, Field, NumBox, SaveButton, Select, SuggestInput, TextInput, useSaver, Empty, EscToClose, useConfirm } from "@/lib/shared/ui";
 import type {
   LegAmountSource,
   PayComponent,
@@ -49,8 +49,14 @@ import type { PayrollConfig } from "./PayrollApp";
  * ★ ของในหน้านี้ลบแล้วกู้ไม่ได้ และบางอย่างมีของอื่นอ้างอยู่ (รายการอ้างตัวแปร ·
  *   ขาอ้างรายการ · งวดที่แช่ค่าไว้อ้างรหัสช่องกรอก) — ต้องถามก่อนเสมอ
  */
-function askDelete(what: string, then: () => void) {
-  if (confirm(`ลบ${what}?\n\nลบแล้วกู้คืนไม่ได้`)) then();
+function useAskDelete() {
+  // 🪤 D134 — เดิมใช้ window.confirm() ซึ่งเบราว์เซอร์บล็อกแล้วคืน false เงียบ ๆ = ปุ่มลบตายทั้งหน้า
+  //    เป็น hook แล้ว ⇒ ทุกการ์ดที่เรียกต้องวาง `{confirmNode}` ไม่งั้นกดลบแล้วค้าง
+  const { confirmNode, ask } = useConfirm();
+  async function askDelete(what: string, then: () => void) {
+    if (await ask({ title: `ลบ${what}?`, detail: "ลบแล้วกู้คืนไม่ได้", confirmText: "ลบ", danger: true })) then();
+  }
+  return { confirmNode, askDelete };
 }
 /**
  * แท็บตั้งค่าการคำนวณ — ที่ที่ลูกค้า "อธิบายเกณฑ์ของโรงตัวเอง" ให้ระบบฟัง
@@ -142,7 +148,7 @@ export function ConfigTab({ config }: { config: PayrollConfig }) {
 // ── ค่าตั้งพื้นฐาน ───────────────────────────────────────────────────────────
 function BasicSettings({ config }: { config: PayrollConfig }) {
   const router = useRouter();
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
   const [hours, setHours] = useState(config.settings.hoursPerDay);
   const [rounding, setRounding] = useState<string>(config.settings.rounding);
   const [pay, setPay] = useState(config.payAccount);
@@ -163,7 +169,6 @@ function BasicSettings({ config }: { config: PayrollConfig }) {
 
   return (
     <Card title="ค่าตั้งพื้นฐาน">
-      <Msg msg={msg} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Field label="ชั่วโมงทำงานต่อวัน">
           <NumBox value={hours} onChange={(v) => setHours(v === "" ? 0 : v)} />
@@ -190,11 +195,13 @@ function BasicSettings({ config }: { config: PayrollConfig }) {
 // ── กลุ่มพนักงาน ─────────────────────────────────────────────────────────────
 function Groups({ config }: { config: PayrollConfig }) {
   const router = useRouter();
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
+  const { confirmNode, askDelete } = useAskDelete();
   const [val, setVal] = useState("");
 
   return (
     <Card title="กลุ่มพนักงาน">
+      {confirmNode}
       <p className="mb-2 text-xs text-faint">
         ใช้คุมว่ารายการไหนให้ใครบ้าง — เช่นตั้ง 2 กลุ่มแล้วให้ค่าล่วงเวลาคนละตัวคูณ
         (สร้างรายการ 2 แถว แถวละกลุ่ม)
@@ -218,7 +225,6 @@ function Groups({ config }: { config: PayrollConfig }) {
           เพิ่ม
         </SaveButton>
       </div>
-      <Msg msg={msg} />
     </Card>
   );
 }
@@ -226,7 +232,8 @@ function Groups({ config }: { config: PayrollConfig }) {
 // ── ช่องกรอกต่อคนต่องวด ──────────────────────────────────────────────────────
 function Inputs({ config }: { config: PayrollConfig }) {
   const router = useRouter();
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
+  const { confirmNode, askDelete } = useAskDelete();
   const [label, setLabel] = useState("");
   const [unit, setUnit] = useState("");
 
@@ -250,6 +257,7 @@ function Inputs({ config }: { config: PayrollConfig }) {
 
   return (
     <Card title="ช่องที่ต้องกรอกต่อคนต่องวด">
+      {confirmNode}
       <p className="mb-2 text-xs text-faint">
         คอลัมน์ในตารางงวดจ่ายมาจากที่นี่ — เช่น ชั่วโมง OT · วันลาป่วย · จำนวนครั้งที่มาสาย
         (รหัสเป็นภาษาอังกฤษเพราะใช้เป็นคีย์ของข้อมูล ส่วนชื่อที่แสดงเป็นไทยได้)
@@ -311,7 +319,6 @@ function Inputs({ config }: { config: PayrollConfig }) {
           >เพิ่มช่อง</SaveButton>
         </div>
       </div>
-      <Msg msg={msg} />
     </Card>
   );
 }
@@ -438,7 +445,8 @@ type EditTarget =
 
 function Formulas({ config }: { config: PayrollConfig }) {
   const router = useRouter();
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
+  const { confirmNode, askDelete } = useAskDelete();
   const [edit, setEdit] = useState<EditTarget | null>(null);
 
   const inputOpts = config.inputs.map((i) => ({ value: i.code, label: i.label }));
@@ -475,6 +483,7 @@ function Formulas({ config }: { config: PayrollConfig }) {
 
   return (
     <Card title="สูตรและรายการคำนวณ">
+      {confirmNode}
       <div className="mb-3 flex items-start justify-between gap-3">
         <p className="text-xs text-faint">
           ที่นี่มี 2 อย่าง — <b>ตัวแปร</b> คือค่ากลางที่คำนวณไว้ให้เอาไปใช้ต่อ (เช่นอัตราต่อชั่วโมง)
@@ -493,7 +502,6 @@ function Formulas({ config }: { config: PayrollConfig }) {
           >+ รายการเพิ่ม/หัก</button>
         </div>
       </div>
-      <Msg msg={msg} />
 
       {/* ── ตัวแปร (คิดก่อน) ── */}
       <div className="mb-1 mt-2 text-[10px] font-medium uppercase tracking-widest text-muted">
@@ -601,7 +609,6 @@ function Formulas({ config }: { config: PayrollConfig }) {
             )}
 
             {/* 🚨 ข้อความผลลัพธ์ต้องอยู่**ในป๊อปอัพ** — ของเดิมอยู่บนการ์ดซึ่งถูกป๊อปอัพบังจนมองไม่เห็น */}
-            <div className="mt-4"><Msg msg={msg} /></div>
             <div className="flex justify-end gap-2">
               <button onClick={() => setEdit(null)} className="rounded-lg border border-line px-4 py-2 text-sm">ยกเลิก</button>
               <SaveButton pending={pending} onClick={save}>บันทึก</SaveButton>
@@ -859,13 +866,15 @@ function blankLeg(): PayPostLeg {
 
 function PostLegs({ config }: { config: PayrollConfig }) {
   const router = useRouter();
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
+  const { confirmNode, askDelete } = useAskDelete();
   const [edit, setEdit] = useState<PayPostLeg | null>(null);
   const set = <K extends keyof PayPostLeg>(k: K, v: PayPostLeg[K]) =>
     setEdit((p) => (p ? { ...p, [k]: v } : p));
 
   return (
     <Card title="ขาลงบัญชี">
+      {confirmNode}
       <div className="mb-3 flex items-start justify-between gap-3">
         <p className="text-xs text-faint">
           กำหนดว่าเงินเดือนไปเป็นรายจ่ายในบัญชีเป็นกี่ก้อน — ตั้งกี่ขาก็ได้ ·
@@ -878,7 +887,6 @@ function PostLegs({ config }: { config: PayrollConfig }) {
           + เพิ่มขา
         </button>
       </div>
-      <Msg msg={msg} />
 
       <div className="overflow-x-auto">
         <table className="tbl">
@@ -980,7 +988,6 @@ function PostLegs({ config }: { config: PayrollConfig }) {
             </label>
 
             {/* 🚨 ข้อความผลลัพธ์ต้องอยู่ในป๊อปอัพ — ตัวบนการ์ดถูกป๊อปอัพบังจนมองไม่เห็น */}
-            <div className="mt-4"><Msg msg={msg} /></div>
             <div className="flex justify-end gap-2">
               <button onClick={() => setEdit(null)} className="rounded-lg border border-line px-4 py-2 text-sm">ยกเลิก</button>
               <SaveButton pending={pending} onClick={() => run(() => savePayPostLegAction(edit), "บันทึกแล้ว", () => { setEdit(null); router.refresh(); })}>
@@ -997,7 +1004,8 @@ function PostLegs({ config }: { config: PayrollConfig }) {
 // ── ชุดอัตราตามกฎหมาย ───────────────────────────────────────────────────────
 function Rates({ config }: { config: PayrollConfig }) {
   const router = useRouter();
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
+  const { confirmNode, askDelete } = useAskDelete();
   // 🪤 เดิมเปิดมาพร้อมข้อมูล **ชุดล่าสุด รวมวันที่เริ่มมีผล** → กด "บันทึกชุดอัตรา"
   //    จะ upsert ทับชุดนั้นทั้งที่ผู้ใช้คิดว่ากำลังเพิ่มชุดใหม่ (คีย์ของตารางคือ effective_from)
   //    → เริ่มที่ชุดเปล่าเสมอ · จะแก้ของเดิมต้องกดปุ่ม "แก้" ในตารางให้ชัดเจน
@@ -1021,12 +1029,12 @@ function Rates({ config }: { config: PayrollConfig }) {
 
   return (
     <Card title="ชุดอัตราตามกฎหมาย (มีวันเริ่มมีผล)">
+      {confirmNode}
       <p className="mb-3 text-xs text-faint">
         🚨 อัตราพวกนี้ถูกแก้ด้วยกฎกระทรวงเป็นระยะ — เก็บเป็นชุดที่มีวันเริ่มมีผล
         เพื่อให้เปิดดูงวดเก่าแล้วได้อัตราของตอนนั้น ไม่ใช่ของวันนี้ ·
         <b> ค่าที่ใส่ต้องตรวจกับประกาศจริงก่อนใช้ยื่น</b> ระบบไม่ได้อัปเดตให้อัตโนมัติ
       </p>
-      <Msg msg={msg} />
 
       {config.rates.length > 0 && (
         <div className="mb-3 overflow-x-auto">

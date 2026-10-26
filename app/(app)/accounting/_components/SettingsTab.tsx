@@ -13,7 +13,7 @@ import Link from "next/link";
 import { FORWARD_CAT_KIND, DEFAULT_FORWARD_CATS } from "@/lib/accounting/forwardCats";
 import { validateNewCustomer, branchToSave, taxIdToSave, hidesBranch, branchFormOf, type NewCustomerInput } from "@/lib/shared/taxCustomer";
 import type { Bootstrap, Contact } from "./types";
-import { Card, Field, Msg, SaveButton, Select, TextInput, useSaver, EscToClose } from "./ui";
+import { Card, Field, SaveButton, Select, TextInput, useSaver, EscToClose } from "./ui";
 import { useConfirm } from "@/lib/shared/ui";
 import { BankAccountsCard } from "./BankAccountsCard";
 
@@ -67,7 +67,7 @@ function ChipList({ kind, title, initial, placeholder, emptyHint, note }: {
   /** คำอธิบายใต้กล่อง (ผลของการตั้งค่านี้) */
   note?: string;
 }) {
-  const { pending, msg, run } = useSaver();
+  const { pending, run } = useSaver();
   const [list, setList] = useState<string[]>(initial);
   const [val, setVal] = useState("");
   function add() {
@@ -97,7 +97,6 @@ function ChipList({ kind, title, initial, placeholder, emptyHint, note }: {
         <SaveButton pending={pending} onClick={add}>เพิ่ม</SaveButton>
       </div>
       {note && <p className="mt-2 text-xs text-faint">{note}</p>}
-      <Msg msg={msg} />
     </Card>
   );
 }
@@ -119,7 +118,7 @@ function toForm(c: Contact): ContactForm {
 
 function Contacts({ initial }: { initial: Contact[] }) {
   const router = useRouter();
-  const { pending, msg, run, setMsg } = useSaver();
+  const { pending, run, setMsg } = useSaver();
   const { ask, confirmNode } = useConfirm();
   const [rows, setRows] = useState<Contact[]>(initial);
   const [edit, setEdit] = useState<ContactForm | null>(null);
@@ -183,7 +182,6 @@ function Contacts({ initial }: { initial: Contact[] }) {
           </tbody>
         </table>
       </div>
-      {!edit && <Msg msg={msg} />}
       {edit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setEdit(null); }}>
           <EscToClose onClose={() => { setEdit(null); }} />
@@ -211,7 +209,6 @@ function Contacts({ initial }: { initial: Contact[] }) {
               <Field label="ประเภท"><Select value={edit.contactType} onChange={(e) => setEdit({ ...edit, contactType: e.target.value })}><option>ทั้งสอง</option><option>ผู้ขาย</option><option>ลูกค้า</option></Select></Field>
             </div>
             {formErr && <p className="mt-2 text-sm text-crit">{formErr}</p>}
-            <Msg msg={msg} />
             <div className="mt-3 flex justify-end gap-2">
               <button onClick={() => setEdit(null)} className="rounded-lg border border-line px-4 py-2 text-sm">ยกเลิก</button>
               <SaveButton pending={pending} onClick={() => save(edit)}>บันทึก</SaveButton>

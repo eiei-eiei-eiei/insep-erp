@@ -1,5 +1,7 @@
 "use client";
 
+import { useConfirm } from "@/lib/shared/ui";
+import { showToast } from "@/lib/shared/toast";
 import { useEffect, useRef, useState } from "react";
 import { taxReportHtml, whtReportHtml } from "@/lib/accounting/reportHtml";
 import { isCorporate, missingInvoiceListText } from "@/lib/accounting/calc";
@@ -76,7 +78,9 @@ export function TaxDocsTab({
   const [busy, setBusy] = useState(false);
   // 🚨 ต้องมีระดับ "warn" — สร้างแบบสำเร็จแต่ติ๊กเช็กลิสต์ไม่ผ่าน = **สำเร็จบางส่วน**
   //    ขึ้นเขียวเฉย ๆ = โกหก · ขึ้นแดงเฉย ๆ = ผู้ใช้นึกว่าไม่ได้อะไรเลย (บทเรียน D79)
-  const [msg, setMsg] = useState<{ ok: boolean; text: string; warn?: boolean } | null>(null);
+  // D134 — ผลการทำรายการขึ้นเป็นป้ายลอย (showToast) ไม่มีแถบในหน้าแล้ว
+  const setMsg = (m: { ok: boolean; text: string; warn?: boolean } | null) => { if (m) showToast(m); };
+  const { confirmNode, ask } = useConfirm();
   const [fwd, setFwd] = useState<number | null>(null);
   const [wht, setWht] = useState<WhtBundle | null>(null);
   const [summaries, setSummaries] = useState<Summaries>([]);
@@ -205,7 +209,7 @@ export function TaxDocsTab({
 
   return (
     <div className="space-y-4">
-      {msg && <div className={`rounded-lg px-3 py-2 text-sm ${msg.warn ? "bg-warn-bg text-warn" : msg.ok ? "bg-ok-bg text-ok" : "bg-crit-bg text-crit"}`}>{msg.text}</div>}
+      {confirmNode}
       {/* 🚨 D89 — เอกสารชุดนี้ยื่นสรรพากร · โหลดไม่ครบแล้วพิมพ์ออกไป = ยอดที่ยื่นผิด */}
       <LoadError err={loadErr} what="ข้อมูลเอกสารสรรพากร" />
 
@@ -269,7 +273,13 @@ export function TaxDocsTab({
                     <td className="num">{fmt(s.forwarded_vat_in as number)}</td>
                     <td className="num">{fmt(s.net_payable as number)}</td>
                     <td className="num">{fmt(s.forwarded_vat_out as number)}</td>
-                    <td><button onClick={() => { if (confirm("ลบแถวนี้?")) deleteTaxSummaryAction(s.id as number).then(reload); }} className="text-crit hover:underline">ลบ</button></td>
+                    <td><button onClick={async () => {
+                      if (!(await ask({ title: "ลบแถวนี้?", confirmText: "ลบ", danger: true }))) return;
+                      // D134 — เดิมลบแล้วโหลดใหม่เงียบ ๆ ไม่บอกผล (ลบไม่สำเร็จก็ไม่รู้)
+                      const r = await deleteTaxSummaryAction(s.id as number);
+                      setMsg(r.ok ? { ok: true, text: "ลบแถวแล้ว" } : { ok: false, text: r.error ?? "ลบไม่สำเร็จ" });
+                      reload();
+                    }} className="text-crit hover:underline">ลบ</button></td>
                   </tr>
                 ))}
               </tbody>
