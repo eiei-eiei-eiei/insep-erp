@@ -142,6 +142,9 @@ begin
   -- 🪤 D136 — FK ของ bar_menu.created_for / bar_sale.customer_id เป็น `on delete set null` แบบ composite
   --    ⇒ Postgres ตั้ง tenant_id เป็น null ด้วย แล้วชน not null (ลบลูกค้าที่เคยมีบิล/มีเมนูสร้างให้ไม่ได้)
   --    ล้างการอ้างอิงเองก่อน — สคริปต์นี้ต้องใช้ได้ทั้งก่อนและหลังลง migration ที่แก้ FK
+  --    ★ D137: 0095 แก้ FK เป็น `set null (created_for)` / `set null (customer_id)` แล้ว
+  --      ⇒ หลังลง 0095 สองบรรทัดนี้ไม่จำเป็น (FK ทำเอง) แต่**เก็บไว้** ให้ DB ที่ยังไม่ลง 0095 ใช้ได้
+  --      ผลเหมือนกันทุกประการ (ล้างแค่ช่องลูกค้า · บิล/เมนูยังอยู่) ⇒ รันซ้ำบน DB ไหนก็ไม่ต่าง
   update bar_menu set created_for = null where tenant_id = v_tenant and created_for in (
     select customer_id from bar_customer where tenant_id = v_tenant and (customer_id like 'T-%' or name like '%ทดสอบ%'));
   update bar_sale set customer_id = null where tenant_id = v_tenant and customer_id in (
