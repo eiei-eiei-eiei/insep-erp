@@ -1,5 +1,6 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { withAuthTimeout } from "./authFetch";
 
 type CookieToSet = { name: string; value: string; options: CookieOptions };
 
@@ -14,6 +15,8 @@ export async function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!.trim().replace(/\/+$/, ""),
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!.trim(),
     {
+      // D135: ขอต่ออายุเซสชันค้างได้ตลอดกาล → หน้า "กำลังโหลด…" ไม่มีวันจบ · มีเพดานแล้วได้ user = null → เด้ง login
+      global: { fetch: withAuthTimeout() },
       cookies: {
         getAll() {
           return cookieStore.getAll();
