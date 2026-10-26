@@ -155,7 +155,7 @@ describe("② สูตรอ้างช่อง → ตอนสั่งต�
       menuId: GT, name: "x", price: 200, categoryId: "T-c",
       recipe: [{ slotId: ginSlot, qty: 45 }, { itemId: "T-TON", qty: 120 }],
     }];
-    expect(cartCost([{ menuId: GT, menuName: "x", qty: 2, price: 200 }], menus, items, slots)).toBe(132);
+    expect(cartCost([{ menuId: GT, menuName: "x", qty: 2, price: 200 }], menus, items, { slots: slots, garnishes: [] })).toBe(132);
   });
 
   it("เปลี่ยนขวดในช่อง (หน่วยเดียวกัน) → แก้วถัดไปตัด Bombay · บิลเก่าต้นทุนไม่ขยับ", async () => {
@@ -252,20 +252,23 @@ describe("③ ด่านหน่วยของช่อง + ลบช่อ
 });
 
 describe("④ ชุดตกแต่ง + วัตถุดิบใช้บ่อย", () => {
-  it("ชุดตกแต่ง: ไม่เลือกวัตถุดิบ / จำนวน 0 = บล็อก · ✓ บันทึกได้ + ลบได้", async () => {
-    const bad = await asA.rpc("fn_bar_save_garnishes", { p_entity: E(), p_rows: [{ name: "มะนาว", item_id: null, qty: 3.5 }] });
-    expect(bad.error?.message).toContain("เลือกวัตถุดิบ");
-    const zero = await asA.rpc("fn_bar_save_garnishes", { p_entity: E(), p_rows: [{ name: "มะนาว", item_id: "T-LIME", qty: 0 }] });
+  // D131: ไม่เลือกวัตถุดิบ = ชุดที่ไม่ตัดสต็อก (ผู้ใช้เปลี่ยนใจจาก D127) — ข้อบล็อกเดิมจึงกลายเป็นข้อ "ได้"
+  //        ด่านใหม่ (หน่วย/ลบชุดที่มีเมนูอ้าง) พิสูจน์ใน bar-recipe-garnish.test.ts
+  it("ชุดตกแต่ง: จำนวน 0 = บล็อก · ไม่เลือกวัตถุดิบ = ไม่ตัดสต็อก (D131) · ✓ บันทึกได้ + ลบได้", async () => {
+    const zero = await asA.rpc("fn_bar_save_garnishes", { p_entity: E(), p_rows: [{ name: "มะนาว", item_id: "T-LIME", qty: 0, qty_unit: "ml" }] });
     expect(zero.error?.message).toContain("มากกว่า 0");
     const ok = await asA.rpc("fn_bar_save_garnishes", {
       p_entity: E(),
-      p_rows: [{ name: "มะนาว half wheel", item_id: "T-LIME", qty: 3.5 }, { name: "โทนิคท็อป", item_id: "T-TON", qty: 10 }],
+      p_rows: [
+        { name: "มะนาว half wheel", item_id: "T-LIME", qty: 3.5, qty_unit: "ml" },
+        { name: "โทนิคท็อป", item_id: "T-TON", qty: 10, qty_unit: "ml" },
+      ],
     });
     expect(ok.error, ok.error?.message).toBeNull();
     const { data } = await admin().from("bar_garnish").select("garnish_id, name, qty, sort").eq("tenant_id", A.tenantId).order("sort");
     expect(data!.map((g) => [g.name, Number(g.qty), g.sort])).toEqual([["มะนาว half wheel", 3.5, 0], ["โทนิคท็อป", 10, 1]]);
     const del = await asA.rpc("fn_bar_save_garnishes", {
-      p_entity: E(), p_rows: [{ garnish_id: data![1].garnish_id, name: "โทนิคท็อป", item_id: "T-TON", qty: 10 }],
+      p_entity: E(), p_rows: [{ garnish_id: data![1].garnish_id, name: "โทนิคท็อป", item_id: "T-TON", qty: 10, qty_unit: "ml" }],
     });
     expect(del.error, del.error?.message).toBeNull();
     const after = await admin().from("bar_garnish").select("name, sort").eq("tenant_id", A.tenantId);

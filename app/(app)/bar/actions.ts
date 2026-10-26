@@ -14,9 +14,10 @@ import {
   unitLockReason, recipeUseCount, slotNamesByItem,
   type ReceiveRow, type AdjustRow, type NewItemRow, type ItemEditRow,
 } from "@/lib/bar/stockBatch";
-import type { BarMenu, BarRecipeLine, CartLine, HouseSlot, SaleWindow } from "@/lib/bar/types";
+import type { BarGarnish, BarMenu, BarRecipeLine, CartLine, HouseSlot, SaleWindow } from "@/lib/bar/types";
+import { recipeRpcLines } from "@/lib/bar/recipe";
 import type { SlotDraft } from "@/lib/bar/houseSlot";
-import type { GarnishDraft } from "@/lib/bar/quickPick";
+import { garnishPayload, type GarnishDraft } from "@/lib/bar/quickPick";
 import type { ReceiveRecord } from "@/lib/bar/receiveHistory";
 import { can } from "@/lib/shared/roles";
 import { currentRole } from "@/lib/shared/guard";
@@ -245,7 +246,7 @@ export async function saveMenuAction(input: {
   glass?: string | null;
   note?: string | null;
   createdFor?: string | null;
-  /** บรรทัดอ้างขวดตรง (itemId) หรือช่องเหล้าประจำบ้าน (slotId · D127) */
+  /** บรรทัดอ้างขวดตรง (itemId) · ช่องเหล้าประจำบ้าน (slotId · D127) · ชุดตกแต่ง (garnishId · D131) */
   recipe: BarRecipeLine[];
 }): Promise<Res> {
   const entity = await barEntity();
@@ -264,9 +265,7 @@ export async function saveMenuAction(input: {
       note: input.note?.trim() || null,
       created_for: input.createdFor || null,
     },
-    p_recipe: input.recipe
-      .filter((r) => (r.slotId || r.itemId) && r.qty > 0)
-      .map((r) => (r.slotId !== undefined ? { slot_id: r.slotId, qty: r.qty } : { item_id: r.itemId, qty: r.qty })),
+    p_recipe: recipeRpcLines(input.recipe),
   });
 }
 
@@ -359,27 +358,36 @@ export async function updateItemsAction(rows: ItemEditRow[]): Promise<Res> {
   if (!entity) return { ok: false, error: NO_ENTITY };
   if (rows.length === 0) return { ok: false, error: "ยังไม่มีรายการที่เปลี่ยน" };
   const supabase = await createClient();
-  const [cur, rec, recSlot, slotRows] = await Promise.all([
+  const [cur, rec, recSlot, slotRows, recGarnish, garnishRows] = await Promise.all([
     supabase.from("bar_item").select("item_id, name, unit, qty").eq("entity_id", entity),
     supabase.from("bar_recipe").select("menu_id, item_id").eq("entity_id", entity),
     // ★ D127: ขวดที่ใช้ผ่านช่องเหล้าประจำบ้านก็ต้องนับ ไม่งั้นเปลี่ยนหน่วยได้แล้วทุกเมนูที่อ้างช่องตัดผิดหน่วย
     supabase.from("bar_recipe_slot").select("menu_id, slot_id").eq("entity_id", entity),
     supabase.from("bar_house_slot").select("slot_id, name, item_id, sort").eq("entity_id", entity),
+    // ★ D131: วัตถุดิบที่ใช้ผ่านชุดตกแต่ง ก็ล็อกหน่วยเหมือนกัน (จำนวนต่อชุดผูกกับหน่วยนั้น)
+    supabase.from("bar_recipe_garnish").select("menu_id, garnish_id").eq("entity_id", entity),
+    supabase.from("bar_garnish").select("garnish_id, name, item_id, qty, sort").eq("entity_id", entity),
   ]);
   // 🚨 อ่านไม่ได้ ≠ ไม่มีอะไรขวาง (D89)
-  for (const r of [cur, rec, recSlot, slotRows]) if (r.error) return { ok: false, error: mapDbError(r.error) };
+  for (const r of [cur, rec, recSlot, slotRows, recGarnish, garnishRows]) if (r.error) return { ok: false, error: mapDbError(r.error) };
 
   const byId = new Map((cur.data ?? []).map((r) => [r.item_id as string, r]));
   const recipeOf = new Map<string, BarRecipeLine[]>();
   const push = (k: string, l: BarRecipeLine) => recipeOf.set(k, [...(recipeOf.get(k) ?? []), l]);
   for (const r of rec.data ?? []) push(r.menu_id as string, { itemId: r.item_id as string, qty: 1 });
   for (const r of recSlot.data ?? []) push(r.menu_id as string, { slotId: r.slot_id as string, qty: 1 });
+  for (const r of recGarnish.data ?? []) push(r.menu_id as string, { garnishId: r.garnish_id as string, qty: 1 });
   const menus = [...recipeOf.values()].map((recipe) => ({ recipe }) as BarMenu);
   const slots: HouseSlot[] = (slotRows.data ?? []).map((x) => ({
     slotId: x.slot_id as string, name: x.name as string, itemId: x.item_id as string, sort: Number(x.sort),
   }));
-  const used = recipeUseCount(menus, slots);
-  const via = slotNamesByItem(menus, slots);
+  const garnishes: BarGarnish[] = (garnishRows.data ?? []).map((x) => ({
+    garnishId: x.garnish_id as string, name: x.name as string,
+    itemId: (x.item_id as string | null) ?? null, qty: x.qty === null ? null : Number(x.qty), sort: Number(x.sort),
+  }));
+  const refs = { slots, garnishes };
+  const used = recipeUseCount(menus, refs);
+  const via = slotNamesByItem(menus, refs);
 
   const key = (s: string) => s.trim().toLowerCase();
   const finalName = new Map([...byId].map(([id, r]) => [id, r.name as string]));
@@ -1145,12 +1153,8 @@ export async function saveGarnishesAction(rows: GarnishDraft[]): Promise<Res> {
   if (!entity) return { ok: false, error: NO_ENTITY };
   return rpc("fn_bar_save_garnishes", {
     p_entity: entity,
-    p_rows: rows.map((r) => ({
-      garnish_id: r.garnishId || null,
-      name: r.name.trim(),
-      item_id: r.itemId || null,
-      qty: r.qty === "" ? null : r.qty,
-    })),
+    // D131: qty_unit = หน่วยที่จำนวนนี้ถูกพิมพ์ไว้ — RPC ปฏิเสธถ้าไม่ตรงกับหน่วยของวัตถุดิบ
+    p_rows: rows.map(garnishPayload),
   });
 }
 
@@ -1194,7 +1198,7 @@ export async function labDataAction(): Promise<Res> {
         async (from, to) => {
           const { data, error, count } = await supabase
             .from("bar_lab_use_line")
-            .select("use_id, line_no, kind, item_id, slot_id, menu_id, lab_recipe_id, label, unit, qty, cost",
+            .select("use_id, line_no, kind, item_id, slot_id, garnish_id, garnish_qty, menu_id, lab_recipe_id, label, unit, qty, cost",
               { count: from === 0 ? "exact" : undefined })
             .eq("entity_id", entity)
             .order("use_id")
@@ -1218,6 +1222,8 @@ export async function labDataAction(): Promise<Res> {
         kind: l.kind,
         itemId: (l.item_id as string) ?? null,
         slotId: (l.slot_id as string) ?? null,
+        garnishId: (l.garnish_id as string) ?? null,
+        garnishQty: l.garnish_qty == null ? null : Number(l.garnish_qty),
         menuId: (l.menu_id as string) ?? null,
         labRecipeId: (l.lab_recipe_id as string) ?? null,
         label: l.label,
@@ -1256,11 +1262,8 @@ export async function labDataAction(): Promise<Res> {
   }
 }
 
-/** บรรทัดสูตร (ขวดตรง/ช่อง House) → รูปที่ RPC รับ */
-const recipeArg = (recipe: BarRecipeLine[]) =>
-  recipe
-    .filter((r) => (r.slotId || r.itemId) && r.qty > 0)
-    .map((r) => (r.slotId !== undefined ? { slot_id: r.slotId, qty: r.qty } : { item_id: r.itemId, qty: r.qty }));
+/** บรรทัดสูตร (ขวดตรง/ช่อง House/ชุดตกแต่ง) → รูปที่ RPC รับ — ตัวเดียวกับบันทึกเมนู */
+const recipeArg = (recipe: BarRecipeLine[]) => recipeRpcLines(recipe);
 
 /** ลองชง 1 รอบ — recipeId ว่าง = สูตรใหม่ */
 export async function labRoundAction(input: {

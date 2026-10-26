@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { BarBoot } from "../data";
 import type { BarItem } from "@/lib/bar/types";
+import { refsOf } from "@/lib/bar/houseSlot";
 import { stockText, isLowStock, packToBase, numText } from "@/lib/bar/units";
 import {
   planReceive, planNewItems, planCount, planItemEdits, errorsText, ADJUST_REASONS,
@@ -394,8 +395,8 @@ function ItemsEditor({
 }) {
   const [rows, setRows] = useState<ItemEditDraft[]>(() => editDrafts(boot.items));
   // ★ D127: นับเมนูที่ใช้ผ่านช่องเหล้าประจำบ้านด้วย + บอกทางแก้ให้ถูก (เปลี่ยนขวดของช่อง)
-  const used = recipeUseCount(boot.menus, boot.houseSlots);
-  const via = slotNamesByItem(boot.menus, boot.houseSlots);
+  const used = recipeUseCount(boot.menus, refsOf(boot));
+  const via = slotNamesByItem(boot.menus, refsOf(boot));
   const plan = planItemEdits(rows, boot.items, used, via);
   const set = (idx: number, patch: Partial<ItemEditDraft>) =>
     setRows((rs) => rs.map((r, j) => (j === idx ? { ...r, ...patch } : r)));

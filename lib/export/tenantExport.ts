@@ -48,7 +48,7 @@ export const RESTORE_ORDER: readonly TenantTable[] = [
   // ★ D96 — บาร์: แม่ก่อนลูก (category/item/customer → menu → recipe/fav · sale → sale_item)
   "bar_category", "bar_item", "bar_customer", "bar_menu", "bar_recipe", "bar_customer_fav",
   // D127 — เหล้าประจำบ้าน/ชุดตกแต่ง (แม่ก่อนลูก: item → house_slot → recipe_slot)
-  "bar_house_slot", "bar_recipe_slot", "bar_garnish",
+  "bar_house_slot", "bar_recipe_slot", "bar_garnish", "bar_recipe_garnish",
   // D129 — ห้องทดลอง (แม่ก่อนลูก: category/recipe → use → use_line)
   "bar_lab_category", "bar_lab_recipe", "bar_lab_use", "bar_lab_use_line",
   // D130 — ของทำเอง (แม่ก่อนลูก: prep → input · batch → batch_line)

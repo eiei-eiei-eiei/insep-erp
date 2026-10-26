@@ -6,7 +6,7 @@ import type { BarMenu } from "@/lib/bar/types";
 import { CUSTOM_CATEGORY_ID } from "@/lib/bar/types";
 import { moveCategory, categoryEditsError, categoryNameUpdates } from "@/lib/bar/categoryOrder";
 import { menuMode, menuWarning, unsetMenus, cleanRecipe, blankRecipeRow, draftFromRecipe, type RecipeDraftRow } from "@/lib/bar/recipe";
-import { recipeText } from "@/lib/bar/houseSlot";
+import { recipeText, refsOf } from "@/lib/bar/houseSlot";
 import { RecipeEditor, PriceSuggest } from "./RecipeEditor";
 import { lineCost } from "@/lib/bar/cost";
 import { searchMenus } from "@/lib/bar/menuFilter";
@@ -154,7 +154,7 @@ export function MenuTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pro
                   { menuId: m.menuId, menuName: m.name, qty: 1, price: m.price },
                   data.menus,
                   data.items,
-                  data.houseSlots,
+                  refsOf(data),
                 );
                 const warn = menuWarning(m);
                 return (
@@ -163,7 +163,7 @@ export function MenuTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pro
                       <span className="text-ink">{m.name}</span>
                       {/* D127 — ผู้ใช้ขอ: แสดงทั้งชื่อช่องเหล้าประจำบ้านและขวดที่ช่องชี้อยู่ตอนนี้ */}
                       {m.recipe.length > 0 && (
-                        <div className="text-xs text-muted">{recipeText(m.recipe, data.items, data.houseSlots)}</div>
+                        <div className="text-xs text-muted">{recipeText(m.recipe, data.items, refsOf(data))}</div>
                       )}
                       {m.note && <div className="text-xs text-muted">{m.note}</div>}
                       {m.glass && <div className="text-xs text-faint">แก้ว: {m.glass}</div>}

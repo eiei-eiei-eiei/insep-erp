@@ -82,6 +82,9 @@ delete from bar_customer_fav where customer_id like 'T-%' or menu_id like 'T-%';
 delete from bar_recipe_slot  where menu_id like 'T-%'
    or slot_id in (select slot_id from bar_house_slot where item_id like 'T-%' or name like '%ทดสอบ%');
 delete from bar_house_slot   where item_id like 'T-%' or name like '%ทดสอบ%';
+-- ★ D131 — บรรทัดสูตรที่อ้างชุดตกแต่งทดสอบ (FK restrict) ต้องลบก่อนตัวชุด
+delete from bar_recipe_garnish where menu_id like 'T-%'
+   or garnish_id in (select garnish_id from bar_garnish where item_id like 'T-%' or name like '%ทดสอบ%');
 delete from bar_garnish      where item_id like 'T-%' or name like '%ทดสอบ%';
 -- ★ D129 — ห้องทดลอง: รายการที่แตะวัตถุดิบ/เมนูทดสอบ หรือสูตร/งานที่ชื่อมี "ทดสอบ" (บรรทัด cascade ตามรายการ)
 delete from bar_lab_use where use_id in (select use_id from bar_lab_use_line where item_id like 'T-%' or menu_id like 'T-%')

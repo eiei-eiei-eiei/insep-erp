@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { NO_REFS } from "./types";
 import {
   roundsOf,
   recipeSpent,
@@ -22,7 +23,7 @@ import type { BarItem, BarMenu, HouseSlot } from "./types";
 /** golden **B26** — ห้องทดลองบาร์ (D129) */
 
 const line = (p: Partial<LabLine>): LabLine => ({
-  lineNo: 1, kind: "สูตร", itemId: null, slotId: null, menuId: null, labRecipeId: null,
+  lineNo: 1, kind: "สูตร", itemId: null, slotId: null, garnishId: null, garnishQty: null, menuId: null, labRecipeId: null,
   label: "", unit: null, qty: 1, cost: 0, ...p,
 });
 const mkUse = (p: Partial<LabUse>): LabUse => ({
@@ -52,13 +53,13 @@ describe("B26 · การ์ดสูตร", () => {
     expect(recipeSpent("NOPE", USES)).toEqual({ rounds: 0, glasses: 0, cost: 0 });
   });
   it("สูตรของรอบ → แถวฟอร์ม เรียงตามบรรทัด · ช่อง House กลับเป็นช่องเดิม", () => {
-    expect(roundToDraft(R1, [{ slotId: "S-GIN" }])).toEqual([
+    expect(roundToDraft(R1, { slots: [{ slotId: "S-GIN", name: "House Gin", itemId: "GORD", sort: 0 }], garnishes: [] })).toEqual([
       { itemId: "", slotId: "S-GIN", qty: 30 },
       { itemId: "SYR", qty: 20 },
     ]);
   });
   it("🪤 ช่อง House ที่ถูกลบไปแล้ว → ใช้ขวดที่ตัดในรอบนั้น (ไม่ทิ้งบรรทัดเงียบ ๆ)", () => {
-    expect(roundToDraft(R1, [])[0]).toEqual({ itemId: "GORD", qty: 30 });
+    expect(roundToDraft(R1, NO_REFS)[0]).toEqual({ itemId: "GORD", qty: 30 });
   });
   it("ข้อความสูตรใช้ชื่อ/หน่วยที่แช่ไว้ตอนชง", () => {
     expect(roundLinesText(R1)).toBe("House Gin (Gordon's) 30 ml · ไซรัปฟักทอง 20 ml");
@@ -128,7 +129,7 @@ describe("B26 · ใช้เมนูที่มี", () => {
       { kind: "item", id: "SYR", qty: 50 },
     ]);
     // 45×1×2 = 90 · รอบ 2: House Gin 30 → ตอนนี้ Bombay 30×2 = 60 · ไซรัป 50×0.2 = 10
-    expect(previewUseCost(p, menus, items, slots, USES)).toBe(160);
+    expect(previewUseCost(p, menus, items, { slots: slots, garnishes: [] }, USES)).toBe(160);
   });
 });
 

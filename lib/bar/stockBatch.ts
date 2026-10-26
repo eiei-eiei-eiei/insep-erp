@@ -14,7 +14,7 @@
  * · วัตถุดิบซ้ำในชุดเดียวกัน = error (ปรับยอดตัวเดียวกัน 2 แถว = แถวหลังทับแถวแรกเงียบ ๆ ·
  *   รับของซ้ำ 2 แถวมักเป็นกดเพิ่มแถวซ้ำโดยไม่ตั้งใจ = รับของเข้าสองเท่า)
  */
-import type { BarItem, BarMenu, HouseSlot } from "./types";
+import type { BarItem, BarMenu, RecipeRefs } from "./types";
 import { itemUses } from "./houseSlot";
 import { packToBase, numText } from "./units";
 
@@ -266,13 +266,13 @@ export function editDrafts(items: readonly BarItem[]): ItemEditDraft[] {
  * วัตถุดิบตัวไหนถูกใช้ในสูตรกี่เมนู — **นับเมนูที่ใช้ผ่านช่องเหล้าประจำบ้านด้วย** (D127)
  * 🚨 ไม่นับ = ขวดที่เป็น House Gin ของ 20 เมนูเปลี่ยนหน่วยได้ แล้วทุกเมนูตัดผิดหน่วยเงียบ ๆ
  */
-export function recipeUseCount(menus: readonly BarMenu[], slots: readonly HouseSlot[]): Map<string, number> {
-  return new Map([...itemUses(menus, slots)].map(([id, u]) => [id, u.menus]));
+export function recipeUseCount(menus: readonly BarMenu[], refs: RecipeRefs): Map<string, number> {
+  return new Map([...itemUses(menus, refs)].map(([id, u]) => [id, u.menus]));
 }
 
-/** ชื่อช่องเหล้าประจำบ้านที่ชี้ขวดนั้นและมีเมนูใช้อยู่ — ใช้บอกเหตุผลที่ล็อกหน่วยให้ถูกทาง */
-export function slotNamesByItem(menus: readonly BarMenu[], slots: readonly HouseSlot[]): Map<string, string[]> {
-  return new Map([...itemUses(menus, slots)].filter(([, u]) => u.viaSlots.length > 0).map(([id, u]) => [id, u.viaSlots]));
+/** ชื่อช่องเหล้าประจำบ้าน/ชุดตกแต่งที่ชี้ขวดนั้นและมีเมนูใช้อยู่ — ใช้บอกเหตุผลที่ล็อกหน่วยให้ถูกทาง (D127/D131) */
+export function slotNamesByItem(menus: readonly BarMenu[], refs: RecipeRefs): Map<string, string[]> {
+  return new Map([...itemUses(menus, refs)].filter(([, u]) => u.viaSlots.length > 0).map(([id, u]) => [id, u.viaSlots]));
 }
 
 /**

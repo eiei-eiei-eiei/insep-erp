@@ -22,7 +22,7 @@ export const TENANT_TABLES = [
   // D96 — บาร์/POS (แยกขาดจากสต็อก/เอกสารฝั่งผลิตและขายโดยตั้งใจ)
   "bar_category", "bar_item", "bar_customer", "bar_menu", "bar_recipe", "bar_customer_fav",
   // D127 — เหล้าประจำบ้าน/ชุดตกแต่ง (แม่ก่อนลูก: item → house_slot → recipe_slot)
-  "bar_house_slot", "bar_recipe_slot", "bar_garnish",
+  "bar_house_slot", "bar_recipe_slot", "bar_garnish", "bar_recipe_garnish",
   // D129 — ห้องทดลอง (แม่ก่อนลูก: category/recipe → use → use_line)
   "bar_lab_category", "bar_lab_recipe", "bar_lab_use", "bar_lab_use_line",
   // D130 — ของทำเอง (แม่ก่อนลูก: prep → input · batch → batch_line)
@@ -79,6 +79,7 @@ export const TABLE_LABEL_TH: Partial<Record<TenantTable, string>> = {
   bar_house_slot: "เหล้าประจำบ้าน (บาร์)",
   bar_recipe_slot: "สูตรเมนูบาร์ (ช่องเหล้าประจำบ้าน)",
   bar_garnish: "ชุดตกแต่ง (บาร์)",
+  bar_recipe_garnish: "สูตรเมนูบาร์ (ชุดตกแต่ง)",
   bar_lab_category: "หมวดการใช้ (ห้องทดลองบาร์)",
   bar_lab_recipe: "สูตรทดลอง (บาร์)",
   bar_lab_use: "การใช้ในห้องทดลอง (บาร์)",
@@ -135,7 +136,7 @@ export const AUDITED_TABLES: readonly TenantTable[] = [
   "bar_category", "bar_item", "bar_menu", "bar_recipe", "bar_customer",
   "bar_sale", "bar_sale_item",
   // D127 — เปลี่ยนขวดในช่องเหล้าประจำบ้าน = ต้นทุนทุกเมนูที่อ้างช่องเปลี่ยน ⇒ ต้องตอบได้ว่าใครเปลี่ยนเมื่อไร
-  "bar_house_slot", "bar_recipe_slot", "bar_garnish",
+  "bar_house_slot", "bar_recipe_slot", "bar_garnish", "bar_recipe_garnish",
   // D129 — ห้องทดลอง · ไม่ audit บรรทัด (รายละเอียดของรายการที่ audit อยู่แล้ว แบบ bar_move)
   "bar_lab_category", "bar_lab_recipe", "bar_lab_use",
   // D130 — ของทำเอง · ไม่ audit บรรทัดล็อต (แบบเดียวกับห้องทดลอง)
@@ -179,7 +180,7 @@ export const ENTITY_SCOPED_TABLES: readonly TenantTable[] = [
   //        ⇒ ต้องถูกลบก่อน `entities` ทั้งหมด
   "bar_category", "bar_item", "bar_customer", "bar_menu", "bar_recipe", "bar_customer_fav",
   // D127 — เหล้าประจำบ้าน/ชุดตกแต่ง (แม่ก่อนลูก: item → house_slot → recipe_slot)
-  "bar_house_slot", "bar_recipe_slot", "bar_garnish",
+  "bar_house_slot", "bar_recipe_slot", "bar_garnish", "bar_recipe_garnish",
   // D129 — ห้องทดลอง (แม่ก่อนลูก: category/recipe → use → use_line)
   "bar_lab_category", "bar_lab_recipe", "bar_lab_use", "bar_lab_use_line",
   // D130 — ของทำเอง (แม่ก่อนลูก: prep → input · batch → batch_line)

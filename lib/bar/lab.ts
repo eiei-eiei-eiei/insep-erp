@@ -12,8 +12,8 @@
  * 🚨 ตัวเลขทุนอ่านจากค่าที่แช่ไว้ในรายการเท่านั้น ห้ามคิดใหม่ (D75) — คิดสดได้เฉพาะ "พรีวิวก่อนกด"
  * 🚨 ไม่ลงบัญชี · ไม่หักกำไรขั้นต้นของการขายบนแดชบอร์ด (แยกบรรทัด)
  */
-import type { BarItem, BarMenu, HouseSlot } from "./types";
-import type { RecipeDraftRow } from "./recipe";
+import type { BarItem, BarMenu, RecipeRefs } from "./types";
+import { cleanRecipe, type RecipeDraftRow } from "./recipe";
 import { matchesQuery } from "./stockNav";
 import { lineCost } from "./cost";
 import { resolveRecipe } from "./houseSlot";
@@ -42,12 +42,15 @@ export function labCategories(saved: readonly LabCategory[]): LabCategory[] {
   return saved.length > 0 ? [...saved].sort((a, b) => a.sort - b.sort || (a.categoryId < b.categoryId ? -1 : 1)) : DEFAULT_LAB_CATEGORIES;
 }
 export type LabRecipe = { recipeId: string; name: string; status: LabStatus; menuId: string | null; createdAt: string };
-export type LabLineKind = "สูตร" | "เมนู" | "สูตรทดลอง" | "วัตถุดิบ";
+export type LabLineKind = "สูตร" | "เมนู" | "สูตรทดลอง" | "วัตถุดิบ" | "ชุดตกแต่ง";
 export type LabLine = {
   lineNo: number;
   kind: LabLineKind;
   itemId: string | null;
   slotId: string | null;
+  /** D131 บรรทัดชุดตกแต่ง: ชุดที่อ้าง + ปริมาณวัตถุดิบต่อ 1 ชุด ณ ตอนชง (ไว้ใช้ถ้าชุดถูกลบทีหลัง) */
+  garnishId: string | null;
+  garnishQty: number | null;
   menuId: string | null;
   labRecipeId: string | null;
   label: string;
@@ -92,25 +95,33 @@ export function recipeSpent(recipeId: string, uses: readonly LabUse[]): { rounds
 /**
  * สูตรของรอบ → แถวบนฟอร์ม (ลองรอบใหม่ / ส่งขึ้นเมนู)
  * ★ บรรทัดที่เคยอ้างช่อง House กลับเป็นช่องเดิม (ขวดตามช่องตอนนี้) · ช่องถูกลบแล้ว → ใช้ขวดที่ตัดในรอบนั้น
+ * ★ D131 บรรทัดชุดตกแต่งกลับเป็นชุดเดิม · ชุดถูกลบแล้ว → วัตถุดิบ × (จำนวนชุด × ปริมาณต่อชุดที่จำไว้)
+ *   ชุดที่ถูกลบและไม่เคยตัดสต็อก = ไม่มีอะไรให้ตัด ⇒ ไม่มีแถว (ไม่เดา)
  */
-export function roundToDraft(use: Pick<LabUse, "lines">, slots: readonly Pick<HouseSlot, "slotId">[]): RecipeDraftRow[] {
-  const alive = new Set(slots.map((s) => s.slotId));
-  return use.lines
-    .filter((l) => l.kind === "สูตร")
-    .sort((a, b) => a.lineNo - b.lineNo)
-    .map((l) =>
-      l.slotId && alive.has(l.slotId)
-        ? { itemId: "", slotId: l.slotId, qty: l.qty }
-        : { itemId: l.itemId ?? "", qty: l.qty },
-    );
+export function roundToDraft(use: Pick<LabUse, "lines">, refs: RecipeRefs): RecipeDraftRow[] {
+  const alive = new Set(refs.slots.map((s) => s.slotId));
+  const aliveG = new Set(refs.garnishes.map((g) => g.garnishId));
+  const out: RecipeDraftRow[] = [];
+  for (const l of [...use.lines].filter((x) => x.kind === "สูตร" || x.kind === "ชุดตกแต่ง").sort((a, b) => a.lineNo - b.lineNo)) {
+    if (l.kind === "ชุดตกแต่ง") {
+      if (l.garnishId && aliveG.has(l.garnishId)) out.push({ itemId: "", garnishId: l.garnishId, qty: l.qty });
+      else if (l.itemId && l.garnishQty !== null) out.push({ itemId: l.itemId, qty: Math.round(l.qty * l.garnishQty * 1e10) / 1e10 });
+      continue;
+    }
+    out.push(l.slotId && alive.has(l.slotId) ? { itemId: "", slotId: l.slotId, qty: l.qty } : { itemId: l.itemId ?? "", qty: l.qty });
+  }
+  return out;
 }
 
-/** สูตรของรอบเป็นข้อความ (ชื่อ/หน่วยที่แช่ไว้ตอนชง) — "House Gin (Gordon's) 30 ml · มะนาว 20 ml" */
+/**
+ * สูตรของรอบเป็นข้อความ (ชื่อ/หน่วยที่แช่ไว้ตอนชง) — "House Gin (Gordon's) 30 ml · มะนาว 20 ml"
+ * ชุดตกแต่ง: "Lime Wheel (มะนาว 1/7 ลูก) × 1" (ป้ายแช่ไว้ตอนชงแล้ว · จำนวน = ชุด ไม่มีหน่วย)
+ */
 export function roundLinesText(use: Pick<LabUse, "lines">): string {
   return use.lines
-    .filter((l) => l.kind === "สูตร")
+    .filter((l) => l.kind === "สูตร" || l.kind === "ชุดตกแต่ง")
     .sort((a, b) => a.lineNo - b.lineNo)
-    .map((l) => `${l.label} ${num(l.qty)}${l.unit ? ` ${l.unit}` : ""}`)
+    .map((l) => (l.kind === "ชุดตกแต่ง" ? `${l.label} × ${num(l.qty)}` : `${l.label} ${num(l.qty)}${l.unit ? ` ${l.unit}` : ""}`))
     .join(" · ");
 }
 
@@ -205,23 +216,19 @@ export function previewUseCost(
   plan: ReturnType<typeof planUse>,
   menus: readonly BarMenu[],
   items: readonly BarItem[],
-  slots: readonly HouseSlot[],
+  refs: RecipeRefs,
   uses: readonly LabUse[],
 ): number {
   const byItem = new Map(items.map((i) => [i.itemId, i]));
   let total = 0;
   for (const m of plan.menus) {
     const menu = menus.find((x) => x.menuId === m.menuId);
-    total += lineCost({ menuId: m.menuId, menuName: menu?.name ?? "", qty: m.qty, price: 0 }, menus, items, slots);
+    total += lineCost({ menuId: m.menuId, menuName: menu?.name ?? "", qty: m.qty, price: 0 }, menus, items, refs);
   }
   for (const r of plan.recipes) {
     const last = roundsOf(r.recipeId, uses)[0];
     if (!last) continue;
-    const draft = roundToDraft(last, slots);
-    const lines = resolveRecipe(
-      draft.map((d) => (d.slotId ? { slotId: d.slotId, qty: d.qty as number } : { itemId: d.itemId, qty: d.qty as number })),
-      slots,
-    ).lines;
+    const lines = resolveRecipe(cleanRecipe(roundToDraft(last, refs)), refs).lines;
     for (const l of lines) total += l.qty * r.qty * (byItem.get(l.itemId)?.costPerUnit ?? 0);
   }
   for (const it of plan.items) total += it.qty * (byItem.get(it.itemId)?.costPerUnit ?? 0);

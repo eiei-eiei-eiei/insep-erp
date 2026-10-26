@@ -24,15 +24,17 @@ export type BarItem = {
 };
 
 /**
- * 1 บรรทัดในสูตร — อ้าง **ขวดตรง** (`itemId`) หรือ **ช่องเหล้าประจำบ้าน** (`slotId`) อย่างใดอย่างหนึ่ง (D127)
+ * 1 บรรทัดในสูตร — อ้าง **ขวดตรง** (`itemId`) · **ช่องเหล้าประจำบ้าน** (`slotId` · D127)
+ * หรือ **ชุดตกแต่ง** (`garnishId` · D131 — `qty` = จำนวน*ชุด*ต่อแก้ว ไม่ใช่หน่วยของวัตถุดิบ) อย่างใดอย่างหนึ่ง
  *
  * 🚨 ช่องต้องถูกแปลงเป็นขวดก่อนคิดต้นทุน/ตัดสต็อกทุกครั้ง — `resolveRecipe()` ใน houseSlot.ts
  *    ชนิดข้อมูลตั้งใจให้ `itemId` เป็น `string | undefined` ⇒ โค้ดที่หยิบ `itemId` ไปใช้ตรง ๆ
  *    โดยไม่แปลงช่องก่อน **build ไม่ผ่าน** (บทเรียน D84 — ของใหม่ต้องไม่ตกเข้า else เงียบ ๆ)
  */
 export type BarRecipeLine =
-  | { itemId: string; qty: number; slotId?: undefined }
-  | { slotId: string; qty: number; itemId?: undefined };
+  | { itemId: string; qty: number; slotId?: undefined; garnishId?: undefined }
+  | { slotId: string; qty: number; itemId?: undefined; garnishId?: undefined }
+  | { garnishId: string; qty: number; itemId?: undefined; slotId?: undefined };
 
 /** บรรทัดสูตรที่แปลงช่องเป็นขวดแล้ว — ใช้คิดต้นทุน/ตัดสต็อก */
 export type BarItemLine = { itemId: string; qty: number };
@@ -44,8 +46,25 @@ export type BarItemLine = { itemId: string; qty: number };
  */
 export type HouseSlot = { slotId: string; name: string; itemId: string; sort: number };
 
-/** ชุดตกแต่ง — กดแล้วบวกจำนวนเข้าบรรทัดของวัตถุดิบนั้นในสูตร (D127) */
-export type BarGarnish = { garnishId: string; name: string; itemId: string; qty: number; sort: number };
+/**
+ * ชุดตกแต่ง (D127 · D131) — สูตรอ้างตัวชุด แปลงเป็นวัตถุดิบ × `qty` ตอนสั่ง
+ * · `itemId`/`qty` เป็น null ทั้งคู่ = **ชุดที่ไม่ตัดสต็อก** (ใบมิ้นต์จากกระถาง · ผู้ใช้เลือก)
+ * · `qtyText` = ข้อความที่ผู้ใช้พิมพ์ (เช่น "1/7") ไว้แสดง — ตัวเลขจริงคือ `qty`
+ */
+export type BarGarnish = {
+  garnishId: string;
+  name: string;
+  itemId: string | null;
+  qty: number | null;
+  qtyText?: string | null;
+  sort: number;
+};
+
+/** ตัวอ้างอิงที่สูตรใช้ได้นอกจากขวดตรง — ส่งเป็นก้อนเดียวเสมอ (ลืมก้อนไหน build ไม่ผ่าน · D84) */
+export type RecipeRefs = { slots: readonly HouseSlot[]; garnishes: readonly BarGarnish[] };
+
+/** ไม่มีช่อง/ชุดตกแต่ง — ของทำเอง (D130) ใช้ได้แค่ขวดตรง */
+export const NO_REFS: RecipeRefs = { slots: [], garnishes: [] };
 
 /**
  * เมนูขาย — โหมดต้นทุนตัดสินจาก `recipe` และ `fixedCost` (ดู `menuMode()` ใน recipe.ts)

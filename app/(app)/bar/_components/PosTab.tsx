@@ -23,7 +23,7 @@ import {
 } from "@/lib/bar/menuFilter";
 import { promptPayPayload, promptPayError } from "@/lib/bar/promptpay";
 import { customerLabel } from "@/lib/bar/customerName";
-import { recipeLines } from "@/lib/bar/houseSlot";
+import { recipeLines, refsOf } from "@/lib/bar/houseSlot";
 import { buildReceipt } from "@/lib/bar/receipt";
 import {
   Card, Msg, TextInput, NumBox, Select, MissingHint, Badge, Empty, fmt, useSaver, useConfirm,
@@ -266,7 +266,7 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
   const discount = discountBaht(disc, barTotals(allLines, {}).subTotal);
   const totals = barTotals(allLines, { discount, roundCash: data.settings.roundCash });
   /** ★ ของขาดดูจาก **ถาด** เท่านั้น — รายการที่ส่งเข้าบิลแล้วตัดสต็อกไปเรียบร้อย */
-  const short = shortages(tray, data.menus, data.items, data.houseSlots);
+  const short = shortages(tray, data.menus, data.items, refsOf(data));
   const ppTarget = { type: data.settings.promptPayType, id: data.settings.promptPayId };
   // ★ หน้าขายอยู่คนละแท็บกับที่ตั้งค่า จึงต้องบอกด้วยว่าไปตั้งที่ไหน
   const ppError = promptPayError(ppTarget, { showWhere: true });
@@ -1359,7 +1359,7 @@ function RecipeCard({ boot, menuId }: { boot: BarBoot; menuId: string }) {
       {mode === "recipe" ? (
         <ul className="mb-1">
           {/* D127 — บรรทัดช่องเหล้าประจำบ้านแสดงทั้งชื่อช่องและขวดที่ชี้อยู่ */}
-          {recipeLines(m.recipe, boot.items, boot.houseSlots).map((line, i) => (
+          {recipeLines(m.recipe, boot.items, refsOf(boot)).map((line, i) => (
             <li key={i} className="text-ink">
               {line}
             </li>

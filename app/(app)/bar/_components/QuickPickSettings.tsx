@@ -2,7 +2,7 @@
 
 /**
  * ตั้งค่าปุ่มลัดของหน้าสร้างเมนู (D127) — 3 การ์ดในแท็บตั้งค่าบาร์
- *   · เหล้าประจำบ้าน (ช่อง → ขวด)   · ชุดตกแต่ง (ชื่อ → วัตถุดิบ + จำนวน)   · วัตถุดิบใช้บ่อย (ปักหมุด)
+ *   · เหล้าประจำบ้าน (ช่อง → ขวด)   · ชุดตกแต่ง (ชื่อ → วัตถุดิบ + จำนวนต่อชุด · D131 สูตรอ้างตัวชุด)   · วัตถุดิบใช้บ่อย (ปักหมุด)
  *
  * ★ แต่ละการ์ด **บันทึกแยกของตัวเอง** (ไม่ผูกกับปุ่ม "บันทึกการตั้งค่า" ด้านบน) — บอกบนจอด้วย
  *   แก้ในจอทั้งหมดแล้วกดบันทึกทีเดียว (แพตเทิร์น D109) · มีที่แก้ค้าง = ขึ้น "ยังไม่ได้บันทึก"
@@ -15,6 +15,8 @@ import { useState } from "react";
 import type { BarBoot } from "../data";
 import type { BarItem } from "@/lib/bar/types";
 import {
+  garnishDeleteBlock,
+  menusUsingGarnish,
   menusUsingSlot,
   slotDeleteBlock,
   slotEditsError,
@@ -24,7 +26,11 @@ import {
   type SlotDraft,
 } from "@/lib/bar/houseSlot";
 import {
+  garnishDraftOf,
   garnishEditsError,
+  garnishPickItem,
+  garnishQtyHint,
+  garnishTypeQty,
   garnishWarning,
   moveAt,
   orderedGarnishes,
@@ -32,7 +38,7 @@ import {
   pinnedItems,
   type GarnishDraft,
 } from "@/lib/bar/quickPick";
-import { Card, Msg, NumBox, Select, TextInput, MissingHint, useSaver } from "@/lib/shared/ui";
+import { Card, Msg, Select, TextInput, MissingHint, useSaver } from "@/lib/shared/ui";
 import { saveGarnishesAction, saveHouseSlotsAction, savePinsAction } from "../actions";
 
 type Reload = () => Promise<void>;
@@ -176,16 +182,11 @@ function HouseSlotCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Re
 function GarnishCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Reload; notify: Notify }) {
   const { msg, setMsg } = useSaver();
   const [busy, setBusy] = useState(false);
-  const initial: GarnishDraft[] = orderedGarnishes(boot.garnishes).map((g) => ({
-    garnishId: g.garnishId,
-    name: g.name,
-    itemId: g.itemId,
-    qty: g.qty,
-  }));
+  const initial: GarnishDraft[] = orderedGarnishes(boot.garnishes).map((g) => garnishDraftOf(g, boot.items));
   const [rows, setRows] = useState<GarnishDraft[]>(initial);
-  const set = (i: number, patch: Partial<GarnishDraft>) => setRows((p) => p.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const setRow = (i: number, fn: (r: GarnishDraft) => GarnishDraft) => setRows((p) => p.map((r, j) => (j === i ? fn(r) : r)));
   const dirty = JSON.stringify(rows) !== JSON.stringify(initial);
-  const problem = dirty ? garnishEditsError(rows, boot.items) : "";
+  const problem = dirty ? garnishEditsError(rows, boot.items, boot.garnishes, boot.menus) : "";
 
   async function save() {
     setBusy(true);
@@ -204,14 +205,19 @@ function GarnishCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Relo
     <Card title="ชุดตกแต่ง">
       <Msg msg={msg} />
       <p className="mb-2 text-xs text-muted">
-        กดชุดตกแต่งในหน้าสร้างเมนูแล้ว <b>จำนวนจะบวกเข้าบรรทัดของวัตถุดิบนั้น</b> (ไม่แยกบรรทัด) ·
-        แก้จำนวนที่นี่ทีหลัง เมนูที่สร้างไปแล้ว<b>ไม่เปลี่ยนตาม</b>
+        กดชุดตกแต่งในหน้าสร้างเมนู = <b>เพิ่มเป็นบรรทัดของชุด</b> (กดซ้ำ = เพิ่มจำนวนชุด) ·{" "}
+        <b>แก้ชุดที่นี่ = ทุกเมนูที่ใช้ชุดนี้เปลี่ยนตาม</b> (แก้วที่ขายไปแล้วไม่ขยับ) · จำนวนพิมพ์เศษส่วนได้ เช่น{" "}
+        <b>1/7</b> (มะนาว 1 ลูกฝานได้ 7 แว่น) · ไม่เลือกวัตถุดิบ = ชุดที่ไม่ตัดสต็อก
       </p>
       {rows.length === 0 && <p className="text-xs text-faint">— ยังไม่มีชุดตกแต่ง —</p>}
       {rows.map((r, i) => {
+        const saved = r.garnishId ? boot.garnishes.find((g) => g.garnishId === r.garnishId) : undefined;
+        const used = saved ? menusUsingGarnish(saved.garnishId, boot.menus).length : 0;
+        const block = saved ? garnishDeleteBlock(saved.garnishId, boot.menus) : null;
         const it = boot.items.find((x) => x.itemId === r.itemId);
         const choices = boot.items.filter((x) => x.active !== false || x.itemId === r.itemId);
         const warn = r.itemId && r.garnishId ? garnishWarning({ itemId: r.itemId }, boot.items) : null;
+        const hint = garnishQtyHint(r, boot.items, saved);
         return (
           <div key={r.garnishId ?? `new-${i}`} className="border-b border-line-soft py-2 last:border-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -222,11 +228,15 @@ function GarnishCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Relo
                 ▼
               </button>
               <div className="w-40">
-                <TextInput value={r.name} onChange={(e) => set(i, { name: e.target.value })} placeholder="มะนาว half wheel" />
+                <TextInput value={r.name} onChange={(e) => setRow(i, (x) => ({ ...x, name: e.target.value }))} placeholder="Lime Wheel" />
               </div>
               <div className="min-w-36 flex-1">
-                <Select value={r.itemId} onChange={(e) => set(i, { itemId: e.target.value })}>
-                  <option value="">— วัตถุดิบ —</option>
+                <Select
+                  value={r.itemId}
+                  aria-label="วัตถุดิบของชุด"
+                  onChange={(e) => setRow(i, (x) => garnishPickItem(x, e.target.value, boot.items, used))}
+                >
+                  <option value="">— ไม่ตัดสต็อก —</option>
                   {choices.map((x) => (
                     <option key={x.itemId} value={x.itemId}>
                       {optLabel(x)}
@@ -234,20 +244,39 @@ function GarnishCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Relo
                   ))}
                 </Select>
               </div>
-              <div className="w-20">
-                <NumBox value={r.qty} onChange={(v) => set(i, { qty: v })} blankZero placeholder="จำนวน" />
-              </div>
-              <span className="text-xs text-faint">{it?.unit ?? ""}</span>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setRows((p) => p.filter((_, j) => j !== i))}
-                className="text-xs text-crit underline disabled:opacity-50"
-              >
-                ลบ
-              </button>
+              {r.itemId && (
+                <>
+                  <div className="w-20">
+                    {/* ★ ช่องข้อความ ไม่ใช่ช่องตัวเลข — ต้องพิมพ์ "/" ได้ (D131) */}
+                    <TextInput
+                      value={r.qtyText}
+                      inputMode="text"
+                      aria-label="จำนวนต่อ 1 ชุด"
+                      onChange={(e) => setRow(i, (x) => garnishTypeQty(x, e.target.value, boot.items))}
+                      placeholder="1/7"
+                    />
+                  </div>
+                  <span className="text-xs text-faint">{it?.unit ?? ""} / ชุด</span>
+                </>
+              )}
+              {block ? null : (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setRows((p) => p.filter((_, j) => j !== i))}
+                  className="text-xs text-crit underline disabled:opacity-50"
+                >
+                  ลบ
+                </button>
+              )}
             </div>
-            {warn && <div className="mt-0.5 text-xs text-warn">{warn}</div>}
+            <div className="mt-0.5 text-xs text-faint">
+              {saved ? `ใช้ในสูตร ${used} เมนู` : "ชุดใหม่ (ยังไม่ได้บันทึก)"}
+              {!r.itemId && " · ไม่ตัดสต็อก (ขึ้นในสูตรว่า ไม่ตัดสต็อก)"}
+            </div>
+            {block && <div className="text-xs text-faint">ลบไม่ได้ — {block}</div>}
+            {hint && <div className="text-xs text-warn">{hint}</div>}
+            {warn && <div className="text-xs text-warn">{warn}</div>}
           </div>
         );
       })}
@@ -256,7 +285,7 @@ function GarnishCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Relo
         dirty={dirty}
         problem={problem}
         canConfig={boot.canConfig}
-        onAdd={() => setRows((p) => [...p, { garnishId: null, name: "", itemId: "", qty: "" }])}
+        onAdd={() => setRows((p) => [...p, { garnishId: null, name: "", itemId: "", qtyText: "", qtyUnit: null }])}
         addText="＋ เพิ่มชุดตกแต่ง"
         onSave={save}
         onReset={() => setRows(initial)}

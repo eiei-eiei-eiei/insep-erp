@@ -44,7 +44,7 @@ const MENUS = [NEGRONI, GT, SHOT];
 
 describe("B23 · resolveRecipe — ช่องกลายเป็นขวดที่ตั้งไว้ตอนนี้", () => {
   it("แปลงช่องเป็นขวดของช่อง", () => {
-    expect(resolveRecipe(NEGRONI.recipe, SLOTS)).toEqual({
+    expect(resolveRecipe(NEGRONI.recipe, { slots: SLOTS, garnishes: [] })).toEqual({
       lines: [{ itemId: "GORD", qty: 30 }, { itemId: "CAMP", qty: 30 }],
       missing: [],
     });
@@ -52,16 +52,16 @@ describe("B23 · resolveRecipe — ช่องกลายเป็นขวด
 
   it("เปลี่ยนขวดในช่อง = เมนูที่อ้างช่องเปลี่ยนตามทันที", () => {
     const moved = SLOTS.map((s) => (s.slotId === "S-GIN" ? { ...s, itemId: "BOMB" } : s));
-    expect(resolveRecipe(GT.recipe, moved).lines).toEqual([{ itemId: "BOMB", qty: 45 }]);
+    expect(resolveRecipe(GT.recipe, { slots: moved, garnishes: [] }).lines).toEqual([{ itemId: "BOMB", qty: 45 }]);
   });
 
   it("ช่อง + ขวดตรงที่เป็นขวดเดียวกัน → รวมยอดต่อขวด (ตรงกับ SQL ที่ group by item)", () => {
-    const r = resolveRecipe([{ slotId: "S-GIN", qty: 30 }, { itemId: "GORD", qty: 15 }], SLOTS);
+    const r = resolveRecipe([{ slotId: "S-GIN", qty: 30 }, { itemId: "GORD", qty: 15 }], { slots: SLOTS, garnishes: [] });
     expect(r.lines).toEqual([{ itemId: "GORD", qty: 45 }]);
   });
 
   it("🪤 ช่องที่หาไม่เจอ ไม่นับเป็น 0 เงียบ ๆ — คืนใน missing", () => {
-    const r = resolveRecipe([{ slotId: "GONE", qty: 30 }, { itemId: "CAMP", qty: 30 }], SLOTS);
+    const r = resolveRecipe([{ slotId: "GONE", qty: 30 }, { itemId: "CAMP", qty: 30 }], { slots: SLOTS, garnishes: [] });
     expect(r).toEqual({ lines: [{ itemId: "CAMP", qty: 30 }], missing: ["GONE"] });
   });
 
@@ -73,14 +73,14 @@ describe("B23 · resolveRecipe — ช่องกลายเป็นขวด
 describe("B23 · ตัดสต็อก/ต้นทุนบนจอใช้ขวดของช่อง", () => {
   const cart = [{ menuId: "M2", menuName: "Gin Tonic", qty: 2, price: 200 }];
   it("stockPlan", () => {
-    expect(stockPlan(cart, MENUS, SLOTS)).toEqual([{ itemId: "GORD", qty: 90 }]);
+    expect(stockPlan(cart, MENUS, { slots: SLOTS, garnishes: [] })).toEqual([{ itemId: "GORD", qty: 90 }]);
   });
   it("shortages — ขวดของช่องไม่พอ = เตือนที่ขวดนั้น (ไม่สลับขวดเอง)", () => {
     const big = [{ ...cart[0], qty: 20 }];
-    expect(shortages(big, MENUS, ITEMS, SLOTS).short.map((s) => s.itemId)).toEqual(["GORD"]);
+    expect(shortages(big, MENUS, ITEMS, { slots: SLOTS, garnishes: [] }).short.map((s) => s.itemId)).toEqual(["GORD"]);
   });
   it("lineCost", () => {
-    expect(lineCost(cart[0], MENUS, ITEMS, SLOTS)).toBe(54); // 45 × 0.6 × 2
+    expect(lineCost(cart[0], MENUS, ITEMS, { slots: SLOTS, garnishes: [] })).toBe(54); // 45 × 0.6 × 2
   });
 });
 
@@ -128,32 +128,32 @@ describe("B23 · ป้าย / คำเตือน", () => {
     expect(slotWarning({ itemId: "GORD" }, ITEMS)).toBeNull();
   });
   it("matchRef — ป้ายเต็มของช่องไม่ชนป้ายวัตถุดิบ", () => {
-    expect(matchRef(slotOption(SLOTS[0]), ITEMS, SLOTS)).toEqual({ itemId: "", slotId: "S-GIN" });
-    expect(matchRef("Gordon's (ml)", ITEMS, SLOTS)).toEqual({ itemId: "GORD" });
-    expect(matchRef("house gin", ITEMS, SLOTS)).toEqual({ itemId: "", slotId: "S-GIN" });
-    expect(matchRef("gordon's", ITEMS, SLOTS)).toEqual({ itemId: "GORD" });
-    expect(matchRef("house", ITEMS, SLOTS)).toEqual({ itemId: "" });
+    expect(matchRef(slotOption(SLOTS[0]), ITEMS, { slots: SLOTS, garnishes: [] })).toEqual({ itemId: "", slotId: "S-GIN" });
+    expect(matchRef("Gordon's (ml)", ITEMS, { slots: SLOTS, garnishes: [] })).toEqual({ itemId: "GORD" });
+    expect(matchRef("house gin", ITEMS, { slots: SLOTS, garnishes: [] })).toEqual({ itemId: "", slotId: "S-GIN" });
+    expect(matchRef("gordon's", ITEMS, { slots: SLOTS, garnishes: [] })).toEqual({ itemId: "GORD" });
+    expect(matchRef("house", ITEMS, { slots: SLOTS, garnishes: [] })).toEqual({ itemId: "" });
   });
   it("🚨 ชื่อเปล่าตรงทั้งช่องและวัตถุดิบ = ไม่เลือกให้", () => {
     const clash = [...ITEMS, { itemId: "HG", name: "House Gin", unit: "ml", qty: 0, costPerUnit: 0 }];
-    expect(matchRef("House Gin", clash, SLOTS)).toEqual({ itemId: "" });
+    expect(matchRef("House Gin", clash, { slots: SLOTS, garnishes: [] })).toEqual({ itemId: "" });
   });
 });
 
 describe("B23 · ล็อกหน่วยวัตถุดิบ นับการอ้างผ่านช่องด้วย (D104 + D127)", () => {
   it("itemUses / recipeUseCount นับเมนูไม่ซ้ำ", () => {
-    const u = itemUses(MENUS, SLOTS);
+    const u = itemUses(MENUS, { slots: SLOTS, garnishes: [] });
     expect(u.get("GORD")).toEqual({ menus: 2, viaSlots: ["House Gin"] });
     expect(u.get("CAMP")).toEqual({ menus: 1, viaSlots: [] });
-    expect(recipeUseCount(MENUS, SLOTS).get("BOMB")).toBe(1);
+    expect(recipeUseCount(MENUS, { slots: SLOTS, garnishes: [] }).get("BOMB")).toBe(1);
     // ช่อง + ขวดตรงขวดเดียวกันในเมนูเดียว = 1 เมนู
     const both = [{ recipe: [{ slotId: "S-GIN", qty: 1 }, { itemId: "GORD", qty: 1 }] }] as BarMenu[];
-    expect(recipeUseCount(both, SLOTS).get("GORD")).toBe(1);
+    expect(recipeUseCount(both, { slots: SLOTS, garnishes: [] }).get("GORD")).toBe(1);
   });
   it("🚨 ขวดที่ใช้ผ่านช่องเท่านั้น ก็เปลี่ยนหน่วยไม่ได้ + บอกทางแก้ว่าเปลี่ยนขวดของช่อง", () => {
     const empty = ITEMS.map((i) => (i.itemId === "GORD" ? { ...i, qty: 0 } : i));
     const d = editDrafts(empty).map((x) => (x.itemId === "GORD" ? { ...x, unit: "ขวด" } : x));
-    const r = planItemEdits(d, empty, recipeUseCount(MENUS, SLOTS), slotNamesByItem(MENUS, SLOTS));
+    const r = planItemEdits(d, empty, recipeUseCount(MENUS, { slots: SLOTS, garnishes: [] }), slotNamesByItem(MENUS, { slots: SLOTS, garnishes: [] }));
     expect(r.errors[0].text).toContain("House Gin");
     expect(r.errors[0].text).toContain("เปลี่ยนขวดของช่อง");
   });
@@ -187,10 +187,10 @@ describe("B23 · slotEditsError — ด่านก่อนบันทึก�
 
 describe("B23 · recipeText — แท็บเมนูแสดงทั้งชื่อช่องและขวดปัจจุบัน", () => {
   it("ช่อง + ขวดตรง", () => {
-    expect(recipeText(NEGRONI.recipe, ITEMS, SLOTS)).toBe("House Gin (Gordon's) 30 ml · Campari 30 ml");
+    expect(recipeText(NEGRONI.recipe, ITEMS, { slots: SLOTS, garnishes: [] })).toBe("House Gin (Gordon's) 30 ml · Campari 30 ml");
   });
   it("ของที่หาไม่เจอบอกตรง ๆ ไม่หายเงียบ", () => {
-    expect(recipeText([{ slotId: "X", qty: 1 }, { itemId: "Y", qty: 2.5 }], ITEMS, SLOTS)).toBe(
+    expect(recipeText([{ slotId: "X", qty: 1 }, { itemId: "Y", qty: 2.5 }], ITEMS, { slots: SLOTS, garnishes: [] })).toBe(
       "(ไม่พบช่อง) 1 · (ไม่พบวัตถุดิบ) 2.5",
     );
   });

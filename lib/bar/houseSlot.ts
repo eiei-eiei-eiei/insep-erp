@@ -14,10 +14,14 @@
  * · ลบช่องที่มีสูตรอ้าง = บล็อก + บอกรายชื่อเมนู (ผู้ใช้เลือก) · FK กันซ้ำที่ DB
  * · ขวดหมด = ปล่อยติดลบ **ห้ามสลับขวดเอง** (ผู้ใช้สั่ง) — ไฟล์นี้จึงไม่มีตรรกะ "หาขวดสำรอง" เลย
  */
-import type { BarItem, BarItemLine, BarMenu, BarRecipeLine, HouseSlot } from "./types";
+import type { BarGarnish, BarItem, BarItemLine, BarMenu, BarRecipeLine, HouseSlot, RecipeRefs } from "./types";
+import { qtyShown } from "./fraction";
 
 /**
- * บรรทัดสูตร → บรรทัดขวด (แปลงช่องเป็นขวดที่ตั้งไว้ ณ ตอนนี้ · รวมยอดของขวดเดียวกัน)
+ * บรรทัดสูตร → บรรทัดขวด (แปลงช่อง/ชุดตกแต่งเป็นขวดที่ตั้งไว้ ณ ตอนนี้ · รวมยอดของขวดเดียวกัน)
+ *
+ * ★ D131 ชุดตกแต่ง = วัตถุดิบของชุด × (จำนวนชุด × ปริมาณต่อชุด) · ชุดที่ไม่ตัดสต็อก = ไม่มีบรรทัด
+ *   (ตรงกับ `bar_menu_lines` ใน 0093 ที่กรอง `item_id is not null`)
  *
  * ★ รวมยอดต่อขวด — "House Gin 30 + Gordon's 15" ตอนช่องชี้ Gordon's = Gordon's 45 (ตรงกับ SQL ที่ group by item)
  * 🪤 ช่องที่หาไม่เจอ (ถูกลบจากอีกเครื่องขณะเปิดหน้าค้าง) → ไม่เดา ไม่นับเป็น 0 เงียบ ๆ
@@ -25,14 +29,25 @@ import type { BarItem, BarItemLine, BarMenu, BarRecipeLine, HouseSlot } from "./
  */
 export function resolveRecipe(
   recipe: readonly BarRecipeLine[],
-  slots: readonly HouseSlot[],
+  refs: RecipeRefs,
 ): { lines: BarItemLine[]; missing: string[] } {
-  const bySlot = new Map(slots.map((s) => [s.slotId, s]));
+  const bySlot = new Map(refs.slots.map((s) => [s.slotId, s]));
+  const byGarnish = new Map(refs.garnishes.map((g) => [g.garnishId, g]));
   const acc = new Map<string, number>();
   const missing: string[] = [];
   for (const r of recipe) {
     let itemId: string;
-    if (r.slotId !== undefined) {
+    let qty = r.qty;
+    if (r.garnishId !== undefined) {
+      const g = byGarnish.get(r.garnishId);
+      if (!g) {
+        missing.push(r.garnishId);
+        continue;
+      }
+      if (g.itemId === null || g.qty === null) continue; // ชุดที่ไม่ตัดสต็อก
+      itemId = g.itemId;
+      qty = r.qty * g.qty;
+    } else if (r.slotId !== undefined) {
       const s = bySlot.get(r.slotId);
       if (!s) {
         missing.push(r.slotId);
@@ -42,9 +57,14 @@ export function resolveRecipe(
     } else {
       itemId = r.itemId;
     }
-    acc.set(itemId, r4((acc.get(itemId) ?? 0) + r.qty));
+    acc.set(itemId, rq((acc.get(itemId) ?? 0) + qty));
   }
   return { lines: [...acc].map(([itemId, qty]) => ({ itemId, qty })), missing };
+}
+
+/** ตัวอ้างอิงของสูตรจากข้อมูลตั้งต้นของหน้าบาร์ — ช่องเหล้าประจำบ้าน + ชุดตกแต่ง (D131) */
+export function refsOf(b: { houseSlots: readonly HouseSlot[]; garnishes: readonly BarGarnish[] }): RecipeRefs {
+  return { slots: b.houseSlots, garnishes: b.garnishes };
 }
 
 /** เมนูที่อ้างช่องนี้ (ชื่อ เรียงตามชื่อ) — ใช้บอกเหตุผลที่ลบไม่ได้ และนับการใช้ */
@@ -57,7 +77,11 @@ export function menusUsingSlot(slotId: string, menus: readonly Pick<BarMenu, "na
 
 /** ลบช่องได้ไหม — คืนเหตุผล (บอกว่าต้องทำอะไรก่อน · D88) หรือ null = ลบได้ */
 export function slotDeleteBlock(slotId: string, menus: readonly Pick<BarMenu, "name" | "recipe">[]): string | null {
-  const used = menusUsingSlot(slotId, menus);
+  return inUseBlock(menusUsingSlot(slotId, menus));
+}
+
+/** เหตุผลที่ลบไม่ได้เพราะมีเมนูใช้ — ข้อความเดียวทั้งช่องเหล้าประจำบ้านและชุดตกแต่ง */
+function inUseBlock(used: readonly string[]): string | null {
   if (used.length === 0) return null;
   const shown = used.slice(0, 5).join(" · ");
   const more = used.length > 5 ? ` และอีก ${used.length - 5} เมนู` : "";
@@ -119,16 +143,17 @@ export function slotWarning(slot: Pick<HouseSlot, "itemId">, items: readonly Bar
 }
 
 /**
- * วัตถุดิบตัวไหนถูกใช้ในสูตรกี่เมนู — **นับการอ้างผ่านช่องด้วย** (D104 + D127)
- * `viaSlots` = ชื่อช่องที่ชี้ขวดนี้และมีเมนูใช้อยู่ — ใช้บอกเหตุผลที่ล็อกหน่วยให้ถูก
+ * วัตถุดิบตัวไหนถูกใช้ในสูตรกี่เมนู — **นับการอ้างผ่านช่องและชุดตกแต่งด้วย** (D104 + D127 + D131)
+ * `viaSlots` = ชื่อช่อง/ชุดตกแต่งที่ชี้ขวดนี้และมีเมนูใช้อยู่ — ใช้บอกเหตุผลที่ล็อกหน่วยให้ถูก
  */
 export type ItemUse = { menus: number; viaSlots: string[] };
 
 export function itemUses(
   menus: readonly Pick<BarMenu, "recipe">[],
-  slots: readonly HouseSlot[],
+  refs: RecipeRefs,
 ): Map<string, ItemUse> {
-  const bySlot = new Map(slots.map((s) => [s.slotId, s]));
+  const bySlot = new Map(refs.slots.map((s) => [s.slotId, s]));
+  const byGarnish = new Map(refs.garnishes.map((g) => [g.garnishId, g]));
   const out = new Map<string, ItemUse>();
   const get = (id: string) => {
     let u = out.get(id);
@@ -138,7 +163,14 @@ export function itemUses(
   for (const m of menus) {
     const hit = new Set<string>();
     for (const r of m.recipe) {
-      if (r.slotId !== undefined) {
+      if (r.garnishId !== undefined) {
+        // D131: ชุดตกแต่งที่มีเมนูอ้าง ล็อกหน่วยของวัตถุดิบในชุดด้วย (จำนวนต่อชุดผูกกับหน่วยนั้น)
+        const g = byGarnish.get(r.garnishId);
+        if (!g || g.itemId === null) continue;
+        hit.add(g.itemId);
+        const u = get(g.itemId);
+        if (!u.viaSlots.includes(g.name)) u.viaSlots.push(g.name);
+      } else if (r.slotId !== undefined) {
         const s = bySlot.get(r.slotId);
         if (!s) continue;
         hit.add(s.itemId);
@@ -206,21 +238,27 @@ const r4 = (v: number) => Math.round(v * 10000) / 10000;
 export function recipeText(
   recipe: readonly BarRecipeLine[],
   items: readonly Pick<BarItem, "itemId" | "name" | "unit">[],
-  slots: readonly HouseSlot[],
+  refs: RecipeRefs,
 ): string {
-  return recipeLines(recipe, items, slots).join(" · ");
+  return recipeLines(recipe, items, refs).join(" · ");
 }
 
 /** สูตรทีละบรรทัด (การ์ดสูตรในหน้าขาย) — ข้อความเดียวกับ `recipeText` */
 export function recipeLines(
   recipe: readonly BarRecipeLine[],
   items: readonly Pick<BarItem, "itemId" | "name" | "unit">[],
-  slots: readonly HouseSlot[],
+  refs: RecipeRefs,
 ): string[] {
   const byId = new Map(items.map((i) => [i.itemId, i]));
-  const bySlot = new Map(slots.map((s) => [s.slotId, s]));
+  const bySlot = new Map(refs.slots.map((s) => [s.slotId, s]));
+  const byGarnish = new Map(refs.garnishes.map((g) => [g.garnishId, g]));
   return recipe
     .map((r) => {
+      if (r.garnishId !== undefined) {
+        const g = byGarnish.get(r.garnishId);
+        if (!g) return `(ไม่พบชุดตกแต่ง) × ${num(r.qty)}`;
+        return `${g.name} × ${num(r.qty)} (${garnishContent(g, byId, r.qty !== 1)})`;
+      }
       if (r.slotId !== undefined) {
         const s = bySlot.get(r.slotId);
         if (!s) return `(ไม่พบช่อง) ${num(r.qty)}`;
@@ -233,3 +271,37 @@ export function recipeLines(
 }
 
 const num = (v: number) => String(r4(v));
+
+/**
+ * สิ่งที่ชุดตกแต่ง 1 ชุดตัด — "มะนาว 1/7 ลูก" · ไม่ตัดสต็อก = "ไม่ตัดสต็อก"
+ * `perSet` = เติมคำว่า "ชุดละ" (ใช้ตอนสูตรใส่มากกว่า 1 ชุด ไม่งั้นอ่านเป็นยอดรวม)
+ */
+export function garnishContent(
+  g: Pick<BarGarnish, "itemId" | "qty" | "qtyText">,
+  byId: ReadonlyMap<string, Pick<BarItem, "name" | "unit">>,
+  perSet = false,
+): string {
+  if (g.itemId === null || g.qty === null) return "ไม่ตัดสต็อก";
+  const it = byId.get(g.itemId);
+  const body = it ? `${it.name} ${qtyShown(g.qty, g.qtyText)} ${it.unit}` : `ไม่พบวัตถุดิบ ${qtyShown(g.qty, g.qtyText)}`;
+  return perSet ? `ชุดละ ${body}` : body;
+}
+
+/** เมนูที่อ้างชุดตกแต่งนี้ (ชื่อ เรียงตามชื่อ) — ใช้บอกเหตุผลที่ลบไม่ได้ และนับการใช้ */
+export function menusUsingGarnish(garnishId: string, menus: readonly Pick<BarMenu, "name" | "recipe">[]): string[] {
+  return menus
+    .filter((m) => m.recipe.some((r) => r.garnishId === garnishId))
+    .map((m) => m.name)
+    .sort((a, b) => a.localeCompare(b, "th"));
+}
+
+/** ลบชุดตกแต่งได้ไหม — เหตุผล (บอกว่าต้องทำอะไรก่อน) หรือ null = ลบได้ · ข้อความเดียวกับช่อง */
+export function garnishDeleteBlock(garnishId: string, menus: readonly Pick<BarMenu, "name" | "recipe">[]): string | null {
+  return inUseBlock(menusUsingGarnish(garnishId, menus));
+}
+
+/**
+ * ปัดเศษลอยของการบวก/คูณ — 10 ตำแหน่ง (ไม่ใช่ 4) เพราะชุดตกแต่ง 1/7 ลูก × 7 แก้วต้องได้ 1 พอดี
+ * (ปัด 4 ตำแหน่ง = 0.1429 × 7 = 1.0003 · D131)
+ */
+const rq = (v: number) => Math.round(v * 1e10) / 1e10;

@@ -13,7 +13,7 @@
  * ★ ราคาแนะนำ **ไม่เขียนทับราคาที่ผู้ใช้กรอกเอง** — เป็นปุ่ม "ใช้ราคานี้" เท่านั้น
  * ★ ต้นทุนเห็นเฉพาะผู้มีสิทธิ์ `bar.config` (stripCost ใน data.ts) — ไม่มีสิทธิ์ = ไม่มีตัวเลขให้คิด
  */
-import type { BarItem, BarItemLine, HouseSlot } from "./types";
+import type { BarGarnish, BarItem, BarItemLine, RecipeRefs } from "./types";
 import { slotOption } from "./houseSlot";
 import { VAT_RATE } from "../shared/vat";
 
@@ -40,26 +40,35 @@ export function matchItem(text: string, items: readonly BarItem[]): string {
 }
 
 /**
- * ข้อความที่พิมพ์ → วัตถุดิบ **หรือช่องเหล้าประจำบ้าน** (D127) · ไม่ตรง = ทั้งคู่ว่าง
- * ★ ป้ายเต็มของช่องลงท้าย "(เหล้าประจำบ้าน)" เสมอ ⇒ ไม่ชนกับป้ายวัตถุดิบ "ชื่อ (หน่วย)"
- * 🚨 พิมพ์ชื่อเปล่าที่ตรงทั้งช่องและวัตถุดิบ = **ไม่เลือกให้** (เลือกผิด = ตัดผิดขวดเงียบ ๆ) ให้เลือกจากรายการ
+ * ข้อความที่พิมพ์ → วัตถุดิบ · ช่องเหล้าประจำบ้าน (D127) · **หรือชุดตกแต่ง** (D131) · ไม่ตรง = ว่างทั้งหมด
+ * ★ ป้ายเต็มลงท้าย "(เหล้าประจำบ้าน)" / "(ชุดตกแต่ง)" เสมอ ⇒ ไม่ชนกับป้ายวัตถุดิบ "ชื่อ (หน่วย)"
+ * 🚨 พิมพ์ชื่อเปล่าที่ตรงมากกว่าหนึ่งอย่าง = **ไม่เลือกให้** (เลือกผิด = ตัดผิดขวดเงียบ ๆ) ให้เลือกจากรายการ
  */
 export function matchRef(
   text: string,
   items: readonly BarItem[],
-  slots: readonly HouseSlot[],
-): { itemId: string; slotId?: string } {
+  refs: RecipeRefs,
+): { itemId: string; slotId?: string; garnishId?: string } {
   const t = text.trim().toLowerCase();
   if (!t) return { itemId: "" };
   const fullItem = items.find((it) => itemLabel(it).toLowerCase() === t);
   if (fullItem) return { itemId: fullItem.itemId };
-  const fullSlot = slots.find((s) => slotOption(s).toLowerCase() === t);
+  const fullSlot = refs.slots.find((s) => slotOption(s).toLowerCase() === t);
   if (fullSlot) return { itemId: "", slotId: fullSlot.slotId };
+  const fullGarnish = refs.garnishes.find((g) => garnishOption(g).toLowerCase() === t);
+  if (fullGarnish) return { itemId: "", garnishId: fullGarnish.garnishId };
   const bareItem = items.find((it) => it.name.trim().toLowerCase() === t);
-  const bareSlot = slots.find((s) => s.name.trim().toLowerCase() === t);
-  if (bareItem && bareSlot) return { itemId: "" };
+  const bareSlot = refs.slots.find((s) => s.name.trim().toLowerCase() === t);
+  const bareGarnish = refs.garnishes.find((g) => g.name.trim().toLowerCase() === t);
+  if ([bareItem, bareSlot, bareGarnish].filter(Boolean).length > 1) return { itemId: "" };
   if (bareSlot) return { itemId: "", slotId: bareSlot.slotId };
+  if (bareGarnish) return { itemId: "", garnishId: bareGarnish.garnishId };
   return { itemId: bareItem?.itemId ?? "" };
+}
+
+/** ป้ายของชุดตกแต่งในรายการค้นของช่องวัตถุดิบ (D131) — ลงท้ายต่างจากวัตถุดิบ/ช่องเสมอ */
+export function garnishOption(g: Pick<BarGarnish, "name">): string {
+  return `${g.name} (ชุดตกแต่ง)`;
 }
 
 export type RecipeCostLine = { itemId: string; qty: number; cost: number; noCost: boolean };

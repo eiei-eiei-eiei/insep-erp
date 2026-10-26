@@ -12,7 +12,7 @@
  * 🚨 โหมด `unset` **ห้ามถูกข้ามเงียบ ๆ** — ต้องมีป้ายบนแถวและแถบรวมในแท็บเมนู
  *    ไม่งั้นมันค้างตลอดกาลแล้วกำไรพองขึ้นเรื่อย ๆ โดยไม่มีใครรู้ (บทเรียน D83/D86)
  */
-import type { BarItem, BarMenu, BarRecipeLine, CartLine, HouseSlot } from "./types";
+import type { BarItem, BarMenu, BarRecipeLine, CartLine, RecipeRefs } from "./types";
 import { resolveRecipe } from "./houseSlot";
 
 export type MenuMode = "recipe" | "fixed" | "unset";
@@ -61,12 +61,12 @@ export type StockPlanLine = { itemId: string; qty: number };
  * · เมนูที่ไม่มีสูตร ไม่ปรากฏในแผน (ไม่ใช่ปรากฏด้วยยอด 0 — คนละความหมาย)
  * · 🚨 **ของแถมก็ตัดสต็อก** — แถมแล้วเหล้าก็หายจากขวดจริง
  * · เมนูที่หาไม่เจอใน `menus` ถูกข้าม (ชื่อยังอยู่ในบิลเป็น snapshot)
- * · บรรทัดที่อ้างช่องเหล้าประจำบ้าน → ขวดที่ช่องชี้อยู่ตอนนี้ (D127 · `slots` บังคับส่ง — ลืมแล้ว build ไม่ผ่าน)
+ * · บรรทัดที่อ้างช่องเหล้าประจำบ้าน/ชุดตกแต่ง → ขวดที่ตั้งไว้ตอนนี้ (D127/D131 · `refs` บังคับส่ง — ลืมแล้ว build ไม่ผ่าน)
  */
 export function stockPlan(
   cart: readonly CartLine[],
   menus: readonly BarMenu[],
-  slots: readonly HouseSlot[],
+  refs: RecipeRefs,
 ): StockPlanLine[] {
   const byId = new Map(menus.map((m) => [m.menuId, m]));
   const acc = new Map<string, number>();
@@ -74,7 +74,7 @@ export function stockPlan(
     if (!line.menuId) continue;
     const menu = byId.get(line.menuId);
     if (!menu || !deductsStock(menu)) continue;
-    for (const r of resolveRecipe(menu.recipe, slots).lines) {
+    for (const r of resolveRecipe(menu.recipe, refs).lines) {
       acc.set(r.itemId, (acc.get(r.itemId) ?? 0) + r.qty * line.qty);
     }
   }
@@ -94,12 +94,12 @@ export function shortages(
   cart: readonly CartLine[],
   menus: readonly BarMenu[],
   items: readonly BarItem[],
-  slots: readonly HouseSlot[],
+  refs: RecipeRefs,
 ): { short: Shortage[]; unknownItems: string[] } {
   const byId = new Map(items.map((i) => [i.itemId, i]));
   const short: Shortage[] = [];
   const unknownItems: string[] = [];
-  for (const p of stockPlan(cart, menus, slots)) {
+  for (const p of stockPlan(cart, menus, refs)) {
     const item = byId.get(p.itemId);
     if (!item) {
       unknownItems.push(p.itemId);
@@ -142,18 +142,26 @@ export function mergeCart(cart: readonly CartLine[]): CartLine[] {
 /**
  * `text` = ข้อความที่พิมพ์ในช่องค้นวัตถุดิบ (D110) — ยังไม่ตรงวัตถุดิบไหน = itemId ว่าง แต่ข้อความต้องไม่หาย
  * `slotId` = บรรทัดนี้อ้าง **ช่องเหล้าประจำบ้าน** แทนขวด (D127) — มีค่าเมื่อไร `itemId` ต้องว่าง
+ * `garnishId` = บรรทัดนี้อ้าง **ชุดตกแต่ง** (D131) — `qty` = จำนวนชุด · มีค่าเมื่อไร `itemId`/`slotId` ต้องว่าง
  */
-export type RecipeDraftRow = { itemId: string; slotId?: string; qty: number | ""; text?: string };
+export type RecipeDraftRow = { itemId: string; slotId?: string; garnishId?: string; qty: number | ""; text?: string };
 
 export const blankRecipeRow = (): RecipeDraftRow => ({ itemId: "", qty: "" });
 
 /** แถวสูตรที่บันทึกไว้ → แถวบนฟอร์ม */
 export function draftFromRecipe(recipe: readonly BarRecipeLine[]): RecipeDraftRow[] {
-  return recipe.map((r) => (r.slotId !== undefined ? { itemId: "", slotId: r.slotId, qty: r.qty } : { itemId: r.itemId, qty: r.qty }));
+  return recipe.map((r) =>
+    r.garnishId !== undefined
+      ? { itemId: "", garnishId: r.garnishId, qty: r.qty }
+      : r.slotId !== undefined
+        ? { itemId: "", slotId: r.slotId, qty: r.qty }
+        : { itemId: r.itemId, qty: r.qty },
+  );
 }
 
 /** คีย์ของสิ่งที่แถวอ้าง ("" = ยังไม่ได้เลือก) — ใช้หาแถวซ้ำ */
-export function rowRefKey(r: Pick<RecipeDraftRow, "itemId" | "slotId">): string {
+export function rowRefKey(r: Pick<RecipeDraftRow, "itemId" | "slotId" | "garnishId">): string {
+  if (r.garnishId) return `garnish:${r.garnishId}`;
   if (r.slotId) return `slot:${r.slotId}`;
   if (r.itemId) return `item:${r.itemId}`;
   return "";
@@ -185,7 +193,7 @@ export function cleanRecipe(rows: readonly RecipeDraftRow[]): BarRecipeLine[] {
       continue;
     }
     at.set(key, out.length);
-    out.push(r.slotId ? { slotId: r.slotId, qty } : { itemId: r.itemId, qty });
+    out.push(r.garnishId ? { garnishId: r.garnishId, qty } : r.slotId ? { slotId: r.slotId, qty } : { itemId: r.itemId, qty });
   }
   return out;
 }
@@ -202,4 +210,22 @@ export function danglingRows(rows: readonly RecipeDraftRow[]): number {
     const ref = Boolean(rowRefKey(r));
     return (ref && !hasQty(r)) || (!ref && hasQty(r));
   }).length;
+}
+
+/**
+ * บรรทัดสูตร → payload ของ RPC (`fn_bar_save_menu` / `fn_bar_lab_round`) — ที่เดียว (เดิมก๊อปอยู่ 2 ที่ใน actions)
+ * 🚨 ส่งคีย์เดียวต่อบรรทัด — SQL ปฏิเสธบรรทัดที่อ้างสองอย่างพร้อมกัน
+ */
+export function recipeRpcLines(
+  recipe: readonly BarRecipeLine[],
+): ({ item_id: string; qty: number } | { slot_id: string; qty: number } | { garnish_id: string; qty: number })[] {
+  return recipe
+    .filter((r) => (r.garnishId || r.slotId || r.itemId) && r.qty > 0)
+    .map((r) =>
+      r.garnishId !== undefined
+        ? { garnish_id: r.garnishId, qty: r.qty }
+        : r.slotId !== undefined
+          ? { slot_id: r.slotId, qty: r.qty }
+          : { item_id: r.itemId, qty: r.qty },
+    );
 }

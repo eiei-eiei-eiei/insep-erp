@@ -15,6 +15,7 @@
  */
 import { useState } from "react";
 import { moveAt } from "@/lib/bar/quickPick";
+import { refsOf } from "@/lib/bar/houseSlot";
 import type { BarBoot } from "../data";
 import { cleanRecipe, blankRecipeRow, type RecipeDraftRow } from "@/lib/bar/recipe";
 import { businessDate } from "@/lib/bar/businessDate";
@@ -363,7 +364,7 @@ function RecipeCard({
             busy={busy}
             now={now}
             run={run}
-            onPromote={() => onPromote(roundToDraft(u, boot.houseSlots))}
+            onPromote={() => onPromote(roundToDraft(u, refsOf(boot)))}
             onDelete={() => onDelete(u)}
           />
         ))}
@@ -374,7 +375,7 @@ function RecipeCard({
           <button
             type="button"
             disabled={busy || !!block || !latest}
-            onClick={() => latest && onRetry(roundToDraft(latest, boot.houseSlots))}
+            onClick={() => latest && onRetry(roundToDraft(latest, refsOf(boot)))}
             className="min-h-[44px] rounded-lg bg-brand px-3 py-1.5 text-sm text-on-brand disabled:opacity-50 sm:min-h-0"
           >
             ลองรอบใหม่
@@ -383,7 +384,7 @@ function RecipeCard({
             <button
               type="button"
               disabled={busy}
-              onClick={() => onPromote(roundToDraft(latest, boot.houseSlots))}
+              onClick={() => onPromote(roundToDraft(latest, refsOf(boot)))}
               className="min-h-[44px] rounded-lg border border-line bg-card px-3 py-1.5 text-sm text-ink disabled:opacity-50 sm:min-h-0"
             >
               {recipe.status === "ขึ้นเมนูแล้ว" ? "ส่งขึ้นเมนูอีกตัว" : "ส่งขึ้นเมนูขาย (รอบล่าสุด)"}
@@ -578,7 +579,7 @@ function UseView({
   const [rows, setRows] = useState<KeyedDraft[]>([newRow("menu"), newRow("item")]);
   const plan = planUse(rows);
   const pending = plan.menus.length + plan.recipes.length + plan.items.length;
-  const preview = previewUseCost(plan, boot.menus, boot.items, boot.houseSlots, data.uses);
+  const preview = previewUseCost(plan, boot.menus, boot.items, refsOf(boot), data.uses);
   const events = [...new Set(data.uses.map((u) => u.eventName?.trim()).filter((x): x is string => !!x))];
   const set = (i: number, patch: Partial<UseDraft>) => setRows((p) => p.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const recent = data.uses.filter((u) => u.recipeId === null).sort((a, b) => (a.usedAt < b.usedAt ? 1 : -1)).slice(0, 10);

@@ -16,6 +16,10 @@
  * · แถบปุ่มลัด 3 กลุ่ม (House / ใช้บ่อย / ตกแต่ง) — ตรรกะอยู่ที่ lib/bar/quickPick.ts (golden B24)
  *   กดแล้วโฟกัสช่องจำนวนของบรรทัดนั้นให้ (มือถือ = คีย์บอร์ดตัวเลขขึ้นทันที)
  * · บรรทัดซ้ำรวมเป็นบรรทัดเดียวตอนบันทึก (`cleanRecipe`) — บอกบนจอด้วย `duplicateRows`
+ *
+ * ── D131 ──────────────────────────────────────────────────────────────────────
+ * · บรรทัดอ้าง **ชุดตกแต่ง** ได้ (กดปุ่มลัด ตกแต่ง หรือพิมพ์ชื่อชุด) — ช่องจำนวน = จำนวน *ชุด* ไม่ใช่หน่วยวัตถุดิบ
+ *   ⇒ ไม่มีปุ่ม 15/30/45/60 (เป็น ml) · บอกใต้บรรทัดว่า 1 ชุดตอนนี้ตัดอะไร
  */
 import { useEffect, useId, useRef, useState } from "react";
 import type { BarGarnish, BarItem, HouseSlot } from "@/lib/bar/types";
@@ -29,7 +33,8 @@ import {
   suggestPrice,
   DEFAULT_TARGET_PCT,
 } from "@/lib/bar/menuPricing";
-import { resolveRecipe, slotOption } from "@/lib/bar/houseSlot";
+import { garnishContent, resolveRecipe, slotOption } from "@/lib/bar/houseSlot";
+import { garnishOption } from "@/lib/bar/menuPricing";
 import { applyPick, quickChips, type QuickChip, type QuickPick } from "@/lib/bar/quickPick";
 import { NumBox, TextInput, fmt } from "@/lib/shared/ui";
 
@@ -69,11 +74,13 @@ export function RecipeEditor({
   const active = items.filter((it) => it.active !== false);
   const byId = new Map(items.map((it) => [it.itemId, it]));
   const bySlot = new Map(slots.map((s) => [s.slotId, s]));
+  const byGarnish = new Map(garnishes.map((g) => [g.garnishId, g]));
+  const refs = { slots, garnishes };
   const setRow = (i: number, patch: Partial<RecipeDraftRow>) =>
     setRows((p) => p.map((r, j) => (j === i ? { ...r, ...patch } : r)));
 
   const recipe = cleanRecipe(rows);
-  const cost = recipeCost(resolveRecipe(recipe, slots).lines, items);
+  const cost = recipeCost(resolveRecipe(recipe, refs).lines, items);
   const dangling = danglingRows(rows);
   const dup = duplicateRows(rows);
   const chips = quickChips(slots, items, garnishes);
@@ -95,8 +102,12 @@ export function RecipeEditor({
     setFocusAt(r.focus);
   }
 
-  /** ขวดที่บรรทัดนี้จะตัดจริง — บรรทัดช่อง = ขวดที่ช่องชี้อยู่ตอนนี้ */
+  /** ขวดที่บรรทัดนี้จะตัดจริง — บรรทัดช่อง = ขวดที่ช่องชี้อยู่ตอนนี้ · บรรทัดชุด = วัตถุดิบของชุด */
   const rowItem = (r: RecipeDraftRow) => {
+    if (r.garnishId) {
+      const g = byGarnish.get(r.garnishId);
+      return g?.itemId ? byId.get(g.itemId) : undefined;
+    }
     if (r.slotId) {
       const s = bySlot.get(r.slotId);
       return s ? byId.get(s.itemId) : undefined;
@@ -115,13 +126,20 @@ export function RecipeEditor({
         {active.map((it) => (
           <option key={it.itemId} value={itemLabel(it)} />
         ))}
+        {garnishes.map((g) => (
+          <option key={g.garnishId} value={garnishOption(g)} />
+        ))}
       </datalist>
       {rows.map((r, i) => {
         const slot = r.slotId ? bySlot.get(r.slotId) : undefined;
+        const garnish = r.garnishId ? byGarnish.get(r.garnishId) : undefined;
         const it = rowItem(r);
-        const shown = r.text ?? (slot ? slotOption(slot) : it ? itemLabel(it) : "");
+        const shown =
+          r.text ?? (garnish ? garnishOption(garnish) : slot ? slotOption(slot) : it ? itemLabel(it) : r.garnishId ? "(ไม่พบชุดตกแต่ง)" : "");
         const qty = r.qty === "" ? 0 : r.qty;
-        const picked = Boolean(r.itemId || r.slotId);
+        // บรรทัดชุด: ปริมาณวัตถุดิบจริง = จำนวนชุด × ต่อชุด
+        const useQty = garnish ? qty * (garnish.qty ?? 0) : qty;
+        const picked = Boolean(r.itemId || r.slotId || r.garnishId);
         return (
           // 🐛 D96 (B-8) — บนจอแคบช่องวัตถุดิบเต็มบรรทัด ปริมาณ/ปุ่มลัดลงบรรทัดถัดไป
           <div key={i} className="mt-2">
@@ -130,28 +148,37 @@ export function RecipeEditor({
                 <TextInput
                   value={shown}
                   list={listId}
-                  placeholder="พิมพ์ชื่อวัตถุดิบ / เหล้าประจำบ้าน…"
+                  placeholder="พิมพ์ชื่อวัตถุดิบ / เหล้าประจำบ้าน / ชุดตกแต่ง…"
                   onChange={(e) => {
-                    const m = matchRef(e.target.value, active, slots);
-                    setRow(i, { text: e.target.value, itemId: m.itemId, slotId: m.slotId });
+                    const m = matchRef(e.target.value, active, refs);
+                    setRow(i, { text: e.target.value, itemId: m.itemId, slotId: m.slotId, garnishId: m.garnishId });
                   }}
                 />
               </div>
               <div className="w-24" data-qty-row={i}>
-                <NumBox value={r.qty} onChange={(v) => setRow(i, { qty: v })} blankZero placeholder="ปริมาณ" />
+                <NumBox
+                  value={r.qty}
+                  onChange={(v) => setRow(i, { qty: v })}
+                  blankZero
+                  placeholder={r.garnishId ? "จำนวนชุด" : "ปริมาณ"}
+                />
               </div>
-              <div className="flex gap-1">
-                {[15, 30, 45, 60].map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => setRow(i, { qty: v })}
-                    className="rounded bg-raised px-2 py-1 text-xs text-muted"
-                  >
-                    {v}
-                  </button>
-                ))}
-              </div>
+              {r.garnishId ? (
+                <span className="text-xs text-muted">ชุด</span>
+              ) : (
+                <div className="flex gap-1">
+                  {[15, 30, 45, 60].map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setRow(i, { qty: v })}
+                      className="rounded bg-raised px-2 py-1 text-xs text-muted"
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              )}
               <button
                 type="button"
                 onClick={() => setRows((p) => p.filter((_, j) => j !== i))}
@@ -173,11 +200,25 @@ export function RecipeEditor({
                       เปลี่ยนขวดได้ที่แท็บตั้งค่าบาร์{canSeeCost && it && qty > 0 ? " · " : ""}
                     </span>
                   )}
+                  {garnish && (
+                    <span>
+                      {garnish.itemId === null ? (
+                        <>ชุดนี้ <b className="text-ink">ไม่ตัดสต็อก</b></>
+                      ) : (
+                        <>1 ชุดตอนนี้ตัด <b className="text-ink">{garnishContent(garnish, byId)}</b></>
+                      )}{" "}
+                      · แก้ชุดได้ที่แท็บตั้งค่าบาร์
+                      (ทุกเมนูที่ใช้ชุดนี้เปลี่ยนตาม){canSeeCost && it && qty > 0 ? " · " : ""}
+                    </span>
+                  )}
+                  {r.garnishId && !garnish && (
+                    <span className="text-warn">ไม่พบชุดตกแต่งนี้ (อาจถูกลบจากอีกเครื่อง) — ลบบรรทัดนี้แล้วเลือกใหม่</span>
+                  )}
                   {canSeeCost &&
                     it &&
                     qty > 0 &&
                     (it.costPerUnit > 0 ? (
-                      <>ต้นทุน {fmt(Math.round(qty * it.costPerUnit * 100) / 100)} บาท</>
+                      <>ต้นทุน {fmt(Math.round(useQty * it.costPerUnit * 100) / 100)} บาท</>
                     ) : (
                       <span className="text-warn">วัตถุดิบนี้ยังไม่มีต้นทุน (ยังไม่เคยรับของเข้า)</span>
                     ))}
