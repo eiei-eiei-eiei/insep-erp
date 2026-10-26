@@ -467,11 +467,14 @@ export async function getItemHistory(entityId?: string) {
 /** รายละเอียดบิล + items */
 export async function getBillDetail(txId: string) {
   const supabase = await db();
-  const [tx, items] = await Promise.all([
+  const [tx, items, wht] = await Promise.all([
     supabase.from("transactions").select(TX_COLS).eq("tx_id", txId).maybeSingle(),
     supabase.from("transaction_items").select("*").eq("tx_id", txId).order("item_id"),
+    // D132 — ใบ 50ทวิ ที่อ้างบิลนี้ (ออกแล้ว = ย้ายกิจการไม่ได้) · อ่านไม่ได้ต้องฟ้อง ไม่ใช่ถือว่าไม่มี (D89)
+    supabase.from("wht_certificates").select("doc_no").contains("tx_ids", [txId]).order("doc_no"),
   ]);
-  return { tx: tx.data as unknown as Tx | null, items: items.data ?? [] };
+  const whtDocNos = (mustRead(wht, "ใบ 50ทวิ ของบิล") ?? []).map((r) => r.doc_no as string);
+  return { tx: tx.data as unknown as Tx | null, items: items.data ?? [], whtDocNos };
 }
 
 /** ประวัติราคาสินค้า/วัตถุดิบ (searchItemHistory) — join items↔tx */

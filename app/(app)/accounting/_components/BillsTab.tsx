@@ -12,6 +12,7 @@ import type { Bootstrap } from "./types";
 import { Card, Field, Msg, NumBox, SaveButton, Select, TextInput, fmt, useSaver, EscToClose, useRead, LoadError } from "./ui";
 import { can, toRole } from "@/lib/shared/roles";
 import { ADVANCE_TYPE, ADVANCE_REFUND_TYPE, advanceStatusLabel } from "@/lib/accounting/advance";
+import { entityMoveBlock, entityMoveError, entityMoveWarnings, entityMoveSavedText, type MoveTx } from "@/lib/accounting/entityMove";
 
 type Bills = Awaited<ReturnType<typeof searchBillsAction>>;
 type Detail = Awaited<ReturnType<typeof getBillDetailAction>>;
@@ -198,6 +199,10 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
   const [taxInvoiceNo, setTaxInvoiceNo] = useState("");
   const [taxInvoiceDate, setTaxInvoiceDate] = useState("");
   const [entId, setEntId] = useState("");
+  // D132 — กิจการเดิมของบิล + ข้อมูลที่ใช้ตัดสินว่าย้ายกิจการได้ไหม
+  const [origEnt, setOrigEnt] = useState("");
+  const [moveTx, setMoveTx] = useState<MoveTx>({});
+  const [whtDocNos, setWhtDocNos] = useState<string[]>([]);
   const [discount, setDiscount] = useState(0);
   const [hasVat, setHasVat] = useState(false);
   const [hasWht, setHasWht] = useState(false);
@@ -227,6 +232,13 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
       setTaxInvoiceNo((tx.tax_invoice_no as string) ?? "");
       setTaxInvoiceDate(((tx.tax_invoice_date as string) ?? "").substring(0, 10) || "");
       setEntId((tx.entity_id as string) ?? "");
+      setOrigEnt((tx.entity_id as string) ?? "");
+      setMoveTx({
+        source: tx.source as string | null, type: tx.type as string | null, advance_for_entity: tx.advance_for_entity as string | null,
+        advance_clear_id: tx.advance_clear_id as string | null, advance_src_tx: tx.advance_src_tx as string | null,
+        po_group_id: tx.po_group_id as string | null, transfer_id: tx.transfer_id as string | null,
+      });
+      setWhtDocNos(d.whtDocNos ?? []);
       setDiscount(Number(tx.discount) || 0);
       setHasVat((Number(tx.vat_amount) || 0) > 0);
       setHasWht((Number(tx.wht_amount) || 0) > 0 || (Number(tx.wht_rate) || 0) > 0);
@@ -257,6 +269,9 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
       const odd = Math.abs(computed.amountAfterDiscount - sAfter) > 0.005 || Math.abs(computed.vatAmount - sVat) > 0.005 || Math.abs(computed.whtAmount - sWht) > 0.005;
       amtRef.current.setManualAmt(odd);
       setLoading(false);
+    }).catch((e: unknown) => {
+      // อ่านไม่ได้ต้องฟ้อง ไม่ใช่ค้างที่ "กำลังโหลด…" ตลอดกาล (D89)
+      if (alive) { setLoading(false); setMsg({ ok: false, text: e instanceof Error ? e.message : "โหลดบิลไม่สำเร็จ" }); }
     });
     return () => { alive = false; };
   }, [txId, setMsg]);
@@ -280,6 +295,20 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
   const effBranchId = multiBranch ? (nameMatches.some((c) => c.contact_id === contactId) ? contactId : nameMatches[0].contact_id) : "";
   const resolvedContactId = nameMatches.length === 1 ? nameMatches[0].contact_id : multiBranch ? effBranchId : (contactId || undefined);
 
+  // ── D132 ย้ายกิจการ — ประโยคทุกตัวตัดสินใน lib/accounting/entityMove.ts ──
+  const moveBlock = entityMoveBlock(moveTx, whtDocNos);
+  const entName = (id: string) => boot.entities.find((e) => e.entity_id === id)?.name ?? id;
+  const toEntity = boot.entities.find((e) => e.entity_id === entId);
+  const acc = boot.accounts.find((a) => a.account_name === accountName);
+  const moveInput = {
+    fromEntity: origEnt, toEntity: entId, type, advanceForEntity: moveTx.advance_for_entity,
+    vatAmount: effVat, toIsVat: toEntity ? toEntity.is_vat !== false : undefined,
+    accountName, accountLinked: acc ? (acc.entity_ids ?? []).length === 0 || (acc.entity_ids ?? []).includes(entId) : undefined,
+    isForwardCat: boot.forwardCats.includes(category), toName: entName(entId),
+  };
+  const moveErr = entityMoveError(moveInput);
+  const moveWarns = entityMoveWarnings(moveInput);
+
   const { setItem, priceOf, onPrice, onQty, onDiscPct, onDiscBaht, removeItem, changeVatMode } = makeItemHandlers(items, setItems, effVatMode, setVatMode, vatMode);
   // แถวใหม่ก๊อปหมวด/งานจากแถวสุดท้าย (บิลเดียวกันมักเป็นงานเดียวกัน) — เหมือน EntryTab
   function addItem() { const last = items[items.length - 1]; setItems((p) => [...p, emptyItem(last?.itemCategory ?? "", last?.itemJob ?? "")]); }
@@ -287,6 +316,7 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
 
   function save() {
     if (!category) { setMsg({ ok: false, text: "เลือกหมวดหมู่" }); return; }
+    if (moveErr) { setMsg({ ok: false, text: moveErr }); return; }
     if (items.every((it) => !hasContent(it, effVatMode))) { setMsg({ ok: false, text: "ต้องมีรายการอย่างน้อย 1 รายการ" }); return; }
     const itemInputs = buildItemInputs(items, effVatMode, calc.baseAmount);
     run(() => updateTransactionAction(txId, {
@@ -294,7 +324,7 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
       base_amount: calc.baseAmount, discount, amount_after_discount: effAfterDisc, vat_amount: effVat,
       wht_rate: calc.whtRate, wht_amount: effWht, net_amount: effNet,
       tax_invoice_no: taxInvoiceNo, tax_invoice_date: taxInvoiceDate, entity_id: entId,
-    }, itemInputs), "แก้ไขบิลเรียบร้อย", onSaved);
+    }, itemInputs), entityMoveSavedText(entId !== origEnt, entName(entId)), onSaved);
   }
 
   return (
@@ -305,6 +335,20 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
         {loading ? <p className="text-faint">กำลังโหลด…</p> : (
           <>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+              {/* D132 — กิจการเดียวไม่ต้องเห็นช่องนี้ (D53) · ย้ายไม่ได้ = ปุ่มเทาพร้อมเหตุผล ไม่ซ่อน (D86) */}
+              {boot.entities.length > 1 && (
+                <div className="col-span-2 md:col-span-3">
+                  <Field label="กิจการ">
+                    <Select value={entId} onChange={(e) => setEntId(e.target.value)} disabled={!!moveBlock} title={moveBlock ?? "ย้ายบิลนี้ไปกิจการอื่น (กรณีบันทึกผิดกิจการ)"}>
+                      {!boot.entities.some((e) => e.entity_id === entId) && <option value={entId}>{entId}</option>}
+                      {boot.entities.map((e) => (<option key={e.entity_id} value={e.entity_id}>{e.entity_id} · {e.name}</option>))}
+                    </Select>
+                  </Field>
+                  {moveBlock && <p className="mt-1 text-xs text-faint">ย้ายกิจการไม่ได้: {moveBlock}</p>}
+                  {moveErr && <p className="mt-1 text-xs text-crit">⛔ {moveErr}</p>}
+                  {moveWarns.map((w) => (<p key={w} className="mt-1 text-xs text-warn">⚠️ {w}</p>))}
+                </div>
+              )}
               <Field label="ประเภท">{type === ADVANCE_TYPE
                 ? <Select value={type} disabled title="บิลสำรองจ่ายเปลี่ยนประเภทไม่ได้ — ใช้ปุ่ม เคลีย / ตัดเป็นส่วนตัว ในแท็บลูกหนี้-เจ้าหนี้"><option value={ADVANCE_TYPE}>{ADVANCE_TYPE}</option></Select>
                 : <Select value={type} onChange={(e) => setType(e.target.value as "รายรับ" | "รายจ่าย")}><option value="รายจ่าย">รายจ่าย</option><option value="รายรับ">รายรับ</option></Select>}</Field>
