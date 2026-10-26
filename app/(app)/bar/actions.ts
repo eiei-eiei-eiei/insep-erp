@@ -270,6 +270,47 @@ export async function saveMenuAction(input: {
 }
 
 /**
+ * D138 — รหัสเมนูที่เคยขาย/เคยใช้ทำคอนเทนต์ (ใช้บอกล่วงหน้าว่าเมนูไหนลบได้)
+ * ★ คืนรหัสไม่ซ้ำจาก SQL (กันลิมิต 1000 แถวของ PostgREST · D82) · ตัวตัดสินจริงอยู่ใน fn_bar_delete_menu
+ */
+export async function getMenuUsageAction(): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("bar_menu_used_ids", { p_entity: entity });
+  if (error) return { ok: false, error: mapDbError(error) };
+  return okOf((data ?? []) as string[]);
+}
+
+/**
+ * D138 — ปิดใช้/เปิดใช้เมนู (ซ่อนจากหน้าขาย · ข้อมูลไม่หาย)
+ * ★ สิทธิ์ `bar.write` เหมือนแก้เมนู (RLS update ของ 0096) · ไม่ต้องผ่านด่าน "เคยขาย" เพราะไม่มีอะไรหาย
+ * 🚨 อ่านแถวที่แก้กลับมาเช็ค — RLS ตอบ 0 แถวเงียบ ๆ ไม่ใช่ error (D85)
+ */
+export async function setMenuActiveAction(menuId: string, active: boolean): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("bar_menu")
+    .update({ active })
+    .eq("entity_id", entity)
+    .eq("menu_id", menuId)
+    .select("menu_id");
+  if (error) return { ok: false, error: mapDbError(error) };
+  if (!data || data.length === 0) return { ok: false, error: "ไม่พบเมนูนี้ หรือไม่มีสิทธิ์แก้เมนู" };
+  revalidatePath("/bar");
+  return { ok: true };
+}
+
+/** D138 — ลบเมนูทิ้ง (เฉพาะที่ไม่เคยขาย · `bar.config`) — ด่านทั้งหมดอยู่ใน fn_bar_delete_menu (0096) */
+export async function deleteMenuAction(menuId: string): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  return rpc("fn_bar_delete_menu", { p_entity: entity, p_menu_id: menuId });
+}
+
+/**
  * รับของเข้าบาร์หลายรายการในครั้งเดียว (D103) — ★ ราคาเป็นของล็อตจริง หน้าจอเติมค่าล่าสุดมาให้
  * 🚨 ทั้งชุดเป็น transaction เดียว (0080) — แถวไหนล้ม ไม่มีแถวไหนเข้าเลย
  *    `row` = เลขแถวบนจอ ให้ข้อความ error ชี้ถูกแถว (แถวว่างถูกข้ามไปก่อนแล้ว)

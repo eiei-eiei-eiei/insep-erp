@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { BarBoot } from "../data";
 import type { BarMenu } from "@/lib/bar/types";
 import { CUSTOM_CATEGORY_ID } from "@/lib/bar/types";
@@ -12,8 +12,12 @@ import { lineCost } from "@/lib/bar/cost";
 import { searchMenus } from "@/lib/bar/menuFilter";
 import { customerLabel } from "@/lib/bar/customerName";
 import { Card, TextInput, NumBox, Select, Field, Badge, Empty, fmt, useSaver, useConfirm } from "@/lib/shared/ui";
-import { saveMenuAction, saveCategoryAction, deleteCategoryAction, saveCategoriesAction } from "../actions";
+import {
+  saveMenuAction, saveCategoryAction, deleteCategoryAction, saveCategoriesAction,
+  getMenuUsageAction, setMenuActiveAction, deleteMenuAction,
+} from "../actions";
 import { MenuOrderEditor } from "./MenuOrderEditor";
+import { menuRemoveState, menuDeleteConfirm, menuToggleDoneText, menuDeletedText, inactiveToggleLabel } from "@/lib/bar/menuRemove";
 
 const MODE_LABEL: Record<string, string> = {
   recipe: "มีสูตร",
@@ -36,9 +40,34 @@ export function MenuTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pro
   const [edit, setEdit] = useState<string | null | "new">(null);
   const [showCats, setShowCats] = useState(false);
   const [showOrder, setShowOrder] = useState(false);
+  // D138 — เมนูที่ปิดใช้ซ่อนไว้ก่อน (ผู้ใช้เลือก) · รหัสเมนูที่เคยขาย/ใช้ทำคอนเทนต์ (null = ยังไม่รู้)
+  const [showInactive, setShowInactive] = useState(false);
+  const [used, setUsed] = useState<Set<string> | null>(null);
+  const [usageLoading, setUsageLoading] = useState(false);
+  const { confirmNode, ask } = useConfirm();
 
   const canWrite = data.canWrite;
-  const unset = unsetMenus(data.menus);
+  // 🪤 D138 — เมนูที่ปิดใช้ไม่ขึ้นหน้าขายแล้ว ไม่ต้องเตือนให้ตั้งต้นทุน
+  const unset = unsetMenus(data.menus.filter((m) => m.active !== false));
+  const inactiveCount = data.menus.filter((m) => m.active === false).length;
+
+  const loadUsage = useCallback(async () => {
+    if (!data.canConfig) return; // ไม่มีสิทธิ์ลบ = ไม่ต้องรู้
+    setUsageLoading(true);
+    try {
+      const r = await getMenuUsageAction();
+      // อ่านไม่ได้ ≠ ไม่เคยขาย (D89) → ปล่อยเป็น null ปุ่มลบเทาพร้อมบอกว่าตรวจไม่ได้
+      setUsed(r.ok ? new Set(r.data as string[]) : null);
+    } catch {
+      setUsed(null);
+    } finally {
+      setUsageLoading(false);
+    }
+  }, [data.canConfig]);
+
+  useEffect(() => {
+    void loadUsage();
+  }, [loadUsage]);
 
   async function run(fn: () => Promise<{ ok: boolean; error?: string }>, okText: string) {
     setBusy(true);
@@ -62,19 +91,45 @@ export function MenuTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pro
     m.createdFor ? customerLabel(data.customers.find((c) => c.customerId === m.createdFor)) : "";
 
   const shown = useMemo(() => {
-    let list = data.menus;
+    let list = showInactive ? data.menus : data.menus.filter((m) => m.active !== false);
     if (cat) list = list.filter((m) => m.categoryId === cat);
     // D111 — ค้นด้วยชื่อลูกค้าที่เมนูถูกสร้างให้ได้ด้วย
     return searchMenus(list, q, (m) => ownerOf(m)).sort((a, b) => a.name.localeCompare(b.name, "th"));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ownerOf อ่านจาก data.customers ที่อยู่ใน deps แล้ว
-  }, [data.menus, data.customers, cat, q]);
+  }, [data.menus, data.customers, cat, q, showInactive]);
 
   const catName = (id: string) => data.categories.find((c) => c.categoryId === id)?.name ?? id;
+
+  async function toggleActive(m: BarMenu) {
+    const next = m.active === false;
+    await run(() => setMenuActiveAction(m.menuId, next), menuToggleDoneText(m.name, next));
+  }
+
+  async function removeMenu(m: BarMenu) {
+    const c = menuDeleteConfirm(m.name, m.recipe.length > 0);
+    if (!(await ask({ ...c, cancelText: "กลับ", danger: true }))) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await deleteMenuAction(m.menuId);
+      if (!r.ok) {
+        setMsg({ ok: false, text: r.error ?? "ลบเมนูไม่สำเร็จ" });
+        return;
+      }
+      await onReload();
+      const d = (r.data ?? {}) as { lab_cards_reset?: number };
+      setMsg({ ok: true, text: menuDeletedText(m.name, Number(d.lab_cards_reset ?? 0)) });
+    } finally {
+      setBusy(false);
+      void loadUsage();
+    }
+  }
 
   if (!data.entityId) return null;
 
   return (
     <div className="space-y-4">
+      {confirmNode}
 
       {/* 🚨 แถบตามเก็บ — ต้องบอกจำนวนและกดเข้าไปดูได้ ไม่ใช่แค่เตือนลอย ๆ */}
       {unset.length > 0 && (
@@ -104,6 +159,15 @@ export function MenuTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pro
               ))}
             </Select>
           </div>
+          {inactiveToggleLabel(inactiveCount, showInactive) && (
+            <button
+              type="button"
+              onClick={() => setShowInactive((v) => !v)}
+              className="rounded-lg bg-raised px-3 py-1.5 text-sm text-muted"
+            >
+              {inactiveToggleLabel(inactiveCount, showInactive)}
+            </button>
+          )}
           {canWrite && (
             <>
               <button
@@ -156,10 +220,26 @@ export function MenuTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pro
                   refsOf(data),
                 );
                 const warn = menuWarning(m);
+                const inactive = m.active === false;
+                const rm = menuRemoveState(
+                  {
+                    name: m.name,
+                    active: !inactive,
+                    used: used ? used.has(m.menuId) : null,
+                    canWrite,
+                    canConfig: data.canConfig,
+                  },
+                  usageLoading,
+                );
                 return (
-                  <tr key={m.menuId}>
+                  <tr key={m.menuId} className={inactive ? "opacity-60" : undefined}>
                     <td>
                       <span className="text-ink">{m.name}</span>
+                      {inactive && (
+                        <span className="ml-2">
+                          <Badge tone="neutral">ปิดใช้ · ไม่ขึ้นหน้าขาย</Badge>
+                        </span>
+                      )}
                       {/* D127 — ผู้ใช้ขอ: แสดงทั้งชื่อช่องเหล้าประจำบ้านและขวดที่ช่องชี้อยู่ตอนนี้ */}
                       {m.recipe.length > 0 && (
                         <div className="text-xs text-muted">{recipeText(m.recipe, data.items, refsOf(data))}</div>
@@ -179,10 +259,31 @@ export function MenuTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pro
                       <Badge tone={menuMode(m) === "unset" ? "warn" : "neutral"}>{MODE_LABEL[menuMode(m)]}</Badge>
                       {warn && menuMode(m) !== "unset" && <div className="text-xs text-warn">{warn}</div>}
                     </td>
-                    <td className="text-right">
+                    <td className="whitespace-nowrap text-right text-xs">
                       {canWrite && (
-                        <button type="button" onClick={() => setEdit(m.menuId)} className="text-xs text-muted underline">
+                        <button type="button" onClick={() => setEdit(m.menuId)} className="text-muted underline">
                           แก้
+                        </button>
+                      )}
+                      {rm.showToggle && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void toggleActive(m)}
+                          className="ml-3 text-muted underline disabled:opacity-40"
+                        >
+                          {rm.toggleLabel}
+                        </button>
+                      )}
+                      {rm.showDelete && (
+                        <button
+                          type="button"
+                          disabled={busy || rm.deleteBlocked !== null}
+                          title={rm.deleteBlocked ?? undefined}
+                          onClick={() => void removeMenu(m)}
+                          className="ml-3 text-crit underline disabled:text-faint disabled:no-underline"
+                        >
+                          ลบ
                         </button>
                       )}
                     </td>
