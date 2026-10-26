@@ -84,6 +84,7 @@ export function PrepView({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
       title: `ยกเลิกล็อต ${b.batchId}?`,
       detail: cancelConfirmText(b, unit),
       confirmText: "ยกเลิกล็อต",
+      cancelText: "กลับ",
       danger: true,
     });
     if (ok) await run(() => prepCancelAction(b.batchId), `ยกเลิกล็อต ${b.batchId} แล้ว`);

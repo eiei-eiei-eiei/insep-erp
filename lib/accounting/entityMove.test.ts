@@ -66,6 +66,12 @@ describe("A26 — ด่านที่บันทึกไม่ผ่าน�
 
   it("🚨 มี VAT แล้วย้ายไปกิจการไม่จด VAT = บอกให้เอาติ๊ก VAT ออก (ด่าน 0036)", () => {
     expect(entityMoveError({ ...base, vatAmount: 70, toIsVat: false })).toContain("ไม่ได้จดทะเบียน VAT");
+    // 🚨 D136 — ห้ามบอกว่า "VAT จะรวมเป็นต้นทุน" (ระบบไม่ได้ทำ · เอาติ๊กออกแล้ว VAT หายจากยอด)
+    //    ต้องบอกให้แก้ราคาเอง + บอกจำนวนที่จะหาย
+    const msg = entityMoveError({ ...base, vatAmount: 1070, toIsVat: false })!;
+    expect(msg).not.toContain("จะรวมเป็นต้นทุน");
+    expect(msg).toContain("แก้ราคาเป็นยอดที่จ่ายจริงรวม VAT");
+    expect(msg).toContain("1,070.00 บาทจะหายไปจากยอดบิล");
     expect(entityMoveError({ ...base, vatAmount: 0, toIsVat: false })).toBeNull();
     expect(entityMoveError({ ...base, vatAmount: 70, toIsVat: true })).toBeNull();
     // ไม่รู้ = ไม่เดา (DB ตอบเอง)

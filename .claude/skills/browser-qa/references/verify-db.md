@@ -99,3 +99,8 @@ RPC/trigger/CHECK constraint ไม่มีทางเห็นจาก TypeS
 ถ้าเทสในระบบเป็นชุด ๆ (seed → เทส → ล้าง) มีของพร้อมใช้อยู่แล้ว:
 `supabase/seed/seed_test.sql` · `seed_accounting.sql` · `seed_sales.sql` · `seed_fermented.sql`
 · ล้างทีเดียวด้วย `cleanup_test.sql` (marker: entity `EID99` · รหัสขึ้นต้น `T-` · ชื่อมีคำว่า "ทดสอบ")
+  🚨 ต้องแก้ `v_slug` เป็น tenant ทดสอบก่อนรัน (D136) — รุ่นก่อนไม่กรอง tenant = ลบค่าตั้งของลูกค้าทุกราย
+  ⚠️ มันลบค่าตั้งบาร์ทั้งชุดของ tenant นั้นด้วย · ถ้าแค่เก็บของที่ตัวเองสร้างในรอบเทส
+  ให้ลบเฉพาะแถวนั้นด้วยสคริปต์ service role ที่ `.eq("tenant_id", …)` ทุก query (ปลอดภัยกว่า)
+  ★ ลอง SQL บน DB จริงแบบไม่เสียของ: `supabase db query --db-url … -f file.sql` ด้วยบล็อก `do $$` ที่
+  `raise exception` ไว้ท้ายบล็อก → ทุกคำสั่งรันจริงแล้วย้อนกลับทั้งหมด (CLI รับทีละคำสั่ง)

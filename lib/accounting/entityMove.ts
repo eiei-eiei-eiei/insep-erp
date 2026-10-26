@@ -83,7 +83,10 @@ export function entityMoveError(x: MoveCheckInput): string | null {
   }
   // บิลสำรองจ่าย: VAT ดูกิจการที่ซื้อให้ (0086) — ย้ายคนจ่ายไม่กระทบ
   if (x.type !== "สำรองจ่าย" && x.vatAmount > 0 && x.toIsVat === false) {
-    return `${x.toName} ไม่ได้จดทะเบียน VAT — เอาติ๊ก มี VAT 7% ออกก่อน (VAT จะรวมเป็นต้นทุน)`;
+    // 🚨 D136 — เอาติ๊กออกแล้วระบบคิดจากราคาไม่รวม VAT (D98) ⇒ VAT หายจากยอด ไม่ได้รวมเข้าต้นทุน
+    //    เดิมเขียนว่า "(VAT จะรวมเป็นต้นทุน)" = ผู้ใช้เชื่อแล้วกดบันทึก ยอดบิลต่ำกว่าเงินที่จ่ายจริงเงียบ ๆ
+    const vat = x.vatAmount.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return `${x.toName} ไม่ได้จดทะเบียน VAT — เอาติ๊ก มี VAT 7% ออก แล้วแก้ราคาเป็นยอดที่จ่ายจริงรวม VAT · ถ้าแค่เอาติ๊กออก VAT ${vat} บาทจะหายไปจากยอดบิล (ระบบไม่บวกเข้าต้นทุนให้เอง)`;
   }
   return null;
 }

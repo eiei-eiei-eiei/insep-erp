@@ -66,6 +66,8 @@ beforeAll(async () => {
     tenant_id: T, entity_id: A.entityId, tx_id: id, transaction_date: "2026-10-10", type: "รายจ่าย",
     account_name: ACC, net_amount: 100, amount_after_discount: 100, base_amount: 100, status: "ปกติ", ...over,
   });
+  // 🪤 insert หลายแถวที่คีย์ไม่เท่ากัน = PostgREST ใช้คอลัมน์รวมของทุกแถว แล้วแถวที่ไม่มีคีย์ได้ null
+  //    (ไม่ใช่ค่า default) → ชน not null ของ vat_amount/source · defaultToNull:false ให้ใช้ default ของ DB
   must("บิล", (await db.from("transactions").insert([
     tx(TX.ui),
     tx(TX.vat, { vat_amount: 7, net_amount: 107 }),
@@ -74,7 +76,7 @@ beforeAll(async () => {
     // service role ผ่าน trigger advance_guard ได้ (0086)
     tx(TX.adv, { type: "สำรองจ่าย", advance_for_entity: B, advance_status: "รอเบิกคืน" }),
     tx(TX.staff),
-  ])).error);
+  ], { defaultToNull: false })).error);
   must("50ทวิ", (await db.from("wht_certificates").insert({
     tenant_id: T, entity_id: A.entityId, doc_no: "T-MOVE-6901", issue_date: "2026-10-10",
     contact_name: "คู่ค้าทดสอบ", wht_amount: 3, tx_ids: [TX.wht],
@@ -156,7 +158,11 @@ describe("ย้ายไม่ได้ — แถวใน DB ต้องไ�
 
   it("🚨 ผู้ใช้ที่ถูกจำกัดกิจการ ย้ายบิลไปกิจการที่ตัวเองไม่มีสิทธิ์ไม่ได้ (RLS) · แก้ช่องอื่นได้", async () => {
     const bad = await edit(asStaff, TX.staff, { entity_id: B });
-    expect(bad.error).not.toBeNull();
+    // ★ บล็อกได้ 2 ชั้น: RLS ของ entities ซ่อน EIDB → ด่าน "ไม่พบกิจการ" ตอบ ok:false ก่อนถึง update
+    //    (ถ้าด่านนั้นหาย RLS WITH CHECK ของ transactions เด้งเป็น error แทน) · ตัวตัดสินจริงคือแถวไม่ขยับ
+    //    🪤 รอบแรกเขียนว่า error ต้องไม่ null → แดงทั้งที่บล็อกถูก (บทเรียน D95: เทสแดงด้วยเหตุผลผิด)
+    const blocked = bad.error !== null || (bad.data as { ok?: boolean } | null)?.ok === false;
+    expect(blocked).toBe(true);
     expect(await entityOf(TX.staff)).toBe(A.entityId);
     const ok = await edit(asStaff, TX.staff, { entity_id: "", description: "staff แก้ได้" });
     expect(ok.error).toBeNull();

@@ -263,9 +263,20 @@ export function HistoryTab({ boot, onReload }: { boot: BarBoot; onReload: () => 
                                           ? "ออกใบเสร็จไปแล้ว — ใบอยู่ในมือลูกค้า ต้องยกเลิกทั้งบิลแล้วออกใหม่"
                                           : "บิลนี้ยังไม่ปิด หรือถูกยกเลิกไปแล้ว"
                                     }
-                                    onClick={() =>
-                                      run(() => voidLineAction({ saleNo: s.sale_no, lineNo: l.line_no }), "ยกเลิกรายการแล้ว")
-                                    }
+                                    onClick={async () => {
+                                      // 🪤 D136 — เดิมกดครั้งเดียวยกเลิกทันที (บิลปิดแล้ว · ยอดขายลด · คืนสต็อก) โดยไม่ถาม
+                                      //    ปุ่มเป็นลิงก์ตัวเล็กติดชื่อเมนู กดพลาดง่าย และกู้กลับไม่ได้
+                                      const ok = await ask({
+                                        title: `ยกเลิก ${l.qty}× ${l.menu_name} ในบิล ${s.sale_no}?`,
+                                        detail: l.is_comp
+                                          ? "รายการแถม — ยอดบิลไม่เปลี่ยน · สต็อกที่ตัดไปจะถูกคืน"
+                                          : `ยอดบิลลดลง ${fmt(Number(l.amount))} บาท · สต็อกที่ตัดไปจะถูกคืน · กู้กลับไม่ได้ (ต้องขายใหม่)`,
+                                        confirmText: "ยกเลิกรายการ",
+                                        cancelText: "กลับ",
+                                        danger: true,
+                                      });
+                                      if (ok) void run(() => voidLineAction({ saleNo: s.sale_no, lineNo: l.line_no }), "ยกเลิกรายการแล้ว");
+                                    }}
                                     className="text-xs text-crit underline disabled:opacity-40"
                                   >
                                     ยกเลิกรายการ
@@ -314,6 +325,7 @@ export function HistoryTab({ boot, onReload }: { boot: BarBoot; onReload: () => 
                                       title: `ยกเลิกบิล ${s.sale_no} ทั้งใบ?`,
                                       detail: "สต็อกจะถูกคืนกลับทุกรายการ · บิลถูกทำเครื่องหมายว่ายกเลิก ไม่ได้ลบทิ้ง",
                                       confirmText: "ยกเลิกทั้งบิล",
+                                      cancelText: "กลับ",
                                       danger: true,
                                     });
                                     if (ok) void run(() => voidSaleAction(s.sale_no), "ยกเลิกบิลแล้ว");

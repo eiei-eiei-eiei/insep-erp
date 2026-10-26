@@ -30,6 +30,7 @@ import {
   cashDateOf,
   missingInvoicePurchases,
   missingInvoiceWarn,
+  missingInvoiceListText,
   type Tx,
   type ContactMap,
   type TaxSummaryRow,
@@ -522,5 +523,15 @@ describe("A24 — ไม่กรองบัญชี · บิลซื้อ�
     expect(missingInvoiceWarn("รายจ่าย", true, "B-1")).toBeNull();
     expect(missingInvoiceWarn("รายจ่าย", false, "")).toBeNull();
     expect(missingInvoiceWarn("รายรับ", true, "")).toBeNull();
+  });
+
+  it("🚨 D136 — คำแนะนำให้เอาติ๊ก VAT ออก ต้องบอกให้แก้ราคาเอง ไม่ใช่อ้างว่า VAT จะรวมเป็นต้นทุน", () => {
+    // เอาติ๊กออกแล้วระบบคิดจากราคาไม่รวม VAT (D98) → VAT หายจากยอด ไม่ได้ถูกบวกเข้าต้นทุน
+    const warn = missingInvoiceWarn("รายจ่าย", true, "")!;
+    const howTo = missingInvoiceListText(1, 7)!.howTo;
+    for (const t of [warn, howTo]) {
+      expect(t).not.toContain("จะรวมเป็นต้นทุน");
+      expect(t).toContain("แก้ราคาเป็นยอดที่จ่ายจริงรวม VAT");
+    }
   });
 });

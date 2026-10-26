@@ -59,6 +59,21 @@ describe("D134 — ห้ามใช้กล่องของเบราว�
     expect(offenders).toEqual([]);
   });
 
+  it("🪤 D136 — ปุ่มยืนยันที่ขึ้นต้นด้วย 'ยกเลิก…' ต้องคู่กับปุ่ม 'กลับ' (ไม่งั้นได้ [ยกเลิกบิล] [ยกเลิก] กำกวม)", () => {
+    // เจอตอนเทสเบราว์เซอร์: D134 ไล่เปลี่ยนแล้วแต่ตกที่ประวัติบิลบาร์ + ของทำเอง
+    const offenders: string[] = [];
+    for (const f of files.filter((x) => x.endsWith(".tsx"))) {
+      const c = code(f);
+      for (const m of c.matchAll(/ask\(\{([\s\S]*?)\}\)/g)) {
+        const body = m[1];
+        if (/confirmText:\s*[`"']ยกเลิก/.test(body) && !/cancelText:\s*[`"']กลับ[`"']/.test(body)) {
+          offenders.push(`${rel(f)} → ${body.replace(/\s+/g, " ").slice(0, 90)}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
   it("🚩 เทสข้างบนจับได้จริง (กันผ่านเพราะไม่ได้ตรวจอะไร)", () => {
     const re = /(?<![.\w])(confirm|alert|prompt)\s*\(|window\.(confirm|alert|prompt)\s*\(/;
     expect(re.test(`if (!confirm("ลบ?")) return;`)).toBe(true);
