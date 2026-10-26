@@ -1,5 +1,6 @@
 "use client";
 
+import { salesProductionText } from "@/lib/sales/productionText";
 import { useMemo, useState } from "react";
 import type { SalesBoot, CustomerRow, MenuRow, OrderItem } from "./types";
 import { Card, Combobox, MissingHint, Msg, Select, fmt, useSaver } from "./ui";
@@ -444,13 +445,14 @@ export function PosTab({ boot, canWrite }: { boot: SalesBoot; canWrite: boolean 
             ลงบัญชีรายรับ · ตัดสต็อก · ออก{isVat ? "ใบกำกับภาษี/ใบเสร็จ" : "ใบเสร็จรับเงิน"}/ใบส่งของ ให้อัตโนมัติ
             <br />
             {/* D100 เฟส 3 — เดิมเขียนว่า "ขายย้อนวันไม่ได้" (D86) ซึ่งขัดกับกล่องลงย้อนหลังด้านบน */}
-            ระบบล่มในวันที่ขาย? ติ๊ก &ldquo;ลงรายการย้อนหลัง&rdquo; ด้านบน — เลขใบเสร็จ บัญชี และฟอร์ม ภส. จะเป็นของวันนั้น
+            {salesProductionText(boot.hasProduction).posBackdate}
           </p>
         </div>
       </Card>
 
       {showAdd && (
         <AddCustomerModal
+          hasProduction={boot.hasProduction}
           onClose={() => setShowAdd(false)}
           onAdded={(c) => {
             setCustomers((prev) => [...prev, c]);

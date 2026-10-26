@@ -26,3 +26,15 @@ describe("หมวดจุดชนวนรับวัตถุดิบ (D8
     expect(isForwardCat("   ", ["วัตถุดิบผลิตสุรา"])).toBe(false);
   });
 });
+
+describe("D133 — ไม่มีโมดูลผลิต = ไม่มีหมวดรับวัตถุดิบ", () => {
+  it("ค่าปริยาย 'วัตถุดิบผลิตสุรา' ไม่โผล่ให้ลูกค้าที่ไม่ได้ทำโรงเหล้า", () => {
+    expect(forwardCatsOf(null, false)).toEqual([]);
+  });
+  it("แม้เคยตั้งหมวดไว้ (เลิกใช้โมดูลผลิตทีหลัง) ก็ไม่จุดชนวนส่งของเข้าสต็อกผลิต", () => {
+    expect(forwardCatsOf(["ค่าต้นทุนสินค้า"], false)).toEqual([]);
+  });
+  it("ไม่ส่งธง = พฤติกรรมเดิม", () => {
+    expect(forwardCatsOf(null)).toEqual(forwardCatsOf(null, true));
+  });
+});

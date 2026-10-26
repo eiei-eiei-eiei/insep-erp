@@ -2,17 +2,16 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
 import { createClient } from "@/lib/supabase/server";
-import { workspacesWithLock } from "@/lib/shared/workspaces";
+import { workspacesFor } from "@/lib/shared/workspaces";
 import { toRole } from "@/lib/shared/roles";
-import { WORKSPACE_ICON, IconLock } from "@/lib/shared/icons";
+import { WORKSPACE_ICON } from "@/lib/shared/icons";
 import { isPlatformAdmin } from "@/lib/platform/auth";
 
 /**
  * หน้าแรก — เลือกพื้นที่ทำงาน
  *
- * ★ โมดูลที่ลูกค้ายังไม่ได้ซื้อ **แสดงเป็นการ์ดเทากดไม่ได้ ไม่ใช่ซ่อนทิ้ง**
- *   ให้ลูกค้าเห็นว่ามีของให้ซื้อเพิ่ม (ซ่อนไปเลย = ไม่มีใครรู้ว่าขายอะไรอยู่)
- *   ส่วนแถบเมนูด้านบนยังซ่อนตามเดิม — เมนูที่ใช้ทุกวันต้องสะอาด ไม่ใช่ที่โฆษณา
+ * ★ D133 — โชว์เฉพาะโมดูลที่ซื้อไว้ (ตัวกรองเดียวกับแถบเมนู) · เดิมเป็นการ์ดเทาให้เห็นว่ามีของขายเพิ่ม
+ *   แต่ลูกค้าที่ไม่ได้ทำโรงเหล้าเห็น "ผลิต"/"บาร์" แล้วงงเปล่า ๆ
  *   ★ ด่านจริงอยู่ที่ requireModule() ใน page.tsx ของแต่ละโดเมน ไม่ใช่การ์ดใบนี้
  */
 export default async function HomePage() {
@@ -31,41 +30,22 @@ export default async function HomePage() {
   ]);
 
   const role = toRole(profile?.role as string | null);
-  const workspaces = workspacesWithLock(role, tenant?.modules_enabled as string[] | null);
-  const lockedCount = workspaces.filter((w) => w.locked).length;
+  const workspaces = workspacesFor(role, tenant?.modules_enabled as string[] | null);
 
   return (
     <div>
       <h1 className="mb-1 text-2xl font-bold text-ink">เลือกพื้นที่ทำงาน</h1>
       <p className="mb-6 text-sm text-faint">
         ข้อมูลชุดเดียว · {workspaces.length} มุมมองงาน
-        {lockedCount > 0 && ` · ${lockedCount} รายการยังไม่ได้เปิดใช้`}
       </p>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {workspaces.map((w) => {
-          // 🐛 D96 — เดิมเขียน `?? IconLock` ไว้ แล้ว `WORKSPACE_ICON` ตกคีย์ `bar`
+          // 🐛 D96 — เดิมเขียน fallback เป็นไอคอนกุญแจไว้ แล้ว `WORKSPACE_ICON` ตกคีย์ `bar`
           //    ⇒ การ์ดบาร์ขึ้น **รูปกุญแจ** เหมือนยังไม่ได้ซื้อโมดูล ทั้งที่เปิดใช้อยู่
           //    ตอนนี้ Record ครบทุก key แล้ว (TS บังคับ) → ไม่ต้อง fallback อีก
           //    🚨 อย่าเอา `??` กลับมา — มันคือตัวที่กลืนความผิดพลาดนี้ไว้ 1 รอบเต็ม
           const Icon = WORKSPACE_ICON[w.key];
-
-          if (w.locked) {
-            return (
-              <div
-                key={w.key}
-                aria-disabled="true"
-                className="cursor-not-allowed rounded-lg border border-line bg-raised p-6 opacity-70"
-              >
-                <div className="flex items-start justify-between">
-                  <Icon size={32} className="text-faint" />
-                  <IconLock size={18} className="text-faint" />
-                </div>
-                <div className="mt-3 text-lg font-semibold text-muted">{w.label}</div>
-                <div className="mt-1 text-xs text-faint">ยังไม่ได้เปิดใช้ — ซื้อเพิ่มได้</div>
-              </div>
-            );
-          }
 
           return (
             <Link
@@ -79,12 +59,6 @@ export default async function HomePage() {
           );
         })}
       </div>
-
-      {lockedCount > 0 && (
-        <p className="mt-4 text-xs text-faint">
-          รายการสีเทาคือส่วนที่ยังไม่ได้เปิดใช้ในแพ็กเกจของคุณ — ติดต่อผู้ดูแลระบบเพื่อเปิดเพิ่ม
-        </p>
-      )}
     </div>
   );
 }

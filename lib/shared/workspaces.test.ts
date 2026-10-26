@@ -1,5 +1,6 @@
+import fs from "node:fs";
 import { describe, it, expect } from "vitest";
-import { workspacesFor, workspacesWithLock, hasModule, WORKSPACES, ALL_MODULES, MODULES, MODULE_LABEL } from "./workspaces";
+import { workspacesFor, hasModule, WORKSPACES, ALL_MODULES, MODULES, MODULE_LABEL } from "./workspaces";
 
 /**
  * เมนูถูกกรอง 2 ชั้น: role (ทำอะไรได้) × โมดูล (ซื้ออะไรไว้)
@@ -78,21 +79,15 @@ describe("เงินเดือน (โมดูลที่ 4) — เปิ
   });
 });
 
-describe("workspacesWithLock — หน้าแรกโชว์ของที่ยังไม่ได้ซื้อเป็นสีเทา", () => {
-  it("ไม่ตัดทิ้ง แต่ติดธง locked ให้ตัวที่ยังไม่ได้ซื้อ", () => {
-    const ws = workspacesWithLock("main", ["production"]);
-    expect(ws).toHaveLength(WORKSPACES.length); // ครบทุกอัน ไม่หายไปไหน
-    const locked = ws.filter((w) => w.locked).map((w) => w.key).sort();
-    expect(locked).toEqual(["accounting", "bar", "payroll", "sales"]);
+describe("D133 — หน้าแรกไม่โชว์โมดูลที่ไม่ได้ซื้อ", () => {
+  it("หน้าแรกใช้ workspacesFor ตัวเดียวกับแถบเมนู (ไม่มีการ์ดเทา/กุญแจ)", () => {
+    const src = fs.readFileSync("app/(app)/page.tsx", "utf8");
+    expect(src).toContain("workspacesFor(");
+    expect(src).not.toMatch(/workspacesWithLock|IconLock|locked/);
   });
 
-  it("ซื้อครบ = ไม่มีอันไหน locked", () => {
-    expect(workspacesWithLock("main", ALL_MODULES).some((w) => w.locked)).toBe(false);
-  });
-
-  it("★ ชั้นสิทธิ์ยังตัดทิ้งเหมือนเดิม — ฝ่ายขายไม่ต้องเห็นว่ามีโมดูลบัญชีให้ซื้อ", () => {
-    const ws = workspacesWithLock("sales", ["sales"]);
-    expect(ws.map((w) => w.key)).toEqual(["sales"]);
+  it("ซื้อแค่บัญชี = หน้าแรกเห็นแค่บัญชี (ไม่มีผลิต/บาร์ให้งง)", () => {
+    expect(workspacesFor("main", ["accounting"]).map((w) => w.key)).toEqual(["accounting"]);
   });
 });
 

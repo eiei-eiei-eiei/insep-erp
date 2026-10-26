@@ -1,4 +1,6 @@
 import "server-only";
+import { getTenantPlan } from "@/lib/shared/tenant-plan";
+import { hasModule } from "@/lib/shared/workspaces";
 import { createClient } from "@/lib/supabase/server";
 import { formatThaiDate, type OrderState } from "@/lib/sales/orders";
 import { companyFromEntity, pickDocEntity, type EntityDocRow } from "@/lib/sales/company";
@@ -123,7 +125,9 @@ export async function getSalesBootstrap() {
   const walkinRaw = st.find((r) => r.kind === "pos_walkin_contact")?.value ?? "";
   const posWalkinId = customers.some((c) => c.id === walkinRaw) ? walkinRaw : "";
 
-  return { role, userName, customers, menu: menuList, company, isVat, posWalkinId };
+  // D133 — ไม่มีโมดูลผลิต = ประโยคในแอปขายไม่พูดถึงสุรา/ฟอร์ม ภส.
+  const hasProduction = hasModule((await getTenantPlan()).modules, "production");
+  return { role, userName, customers, menu: menuList, company, isVat, posWalkinId, hasProduction };
 }
 
 export type OrderRow = {

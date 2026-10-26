@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { ROLES, ROLE_LABEL, ROLE_HINT, type Role } from "@/lib/shared/roles";
+import { ROLE_LABEL, ROLE_HINT, type Role } from "@/lib/shared/roles";
+import { rolesFor } from "@/lib/shared/moduleScope";
 import { PASSWORD_MIN } from "@/lib/shared/password";
 import {
   Card,
@@ -35,12 +36,11 @@ export type UserRow = {
 };
 export type EntityOpt = { entity_id: string; name: string };
 
-/**
- * 🚨 อ่านจาก ROLES ที่ lib/shared/roles โดยตรง — **ห้ามก๊อปรายชื่อมาไว้ที่นี่**
+/*
+ * 🚨 รายชื่อบทบาทมาจาก `rolesFor()` (อ่าน ROLES/ROLE_CAPS ที่ lib/shared/roles) — **ห้ามก๊อปรายชื่อมาไว้ที่นี่**
  *    ลิสต์ที่ก๊อปไว้คือสาเหตุของ D84 (เพิ่มของใหม่แล้วหน้าจอไม่รู้จัก)
- *    ที่นี่พลาดแล้วหนักกว่า: เพิ่มบทบาทใหม่แล้ว **ตั้งให้ใครไม่ได้เลย**
+ * ★ D133 — กรองตามโมดูลที่ซื้อ (ไม่มีบาร์ = ไม่มี "พนักงานบาร์" ให้เลือก) · บทบาทเดิมของผู้ใช้คงไว้เสมอ
  */
-const ROLE_OPTIONS: readonly Role[] = ROLES;
 
 /** ป๊อปอัพที่เปิดอยู่ — `null` = ไม่มี */
 type Dialog = { kind: "reset" | "delete" | "scope"; user: UserRow } | null;
@@ -49,7 +49,10 @@ export function UsersManager({
   users,
   entities,
   currentUserId,
+  modules,
 }: {
+  /** D133 — โมดูลที่ลูกค้าซื้อ (กรองบทบาทที่ให้เลือก) */
+  modules: string[];
   users: UserRow[];
   entities: EntityOpt[];
   currentUserId: string;
@@ -148,7 +151,7 @@ export function UsersManager({
           <label className="text-sm">
             <span className="mb-1 block text-muted">สิทธิ์ (role)</span>
             <Select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-              {ROLE_OPTIONS.map((r) => (
+              {rolesFor(modules).map((r) => (
                 <option key={r} value={r}>
                   {ROLE_LABEL[r]} ({r})
                 </option>
@@ -220,7 +223,7 @@ export function UsersManager({
                         )
                       }
                     >
-                      {ROLE_OPTIONS.map((r) => (
+                      {rolesFor(modules, u.role).map((r) => (
                         <option key={r} value={r} title={ROLE_HINT[r]}>
                           {ROLE_LABEL[r]} ({r})
                         </option>

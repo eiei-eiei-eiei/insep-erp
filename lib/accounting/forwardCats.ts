@@ -14,7 +14,14 @@ export const FORWARD_CAT_KIND = "material_forward_cat";
 /** ค่าปริยายเมื่อลูกค้ายังไม่ได้ตั้งเอง */
 export const DEFAULT_FORWARD_CATS = ["วัตถุดิบผลิตสุรา"] as const;
 
-export function forwardCatsOf(configured: readonly string[] | null | undefined): string[] {
+/**
+ * หมวดที่มีผลจริง
+ * 🚨 D133 — ไม่ได้ซื้อโมดูลผลิต = **ว่างเสมอ** · เดิมค่าปริยาย "วัตถุดิบผลิตสุรา" ถูกเติมเข้าดร็อปดาวน์หมวดรายจ่าย
+ *    ของลูกค้าที่ไม่ได้ทำโรงเหล้าด้วย (งงเปล่า ๆ) และถ้าเลือกหมวดนั้น บิลจะส่งของเข้าสต็อกผลิตที่ไม่มีใครเห็น
+ *    `hasProduction` ไม่ส่ง = true (พฤติกรรมเดิม)
+ */
+export function forwardCatsOf(configured: readonly string[] | null | undefined, hasProduction = true): string[] {
+  if (!hasProduction) return [];
   const list = (configured ?? []).map((c) => c.trim()).filter(Boolean);
   return list.length ? list : [...DEFAULT_FORWARD_CATS];
 }

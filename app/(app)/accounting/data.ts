@@ -102,7 +102,8 @@ export async function getBootstrap() {
   // 🚨 D124 — ไม่อ่านค่าตั้ง "บัญชีในระบบภาษี" (kind tax_account) แล้ว (ภาษีขึ้นกับกิจการ + เอกสาร ไม่ใช่บัญชี) แถวเก่าใน DB ทิ้งไว้ได้ ไม่มีใครอ่าน
   // D80: หมวดที่จุดชนวนรับวัตถุดิบเข้าสต็อกผลิต — ตั้งเองได้ ไม่ตั้ง = ค่าปริยายในโค้ด
   const forwardCatsSet = byKind(FORWARD_CAT_KIND);          // ที่ลูกค้าตั้งเองจริง ๆ (อาจว่าง)
-  const forwardCats = forwardCatsOf(forwardCatsSet);        // ที่มีผลจริง (ว่าง = ค่าปริยาย)
+  const hasProduction = hasModule(plan.modules, "production");
+  const forwardCats = forwardCatsOf(forwardCatsSet, hasProduction); // ที่มีผลจริง (ว่าง = ค่าปริยาย · ไม่มีโมดูลผลิต = ไม่มีเลย D133)
 
   return {
     role,
@@ -116,7 +117,7 @@ export async function getBootstrap() {
     forwardCats,
     forwardCatsSet,
     // D125 — การ์ดหมวดรับวัตถุดิบเข้าสต็อกผลิต ไม่มีความหมายถ้าไม่ได้ซื้อโมดูลผลิต
-    hasProduction: hasModule(plan.modules, "production"),
+    hasProduction,
     // ★ แบรนด์ / กิจการบนเอกสาร / LINE ไม่อยู่ที่นี่แล้ว — ย้ายไป app/(app)/settings/settings-data.ts (D63)
   };
 }

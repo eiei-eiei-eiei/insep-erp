@@ -1,5 +1,6 @@
 "use client";
 
+import { salesProductionText } from "@/lib/sales/productionText";
 import { useState } from "react";
 import type { CustomerRow } from "./types";
 import { Msg, NumInput, TextInput, useSaver } from "./ui";
@@ -14,7 +15,7 @@ import { validateNewCustomer, branchToSave, taxIdToSave, hidesBranch } from "@/l
  *    การก๊อปไปอีกชุด = กติกาตรวจเลขภาษี 13 หลัก / เลขสาขา 5 หลัก มี 2 ที่
  *    แล้ววันหนึ่งจะแก้ไปแค่ที่เดียวโดยไม่มีอะไรฟ้อง (ตระกูล D84)
  */
-export function AddCustomerModal({ onClose, onAdded }: { onClose: () => void; onAdded: (c: CustomerRow) => void }) {
+export function AddCustomerModal({ onClose, onAdded, hasProduction }: { onClose: () => void; onAdded: (c: CustomerRow) => void; hasProduction: boolean }) {
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [taxId, setTaxId] = useState("");
@@ -88,7 +89,7 @@ export function AddCustomerModal({ onClose, onAdded }: { onClose: () => void; on
           <label className="flex items-center gap-3 rounded-lg border border-warn-line bg-warn-bg p-3 text-sm">
             <input type="checkbox" checked={isExport} onChange={(e) => setIsExport(e.target.checked)} />
             <span>
-              <b className="text-warn">ลูกค้าจำหน่ายต่างประเทศ (Export)</b> — ส่งข้อมูลให้แอปผลิตเป็น &quot;จำหน่ายต่างประเทศ&quot;
+              <b className="text-warn">ลูกค้าจำหน่ายต่างประเทศ (Export)</b> {salesProductionText(hasProduction).exportLabel}
               {isExport && showTaxFields && (
                 <>
                   <br />

@@ -1,5 +1,7 @@
 import { getEditHistory } from "../settings-data";
 import { HistoryCard } from "../_components/HistoryCard";
+import { getTenantPlan } from "@/lib/shared/tenant-plan";
+import { auditTablesFor } from "@/lib/shared/moduleScope";
 
 /**
  * ตั้งค่า → ประวัติการแก้ไข (D80)
@@ -14,15 +16,14 @@ export default async function HistorySettingsPage({
 }) {
   const sp = await searchParams;
   const days = sp.days === undefined ? 30 : Number(sp.days) || 0;
-  const { rows, total, limit } = await getEditHistory({
-    table: sp.table,
-    action: sp.action,
-    q: sp.q,
-    days,
-  });
+  const [{ rows, total, limit }, plan] = await Promise.all([
+    getEditHistory({ table: sp.table, action: sp.action, q: sp.q, days }),
+    getTenantPlan(),
+  ]);
 
   return (
     <HistoryCard
+      auditTables={auditTablesFor(plan.modules)}
       rows={rows}
       total={total}
       limit={limit}

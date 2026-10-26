@@ -8,6 +8,7 @@ import { Card, Field, MissingHint, Msg, SaveButton, Select, TextArea, TextInput,
 import { companyFromEntity } from "@/lib/sales/company";
 import { FILING_METHODS, FILING_METHOD_LABEL, toFilingMethod } from "@/lib/accounting/taxFiling";
 import { companyHeaderPreviewHtml } from "../../sales/_components/print";
+import type { CompanySections } from "@/lib/shared/moduleScope";
 
 /**
  * ข้อมูลกิจการ — ขึ้นหัวเอกสารการค้า (D44) + เลขทะเบียนสรรพสามิตที่ขึ้นหัวฟอร์ม ภส. (D64)
@@ -23,6 +24,9 @@ import { companyHeaderPreviewHtml } from "../../sales/_components/print";
  *    ของโรงที่สอง) การกดบันทึกจะย้ายกิจการที่ออกใบกำกับภาษีไปด้วยแบบเงียบ ๆ
  *
  * ★ ตัวอย่างด้านล่างเป็น "หัวกระดาษจริง" (เรียกฟังก์ชันเดียวกับตอนพิมพ์) — เห็นอย่างไรได้อย่างนั้น
+ *
+ * ★ D133 — ช่อง/การ์ดที่เป็นของโมดูลเดียวโชว์เฉพาะลูกค้าที่ซื้อโมดูลนั้น (`sections` จาก
+ *   `companySectionsFor()`) · ซ่อนแค่บนจอ ค่าเดิมในฟอร์มยังถูกส่งกลับตอนบันทึก (ไม่ล้างให้)
  */
 export function CompanyCard({
   entities,
@@ -30,7 +34,9 @@ export function CompanyCard({
   revenueEntityId,
   revenueAccountName,
   accounts,
+  sections,
 }: {
+  sections: CompanySections;
   entities: SettingsEntity[];
   docEntityId: string;
   revenueEntityId: string;
@@ -95,8 +101,10 @@ export function CompanyCard({
     <div className="space-y-4">
       <Card title="ข้อมูลกิจการ">
         <p className="mb-3 text-xs text-faint">
-          ค่าชุดนี้ขึ้นหัวใบเสนอราคา / ใบแจ้งหนี้ / ใบกำกับภาษี / ใบเสร็จรับเงิน และหัวฟอร์มราชการ
-          (แก้ที่นี่ที่เดียว เอกสารทั้งระบบตรงกัน)
+          {sections.salesDocs
+            ? "ค่าชุดนี้ขึ้นหัวใบเสนอราคา / ใบแจ้งหนี้ / ใบกำกับภาษี / ใบเสร็จรับเงิน และหัวฟอร์มราชการ"
+            : "ค่าชุดนี้ขึ้นหัวเอกสารและฟอร์มราชการของระบบ"}
+          {" "}(แก้ที่นี่ที่เดียว เอกสารทั้งระบบตรงกัน)
         </p>
         <Msg msg={msg} />
 
@@ -135,6 +143,7 @@ export function CompanyCard({
           <Field label="เบอร์โทร (ไม่ใส่ = ไม่ขึ้นท้ายบรรทัดเลขภาษี)">
             <TextInput value={form.phone} onChange={set("phone")} placeholder="0X-XXX-XXXX" />
           </Field>
+          {sections.excise && (
           <Field label="เลขทะเบียนสรรพสามิต (ขึ้นหัวฟอร์ม ภส.)">
             <TextInput value={form.exciseId} onChange={set("exciseId")} placeholder="เช่น 0605567002178-1-001" />
             <span className={`mt-1 block text-xs ${exciseWarn ? "text-warn" : "text-faint"}`}>
@@ -143,11 +152,13 @@ export function CompanyCard({
                 : "พิมพ์ขีดคั่นได้ตามใบจริง — ระบบแยกลงช่อง 13-1-3 (17 ตัวเลข) ให้เอง"}
             </span>
           </Field>
+          )}
           {/*
             D95 — วิธียื่นแบบตัดสิน **วันสุดท้ายจริง** ของกิจการนี้ ซึ่งเป็นวันที่ระบบใช้
             ยิงเตือนเข้ากลุ่ม LINE · ไม่ตั้ง = ใช้กำหนดของกระดาษ (เร็วกว่า) แล้วบอกในข้อความ
             🚨 บอกวันของทั้ง 2 แบบไว้ตรงนี้ด้วย เพราะเป็นจุดที่ผู้ใช้ต้องตัดสินใจ
           */}
+          {sections.filingMethod && (
           <Field label="วิธียื่นแบบภาษี (ใช้คิดวันเตือนกำหนดยื่น)">
             <Select value={form.filingMethod} onChange={set("filingMethod")}>
               <option value="">— ยังไม่ได้ตั้ง (ระบบใช้กำหนดของกระดาษ) —</option>
@@ -161,6 +172,8 @@ export function CompanyCard({
               {form.filingMethod === "" && " · ยังไม่ตั้ง = เตือนตามกำหนดกระดาษ ซึ่งเร็วกว่าเสมอ"}
             </span>
           </Field>
+          )}
+          {sections.ssoEmployer && (
           <Field label="เลขที่บัญชีนายจ้าง ประกันสังคม (ขึ้นหัว สปส.1-10)">
             <TextInput
               value={form.ssoEmployerNo}
@@ -172,6 +185,8 @@ export function CompanyCard({
               แต่เลขนี้เป็นคนละตัวกัน ถ้ามีใบของ สปส. อยู่ ควรกรอกให้ตรง
             </span>
           </Field>
+          )}
+          {sections.salesDocs && (
           <div className="sm:col-span-2">
             <Field label="ช่องทางการโอนเงิน (ขึ้นบรรทัดใหม่ได้ · ไม่ใส่ = ไม่ขึ้นกล่องนี้บนเอกสาร)">
               <TextArea
@@ -182,8 +197,10 @@ export function CompanyCard({
               />
             </Field>
           </div>
+          )}
         </div>
 
+        {sections.salesDocs && (
         <div className="mt-4">
           <span className="mb-1 block text-xs font-medium tracking-wide text-muted">ตัวอย่างหัวกระดาษจริง</span>
           {/* พื้นขาวตายตัวโดยตั้งใจ (ไม่ใช้ token ธีม) — นี่คือกระดาษ ไม่ใช่หน้าจอแอป */}
@@ -194,6 +211,7 @@ export function CompanyCard({
             กล่องนี้พื้นขาวเสมอ (เอกสารพิมพ์ลงกระดาษ ไม่ตามธีมแอป) · ถ้าเห็นสาขาซ้ำสองที่ ให้ลบคำว่าสาขา/สำนักงานใหญ่ออกจากช่องที่อยู่
           </p>
         </div>
+        )}
 
         <div className="mt-4">
           <SaveButton pending={pending} onClick={save} disabled={!entityId || !form.name.trim()}>
@@ -203,7 +221,7 @@ export function CompanyCard({
         </div>
       </Card>
 
-      {multiEntity && (
+      {sections.salesDocs && multiEntity && (
         <Card title="กิจการที่ออกเอกสารการค้า">
           <p className="mb-3 text-xs text-faint">
             ใบเสนอราคา / ใบแจ้งหนี้ / ใบกำกับภาษี / ใบเสร็จ จะออกในนามกิจการนี้ — แยกจากช่อง
@@ -234,6 +252,7 @@ export function CompanyCard({
         ถ้ายังไม่ตั้ง ปุ่มรับเงินในแอปขายจะตันทั้งหมด — เดิมตั้งได้ทางเดียวคือยิง SQL
         ★ แยกจากการ์ด "กิจการที่ออกเอกสารการค้า" โดยตั้งใจ (คนละเรื่อง ตั้งต่างกันได้)
       */}
+      {sections.salesDocs && (
       <Card title="กิจการและบัญชีที่รับรายได้จากการขาย">
         <p className="mb-3 text-xs text-faint">
           เวลารับเงินจากออเดอร์ ระบบจะลงบิลรายรับเข้ากิจการนี้และบัญชีนี้
@@ -271,6 +290,7 @@ export function CompanyCard({
         </div>
         <MissingHint checks={[{ label: "กิจการที่รับรายได้", ok: !!revId }, { label: "บัญชีที่เงินเข้า", ok: !!revAcc }]} prefix="ยังเลือกไม่ครบ" />
       </Card>
+      )}
     </div>
   );
 }

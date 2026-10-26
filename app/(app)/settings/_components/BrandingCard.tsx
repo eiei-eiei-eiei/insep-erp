@@ -37,7 +37,7 @@ export function BrandingCard({
       <Msg msg={msg} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="ชื่อที่แสดงบนแถบเมนู">
-          <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="เช่น โรงกลั่นอินเสพ" />
+          <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="เช่น ร้านของฉัน" />
         </Field>
         <Field label="โหมดเริ่มต้นเมื่อเปิดแอปครั้งแรก">
           <Select value={mode} onChange={(e) => setMode(e.target.value as ColorMode)}>

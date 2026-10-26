@@ -76,9 +76,9 @@ export function SalesApp({ boot }: { boot: SalesBoot }) {
       )}
       {visited.has("pos") && <div className={show("pos")}><PosTab boot={boot} canWrite={canWrite} /></div>}
       {visited.has("orders") && <div className={show("orders")}><OrdersTab boot={boot} canWrite={canWrite} onEdit={startEdit} active={tab === "orders"} /></div>}
-      {visited.has("warehouse") && <div className={show("warehouse")}><WarehouseTab role={boot.role} company={boot.company} active={tab === "warehouse"} /></div>}
+      {visited.has("warehouse") && <div className={show("warehouse")}><WarehouseTab role={boot.role} company={boot.company} active={tab === "warehouse"} hasProduction={boot.hasProduction} /></div>}
       {visited.has("sync") && <div className={show("sync")}><SyncHistoryTab active={tab === "sync"} /></div>}
-      {visited.has("manage") && <div className={show("manage")}><MenuTab active={tab === "manage"} /></div>}
+      {visited.has("manage") && <div className={show("manage")}><MenuTab active={tab === "manage"} hasProduction={boot.hasProduction} /></div>}
     </div>
   );
 }

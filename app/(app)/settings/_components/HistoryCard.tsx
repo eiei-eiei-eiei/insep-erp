@@ -2,7 +2,7 @@
 
 import { Fragment, useState } from "react";
 import { Card, Empty, Badge, RowBtn } from "@/lib/shared/ui";
-import { AUDITED_TABLES, tableLabel } from "@/lib/shared/tenantTables";
+import { tableLabel, type TenantTable } from "@/lib/shared/tenantTables";
 import { changedFields, rawBefore, rowPkLabel, ACTION_LABEL_TH, type EditLogRow } from "@/lib/shared/editLog";
 
 /**
@@ -25,7 +25,10 @@ export function HistoryCard({
   total,
   limit,
   filter,
+  auditTables,
 }: {
+  /** D133 — ตารางที่ให้กรอง ตามโมดูลที่ซื้อ (`auditTablesFor`) */
+  auditTables: readonly TenantTable[];
   rows: EditLogRow[];
   total: number;
   limit: number;
@@ -34,7 +37,7 @@ export function HistoryCard({
   const [open, setOpen] = useState<number | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
-  const tables = [...AUDITED_TABLES].sort((a, b) => tableLabel(a).localeCompare(tableLabel(b), "th"));
+  const tables = [...auditTables].sort((a, b) => tableLabel(a).localeCompare(tableLabel(b), "th"));
 
   async function copy(key: string, value: string) {
     try {

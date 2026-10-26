@@ -17,6 +17,8 @@ export type SalesBoot = {
   /** contact_id ของ "ลูกค้าทั่วไป" ที่ตั้งไว้สำหรับหน้าขายหน้าร้าน (D86)
    *  ว่าง = ยังไม่ได้ตั้ง หรือถูกลบไปแล้ว → หน้าขายหน้าร้านขึ้นการ์ดให้ไปตั้งก่อน */
   posWalkinId: string;
+  /** D133 — ซื้อโมดูลผลิตไหม (ไม่ซื้อ = ประโยคไม่พูดถึงสุรา/ฟอร์ม ภส. · ไม่มีหมวดเมนู "สุรา") */
+  hasProduction: boolean;
 };
 
 export type OrderItem = { name: string; qty: number; price: number };

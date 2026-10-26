@@ -16,8 +16,11 @@ import { Card, Field, Msg, SaveButton, TextInput, useSaver } from "@/lib/shared/
  */
 export function LineCard({
   current,
+  events,
 }: {
   current: { hasToken: boolean; tokenTail: string; groupId: string };
+  /** D133 — สิ่งที่ส่งเข้ากลุ่ม ตามโมดูลที่ซื้อ (`lineEventsFor`) */
+  events: string[];
 }) {
   const router = useRouter();
   const { pending, msg, run } = useSaver();
@@ -53,7 +56,7 @@ export function LineCard({
       <Msg msg={msg} />
 
       <p className="mb-3 text-xs text-faint">
-        เมื่อมีออเดอร์ใหม่ · แก้ไขออเดอร์ · รับเงิน · จัดส่ง ระบบจะส่งข้อความเข้ากลุ่ม LINE ที่ตั้งไว้
+        {events.length > 0 ? `ระบบจะส่งข้อความเข้ากลุ่ม LINE ที่ตั้งไว้เมื่อ: ${events.join(" · ")}` : "ระบบจะส่งข้อความเข้ากลุ่ม LINE ที่ตั้งไว้"}
         {configured ? null : " — ยังไม่ได้ตั้งค่า ตอนนี้ระบบจะไม่ส่งอะไรเลย (ไม่ถือว่าผิดพลาด)"}
       </p>
 

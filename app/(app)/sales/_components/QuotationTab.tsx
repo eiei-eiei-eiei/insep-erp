@@ -335,6 +335,7 @@ export function QuotationTab({
 
       {showAddCust && (
         <AddCustomerModal
+          hasProduction={boot.hasProduction}
           onClose={() => setShowAddCust(false)}
           onAdded={(c) => {
             setCustomers((prev) => [...prev, c]);

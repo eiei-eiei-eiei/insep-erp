@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { UsersManager, type UserRow } from "./_components/users-manager";
+import { getTenantPlan } from "@/lib/shared/tenant-plan";
 
 /** guard role main อยู่ที่ app/(app)/settings/layout.tsx แล้ว — ที่นี่ต้องการแค่ user.id */
 export default async function UsersPage() {
@@ -10,13 +11,14 @@ export default async function UsersPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: users }, { data: entities }] = await Promise.all([
+  const [{ data: users }, { data: entities }, plan] = await Promise.all([
     supabase
       .from("profiles")
       .select("id, username, display_name, role, created_at, allowed_entity_ids")
       .order("created_at", { ascending: true }),
     // D120 — main เห็นทุกกิจการ (ไม่ถูกจำกัด) จึงได้รายชื่อครบสำหรับเลือก
     supabase.from("entities").select("entity_id, name").order("entity_id"),
+    getTenantPlan(),
   ]);
 
   return (
@@ -24,6 +26,7 @@ export default async function UsersPage() {
       users={(users ?? []) as UserRow[]}
       entities={(entities ?? []) as { entity_id: string; name: string }[]}
       currentUserId={user.id}
+      modules={plan.modules}
     />
   );
 }

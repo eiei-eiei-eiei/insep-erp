@@ -1,8 +1,13 @@
 import { getCompanySettings } from "../settings-data";
 import { CompanyCard } from "../_components/CompanyCard";
+import { getTenantPlan } from "@/lib/shared/tenant-plan";
+import { companySectionsFor } from "@/lib/shared/moduleScope";
 
 export default async function CompanySettingsPage() {
-  const { entities, docEntityId, revenueEntityId, revenueAccountName, accounts } = await getCompanySettings();
+  const [{ entities, docEntityId, revenueEntityId, revenueAccountName, accounts }, plan] = await Promise.all([
+    getCompanySettings(),
+    getTenantPlan(),
+  ]);
 
   if (entities.length === 0) {
     return (
@@ -13,6 +18,7 @@ export default async function CompanySettingsPage() {
   }
   return (
     <CompanyCard
+      sections={companySectionsFor(plan.modules)}
       entities={entities}
       docEntityId={docEntityId}
       revenueEntityId={revenueEntityId}

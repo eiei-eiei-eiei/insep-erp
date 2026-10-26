@@ -5,14 +5,19 @@ import { Card, Msg, NumBox, NumInput, Select, TextInput, useSaver, fmt, LoadErro
 import { getSaleMenuAction, getMenuLinkOptionsAction, saveSaleMenuAction, deleteSaleMenuAction } from "../actions";
 import type { SaleMenuRow } from "../data";
 
+import { salesProductionText, menuCategoryOptions } from "@/lib/sales/productionText";
+
 type LinkOpts = { products: { id: string; name: string }[]; warehouse: { id: string; name: string }[] };
+
 const EMPTY = { id: 0, menuName: "", price: 0, category: "สุรา", productId: "", multiplier: 1 };
 
-export function MenuTab({ active }: { active: boolean }) {
+export function MenuTab({ active, hasProduction }: { active: boolean; hasProduction: boolean }) {
+  // D133 — ไม่มีโมดูลผลิต = เมนูใหม่เป็นหมวด "ทั่วไป" และไม่มีหมวด "สุรา" ให้เลือก
+  const empty = { ...EMPTY, category: salesProductionText(hasProduction).defaultMenuCategory };
   const [rows, setRows] = useState<SaleMenuRow[]>([]);
   const [opts, setOpts] = useState<LinkOpts>({ products: [], warehouse: [] });
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState<{ id: number; menuName: string; price: number; category: string; productId: string; multiplier: number }>({ ...EMPTY });
+  const [form, setForm] = useState<{ id: number; menuName: string; price: number; category: string; productId: string; multiplier: number }>({ ...empty });
   const { pending, msg, run, setMsg } = useSaver();
   const [err, setErr] = useState(false);
   const firstLoad = useRef(true);
@@ -40,10 +45,10 @@ export function MenuTab({ active }: { active: boolean }) {
 
   function edit(r: SaleMenuRow) {
     setMsg(null);
-    setForm({ id: r.id, menuName: r.menuName, price: r.price, category: r.category || "สุรา", productId: r.productId, multiplier: r.multiplier });
+    setForm({ id: r.id, menuName: r.menuName, price: r.price, category: r.category || empty.category, productId: r.productId, multiplier: r.multiplier });
   }
   function reset() {
-    setForm({ ...EMPTY });
+    setForm({ ...empty });
   }
   function save() {
     if (!form.menuName.trim()) return setMsg({ ok: false, text: "กรอกชื่อเมนู" });
@@ -130,8 +135,9 @@ export function MenuTab({ active }: { active: boolean }) {
           <label className="block">
             <span className="mb-1 block text-muted">ประเภท</span>
             <Select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-              <option value="สุรา">สุรา (ตัดสต็อกผลิต)</option>
-              <option value="ทั่วไป">ทั่วไป (ตัดสต็อกคลัง)</option>
+              {menuCategoryOptions(hasProduction, form.category).map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
             </Select>
           </label>
           <label className="block">

@@ -1,5 +1,6 @@
 "use client";
 
+import { salesProductionText, type SalesProductionText } from "@/lib/sales/productionText";
 import { useEffect, useRef, useState } from "react";
 import type { WarehouseOrder, StockItem } from "./types";
 import { Badge, Card, Msg, NumInput, Select, TextInput, fmt, useSaver, LoadError } from "./ui";
@@ -9,7 +10,9 @@ import { can, toRole } from "@/lib/shared/roles";
 import { EscToClose, todayISO } from "@/lib/shared/ui";
 import { shipDateError, shipDateNote } from "@/lib/sales/backdate";
 
-export function WarehouseTab({ role, company, active }: { role: string; company: CompanyInfo; active: boolean }) {
+export function WarehouseTab({ role, company, active, hasProduction }: { role: string; company: CompanyInfo; active: boolean; hasProduction: boolean }) {
+  // D133 — ไม่มีโมดูลผลิต = ประโยคไม่พูดถึงสุรา/ฟอร์ม ภส./โรงกลั่น
+  const txt = salesProductionText(hasProduction);
   const [sub, setSub] = useState<"orders" | "stock">("orders");
   // ★ ขาย/คลัง เป็นบทบาทเดียวกันแล้ว (D85) — คนที่ออกใบเสนอราคาได้ ก็กดจัดส่งได้
   const canWrite = can(toRole(role), "sales.write");
@@ -23,12 +26,12 @@ export function WarehouseTab({ role, company, active }: { role: string; company:
           สต็อกรวม
         </button>
       </div>
-      {sub === "orders" ? <PendingOrders canWrite={canWrite} company={company} active={active} /> : <StockPanel canWrite={canWrite} active={active} />}
+      {sub === "orders" ? <PendingOrders canWrite={canWrite} company={company} active={active} txt={txt} /> : <StockPanel canWrite={canWrite} active={active} txt={txt} />}
     </div>
   );
 }
 
-function PendingOrders({ canWrite, company, active }: { canWrite: boolean; company: CompanyInfo; active: boolean }) {
+function PendingOrders({ canWrite, company, active, txt }: { canWrite: boolean; company: CompanyInfo; active: boolean; txt: SalesProductionText }) {
   const [orders, setOrders] = useState<WarehouseOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const { msg, setMsg } = useSaver();
@@ -102,7 +105,7 @@ function PendingOrders({ canWrite, company, active }: { canWrite: boolean; compa
           <EscToClose onClose={() => setAsk(null)} />
           <div className="w-full max-w-sm rounded-lg bg-card p-5 shadow-xl">
             <div className="text-base font-bold text-ink">ยืนยันจัดส่ง {ask.orderNo}?</div>
-            <p className="mt-1 text-sm text-muted">ระบบจะตัดสต็อกทันที · สุราจะขึ้นฟอร์ม ภส. เป็นการจ่ายของวันที่ด้านล่าง</p>
+            <p className="mt-1 text-sm text-muted">{txt.shipConfirm}</p>
             <label className="mt-3 block text-sm">
               <span className="mb-1 block font-bold text-muted">วันที่ส่งของ</span>
               <input
@@ -180,7 +183,7 @@ function PendingOrders({ canWrite, company, active }: { canWrite: boolean; compa
   );
 }
 
-function StockPanel({ canWrite, active }: { canWrite: boolean; active: boolean }) {
+function StockPanel({ canWrite, active, txt }: { canWrite: boolean; active: boolean; txt: SalesProductionText }) {
   const [stock, setStock] = useState<StockItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -253,11 +256,11 @@ function StockPanel({ canWrite, active }: { canWrite: boolean; active: boolean }
               {pending ? "…" : "บันทึก"}
             </button>
           </div>
-          <div className="mt-2 text-xs text-faint">สุราตัดสต็อกอัตโนมัติจากการขาย (ผ่านแอปผลิต) — ปรับ manual ได้เฉพาะสินค้าทั่วไป</div>
+          {txt.manualStockNote && <div className="mt-2 text-xs text-faint">{txt.manualStockNote}</div>}
         </Card>
       )}
 
-      <Card title="สต็อกรวม (สุราจากโรงกลั่น + สินค้าทั่วไป)">
+      <Card title={txt.stockTitle}>
         <TextInput placeholder="ค้นหา" value={search} onChange={(e) => setSearch(e.target.value)} className="mb-3 max-w-xs" />
         {loading ? (
           <div className="py-8 text-center text-faint">กำลังโหลด…</div>
