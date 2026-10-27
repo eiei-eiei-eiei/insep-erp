@@ -13,9 +13,10 @@ import {
 } from "@/lib/accounting/calc";
 import {
   accountBalances,
-  accountStatement,
+  accountStatementRange,
   type LedgerTx,
   type AccountMeta,
+  type StatementRange,
 } from "@/lib/accounting/ledger";
 import { ADVANCE_TYPE, ADVANCE_REFUND_TYPE, type AdvanceRow } from "@/lib/accounting/advance";
 import { fetchAllRows } from "@/lib/shared/paginate";
@@ -323,8 +324,11 @@ export async function getBalances(upToPeriod: string, entityId: string) {
   return accountBalances(upToPeriod, txAll as unknown as LedgerTx[], accounts, entityId);
 }
 
-/** A8 — statement บัญชีรายเดือน */
-export async function getStatement(accountName: string, period: string) {
+/** A8 — statement บัญชี · D139 เลือกช่วงเดือน / ทั้งหมด (from/to = null) */
+export async function getStatement(accountName: string, range: StatementRange) {
+  const ym = /^\d{4}-\d{2}$/;
+  if ((range.from && !ym.test(range.from)) || (range.to && !ym.test(range.to))) throw new Error("รูปแบบเดือนไม่ถูกต้อง");
+  if (range.from && range.to && range.from > range.to) throw new Error("เดือนเริ่มต้องไม่หลังเดือนสุดท้าย");
   const supabase = await db();
   const [txAll, accRes] = await Promise.all([
     fetchAllTransactions(supabase, (q) => q.eq("account_name", accountName)),
@@ -333,7 +337,7 @@ export async function getStatement(accountName: string, period: string) {
   // 🚨 D89 — opening = 0 เงียบ ๆ ทำให้ running balance ทั้งคอลัมน์ผิด
   const openRow = mustRead<{ opening_balance: number | null } | null>(accRes, "ยอดยกมาของบัญชี");
   const opening = Number(openRow?.opening_balance) || 0;
-  return accountStatement(accountName, period, txAll as unknown as LedgerTx[], opening);
+  return accountStatementRange(accountName, range, txAll as unknown as LedgerTx[], opening);
 }
 
 /** ค้นบิล (ค้นบิลแท็บ) — filter entity/เดือน/type/คู่ค้า/ข้อความ */

@@ -158,6 +158,7 @@ export type StatementRow = {
  * A8 — statement บัญชีรายเดือน
  * opening = opening ของบัญชี + Σ effect รายการก่อนเดือน · running balance สะสมจาก opening
  * เรียงตามวันที่ asc แล้ว txId asc
+ * ★ D139 — เดือนเดียว = กรณีพิเศษของ accountStatementRange (สูตรมีที่เดียว · golden A8 เดิมคุม)
  */
 export function accountStatement(
   accountType: string,
@@ -165,7 +166,43 @@ export function accountStatement(
   txs: LedgerTx[],
   openingBalanceMeta: number,
 ): { accountType: string; period: string; openingBalance: number; rows: StatementRow[]; closingBalance: number } {
-  const start = `${period}-01`;
+  const r = accountStatementRange(accountType, { from: period, to: period }, txs, openingBalanceMeta);
+  return { accountType, period, openingBalance: r.openingBalance, rows: r.rows, closingBalance: r.closingBalance };
+}
+
+/** ช่วงเดือนของ statement · from/to = yyyy-MM (รวมทั้งสองข้าง) · null = ไม่มีขอบด้านนั้น */
+export type StatementRange = { from: string | null; to: string | null };
+
+/** สรุปท้ายเดือน (แถวคั่นเมื่อดูหลายเดือน) */
+export type StatementMonth = {
+  month: string;
+  totalIn: number;
+  totalOut: number;
+  /** ยอดคงเหลือสิ้นเดือน = ยอด running ของรายการสุดท้ายในเดือนนั้น */
+  closingBalance: number;
+  count: number;
+};
+
+/**
+ * D139 — statement หลายเดือน / ทั้งหมด
+ * · opening = opening ของบัญชี + Σ effect รายการก่อนเดือนแรกของช่วง (from=null ⇒ opening ของบัญชีล้วน)
+ * · รายการหลัง to ไม่นับเลย (ไม่เข้า rows ไม่เข้า closing)
+ * · months = เฉพาะเดือนที่มีรายการ เรียงเก่า→ใหม่
+ */
+export function accountStatementRange(
+  accountType: string,
+  range: StatementRange,
+  txs: LedgerTx[],
+  openingBalanceMeta: number,
+): {
+  accountType: string;
+  range: StatementRange;
+  openingBalance: number;
+  rows: StatementRow[];
+  closingBalance: number;
+  months: StatementMonth[];
+} {
+  const start = range.from ? `${range.from}-01` : null;
   let openingBalance = num(openingBalanceMeta);
   const periodRows: (StatementRow & { _effect: number })[] = [];
 
@@ -177,9 +214,9 @@ export function accountStatement(
     if (!iso) continue;
     const { debit, credit, effect } = txEffect(tx.type, num(tx.net_amount));
 
-    if (iso < start) {
+    if (start && iso < start) {
       openingBalance += effect;
-    } else if (monthOf(iso) === period) {
+    } else if (!range.to || monthOf(iso) <= range.to) {
       periodRows.push({
         txId: tx.tx_id,
         date: iso,
@@ -202,8 +239,19 @@ export function accountStatement(
   });
 
   let running = openingBalance;
+  const months: StatementMonth[] = [];
   const rows: StatementRow[] = periodRows.map((r) => {
     running += r._effect;
+    const mo = monthOf(r.date);
+    let m = months[months.length - 1];
+    if (!m || m.month !== mo) {
+      m = { month: mo, totalIn: 0, totalOut: 0, closingBalance: 0, count: 0 };
+      months.push(m);
+    }
+    m.totalIn += r.credit;
+    m.totalOut += r.debit;
+    m.closingBalance = running;
+    m.count += 1;
     return {
       txId: r.txId,
       date: r.date,
@@ -219,5 +267,5 @@ export function accountStatement(
   });
 
   const closingBalance = openingBalance + periodRows.reduce((s, r) => s + r._effect, 0);
-  return { accountType, period, openingBalance, rows, closingBalance };
+  return { accountType, range, openingBalance, rows, closingBalance, months };
 }

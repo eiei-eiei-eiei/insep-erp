@@ -47,8 +47,8 @@ export async function getAdvancesAction(entityId: string) {
 export async function getBalancesAction(upToPeriod: string, entityId: string) {
   return getBalances(upToPeriod, entityId);
 }
-export async function getStatementAction(accountName: string, period: string) {
-  return getStatement(accountName, period);
+export async function getStatementAction(accountName: string, range: Parameters<typeof getStatement>[1]) {
+  return getStatement(accountName, range);
 }
 export async function searchBillsAction(params: Parameters<typeof searchBills>[0]) {
   return searchBills(params);

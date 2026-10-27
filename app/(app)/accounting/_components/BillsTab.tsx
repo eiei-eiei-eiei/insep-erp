@@ -10,7 +10,8 @@ import { VatModeCard } from "./VatModeCard";
 import { accountsFor } from "@/lib/accounting/bankAccounts";
 import { MissingInvoiceWarn } from "./MissingInvoiceWarn";
 import type { Bootstrap } from "./types";
-import { Card, Field, NumBox, SaveButton, Select, TextInput, fmt, useSaver, EscToClose, useRead, LoadError } from "./ui";
+import { Card, Combobox, Field, NumBox, SaveButton, Select, TextInput, fmt, useSaver, EscToClose, useRead, LoadError } from "./ui";
+import { billTotals, billTotalLabel, billTotalsNote } from "@/lib/accounting/billTotals";
 import { can, toRole } from "@/lib/shared/roles";
 import { ADVANCE_TYPE, ADVANCE_REFUND_TYPE, advanceStatusLabel } from "@/lib/accounting/advance";
 import { entityMoveBlock, entityMoveError, entityMoveWarnings, entityMoveSavedText, type MoveTx } from "@/lib/accounting/entityMove";
@@ -68,6 +69,15 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
     if (!t) return rows;
     return rows.filter((r) => (r.description ?? "").toLowerCase().includes(t));
   }, [rows, text]);
+  // D139 — ยอดรวมตามที่เห็นบนจอ (ตามช่องค้นรายละเอียดด้วย) · แยกตามประเภท ไม่บวกปนกัน
+  const totals = useMemo(() => billTotals(shown), [shown]);
+  const totalsNote = billTotalsNote(totals, rows.length >= 500);
+
+  // คู่ค้าหลายสาขาใช้ชื่อเดียวกัน และค้นบิลกรองด้วยชื่อ ⇒ ยุบชื่อซ้ำ
+  const contactOptions = useMemo(
+    () => [{ value: "", label: "ทั้งหมด" }, ...[...new Set(boot.contacts.map((c) => c.name).filter(Boolean))].map((n) => ({ value: n, label: n }))],
+    [boot.contacts],
+  );
 
   async function openDetail(txId: string) { setDetail(null); setDetail(await getBillDetailAction(txId)); }
   async function doVoid(txId: string) {
@@ -93,7 +103,10 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <Field label="ค้นจากรายละเอียดบิล"><TextInput value={text} onChange={(e) => setText(e.target.value)} placeholder="พิมพ์เพื่อกรองทันที…" /></Field>
           <Field label="คู่ค้า">
-            <Select value={contact} onChange={(e) => setContact(e.target.value)}><option value="">ทั้งหมด</option>{boot.contacts.map((c) => <option key={c.contact_id} value={c.name}>{c.name}</option>)}</Select>
+            <div className="flex items-center gap-1">
+              <div className="min-w-0 flex-1"><Combobox options={contactOptions} value={contact} onChange={setContact} placeholder="พิมพ์ค้นชื่อคู่ค้า…" /></div>
+              {contact && <button type="button" onClick={() => setContact("")} aria-label="ล้างคู่ค้า" title="ล้าง = ทุกคู่ค้า" className="rounded border border-line px-2 py-1 text-muted hover:bg-raised">✕</button>}
+            </div>
           </Field>
           <Field label="ประเภท"><Select value={type} onChange={(e) => setType(e.target.value)}><option value="">ทั้งหมด</option><option>รายรับ</option><option>รายจ่าย</option><option>โอนระหว่างบัญชี</option><option>เช็คราคา</option><option>{ADVANCE_TYPE}</option><option>{ADVANCE_REFUND_TYPE}</option></Select></Field>
           <div className="flex flex-col justify-end gap-1 text-sm">
@@ -111,6 +124,27 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
           <p className="text-sm text-faint">{err ? "— โหลดไม่สำเร็จ —" : "— ไม่มีรายการ —"}</p>
         ) : (
           <>
+            {/* D139 — ยอดรวมแยกตามประเภท */}
+            <div className="mb-3 rounded-lg border border-line bg-raised p-3 text-sm">
+              <div className="flex flex-wrap gap-x-6 gap-y-2">
+                {totals.byType.map((t) => (
+                  <div key={t.type}>
+                    <span className="text-faint">{billTotalLabel(t.type)} {t.count} รายการ · </span>
+                    <b className="tnum text-ink">{fmt(t.total)}</b>
+                    {t.pendingCount > 0 && <span className="text-xs text-faint"> (ค้างอยู่ {t.pendingCount} ใบ · {fmt(t.pendingTotal)})</span>}
+                  </div>
+                ))}
+                {totals.incomeMinusExpense !== null && (
+                  <div>
+                    <span className="text-faint">รายรับ − รายจ่าย · </span>
+                    <b className={`tnum ${totals.incomeMinusExpense < 0 ? "text-crit" : "text-ok"}`}>{fmt(totals.incomeMinusExpense)}</b>
+                  </div>
+                )}
+                {totals.byType.length === 0 && <span className="text-faint">ไม่มีรายการที่นับยอดได้</span>}
+              </div>
+              {totalsNote && <p className={`mt-1 text-xs ${rows.length >= 500 ? "text-warn" : "text-faint"}`}>{totalsNote}</p>}
+            </div>
+
             {/* Desktop: ตาราง */}
             <div className="hidden overflow-x-auto md:block">
               <table className="tbl">
