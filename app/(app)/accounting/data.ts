@@ -482,18 +482,58 @@ export async function getBillDetail(txId: string) {
   return { tx: tx.data as unknown as Tx | null, items: items.data ?? [], whtDocNos };
 }
 
-/** ประวัติราคาสินค้า/วัตถุดิบ (searchItemHistory) — join items↔tx */
-export async function searchPriceHistory(params: { itemName?: string; contact?: string; entityId?: string; includePriceCheck?: boolean }) {
+/** แท็บประวัติราคา: เพดานแถวที่โหลด (ล่าสุดก่อน) — เกินแล้วบอกบนจอ ไม่ตัดเงียบ */
+const PRICE_HISTORY_MAX = 10000;
+
+/**
+ * ประวัติราคาสินค้า/วัตถุดิบ (searchItemHistory) — join items↔tx
+ * D140: กรองทุกอย่างที่ฝั่ง server (เดิม limit 300 แถวล่าสุดแล้วกรองทีหลัง = ของเก่าหายเงียบ ๆ
+ * และยอดรวมของงานจะขาดแถวเก่า) · แบ่งหน้าทีละ 1,000 (PostgREST max_rows) จนถึงเพดาน
+ * · ชื่อสินค้ากรองต่อที่หน้าจอ (พิมพ์แล้วกรองทันที) — ได้ครบเพราะโหลดมาทั้งชุดแล้ว
+ */
+export async function searchPriceHistory(params: {
+  contact?: string;
+  entityId?: string;
+  includePriceCheck?: boolean;
+  job?: string;
+  category?: string;
+  /** yyyy-MM รวมทั้งสองข้าง · null/ไม่ส่ง = ไม่จำกัด */
+  from?: string | null;
+  to?: string | null;
+}) {
+  const ym = /^\d{4}-\d{2}$/;
+  if ((params.from && !ym.test(params.from)) || (params.to && !ym.test(params.to))) throw new Error("รูปแบบเดือนไม่ถูกต้อง");
   const supabase = await db();
-  let q = supabase
-    .from("transaction_items")
-    .select("item_id, tx_id, item_name, quantity, in_vat, ex_vat, total_price, transactions!inner(transaction_date, contact_name, type, status, entity_id, advance_status)")
-    .order("item_id", { ascending: false })
-    .limit(300);
-  if (params.itemName) q = q.ilike("item_name", `%${params.itemName}%`);
-  if (params.entityId && params.entityId !== "ALL") q = q.eq("transactions.entity_id", params.entityId);
-  if (params.contact) q = q.eq("transactions.contact_name", params.contact);
-  const data = mustRead(await q, "ประวัติราคา");
+  const page = (from: number, to: number) => {
+    let q = supabase
+      .from("transaction_items")
+      .select(
+        "item_id, tx_id, item_name, quantity, in_vat, ex_vat, total_price, item_category, item_job, transactions!inner(transaction_date, contact_name, type, status, entity_id, advance_status)",
+        from === 0 ? { count: "exact" } : undefined,
+      )
+      .eq("transactions.status", "ปกติ");
+    if (params.entityId && params.entityId !== "ALL") q = q.eq("transactions.entity_id", params.entityId);
+    if (params.contact) q = q.eq("transactions.contact_name", params.contact);
+    if (!params.includePriceCheck) q = q.neq("transactions.type", "เช็คราคา");
+    if (params.job) q = q.eq("item_job", params.job);
+    if (params.category) q = q.eq("item_category", params.category);
+    if (params.from) q = q.gte("transactions.transaction_date", `${params.from}-01`);
+    if (params.to) q = q.lt("transactions.transaction_date", nextMonthStart(params.to));
+    return q.order("item_id", { ascending: false }).range(from, to);
+  };
+
+  const CHUNK = 1000;
+  const raw: Record<string, unknown>[] = [];
+  let total: number | null = null;
+  while (raw.length < PRICE_HISTORY_MAX) {
+    const res = await page(raw.length, Math.min(raw.length + CHUNK, PRICE_HISTORY_MAX) - 1);
+    // 🚨 D89 — อ่านไม่ได้ต้องฟ้อง ไม่ใช่ถือว่าไม่มีประวัติ
+    const rows = mustRead(res, "ประวัติราคา") as Record<string, unknown>[];
+    if (total == null && res.count != null) total = res.count;
+    raw.push(...rows);
+    if (rows.length < CHUNK) break;
+  }
+
   type Row = {
     item_name: string;
     quantity: number;
@@ -501,14 +541,14 @@ export async function searchPriceHistory(params: { itemName?: string; contact?: 
     in_vat: number;
     total_price: number;
     tx_id: string;
+    item_category: string | null;
+    item_job: string | null;
     transactions: { transaction_date: string; contact_name: string | null; type: string; status: string; advance_status: string | null } | null;
   };
-  return ((data ?? []) as unknown as Row[])
+  const rows = (raw as unknown as Row[])
     .filter((r) => r.transactions && r.transactions.status === "ปกติ")
     // D119 — สำรองจ่ายที่เคลียแล้ว: รายการเดียวกันถูกคัดลอกไปเป็นบิลของกิจการปลายทาง → ไม่นับซ้ำ
     .filter((r) => !(r.transactions!.type === ADVANCE_TYPE && r.transactions!.advance_status === "เคลียแล้ว"))
-    .filter((r) => (params.includePriceCheck ? true : r.transactions!.type !== "เช็คราคา"))
-    .filter((r) => (params.contact ? r.transactions!.contact_name === params.contact : true))
     .map((r) => ({
       itemName: r.item_name,
       quantity: Number(r.quantity) || 0,
@@ -519,7 +559,12 @@ export async function searchPriceHistory(params: { itemName?: string; contact?: 
       contactName: r.transactions!.contact_name ?? "",
       type: r.transactions!.type,
       txId: r.tx_id,
-    }));
+      category: r.item_category ?? "",
+      job: r.item_job ?? "",
+    }))
+    // ใหม่สุดก่อนตามวันที่บิล (item_id เรียงตามลำดับที่คีย์ ซึ่งไม่ใช่วันที่บิลเสมอ) · sort เสถียร = คงลำดับเดิมเมื่อวันเท่ากัน
+    .sort((a, b) => (a.date === b.date ? 0 : a.date < b.date ? 1 : -1));
+  return { rows, loaded: raw.length, total };
 }
 
 /** A6 — รายการกลุ่มงวดทั้งหมด (ให้เลือกจากลิสต์ ไม่ต้องจำรหัส TR-) */
