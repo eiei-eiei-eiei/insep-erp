@@ -1,8 +1,10 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import type { Route } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { usernameToEmail } from "@/lib/shared/auth-domain";
+import { safeNext } from "@/lib/connector/guard";
 
 export type LoginState = { error: string | null };
 
@@ -47,5 +49,6 @@ export async function login(
     return { error: `เข้าสู่ระบบไม่สำเร็จ: ${raw || "ไม่ทราบสาเหตุ"}` };
   }
 
-  redirect("/");
+  // D141 — มาจากหน้าอนุญาต Claude connector → กลับไปหน้านั้น (safeNext กัน open redirect)
+  redirect((safeNext(String(formData.get("next") ?? "")) ?? "/") as Route);
 }

@@ -28,6 +28,7 @@
     "migrate:export": "tsx migration/export-supabase-to-csv.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@pdf-lib/fontkit": "^1.1.1",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.45.4",
@@ -37,7 +38,8 @@
     "qrcode-generator": "^2.0.4",
     "react": "19.0.0",
     "react-dom": "19.0.0",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

@@ -103,42 +103,9 @@ export async function getWht50ContextAction(entityId: string, contactName: strin
 }
 
 // ── A3/A4 บันทึกบิล (+ forward ต้นทุนสุรา T6) ────────────────────────────────
-export type TxItemInput = {
-  item_name: string;
-  quantity: number;
-  in_vat: number;
-  ex_vat: number;
-  total_price: number;
-  discount_pct?: number;
-  discount_baht?: number;
-  item_category?: string;
-  item_job?: string;
-};
-export type SaveTxInput = {
-  transaction_date: string;
-  type: string;
-  account_name?: string;
-  category?: string;
-  contact_name?: string;
-  contact_id?: string; // ระบุสาขาที่แน่นอน (multi-branch, D30)
-  description?: string;
-  base_amount: number;
-  discount: number;
-  amount_after_discount: number;
-  vat_amount: number;
-  wht_rate: number;
-  wht_amount: number;
-  net_amount: number;
-  tax_invoice_no?: string;
-  tax_invoice_date?: string;
-  receipt_image_url?: string;
-  entity_id: string;
-  ap_ar_status?: "AP" | "AR" | "";
-  due_date?: string;
-  forward_material?: boolean;
-  /** D119 — type สำรองจ่าย: กิจการที่ซื้อให้ (entity_id = กิจการของคนจ่าย) */
-  advance_for_entity?: string;
-};
+// D141 — ชนิดอยู่ใน lib (Claude connector ฝั่ง server ใช้ร่วม)
+import type { TxItemInput, SaveTxInput } from "@/lib/accounting/itemInputs";
+export type { TxItemInput, SaveTxInput };
 
 export async function saveTransactionAction(input: SaveTxInput, items: TxItemInput[]): Promise<SaveResult> {
   const supabase = await db();

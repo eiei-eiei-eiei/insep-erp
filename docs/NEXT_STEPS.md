@@ -1,6 +1,22 @@
 # งานที่เหลือ — ส่งต่อให้ session ถัดไป
 
-> **อัปเดตล่าสุด 2026-10-27** (**D138** บาร์: ลบ/ปิดใช้เมนู · 0096 ลงครบ 2 DB · ✅ merge เข้า main แล้ว — ดูข้อ 0.-25) · ก่อนหน้า (**D137** ลบลูกค้าบาร์ที่มีบิลได้ · 0095 ลงครบ 2 DB · test:tenant ผ่าน · ✅ merge เข้า main แล้ว (D132-D137) — ดูข้อ 0.-24) · (**D136** เทสเบราว์เซอร์ D132-D135 ผ่าน + แก้ 4 ข้อที่เจอ · 0094 ลงครบ 2 DB · test:tenant 488 — ดูข้อ 0.-23 · ⏳ ยังไม่ merge เข้า main) · ก่อนหน้า (**D131** บาร์: สูตรอ้างชุดตกแต่ง + จำนวนเศษส่วน · ✅ push แล้ว (0931cc0) — ดูข้อ 0.-17)
+> **อัปเดตล่าสุด 2026-10-28** (**D141** Claude connector — ส่งรูปบิลในแชท Claude แล้วลงบัญชี · 0097 ลงครบ 2 DB · push แล้ว · ⏳ รอลองกับ Claude จริง — ดูข้อ 0.-26) · ก่อนหน้า (**D138** บาร์: ลบ/ปิดใช้เมนู · 0096 ลงครบ 2 DB · ✅ merge เข้า main แล้ว — ดูข้อ 0.-25) · ก่อนหน้า (**D137** ลบลูกค้าบาร์ที่มีบิลได้ · 0095 ลงครบ 2 DB · test:tenant ผ่าน · ✅ merge เข้า main แล้ว (D132-D137) — ดูข้อ 0.-24) · (**D136** เทสเบราว์เซอร์ D132-D135 ผ่าน + แก้ 4 ข้อที่เจอ · 0094 ลงครบ 2 DB · test:tenant 488 — ดูข้อ 0.-23 · ⏳ ยังไม่ merge เข้า main) · ก่อนหน้า (**D131** บาร์: สูตรอ้างชุดตกแต่ง + จำนวนเศษส่วน · ✅ push แล้ว (0931cc0) — ดูข้อ 0.-17)
+
+## 0.-26 🆕 D141 — Claude connector · migration **0097** · ✅ ลงครบ 2 DB + push แล้ว · ⏳ รอลองกับ Claude จริง (2026-10-28)
+
+- ✅ โค้ด + build/lint/test (**2116**) · ยิงบนเครื่องแล้ว (401 + header · metadata · หน้าอนุญาตพาไป login แล้วจำทางกลับ)
+- ผู้ใช้ตัดสิน: ใช้เองก่อน · **เปิด env + OAuth ฝั่ง DB ลูกค้าไว้เลย** · จัดการสิทธิ์ที่ /platform (ไม่ทำคำสั่ง CLI) (รายละเอียด DECISIONS D141)
+- ⏳ **ผู้ใช้ทำตามลำดับ** (`docs/GOLIVE_CHECKLIST.md` หัวข้อ D141):
+  1. `npm run db:push:all` (dry-run) → ✅ ต้องเห็นแค่ `20261028000097_claude_connector.sql` ทั้ง 2 DB
+  2. `npm run db:push:all -- --apply --backup="D:/insep-erp-backup/2026-10-28-0097"`
+  3. บอก Claude — Claude รัน `npm run db:audit-grants` (definer +1 · ตาราง +1 ทั้ง 2 ก้อน) · `npm run test:tenant` (ไฟล์ใหม่ `connector.test.ts` 8 ข้อ ยังไม่เคยรัน — แดงให้ดูก่อนว่าตัวเทสผิดหรือ 0097 ผิด D95/D136)
+  4. Supabase ทั้ง 2 ก้อน: เปิด OAuth Server · Authorization Path `/oauth/consent` · Dynamic Client Registration · เช็ค Site URL
+  5. Vercel env `CLAUDE_CONNECTOR=1` บน insep-erp + proof-app → commit + push (Claude ทำเมื่อสั่ง)
+  6. สร้างผู้ใช้บทบาท พนักงานบัญชี → /platform อนุญาต → เพิ่ม connector ที่ claude.ai → ลองตาม TESTING ส่วนที่ 99
+- ✅ ผู้ใช้ทำข้อ 1-5 แล้ว (ลง 0097 ครบ 2 DB · เปิด OAuth Server ทั้ง 2 ก้อน · env บน Vercel) · audit ผ่าน (definer 79/80 · ตาราง 73 ทั้ง 2 ก้อน) · `connector.test.ts` ผ่าน 8/8 ตั้งแต่รอบแรก · `test:tenant` ทั้งชุด **513** ผ่าน (27 ไฟล์) · commit + push แล้ว
+- ⏳ เหลือข้อ 6 (ผู้ใช้ทำเอง): สร้างผู้ใช้ให้ Claude → /platform อนุญาต → เพิ่ม connector ที่ claude.ai → TESTING ส่วนที่ 99
+- ⚠️ ยังไม่รู้จนกว่าจะลองจริง: Supabase OAuth ต้องการ scope อะไรจาก Claude (metadata ไม่ประกาศ scope ไว้) · ถ้าเชื่อมต่อแล้วล้มที่ขั้น token ให้ส่งข้อความ error ให้ Claude
+- `.claude/launch.json` มี config `connector-smoke` (next start port 3100 + env) ไว้ยิงทดสอบบนเครื่อง ต้อง `npm run build` ก่อน
 
 ## 0.-25 🆕 D138 — บาร์: ลบ/ปิดใช้เมนู · migration **0096** · ✅ ลงครบ 2 DB + เทสบนจอผ่าน (2026-10-27)
 

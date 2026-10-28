@@ -13,9 +13,12 @@ const initialState: LoginState = { error: null };
 export default function LoginForm({
   branding,
   isTenant,
+  next = null,
 }: {
   branding: Branding;
   isTenant: boolean;
+  /** D141 — กลับไปหน้าอนุญาต Claude connector หลังล็อกอิน (ผ่าน safeNext แล้ว) */
+  next?: string | null;
 }) {
   const [state, formAction, pending] = useActionState(login, initialState);
 
@@ -56,6 +59,12 @@ export default function LoginForm({
           </div>
 
           <form action={formAction} className="space-y-4">
+            {next && <input type="hidden" name="next" value={next} />}
+            {next && (
+              <p className="rounded border border-line bg-raised p-2 text-xs text-muted">
+                ล็อกอินเพื่ออนุญาตให้ Claude เชื่อมต่อกับระบบ
+              </p>
+            )}
             <div>
               <label
                 htmlFor="username"

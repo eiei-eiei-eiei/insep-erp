@@ -11,8 +11,11 @@
  * ★ ประโยคบนจอทุกตัวตัดสินที่นี่ ไม่ใช่ในคอมโพเนนต์ (D84/D91)
  */
 
-/** source ของบิลที่คีย์เอง — ย้ายกิจการได้ · 🚨 ต้องตรงกับ `fn_edit_transaction` (0094) */
-export const MOVABLE_SOURCES = ["ui", "migration"] as const;
+/**
+ * source ของบิลที่คีย์เอง — ย้ายกิจการได้ · 🚨 ต้องตรงกับ `fn_edit_transaction` (0097)
+ * ★ 'claude' = บิลที่ Claude connector บันทึก (D141) — คนอ่านรูปบิลแล้วสั่งบันทึก ไม่ใช่ระบบอื่นสร้างให้
+ */
+export const MOVABLE_SOURCES = ["ui", "migration", "claude"] as const;
 
 /**
  * บิลที่ระบบอื่นสร้างให้ → ไปแก้ที่ไหน

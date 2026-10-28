@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3000
+    },
+    {
+      "name": "connector-smoke",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "set CLAUDE_CONNECTOR=1&& npx next start -p 3100"],
+      "port": 3100
     }
   ]
 }

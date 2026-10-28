@@ -29,6 +29,7 @@ export const APP_TABLES = [...TENANT_TABLES, "tenants"] as const;
  */
 export const PLATFORM_ONLY_TABLES = [
   "platform_admins", "platform_admin_log", "subscriptions", "subscription_payments",
+  "connector_users", // D141 — ใครใช้ Claude connector ได้ · ลูกค้าเขียนได้ = ให้สิทธิ์ตัวเอง
 ] as const;
 
 /** วิวที่ตั้งใจเปิดให้คนยังไม่ล็อกอินอ่าน (หน้า login แสดงแบรนด์ · 0025/0030) */

@@ -29,6 +29,7 @@ function healthy(): DefinerRow[] {
     row({ name: "my_entities", src: "select allowed_entity_ids from profiles where id = auth.uid()" }),
     row({ name: "has_cap", src: "select case (select role from profiles where id = auth.uid()) when 'main' then true else false end" }),
     row({ name: "clear_password_change_flag", src: "begin update profiles set must_change_password = false where id = auth.uid(); end" }),
+    row({ name: "connector_allowed", src: "select exists (select 1 from connector_users c join profiles p on p.id = c.user_id where c.user_id = auth.uid())" }),
     row({ name: "next_serial", src: "declare v_tenant uuid := my_tenant(); begin insert into counters values (v_tenant); end" }),
     row({ name: "fn_bar_open_sale", src: "begin perform bar_guard(p_entity, 'bar.write'); insert into bar_sale values (1); end" }),
     row({ name: "fn_bar_add_lines", src: "begin perform bar_guard(p_entity, 'bar.write'); end" }),

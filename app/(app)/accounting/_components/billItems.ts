@@ -16,66 +16,22 @@
 import { useMemo, useState } from "react";
 import {
   entryCalc,
-  itemTotal,
   itemDiscBahtFromPct,
-  inVatFromExVat,
   effectiveVatMode,
   priceFromInput,
   reinterpretPrice,
   unitPriceOf,
-  allocateExTotals,
   round2,
   type VatMode,
 } from "@/lib/accounting/calc";
-import type { TxItemInput } from "../actions";
-
-export type Qty = number | "";
-export type BillItem = {
-  itemName: string;
-  itemCategory: string;
-  itemJob: string;
-  quantity: Qty;
-  exVat: number;
-  inVat: number;
-  discPct: number;
-  discBaht: number;
-};
+// D141 — ตัวประกอบ payload ย้ายไป lib (ฝั่ง server ของ Claude connector ใช้ตัวเดียวกัน)
+export { hasContent, buildItemInputs, type Qty, type BillItem } from "@/lib/accounting/itemInputs";
+import type { Qty, BillItem } from "@/lib/accounting/itemInputs";
 
 export const qn = (q: Qty): number => (q === "" ? 0 : q); // ช่องว่าง = 0 ตอนคำนวณ
 export const emptyItem = (cat = "", job = ""): BillItem => ({
   itemName: "", itemCategory: cat, itemJob: job, quantity: 1, exVat: 0, inVat: 0, discPct: 0, discBaht: 0,
 });
-
-/** แถวที่นับเป็น "มีของ" — ในโหมด in ผู้ใช้อาจกรอกเฉพาะช่องรวม VAT */
-export function hasContent(it: BillItem, mode: VatMode = "ex"): boolean {
-  return Boolean(it.itemName || it.exVat || (mode === "in" && it.inVat));
-}
-
-/** แถวรายการ → payload ที่ RPC รับ (ช่องว่าง = 1 ตอนบันทึก ตามเดิม) */
-export function buildItemInputs(items: BillItem[], mode: VatMode = "ex", baseAmount = 0): TxItemInput[] {
-  const kept = items.filter((it) => hasContent(it, mode));
-  const qtyOf = (it: BillItem) => (it.quantity === "" ? 1 : it.quantity);
-  /**
-   * total_price = ยอดบรรทัด **ก่อน VAT** (คอลัมน์นี้โผล่ในการ์ด "ดู" และแท็บประวัติราคา)
-   * · โหมด ex: qty×ราคาไม่รวม VAT − ส่วนลด (เหมือนเดิมทุกตัวอักษร)
-   * · โหมด in: ยอดบรรทัดที่กรอกเป็นยอด *รวม VAT* → ต้องถอดแล้วเกลี่ยให้ผลรวมเท่า
-   *   baseAmount ของบิลเป๊ะ ไม่งั้นบวกคอลัมน์แล้วไม่ตรงกับยอดก่อน VAT ของบิลเดียวกัน
-   */
-  const totals = mode === "in"
-    ? allocateExTotals(kept.map((it) => itemTotal(qtyOf(it), it.inVat, it.discBaht)), baseAmount)
-    : kept.map((it) => itemTotal(qtyOf(it), it.exVat, it.discBaht));
-  return kept.map((it, i) => ({
-    item_name: it.itemName,
-    quantity: qtyOf(it),
-    in_vat: it.inVat || inVatFromExVat(it.exVat),
-    ex_vat: it.exVat,
-    total_price: totals[i] ?? 0,
-    discount_pct: it.discPct,
-    discount_baht: it.discBaht,
-    item_category: it.itemCategory,
-    item_job: it.itemJob,
-  }));
-}
 
 /**
  * handler แก้แถวรายการ (ราคาช่องเดียว · ส่วนลด %↔บาท) — เหมือนกันทั้ง 2 ฟอร์ม

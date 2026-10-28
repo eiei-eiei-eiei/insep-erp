@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import { isPlatformPath, platformEnabled } from "@/lib/platform/guard";
+import { connectorEnabled, isConnectorPath } from "@/lib/connector/guard";
 
 export async function middleware(request: NextRequest) {
   // ── งานตามเวลา (cron): ไม่มีใครล็อกอิน → ปล่อยผ่าน session guard ──
@@ -9,6 +10,15 @@ export async function middleware(request: NextRequest) {
   //    ถ้าไม่ยกเว้นตรงนี้ คำขอจาก cron จะโดน redirect ไป /login แล้วได้ 200 ของหน้า login
   //    = งานเงียบหายโดยไม่มี error ให้เห็น
   if (request.nextUrl.pathname.startsWith("/api/cron/")) return NextResponse.next();
+
+  // ── Claude connector (D141): Claude ส่ง Bearer token ไม่มีคุกกี้ → ปล่อยผ่าน session guard ──
+  //    🚨 route ตรวจ token + connector_allowed() เองทุกคำขอ · ไม่ตั้ง CLAUDE_CONNECTOR = 404 ตรงนี้เลย
+  //       (เหตุผลเดียวกับ cron: ไม่ยกเว้น = Claude ได้ 200 หน้า login แล้วเชื่อมต่อไม่ได้โดยไม่มี error)
+  if (isConnectorPath(request.nextUrl.pathname)) {
+    return connectorEnabled(process.env.CLAUDE_CONNECTOR)
+      ? NextResponse.next()
+      : new NextResponse("Not Found", { status: 404 });
+  }
 
   // ── แอปจัดการหลังบ้าน: deployment ที่ไม่ได้ตั้ง PLATFORM_ADMIN = ไม่มีหน้านี้อยู่จริง ──
   //    ★ ต้องดักก่อน updateSession เพื่อให้ตอบ 404 ตรง ๆ ไม่ใช่เด้งไป /login

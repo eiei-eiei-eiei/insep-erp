@@ -1157,3 +1157,18 @@ npm run db:audit-grants
 - ไม่มี migration · ไม่มีอะไรต้องตั้ง
 - [ ] ลองในเบราว์เซอร์ตาม `docs/TESTING.md` ส่วนที่ 93 (container ของ Claude ไม่มี DB ลองแทนไม่ได้)
 - บอกผู้ใช้/ลูกค้า: ถ้าหน้า "กำลังโหลด…" ค้างนาน จะมีป้ายเหลืองขึ้นพร้อมปุ่ม **โหลดใหม่** / **ออกจากระบบ**
+
+## D141 — Claude connector (ส่งรูปบิลในแชท Claude แล้วลงบัญชี · migration 0097)
+
+> ทำตามลำดับ · ทุกขั้นที่เป็น dashboard ต้องทำ **ทั้ง 2 ก้อน** (ของเจ้าของ + ลูกค้า) ตามที่ตัดสินไว้ใน D141
+
+- [ ] ต้องมีแพ็กเกจ Claude **Pro หรือ Max** (Free ใช้ connector ไม่ได้)
+- [ ] ลง migration ทุก DB **ก่อน** git push: `npm run db:push:all` (dry-run ต้องเห็นแค่ `20261028000097_claude_connector.sql`) → `npm run db:push:all -- --apply --backup="D:/insep-erp-backup/2026-10-28-0097"` → `npm run db:audit-grants` → `npm run test:tenant`
+- [ ] Supabase dashboard (ทั้ง 2 ก้อน) → **Authentication → OAuth Server**: เปิด OAuth 2.1 server · **Authorization Path** = `/oauth/consent` · เปิด **Dynamic Client Registration**
+- [ ] Supabase dashboard (ทั้ง 2 ก้อน) → **Authentication → URL Configuration → Site URL** = โดเมนจริงของ deployment ที่ชี้ก้อนนั้น (เจ้าของ = โดเมน `insep-erp` · ลูกค้า = โดเมน `proof-app`) — หน้าอนุญาตประกอบจากค่านี้ ผิด = เด้งไปเว็บอื่น
+- [ ] Vercel env `CLAUDE_CONNECTOR=1` บน **`insep-erp`** และ **`proof-app`** (ไม่ต้องตั้งบน `proof-admin`) แล้ว redeploy
+- [ ] สร้างผู้ใช้บทบาท **พนักงานบัญชี** แยกไว้ให้ Claude (ตั้งค่า → ผู้ใช้) แล้วล็อกอินเปลี่ยนรหัสชั่วคราวครั้งแรก
+- [ ] `/platform` → แท็บ **Claude connector** → เลือกลูกค้า → **อนุญาต** ผู้ใช้นั้น
+- [ ] บนเว็บ claude.ai (ไม่ใช่มือถือ): **Customize → Connectors → Add custom connector** → URL = `https://<โดเมน insep-erp>/api/mcp` → Connect → ล็อกอินด้วยผู้ใช้ข้อ 6 → **อนุญาต**
+- [ ] ในหน้า connector ของ claude.ai ตั้ง **save_bill = Needs approval** (ห้าม Always allow)
+- บอกผู้ใช้: บิลที่ Claude บันทึกติดป้าย `source = claude` · แก้/ลบได้ที่ บัญชี → ค้นบิล เหมือนบิลอื่น · ถอนสิทธิ์ที่ /platform มีผลทันที

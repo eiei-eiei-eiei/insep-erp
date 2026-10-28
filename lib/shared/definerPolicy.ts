@@ -51,6 +51,12 @@ export const DEFINER_ALLOWLIST: Record<string, { kind: AllowKind; why: string }>
   my_entities: { kind: "self", why: "helper ตัวตน — อ่าน profile ของตัวเอง" },
   has_cap: { kind: "self", why: "ตารางสิทธิ์ (D85) — อ่าน role ของตัวเอง" },
   clear_password_change_flag: { kind: "self", why: "เคลียร์ flag ของตัวเองคอลัมน์เดียว (0031)" },
+  connector_allowed: {
+    kind: "readonly",
+    why:
+      "D141 (0097) — ตอบ boolean ว่า auth.uid() ใช้ Claude connector ได้ไหม · connector_users ปิดสนิท " +
+      "จึงต้องเป็น definer · endpoint /api/mcp ถามทุกครั้งที่เรียกเครื่องมือ",
+  },
   fn_bar_quick_sale: { kind: "delegates", why: "เรียก fn_bar_open_sale/add_lines/close_sale ต่อกัน" },
   // D100 (0076) — กลายเป็นตัวส่งต่อให้ fn_next_doc_no (มี my_tenant + has_cap/bar_guard)
   fn_bar_next_doc: { kind: "delegates", why: "แปลง B/BR เป็นชนิดเอกสาร แล้วส่งต่อให้ fn_next_doc_no" },

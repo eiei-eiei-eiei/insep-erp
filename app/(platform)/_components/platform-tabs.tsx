@@ -8,6 +8,7 @@ import type { Route } from "next";
 const TABS: { href: Route; label: string }[] = [
   { href: "/platform" as Route, label: "ลูกค้า" },
   { href: "/platform/billing" as Route, label: "ค่างวด" },
+  { href: "/platform/connector" as Route, label: "Claude connector" },
 ];
 
 export function PlatformTabs() {

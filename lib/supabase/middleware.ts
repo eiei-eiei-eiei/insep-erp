@@ -2,6 +2,7 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { hostToTenantSlug } from "../shared/tenant";
 import { withAuthTimeout } from "./authFetch";
+import { safeNext } from "../connector/guard";
 
 type CookieToSet = { name: string; value: string; options: CookieOptions };
 
@@ -80,12 +81,19 @@ export async function updateSession(request: NextRequest) {
   if (!user && !isAuthRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    // D141 — มาจากหน้าอนุญาต Claude connector: ล็อกอินเสร็จต้องกลับไปหน้าเดิมพร้อม authorization_id
+    //   (หายแล้ว Supabase ไม่มีทางต่อ flow ได้ ผู้ใช้ต้องเริ่มเชื่อมต่อใหม่จาก Claude)
+    const back = safeNext(path + request.nextUrl.search);
+    url.search = back ? `?next=${encodeURIComponent(back)}` : "";
     return redirectWithCookies(url, supabaseResponse);
   }
 
   if (user && isAuthRoute) {
     const url = request.nextUrl.clone();
-    url.pathname = "/";
+    // 🚨 safeNext กัน open redirect — กลับได้เฉพาะหน้าอนุญาตของ connector
+    const back = safeNext(request.nextUrl.searchParams.get("next"));
+    url.pathname = back ? back.split("?")[0] : "/";
+    url.search = back && back.includes("?") ? back.slice(back.indexOf("?")) : "";
     return redirectWithCookies(url, supabaseResponse);
   }
 

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { TENANT_SLUG_HEADER } from "@/lib/supabase/middleware";
 import { brandingFromTenantRow, DEFAULT_BRANDING } from "@/lib/shared/branding";
 import LoginForm from "./LoginForm";
+import { safeNext } from "@/lib/connector/guard";
 
 /**
  * หน้า login — server component เพราะต้องรู้ว่าเป็นลูกค้าเจ้าไหน "ก่อน" ล็อกอิน
@@ -15,12 +16,14 @@ import LoginForm from "./LoginForm";
  *    ไม่ได้แจกสิทธิ์อะไร — ยังต้องมีรหัสผ่านของบัญชีนั้น และหลังล็อกอินสิทธิ์มาจาก
  *    profiles.tenant_id → my_tenant() → RLS เท่านั้น (NEXT_STEPS:181)
  */
-export default async function LoginPage() {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
+  // D141 — ล็อกอินจากหน้าอนุญาต Claude connector · safeNext กัน open redirect
+  const next = safeNext((await searchParams).next);
   const slug = (await headers()).get(TENANT_SLUG_HEADER)?.trim() ?? "";
 
   if (!slug) {
     // ไม่มี subdomain = โหมดลิงก์เดียว/ใช้เอง → หน้าตาเดิมเป๊ะ
-    return <LoginForm branding={DEFAULT_BRANDING} isTenant={false} />;
+    return <LoginForm branding={DEFAULT_BRANDING} isTenant={false} next={next} />;
   }
 
   const supabase = await createClient();
@@ -32,7 +35,7 @@ export default async function LoginPage() {
 
   // เดา slug มั่วแล้วไม่มีจริง → กลับไปหน้าตากลาง ไม่บอกว่า "ไม่พบลูกค้ารายนี้"
   // (ไม่ต้องช่วยคนนอกไล่เดาว่าลูกค้าเจ้าไหนมีอยู่จริง)
-  if (!data) return <LoginForm branding={DEFAULT_BRANDING} isTenant={false} />;
+  if (!data) return <LoginForm branding={DEFAULT_BRANDING} isTenant={false} next={next} />;
 
-  return <LoginForm branding={brandingFromTenantRow(data)} isTenant />;
+  return <LoginForm branding={brandingFromTenantRow(data)} isTenant next={next} />;
 }
