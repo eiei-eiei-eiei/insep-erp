@@ -7,8 +7,14 @@ import { forwardCatsOf, FORWARD_CAT_KIND } from "@/lib/accounting/forwardCats";
 import { hasModule } from "@/lib/shared/workspaces";
 import { mapDbError } from "@/lib/shared/dbError";
 import { bangkokDateISO } from "@/lib/shared/datetime";
-import { checkBill, previewSummary, taxIdValid, normalizeTaxId, CONNECTOR_TYPES, type BillDraft, type BillContext, type ConnectorType } from "./bill";
+import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
+import { checkBill, mismatchText, previewSummary, taxIdValid, normalizeTaxId, CONNECTOR_TYPES, type BillDraft, type BillContext, type CheckResult, type ConnectorType } from "./bill";
+import { categoryChips, type CardData } from "./cardView";
+import { BILL_CARD_HTML } from "./card/billCard.generated";
 import type { ConnectorMe } from "./session";
+
+/** การ์ดตรวจบิล (MCP App) — Claude แสดงในแชทเมื่อเรียก preview_bill */
+export const BILL_CARD_URI = "ui://insep-erp/bill-card";
 
 /**
  * เครื่องมือของ Claude connector (D141) — 5 ตัว · รอบแรกบันทึกได้แค่ รายจ่าย/รายรับ (+ ตั้งค้าง)
@@ -28,14 +34,20 @@ Workflow for every bill image the user sends:
 4. Call lookup_options to get the exact category names and money accounts; prefer the category the same contact used before.
 5. Call preview_bill. Send total_on_bill = the grand total printed on the bill (incl. VAT, before withholding tax) read independently from the line items.
    price_mode "in" when unit prices already include VAT, "ex" when VAT is added below the subtotal.
+   If the bill prints a subtotal before VAT and a VAT amount, also send them as bill_before_vat and bill_vat.
 6. If preview_bill returns errors, re-read the bill. NEVER tweak quantities or prices just to make totals match.
-7. Show the user the preview summary and every warning verbatim, then call save_bill with the same values only after the user agrees.
+   If the error says the difference is within rounding (use_bill_amounts), only set use_bill_amounts = true when the user agrees.
+7. preview_bill shows the user an interactive card where they pick entity/category/account, fix line items and press Save themselves.
+   After preview_bill, write at most one short line and let the user act in the card. Do NOT call save_bill yourself unless the user
+   explicitly asks you to save in chat (e.g. the card is not visible). If the card reports it was saved, never save that bill again.
 Do not record bills the user did not send. One bill per save_bill call.`;
 
 type Ctx = { db: SupabaseClient; me: ConnectorMe };
 
 const text = (s: string, isError = false) => ({ content: [{ type: "text" as const, text: s }], ...(isError ? { isError: true } : {}) });
 const json = (o: unknown) => text(JSON.stringify(o, null, 2));
+/** คำตอบที่การ์ดอ่านได้ด้วย (structuredContent) — Claude ยังอ่านข้อความเหมือนเดิม */
+const withSc = (o: Record<string, unknown>) => ({ ...json(o), structuredContent: o });
 
 /** บริบทของกิจการสำหรับ checkBill — อ่านด้วยสิทธิ์ผู้ใช้ */
 async function loadContext({ db, me }: Ctx, entityId: string): Promise<BillContext | string> {
@@ -107,7 +119,63 @@ const billShape = {
   due_date: z.string().optional().describe("Due date YYYY-MM-DD when unpaid"),
   items: z.array(itemSchema).describe("Line items exactly as printed"),
   total_on_bill: z.number().describe("Grand total printed on the bill (incl. VAT, before withholding tax). Used only to cross-check."),
+  bill_before_vat: z.number().optional().describe("Subtotal before VAT as printed on the bill, if printed"),
+  bill_vat: z.number().optional().describe("VAT amount as printed on the bill, if printed"),
+  use_bill_amounts: z.boolean().optional().describe("Save with the printed before-VAT/VAT amounts when they differ from the computed ones by at most 1 baht (vendor rounding). Only after the user agrees."),
 };
+
+/** หมวดที่คู่ค้าเจ้านี้เคยใช้ (ใหม่สุดก่อน) — ไว้เสนอเป็นปุ่มในการ์ด */
+async function contactCategoryHistory({ db }: Ctx, d: BillDraft): Promise<string[]> {
+  const who = String(d.contact_id || d.contact_name || "").trim();
+  if (!who) return [];
+  const r = await db
+    .from("transactions")
+    .select("category")
+    .eq("status", "ปกติ")
+    .eq("entity_id", d.entity_id)
+    .eq("type", d.type)
+    .eq(d.contact_id ? "contact_id" : "contact_name", who)
+    .order("transaction_date", { ascending: false })
+    .limit(20);
+  // อ่านไม่ได้ = ไม่มีปุ่มเสนอเพิ่ม (ไม่ใช่ด่าน · ปุ่ม "อื่น ๆ" ยังพาไปแชทได้)
+  return r.error ? [] : (r.data ?? []).map((x) => String(x.category ?? ""));
+}
+
+/**
+ * ตรวจ + ประกอบข้อมูลการ์ด — ใช้ทั้ง preview_bill (Claude เรียก) และ recalc_bill (การ์ดเรียก)
+ * 🚨 ตัวเลขทุกตัวมาจาก checkBill (entryCalc ตัวเดิม) — การ์ดไม่คิดเงินเอง
+ */
+async function previewCard(ctx: Ctx, d: BillDraft): Promise<{ card: CardData; check: CheckResult } | string> {
+  const c = await loadContext(ctx, d.entity_id);
+  if (typeof c === "string") return c;
+  const check = checkBill(d, c);
+  let dup: Awaited<ReturnType<typeof findDuplicates>> = [];
+  if (check.computed) {
+    dup = await findDuplicates(ctx, d, check.computed.net_amount);
+    if (typeof dup === "string") return dup;
+  }
+  const history = await contactCategoryHistory(ctx, d);
+  const mm = check.mismatch && !check.usedBillAmounts ? mismatchText(check.mismatch, d.items) : null;
+  const ent = ctx.me.entities.find((e) => e.entity_id === d.entity_id);
+  const card: CardData = {
+    v: 1,
+    tenant_slug: ctx.me.tenantSlug,
+    tenant_name: ctx.me.tenantName,
+    draft: d,
+    entities: ctx.me.entities,
+    category_chips: categoryChips(d.category, history, c.categories[d.type] ?? []),
+    accounts: c.accounts,
+    vat_effective: Boolean(d.has_vat && ent?.is_vat),
+    computed: check.computed,
+    mismatch: check.mismatch,
+    used_bill_amounts: check.usedBillAmounts,
+    // ยอดไม่ตรงอยู่ใน mismatch แล้ว — แยกออกให้การ์ดตัดสินปุ่มเอง (cardView.primaryAction)
+    errors: check.errors.filter((e) => e !== mm),
+    warnings: check.warnings,
+    possible_duplicates: dup,
+  };
+  return { card, check };
+}
 
 function asDraft(a: z.infer<z.ZodObject<typeof billShape>>): BillDraft {
   return { ...a, type: a.type as ConnectorType };
@@ -208,36 +276,58 @@ export function buildServer(ctx: Ctx): McpServer {
     },
   );
 
-  server.registerTool(
+  registerAppTool(
+    server,
     "preview_bill",
     {
       title: "ตรวจบิลก่อนบันทึก",
-      description: "Validate and compute a bill WITHOUT saving. Returns errors (must fix by re-reading the bill), warnings (tell the user) and a summary to show the user.",
+      description: "Validate and compute a bill WITHOUT saving, and show the user an interactive card to pick entity/category/account, fix line items and save. Returns errors (re-read the bill), warnings and a summary.",
       inputSchema: billShape,
       annotations: { readOnlyHint: true },
+      _meta: { ui: { resourceUri: BILL_CARD_URI } },
     },
     async (a) => {
       const d = asDraft(a);
-      const c = await loadContext(ctx, d.entity_id);
-      if (typeof c === "string") return text(c, true);
-      const r = checkBill(d, c);
+      const r = await previewCard(ctx, d);
+      if (typeof r === "string") return text(r, true);
+      const { card, check } = r;
       const ent = me.entities.find((e) => e.entity_id === d.entity_id);
-      let duplicates: unknown[] = [];
-      if (r.computed) {
-        const dup = await findDuplicates(ctx, d, r.computed.net_amount);
-        if (typeof dup === "string") return text(dup, true);
-        duplicates = dup;
-      }
-      return json({
-        ok: r.errors.length === 0,
-        errors: r.errors,
-        warnings: [...r.warnings, ...(duplicates.length ? ["มีบิลที่หน้าตาเหมือนกันบันทึกไว้แล้ว — ถามผู้ใช้ก่อนว่าเป็นบิลใหม่จริงไหม (save_bill ต้องส่ง confirm_not_duplicate = true)"] : [])],
-        possible_duplicates: duplicates,
-        summary: r.computed && ent ? previewSummary(d, ent.name, me.tenantName, r.computed) : null,
-        computed: r.computed,
-      });
+      return {
+        ...json({
+          ok: check.errors.length === 0,
+          errors: check.errors,
+          warnings: [...check.warnings, ...(card.possible_duplicates.length ? ["มีบิลที่หน้าตาเหมือนกันบันทึกไว้แล้ว — ถามผู้ใช้ก่อนว่าเป็นบิลใหม่จริงไหม (save_bill ต้องส่ง confirm_not_duplicate = true)"] : [])],
+          possible_duplicates: card.possible_duplicates,
+          summary: check.computed && ent ? previewSummary(d, ent.name, me.tenantName, check.computed) : null,
+          computed: check.computed,
+          card: "แสดงการ์ดให้ผู้ใช้แล้ว — ผู้ใช้เลือก/แก้/กดบันทึกในการ์ดเอง",
+        }),
+        structuredContent: card,
+      };
     },
   );
+
+  // การ์ดเรียกตัวนี้ทุกครั้งที่ผู้ใช้กดเลือกหรือแก้รายการ — Claude มองไม่เห็น (visibility: app)
+  registerAppTool(
+    server,
+    "recalc_bill",
+    {
+      title: "คิดยอดบิลใหม่ (การ์ด)",
+      description: "Recompute the bill card after the user changes a choice or a line item. Called by the card only.",
+      inputSchema: billShape,
+      annotations: { readOnlyHint: true },
+      _meta: { ui: { resourceUri: BILL_CARD_URI, visibility: ["app"] } },
+    },
+    async (a) => {
+      const r = await previewCard(ctx, asDraft(a));
+      if (typeof r === "string") return text(r, true);
+      return { ...text(r.card.errors[0] ?? "ok"), structuredContent: r.card };
+    },
+  );
+
+  registerAppResource(server, "การ์ดตรวจบิล", BILL_CARD_URI, { description: "Interactive bill review card" }, async () => ({
+    contents: [{ uri: BILL_CARD_URI, mimeType: RESOURCE_MIME_TYPE, text: BILL_CARD_HTML }],
+  }));
 
   server.registerTool(
     "save_bill",
@@ -260,17 +350,17 @@ export function buildServer(ctx: Ctx): McpServer {
       const c = await loadContext(ctx, d.entity_id);
       if (typeof c === "string") return text(c, true);
       const r = checkBill(d, c);
-      if (!r.payload || !r.computed) return json({ ok: false, errors: r.errors, warnings: r.warnings });
+      if (!r.payload || !r.computed) return withSc({ ok: false, errors: r.errors, warnings: r.warnings });
       const dup = await findDuplicates(ctx, d, r.computed.net_amount);
       if (typeof dup === "string") return text(dup, true);
       if (dup.length && !confirm_not_duplicate) {
-        return json({ ok: false, errors: ["มีบิลที่หน้าตาเหมือนกันอยู่แล้ว — ถามผู้ใช้ก่อน ถ้าเป็นบิลใหม่จริงให้ส่ง confirm_not_duplicate = true"], possible_duplicates: dup });
+        return withSc({ ok: false, errors: ["มีบิลที่หน้าตาเหมือนกันอยู่แล้ว — ถามผู้ใช้ก่อน ถ้าเป็นบิลใหม่จริงให้ส่ง confirm_not_duplicate = true"], possible_duplicates: dup });
       }
       const { data, error } = await db.rpc("fn_save_transaction", { p: r.payload.p, p_items: r.payload.items });
       if (error) return text("บันทึกไม่สำเร็จ: " + mapDbError(error), true);
       const res = data as { ok: boolean; tx_id: string; warning?: string | null };
       const ent = me.entities.find((e) => e.entity_id === d.entity_id);
-      return json({
+      return withSc({
         ok: true,
         tx_id: res.tx_id,
         // บันทึกได้บางส่วน ≠ สำเร็จ (D79) — เช่น รับวัตถุดิบเข้าสต็อกไม่สำเร็จ ต้องบอกผู้ใช้

@@ -7,7 +7,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { checkBill, taxIdValid, normalizeTaxId, totalMismatchText, previewSummary, type BillDraft, type BillContext } from "./bill";
+import { checkBill, taxIdValid, normalizeTaxId, previewSummary, ROUNDING_CAP, type BillDraft, type BillContext } from "./bill";
 
 const ctx: BillContext = {
   entities: [
@@ -78,11 +78,16 @@ describe("C1 — 🚨 ยอดไม่ตรงบิล = ไม่ยอม�
     expect(r.errors[0]).toMatch(/ห้ามปรับตัวเลขให้ยอดตรงเอง/);
   });
 
-  it("เลือก price_mode ผิด (ราคารวม VAT แต่ส่ง ex) → บอกว่ามากกว่า 7% พอดี ให้ลอง in", () => {
+  it("ขั้น 1: เลือก price_mode ผิด → บอกว่าสลับแล้วตรงพอดี (altPriceMode) · ไม่เสนอใช้ยอดตามบิล", () => {
     const r = checkBill(draft({ price_mode: "ex" }), ctx);
     expect(r.payload).toBeNull();
-    expect(r.errors[0]).toMatch(/7% พอดี/);
+    expect(r.mismatch).toMatchObject({ altPriceMode: "in", canUseBillAmounts: false });
     expect(r.errors[0]).toMatch(/price_mode = "in"/);
+  });
+
+  it("ขั้น 1: เคส D98 ตรงตัว — ราคา 75 รวม VAT แต่อ่านเป็นไม่รวม ได้ altPriceMode", () => {
+    const r = checkBill(draft({ price_mode: "ex", total_on_bill: 1200 }), ctx);
+    expect(r.mismatch?.altPriceMode).toBe("in");
   });
 
   it("ต่างไม่เกิน 1 สตางค์ผ่านได้", () => {
@@ -90,8 +95,91 @@ describe("C1 — 🚨 ยอดไม่ตรงบิล = ไม่ยอม�
     expect(checkBill(draft({ total_on_bill: 1200.02 }), ctx).errors).not.toEqual([]);
   });
 
-  it("ข้อความต่ำกว่า 7% พอดี แนะนำ ex", () => {
-    expect(totalMismatchText(1000, 1070, true, "in")).toMatch(/price_mode = "ex"/);
+  it("ขั้น 1 อีกทิศ: ราคาไม่รวม VAT แต่ส่ง in → แนะนำ ex", () => {
+    const r = checkBill(draft({ price_mode: "in", items: [{ name: "x", quantity: 10, unit_price: 100 }], total_on_bill: 1070 }), ctx);
+    expect(r.mismatch?.altPriceMode).toBe("ex");
+  });
+});
+
+describe("C1 — 🚨 ขั้น 2: ผู้ขายปัดเศษคนละวิธี → ใช้ยอดตามบิล (เพดาน 1 บาท)", () => {
+  // 3 รายการ ราคาไม่รวม VAT · ระบบคิด VAT จากยอดรวม = 49.98 · ผู้ขายปัด VAT ทีละบรรทัดได้ 50.01 (บิล 764.01)
+  const three = (p: Partial<BillDraft> = {}) => draft({
+    price_mode: "ex",
+    items: [{ name: "a", quantity: 1, unit_price: 238.1 }, { name: "b", quantity: 1, unit_price: 238.1 }, { name: "c", quantity: 1, unit_price: 237.8 }],
+    total_on_bill: 764.01,
+    ...p,
+  });
+
+  it("ต่าง 0.03 → ไม่บันทึกเอง แต่บอกว่าใช้ยอดตามบิลได้", () => {
+    const r = checkBill(three(), ctx);
+    expect(r.payload).toBeNull();
+    expect(r.mismatch).toMatchObject({ altPriceMode: null, canUseBillAmounts: true, suspectLines: [] });
+    expect(r.errors[0]).toMatch(/use_bill_amounts/);
+  });
+
+  it("ส่ง use_bill_amounts + ยอดที่อ่านจากบิล → บันทึกด้วยตัวเลขของบิล + ทิ้งร่องรอยในคำอธิบาย", () => {
+    const r = checkBill(three({ use_bill_amounts: true, bill_before_vat: 714, bill_vat: 50.01 }), ctx);
+    expect(r.errors).toEqual([]);
+    expect(r.usedBillAmounts).toBe(true);
+    expect(r.payload!.p).toMatchObject({ amount_after_discount: 714, vat_amount: 50.01, net_amount: 764.01 });
+    expect(r.payload!.p.description).toMatch(/ยอดตามบิล ต่างจากคำนวณ/);
+    expect(r.warnings.join()).toMatch(/ใช้ยอดตามบิล/);
+  });
+
+  it("หัก ณ ที่จ่ายคิดบนยอดก่อน VAT ตามบิล", () => {
+    const r = checkBill(three({ use_bill_amounts: true, bill_before_vat: 714, bill_vat: 50.01, wht_rate: 3 }), ctx);
+    expect(r.payload!.p).toMatchObject({ wht_amount: 21.42, net_amount: 742.59 });
+  });
+
+  it("🚨 ก่อน VAT + VAT ไม่เท่ายอดรวม = อ่านผิด", () => {
+    expect(checkBill(three({ use_bill_amounts: true, bill_before_vat: 714, bill_vat: 49 }), ctx).errors.join()).toMatch(/ไม่เท่ายอดรวมบนบิล/);
+  });
+
+  it("🚨 VAT ไม่ใกล้ 7% ของยอดก่อน VAT = อ่านผิด ไม่ใช่ปัดเศษ", () => {
+    const r = checkBill(three({ total_on_bill: 764.01, use_bill_amounts: true, bill_before_vat: 700, bill_vat: 64.01 }), ctx);
+    expect(r.errors.join()).toMatch(/ไม่ใช่ 7%/);
+    expect(r.payload).toBeNull();
+  });
+
+  it("🚨 ต่างเกินเพดานใช้ยอดตามบิลไม่ได้", () => {
+    expect(ROUNDING_CAP).toBe(1);
+    const r = checkBill(three({ total_on_bill: 766, use_bill_amounts: true, bill_before_vat: 715.89, bill_vat: 50.11 }), ctx);
+    expect(r.mismatch?.canUseBillAmounts).toBe(false);
+    expect(r.errors.join()).toMatch(/เกินเพดาน/);
+  });
+
+  it("ต้องส่งยอดก่อน VAT + VAT มาด้วยเมื่อบิลมี VAT", () => {
+    expect(checkBill(three({ use_bill_amounts: true }), ctx).errors.join()).toMatch(/bill_before_vat และ bill_vat/);
+  });
+
+  it("ยอดตรงอยู่แล้ว = ไม่สนธง use_bill_amounts (ใช้ยอดของระบบ)", () => {
+    const r = checkBill(draft({ use_bill_amounts: true, bill_before_vat: 1, bill_vat: 1 }), ctx);
+    expect(r.errors).toEqual([]);
+    expect(r.usedBillAmounts).toBe(false);
+    expect(r.payload!.p.amount_after_discount).toBe(1121.5);
+  });
+
+  it("กิจการไม่จด VAT: ยอดตามบิล = ยอดรวมทั้งก้อน ไม่มี VAT", () => {
+    const r = checkBill(draft({ entity_id: "EID02", items: [{ name: "x", quantity: 4, unit_price: 33.33 }], total_on_bill: 133.4, use_bill_amounts: true }), ctx);
+    expect(r.errors).toEqual([]);
+    expect(r.usedBillAmounts).toBe(true);
+    expect(r.payload!.p).toMatchObject({ amount_after_discount: 133.4, vat_amount: 0, net_amount: 133.4 });
+  });
+});
+
+describe("C1 — ขั้น 3: ต่างมาก → ไฮไลต์แถวที่น่าจะผิด", () => {
+  it("อ่านจำนวนขวดแก้วขาดไป 1 → ชี้แถวที่ 1 (ส่วนต่าง = ราคาขวด 1 ใบรวม VAT)", () => {
+    const r = checkBill(draft({
+      items: [{ name: "ขวดแก้ว", quantity: 15, unit_price: 75 }, { name: "ฝาจุก", quantity: 16, unit_price: 8.5 }],
+      total_on_bill: 1336,
+    }), ctx);
+    expect(r.mismatch).toMatchObject({ canUseBillAmounts: false, altPriceMode: null, suspectLines: [0] });
+    expect(r.errors[0]).toContain("รายการที่ 1 (ขวดแก้ว)");
+  });
+
+  it("ส่วนต่างไม่ลงตัวกับแถวไหน = ไม่ชี้ (ไม่เดา)", () => {
+    const r = checkBill(draft({ total_on_bill: 1263.37 }), ctx);
+    expect(r.mismatch?.suspectLines).toEqual([]);
   });
 });
 
@@ -177,8 +265,8 @@ describe("C1 — สรุปให้ Claude พูดก่อนขออน�
 
 describe("C1 — 🚨 ไม่มีสูตรเงินในไฟล์ connector (อ่านซอร์ส)", () => {
   const src = readFileSync(path.join(__dirname, "bill.ts"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
-  // ★ ตรวจเฉพาะตัวคิดยอด (checkBill + toBillItems) — totalMismatchText ใช้ 1.07 แค่เดาสาเหตุในข้อความ ไม่ใช่เงิน
-  const money = src.slice(src.indexOf("function toBillItems"), src.indexOf("export function totalMismatchText"));
+  // ★ ตรวจตัวคิดยอดทั้งหมด (toBillItems · checkBill · ขั้น 2/3)
+  const money = src.slice(src.indexOf("function toBillItems"), src.indexOf("export function previewSummary"));
   it("ตัวคิดยอดไม่คูณ/หาร 1.07 หรือ 0.07 เอง", () => {
     expect(money.length).toBeGreaterThan(500); // กันเทสผ่านเพราะตัดซอร์สผิดจนว่าง
     expect(money).not.toMatch(/1\.07|0\.07|\* *7 *\/ *100|\/ *107/);
