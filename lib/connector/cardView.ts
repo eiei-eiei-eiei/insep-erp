@@ -32,6 +32,8 @@ export type CardData = {
   jobs: string[];
   /** กิจการนี้เคยใช้งาน ⇒ ทุกแถวต้องเลือกงาน หรือ ไม่ระบุงาน */
   jobs_required: boolean;
+  /** หมวดสินค้าที่เคยใช้ (รายแถว · item_category · ไม่บังคับ · รอบ 5) */
+  item_categories: string[];
   contact: CardContact;
   /** มี VAT จริงไหม (บิลมี VAT และกิจการจด VAT) */
   vat_effective: boolean;

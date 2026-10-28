@@ -134,6 +134,16 @@ describe("C4 — ด่านเรียงถูก", () => {
     expect(h.indexOf("if (cdata) return contactInput(el);")).toBeLessThan(h.indexOf("if (!data) return;"));
   });
 
+  it("รอบ 5: หมวดสินค้ารายแถว — การ์ดแสดง+แก้ได้ทุกแถว · edit_bill แก้ได้ · ไม่บังคับ (ไม่เข้า jobsRequired)", () => {
+    const card = code("lib/connector/card/billCard.ts");
+    expect(card.slice(card.indexOf("function itemsEditHtml"))).toMatch(/catSelect\(d, it, i\)/);
+    expect(card).toMatch(/function tagLine/);
+    const s = code("lib/connector/tools.ts");
+    expect(toolBody(s, "edit_bill")).toMatch(/item_categories:/);
+    expect(s).toMatch(/item_categories: itemCats/);
+    expect(code("lib/connector/bill.ts")).not.toMatch(/jobsRequired[^\n]*category/);
+  });
+
   it("🚨 edit_bill ไม่แตะยอดเงิน — ส่งค่าเดิมกลับ และแก้ได้เฉพาะบิลที่ source = claude", () => {
     const s = code("lib/connector/tools.ts");
     const fn = s.slice(s.indexOf("async function editBill"));

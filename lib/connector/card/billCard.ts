@@ -33,6 +33,10 @@ let newJobOpen = false;
 let newJobRow: number | null = null;
 /** งานที่พิมพ์ใหม่ในการ์ดนี้ — ขึ้นเป็นตัวเลือกของแถวอื่นทันที */
 let extraJobs: string[] = [];
+/** กล่องพิมพ์ใหม่เป็นของช่องไหน — งาน หรือ หมวดสินค้า (รอบ 5 · ใช้กลไกเดียวกัน) */
+let newField: "job" | "cat" = "job";
+/** หมวดสินค้าที่พิมพ์ใหม่ในการ์ดนี้ */
+let extraCats: string[] = [];
 /** คู่ค้าใหม่ที่กำลังแก้ในหน้าเต็มจอ (รอบ 4 · null = ไม่มีคู่ค้าใหม่) */
 let ncLocal: NewContactInput | null = null;
 /** การ์ดคู่ค้า (add_contact · รอบ 4) — มีค่า = การ์ดนี้เป็นการ์ดคู่ค้า ไม่ใช่การ์ดบิล */
@@ -58,6 +62,35 @@ function allJobs(d: CardData): string[] {
     if (t && !out.includes(t)) out.push(t);
   }
   return out;
+}
+
+/** หมวดสินค้าทั้งหมดที่เลือกได้: เคยใช้ + พิมพ์ใหม่ในการ์ด + ที่อยู่ในบิลแล้ว */
+function allCats(d: CardData): string[] {
+  const out: string[] = [];
+  for (const c of [...d.item_categories, ...extraCats, ...d.draft.items.map((it) => String(it.category ?? ""))]) {
+    const t = c.trim();
+    if (t && !out.includes(t)) out.push(t);
+  }
+  return out;
+}
+
+/** ใส่หมวดสินค้าให้แถวเดียวหรือทุกแถว · null = ไม่ระบุ (ค่าว่าง) */
+function applyCat(cat: string | null, row: number | null) {
+  if (!data) return;
+  const items = data.draft.items.map((it, i) => (row === null || i === row ? { ...it, category: cat ?? "" } : it));
+  data = { ...data, draft: { ...data.draft, items } };
+  render();
+  void recalc({ items });
+}
+
+/** ใส่ค่าที่เลือก/พิมพ์ใหม่ ให้ช่องที่กล่องพิมพ์ใหม่เป็นเจ้าของ */
+function applyNew(v: string, row: number | null) {
+  if (newField === "cat") {
+    if (!extraCats.includes(v)) extraCats = [...extraCats, v];
+    return applyCat(v, row);
+  }
+  if (!extraJobs.includes(v)) extraJobs = [...extraJobs, v];
+  return applyJob(v, row);
 }
 
 /** ใส่งานให้ทุกแถว หรือแถวเดียว · null = ไม่ระบุงาน (บันทึกเป็นค่าว่าง) */
@@ -188,8 +221,9 @@ function contactHtml(d: CardData): string {
 function newJobHtml(): string {
   if (!newJobOpen) return "";
   const target = newJobRow === null ? "ทุกรายการ" : `รายการที่ ${newJobRow + 1}`;
-  return `<div class="newjob"><label class="lab">งานใหม่ (ใส่ให้${target})<input id="newjob" autocomplete="off"></label>
-    <div id="simjob"></div><div class="acts"><button class="pri" data-act="use-new-job">ใช้งานนี้</button><button class="sec" data-act="cancel-new-job">ยกเลิก</button></div></div>`;
+  const what = newField === "cat" ? "หมวดสินค้า" : "งาน";
+  return `<div class="newjob"><label class="lab">${what}ใหม่ (ใส่ให้${target})<input id="newjob" autocomplete="off"></label>
+    <div id="simjob"></div><div class="acts"><button class="pri" data-act="use-new-job">ใช้${what}นี้</button><button class="sec" data-act="cancel-new-job">ยกเลิก</button></div></div>`;
 }
 
 function jobsHtml(d: CardData): string {
@@ -205,6 +239,16 @@ function jobsHtml(d: CardData): string {
     chip("+ งานใหม่", false, "new-job")}${chip("ไม่ระบุงาน", sum.kind === "no_job", "job-none")}</div>${note}${newJobHtml()}</div>`;
 }
 
+function catSelect(d: CardData, it: DraftItem, i: number): string {
+  const cur = String(it.category ?? "").trim();
+  const opts = [
+    `<option value=""${cur === "" ? " selected" : ""}>— หมวดสินค้า (ไม่ระบุ) —</option>`,
+    ...allCats(d).map((c) => `<option value="${esc(c)}"${cur === c ? " selected" : ""}>${esc(c)}</option>`),
+    `<option value="__new">+ หมวดสินค้าใหม่…</option>`,
+  ].join("");
+  return `<select class="cat" data-row-cat="${i}" aria-label="หมวดสินค้าของรายการ ${i + 1}">${opts}</select>`;
+}
+
 function jobSelect(d: CardData, it: DraftItem, i: number): string {
   const cur = it.job_none ? "__none" : String(it.job ?? "").trim();
   const opts = [
@@ -216,11 +260,17 @@ function jobSelect(d: CardData, it: DraftItem, i: number): string {
   return `<select class="job" data-row-job="${i}" aria-label="งานของรายการ ${i + 1}">${opts}</select>`;
 }
 
+/** "หมวด X · งาน Y" ใต้ชื่อรายการ (ไม่มีทั้งคู่ = ไม่แสดง) */
+function tagLine(it: DraftItem): string {
+  const parts = [it.category ? `หมวด ${esc(it.category)}` : "", it.job && !it.job_none ? `งาน ${esc(it.job)}` : ""].filter(Boolean);
+  return parts.length ? `<br><span class="mu">${parts.join(" · ")}</span>` : "";
+}
+
 function itemsInlineHtml(d: CardData): string {
   const sus = suspectSet(d);
   const items = d.draft.items;
   const rows = items.slice(0, INLINE_ITEMS).map((it, i) =>
-    `<div class="li${sus.has(i) ? " sus" : ""}"><span>${esc(it.name)}${it.job && !it.job_none ? `<br><span class="mu">งาน ${esc(it.job)}</span>` : ""}</span><span class="num">${it.quantity} × ${baht(it.unit_price)}</span></div>`).join("");
+    `<div class="li${sus.has(i) ? " sus" : ""}"><span>${esc(it.name)}${tagLine(it)}</span><span class="num">${it.quantity} × ${baht(it.unit_price)}</span></div>`).join("");
   const more = items.length > INLINE_ITEMS ? `<div class="mu">+ อีก ${items.length - INLINE_ITEMS} รายการ</div>` : "";
   const hidden = [...sus].some((i) => i >= INLINE_ITEMS) ? `<div class="bad">แถวที่น่าจะผิดอยู่ในรายการที่ซ่อนไว้</div>` : "";
   return `<div class="row"><div class="lab">รายการ ${items.length} รายการ · ราคา${d.draft.price_mode === "in" ? "รวม" : "ไม่รวม"} VAT</div>${rows}${more}${hidden}
@@ -250,9 +300,10 @@ function itemsEditHtml(d: CardData): string {
       <input class="q" data-f="quantity" inputmode="decimal" value="${esc(it.quantity)}" aria-label="จำนวน ${i + 1}">
       <input class="p" data-f="unit_price" inputmode="decimal" value="${esc(it.unit_price)}" aria-label="ราคาต่อหน่วย ${i + 1}">
       <button class="x" data-act="del" data-val="${i}" aria-label="ลบรายการ ${i + 1}">✕</button>
+      ${catSelect(d, it, i)}
       ${d.jobs_required || allJobs(d).length ? jobSelect(d, it, i) : ""}</div>`).join("");
-  const jobBar = d.jobs_required || allJobs(d).length
-    ? `<div class="chips row">${chip("+ งานใหม่", false, "new-job")}</div>${newJobHtml()}` : "";
+  const jobBar = `<div class="chips row">${chip("+ หมวดสินค้าใหม่", false, "new-cat")}${
+    d.jobs_required || allJobs(d).length ? chip("+ งานใหม่", false, "new-job") : ""}</div>${newJobHtml()}`;
   return `${contactEditHtml()}<div class="row"><div class="er hd"><span>รายการ</span><span>จำนวน</span><span>ราคา/หน่วย</span><span></span></div>${rows}</div>${jobBar}`;
 }
 
@@ -341,17 +392,17 @@ root.addEventListener("click", (e) => {
     case "other-cat": showAllCats = !showAllCats; return render();
     case "job": return applyJob(val, null);
     case "job-none": return applyJob(null, null);
-    case "new-job": newJobOpen = true; newJobRow = null; render(); return void document.getElementById("newjob")?.focus();
+    case "new-job": newField = "job"; newJobOpen = true; newJobRow = null; render(); return void document.getElementById("newjob")?.focus();
+    case "new-cat": newField = "cat"; newJobOpen = true; newJobRow = null; render(); return void document.getElementById("newjob")?.focus();
     case "cancel-new-job": newJobOpen = false; return render();
-    case "use-similar": newJobOpen = false; { const row = newJobRow; render(); return applyJob(val, row); }
+    case "use-similar": newJobOpen = false; { const row = newJobRow; render(); return applyNew(val, row); }
     case "use-new-job": {
       const v = (document.getElementById("newjob") as HTMLInputElement | null)?.value.trim() ?? "";
       if (!v) return;
-      if (!extraJobs.includes(v)) extraJobs = [...extraJobs, v];
       newJobOpen = false;
       const row = newJobRow;
       render();
-      return applyJob(v, row);
+      return applyNew(v, row);
     }
     case "chat": return ask("ขอแก้บิลนี้: ");
     case "edit": return void setFull(true);
@@ -386,10 +437,10 @@ root.addEventListener("input", (e) => {
     return void recalc({ new_contact: { ...ncLocal }, contact_id: undefined }, 600);
   }
   if (el.id === "newjob") {
-    const sim = similarJob(el.value, allJobs(data));
+    const sim = similarJob(el.value, newField === "cat" ? allCats(data) : allJobs(data));
     const box = document.getElementById("simjob");
     if (box) box.innerHTML = sim
-      ? `<div class="warn">มีงาน "${esc(sim)}" อยู่แล้ว ใช่อันนี้ไหม <button class="link" data-act="use-similar" data-val="${esc(sim)}">ใช้ "${esc(sim)}"</button></div>`
+      ? `<div class="warn">มี${newField === "cat" ? "หมวดสินค้า" : "งาน"} "${esc(sim)}" อยู่แล้ว ใช่อันนี้ไหม <button class="link" data-act="use-similar" data-val="${esc(sim)}">ใช้ "${esc(sim)}"</button></div>`
       : "";
     return;
   }
@@ -405,9 +456,21 @@ root.addEventListener("input", (e) => {
 
 root.addEventListener("change", (e) => {
   const el = e.target as HTMLSelectElement;
+  if (data && el.dataset.rowCat !== undefined) {
+    const i = Number(el.dataset.rowCat);
+    if (el.value === "__new") {
+      newField = "cat";
+      newJobOpen = true;
+      newJobRow = i;
+      render();
+      return void document.getElementById("newjob")?.focus();
+    }
+    return applyCat(el.value || null, i);
+  }
   if (!data || el.dataset.rowJob === undefined) return;
   const i = Number(el.dataset.rowJob);
   if (el.value === "__new") {
+    newField = "job";
     newJobOpen = true;
     newJobRow = i;
     render();

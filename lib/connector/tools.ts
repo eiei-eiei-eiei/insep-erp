@@ -87,10 +87,11 @@ async function loadContext({ db, me }: Ctx, entityId: string): Promise<BillConte
 const JOB_HISTORY_BILLS = 200;
 
 /**
- * งานที่เคยใช้ของกิจการนี้ (คู่ค้าเจ้านี้ก่อน) + กิจการนี้ "ใช้งาน" ไหม (บังคับเลือกงาน)
+ * งานและหมวดสินค้าที่เคยใช้ของกิจการนี้ (คู่ค้าเจ้านี้ก่อน) + กิจการนี้ "ใช้งาน" ไหม (บังคับเลือกงาน)
+ * ★ หมวดสินค้า (item_category · รอบ 5) ใช้ตัวจัดอันดับเดียวกับงาน แต่ **ไม่บังคับ**
  * 🚨 อ่านไม่ได้ = คืน error (ไม่เดาว่าไม่บังคับ — เดาผิด = บิลลงโดยไม่มีงานเงียบ ๆ)
  */
-async function loadJobs({ db }: Ctx, entityId: string, contact: { id?: string; name?: string }): Promise<{ jobs: string[]; required: boolean } | string> {
+async function loadJobs({ db }: Ctx, entityId: string, contact: { id?: string; name?: string }): Promise<{ jobs: string[]; required: boolean; itemCats: string[] } | string> {
   const tx = await db
     .from("transactions")
     .select("tx_id, contact_id, contact_name")
@@ -101,17 +102,18 @@ async function loadJobs({ db }: Ctx, entityId: string, contact: { id?: string; n
     .limit(JOB_HISTORY_BILLS);
   if (tx.error) return "อ่านประวัติงานไม่สำเร็จ: " + mapDbError(tx.error);
   const bills = tx.data ?? [];
-  if (!bills.length) return { jobs: [], required: false };
-  const its = await db.from("transaction_items").select("tx_id, item_job").in("tx_id", bills.map((b) => b.tx_id));
+  if (!bills.length) return { jobs: [], required: false, itemCats: [] };
+  const its = await db.from("transaction_items").select("tx_id, item_job, item_category").in("tx_id", bills.map((b) => b.tx_id));
   if (its.error) return "อ่านประวัติงานไม่สำเร็จ: " + mapDbError(its.error);
-  const byTx = new Map<string, string[]>();
-  for (const it of its.data ?? []) byTx.set(it.tx_id, [...(byTx.get(it.tx_id) ?? []), String(it.item_job ?? "")]);
   const isContact = (b: { contact_id: string | null; contact_name: string | null }) =>
     contact.id ? b.contact_id === contact.id : Boolean(contact.name) && String(b.contact_name ?? "").trim() === String(contact.name).trim();
-  const recent = bills.flatMap((b) => byTx.get(b.tx_id) ?? []);
-  const contactJobs = bills.filter(isContact).flatMap((b) => byTx.get(b.tx_id) ?? []);
-  const jobs = rankJobs(contactJobs, recent);
-  return { jobs, required: jobs.length > 0 };
+  const rank = (field: "item_job" | "item_category") => {
+    const byTx = new Map<string, string[]>();
+    for (const it of its.data ?? []) byTx.set(it.tx_id, [...(byTx.get(it.tx_id) ?? []), String(it[field] ?? "")]);
+    return rankJobs(bills.filter(isContact).flatMap((b) => byTx.get(b.tx_id) ?? []), bills.flatMap((b) => byTx.get(b.tx_id) ?? []));
+  };
+  const jobs = rank("item_job");
+  return { jobs, required: jobs.length > 0, itemCats: rank("item_category") };
 }
 
 /** บิลที่น่าจะซ้ำ (บันทึกไปแล้ว) — เลขใบกำกับเดียวกัน หรือ วันที่ + ยอดสุทธิ + คู่ค้าเดียวกัน */
@@ -180,7 +182,7 @@ const itemSchema = z.object({
   quantity: z.number().describe("Quantity (> 0)"),
   unit_price: z.number().describe("Unit price as printed on the bill (VAT-inclusive or not per price_mode)"),
   discount_baht: z.number().optional().describe("Line discount in baht, same VAT basis as unit_price"),
-  category: z.string().optional().describe("Optional item category (free text)"),
+  category: z.string().optional().describe("Item category of this line — prefer an existing name from lookup_options.item_categories; a new name only if none fits"),
   job: z.string().optional().describe("Job of this line (existing name from lookup_options or a new name)"),
   job_none: z.boolean().optional().describe("true = the user chose no job for this line (stored empty)"),
 });
@@ -235,7 +237,7 @@ async function contactCategoryHistory({ db }: Ctx, d: BillDraft): Promise<string
 }
 
 /** ตรวจทั้งบิล: คู่ค้า + งาน + ยอด — ใช้ทั้งการ์ด (preview/recalc) และตอนบันทึก */
-async function evaluate(ctx: Ctx, input: BillDraft): Promise<{ resolved: Resolved; c: BillContext; jobs: string[]; check: CheckResult } | string> {
+async function evaluate(ctx: Ctx, input: BillDraft): Promise<{ resolved: Resolved; c: BillContext; jobs: string[]; itemCats: string[]; check: CheckResult } | string> {
   const resolved = await resolveContact(ctx, input);
   if (typeof resolved === "string") return resolved;
   const d = resolved.draft;
@@ -246,7 +248,7 @@ async function evaluate(ctx: Ctx, input: BillDraft): Promise<{ resolved: Resolve
   const c: BillContext = { ...c0, jobsRequired: j.required };
   const check = checkBill(d, c);
   if (resolved.error) check.errors.unshift(resolved.error);
-  return { resolved, c, jobs: j.jobs, check };
+  return { resolved, c, jobs: j.jobs, itemCats: j.itemCats, check };
 }
 
 /**
@@ -256,7 +258,7 @@ async function evaluate(ctx: Ctx, input: BillDraft): Promise<{ resolved: Resolve
 async function previewCard(ctx: Ctx, input: BillDraft): Promise<{ card: CardData; check: CheckResult } | string> {
   const e = await evaluate(ctx, input);
   if (typeof e === "string") return e;
-  const { resolved, c, jobs, check } = e;
+  const { resolved, c, jobs, itemCats, check } = e;
   const d = resolved.draft;
   let dup: Awaited<ReturnType<typeof findDuplicates>> = [];
   if (check.computed) {
@@ -277,6 +279,7 @@ async function previewCard(ctx: Ctx, input: BillDraft): Promise<{ card: CardData
     accounts: c.accounts,
     jobs,
     jobs_required: Boolean(c.jobsRequired),
+    item_categories: itemCats,
     contact: resolved.contact,
     vat_effective: Boolean(d.has_vat && ent?.is_vat),
     computed: check.computed,
@@ -352,7 +355,7 @@ export function buildServer(ctx: Ctx): McpServer {
     "lookup_options",
     {
       title: "ตัวเลือกหมวด/บัญชี/งาน",
-      description: "Exact category names, money accounts, withholding rates and jobs for an entity (jobs_required = every line needs a job or job_none), plus the last 5 bills of a contact.",
+      description: "Exact category names, money accounts, withholding rates, jobs and item categories for an entity (jobs_required = every line needs a job or job_none), plus the last 5 bills of a contact.",
       inputSchema: {
         entity_id: z.string(),
         type: z.enum(CONNECTOR_TYPES),
@@ -394,6 +397,7 @@ export function buildServer(ctx: Ctx): McpServer {
         wht_rates: (wht.data ?? []).map((x) => x.value),
         jobs: j.jobs,
         jobs_required: j.required,
+        item_categories: j.itemCats,
         recent_bills_of_contact: recent,
       });
     },
@@ -515,7 +519,7 @@ export function buildServer(ctx: Ctx): McpServer {
     "edit_bill",
     {
       title: "แก้บิลที่บันทึกผ่าน Claude",
-      description: "Change category, money account, job(s) or contact of a bill saved through this connector. Never changes amounts or line items. Only after the user asks.",
+      description: "Change category, money account, job(s), item categories or contact of a bill saved through this connector. Never changes amounts or line items. Only after the user asks.",
       inputSchema: {
         tenant_slug: z.string().describe("Must equal tenant_slug from who_am_i"),
         tx_id: z.string().describe("Bill id, e.g. TR-20261028-0002"),
@@ -526,6 +530,8 @@ export function buildServer(ctx: Ctx): McpServer {
         job_none_all: z.boolean().optional().describe("true = clear the job on every line"),
         jobs: z.array(z.object({ line: z.number().describe("Line number starting at 1"), job: z.string().optional(), none: z.boolean().optional() })).optional()
           .describe("Per-line jobs"),
+        item_categories: z.array(z.object({ line: z.number().describe("Line number starting at 1"), category: z.string().describe("Item category ('' = clear)") })).optional()
+          .describe("Per-line item categories"),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     },
@@ -653,11 +659,12 @@ async function contactCard(
   };
 }
 
-// ── แก้บิลหลังบันทึก (หมวด · บัญชี · งาน · คู่ค้า) ─────────────────────────────────
+// ── แก้บิลหลังบันทึก (หมวด · บัญชี · งาน · หมวดสินค้า · คู่ค้า) ─────────────────────────────────
 type EditInput = {
   tx_id: string; category?: string; account_name?: string; contact_id?: string;
   job_all?: string; job_none_all?: boolean;
   jobs?: { line: number; job?: string; none?: boolean }[];
+  item_categories?: { line: number; category: string }[];
 };
 
 const TX_COLS = "tx_id, transaction_date, type, account_name, category, contact_name, contact_id, description, base_amount, discount, amount_after_discount, vat_amount, wht_rate, wht_amount, net_amount, tax_invoice_no, tax_invoice_date, entity_id, source, status, ap_ar_status";
@@ -725,6 +732,13 @@ async function editBill(ctx: Ctx, a: EditInput): Promise<Record<string, unknown>
     const i = j.line - 1;
     if (!items[i]) return `ไม่มีรายการที่ ${j.line} ในบิลนี้ (มี ${items.length} รายการ)`;
     setJob(i, j.none ? "" : String(j.job ?? "").trim());
+  }
+  for (const x of a.item_categories ?? []) {
+    const i = x.line - 1;
+    if (!items[i]) return `ไม่มีรายการที่ ${x.line} ในบิลนี้ (มี ${items.length} รายการ)`;
+    const v = String(x.category ?? "").trim();
+    if (String(items[i].item_category ?? "") !== v) changes.push(`รายการที่ ${i + 1} หมวดสินค้า → ${v || "(ไม่ระบุ)"}`);
+    items[i].item_category = v;
   }
 
   if (!changes.length) return { ok: true, tx_id: a.tx_id, changes: [], note: "ไม่มีอะไรเปลี่ยน" };
