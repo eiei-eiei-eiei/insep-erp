@@ -6448,7 +6448,7 @@ npx tsx migration/aim/import-aim.ts --file="D:/Pat/PAT&AIM.xlsx" --config="D:/Pa
 - เก็บกวาด: ยกเลิกบิลทดสอบที่ บัญชี → ค้นบิล
 
 ### 99.8 คู่ค้าใหม่ · งานรายแถว · แก้บิลหลังบันทึก (D141 รอบ 3 · ไม่มี migration)
-> หลัง deploy: claude.ai → Connectors → nongjodacc → Disconnect แล้ว Connect ใหม่ · ตั้ง `save_bill` = Always allow · `edit_bill` = Needs approval
+> หลัง deploy: claude.ai → Connectors → nongjodacc → Disconnect แล้ว Connect ใหม่ · ตรวจบิลก่อนบันทึก = Always allow · แก้บิลที่บันทึกผ่าน Claude = Needs approval · บันทึกบิล (การ์ด) อยู่ใน App-only tools (ไม่มีปุ่มตั้ง)
 1. ส่งบิลจากร้านที่**ยังไม่เคยลง** (มีเลขผู้เสียภาษี) → ✅ Claude ถามสิ่งที่ไม่แน่ใจ**ก่อน**แสดงการ์ด (กิจการ · บัญชี · หมวด · งาน)
 2. ✅ การ์ดมีกล่องฟ้า *คู่ค้าใหม่ — จะเพิ่มเข้าทะเบียนตอนบันทึก* พร้อมชื่อ · เลขภาษี · สาขา ตรงกับบิล
 3. EID01: ✅ มีแถว **งาน** · ยังไม่เลือก = ปุ่มบันทึกเทา บอกว่ารายการไหนยังไม่มีงาน → กดงาน → ✅ ใส่ให้ทุกรายการ
