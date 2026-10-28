@@ -32,3 +32,6 @@ button:disabled{opacity:.5;cursor:default}
 input{font:inherit;color:inherit;background:var(--color-background-secondary,#f5f4ed);border:var(--border-width-regular,1px) solid var(--color-border-secondary,#bbb);border-radius:var(--border-radius-sm,6px);height:40px;padding:0 8px;width:100%;box-sizing:border-box}
 #tob{margin-top:4px}
 .x{background:transparent;border:none;color:var(--color-text-danger,#7f2c28)}
+.newc{margin-top:10px;background:var(--color-background-info,#d6e4f6);color:var(--color-text-info,#3266ad);border-radius:var(--border-radius-md,8px);padding:8px 10px;font-size:var(--font-text-xs-size,12px)}
+.newjob{margin-top:8px}
+.er select.job{grid-column:1 / -1;font:inherit;color:inherit;background:var(--color-background-secondary,#f5f4ed);border:var(--border-width-regular,1px) solid var(--color-border-secondary,#bbb);border-radius:var(--border-radius-sm,6px);height:40px;padding:0 8px}

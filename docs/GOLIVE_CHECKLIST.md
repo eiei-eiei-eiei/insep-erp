@@ -1170,5 +1170,6 @@ npm run db:audit-grants
 - [ ] สร้างผู้ใช้บทบาท **พนักงานบัญชี** แยกไว้ให้ Claude (ตั้งค่า → ผู้ใช้) แล้วล็อกอินเปลี่ยนรหัสชั่วคราวครั้งแรก
 - [ ] `/platform` → แท็บ **Claude connector** → เลือกลูกค้า → **อนุญาต** ผู้ใช้นั้น
 - [ ] บนเว็บ claude.ai (ไม่ใช่มือถือ): **Customize → Connectors → Add custom connector** → URL = `https://<โดเมน insep-erp>/api/mcp` → Connect → ล็อกอินด้วยผู้ใช้ข้อ 6 → **อนุญาต**
-- [ ] ในหน้า connector ของ claude.ai ตั้ง **save_bill = Needs approval** (ห้าม Always allow)
+- [ ] ในหน้า connector ของ claude.ai: **save_bill = Always allow** (เรียกได้จากการ์ดทางเดียว · การกดบันทึกในการ์ดคือการอนุมัติ · D141 รอบ 3) · **edit_bill = Needs approval**
+- [ ] ทุกครั้งที่เพิ่ม/เปลี่ยนเครื่องมือของ connector: Disconnect แล้ว Connect ใหม่ ให้ Claude โหลดรายการเครื่องมือใหม่
 - บอกผู้ใช้: บิลที่ Claude บันทึกติดป้าย `source = claude` · แก้/ลบได้ที่ บัญชี → ค้นบิล เหมือนบิลอื่น · ถอนสิทธิ์ที่ /platform มีผลทันที

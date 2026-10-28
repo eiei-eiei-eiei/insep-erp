@@ -80,21 +80,48 @@ describe("C4 — ด่านเรียงถูก", () => {
     expect(auth).toBeLessThan(srv);
   });
 
-  it("🚨 save_bill: ตรวจ tenant_slug และ checkBill ใหม่ ก่อนเรียก fn_save_transaction", () => {
+  /** ตัวเนื้อของเครื่องมือหนึ่งตัว (ตั้งแต่ชื่อ ถึงเครื่องมือถัดไป) */
+  const toolBody = (s: string, name: string) => {
+    const a = s.indexOf(`"${name}",`);
+    const b = s.slice(a + 1).search(/\n  (server\.registerTool|registerAppTool|registerAppResource)\(/);
+    return b < 0 ? s.slice(a) : s.slice(a, a + 1 + b);
+  };
+
+  it("🚨 save_bill: ตรวจ tenant_slug และตรวจบิลใหม่ (evaluate → checkBill) ก่อนเรียก fn_save_transaction", () => {
     const s = code("lib/connector/tools.ts");
-    const save = s.slice(s.indexOf('"save_bill"'));
-    const slug = save.indexOf("me.tenantSlug");
-    const check = save.indexOf("checkBill(");
+    const save = toolBody(s, "save_bill");
+    const slug = save.indexOf("slugOk(me, tenant_slug)");
+    const check = save.indexOf("evaluate(");
     const rpc = save.indexOf('rpc("fn_save_transaction"');
     expect(slug).toBeGreaterThan(0);
     expect(slug).toBeLessThan(check);
     expect(check).toBeLessThan(rpc);
+    expect(s).toMatch(/async function evaluate[\s\S]*?checkBill\(d, c\)/);
   });
 
   it("save_bill ส่ง payload จาก checkBill เท่านั้น (ไม่ส่งค่าจาก Claude ตรง ๆ)", () => {
     const s = code("lib/connector/tools.ts");
-    expect(s).toMatch(/rpc\("fn_save_transaction", \{ p: r\.payload\.p, p_items: r\.payload\.items \}\)/);
+    expect(s).toMatch(/rpc\("fn_save_transaction", \{ p: payload\.p, p_items: payload\.items \}\)/);
     expect(s.match(/rpc\("fn_save_transaction"/g)?.length).toBe(1);
+  });
+
+  it("🚨 save_bill เรียกได้จากการ์ดทางเดียว (Claude บันทึกเองไม่ได้ · รอบ 3)", () => {
+    const save = toolBody(code("lib/connector/tools.ts"), "save_bill");
+    expect(save).toMatch(/visibility: \["app"\]/);
+  });
+
+  it("🚨 คู่ค้าใหม่ถูกเพิ่มหลังด่านทุกตัวผ่าน (บิลซ้ำ/ยอดไม่ตรง = ไม่มีคู่ค้างอกค้าง)", () => {
+    const save = toolBody(code("lib/connector/tools.ts"), "save_bill");
+    expect(save.indexOf("createContact(")).toBeGreaterThan(save.indexOf("findDuplicates("));
+    expect(save.indexOf("createContact(")).toBeLessThan(save.indexOf('rpc("fn_save_transaction"'));
+  });
+
+  it("🚨 edit_bill ไม่แตะยอดเงิน — ส่งค่าเดิมกลับ และแก้ได้เฉพาะบิลที่ source = claude", () => {
+    const s = code("lib/connector/tools.ts");
+    const fn = s.slice(s.indexOf("async function editBill"));
+    expect(fn).toMatch(/tx\.source !== "claude"/);
+    expect(fn).not.toMatch(/p\.(base_amount|amount_after_discount|vat_amount|wht_amount|net_amount|discount)\s*=/);
+    expect(fn).not.toMatch(/items\[i\]\.(quantity|ex_vat|in_vat|total_price|discount_baht|item_name)\s*=/);
   });
 
   it("🚨 middleware ยกเว้น /api/mcp ก่อน updateSession (ไม่งั้น Claude ได้ 200 หน้า login)", () => {

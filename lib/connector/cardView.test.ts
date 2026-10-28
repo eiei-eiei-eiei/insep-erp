@@ -29,7 +29,7 @@ function card(d: BillDraft & { confirm_not_duplicate?: boolean }, dup = false): 
   const mmText = r.mismatch && !r.usedBillAmounts ? r.errors.find((e) => e.startsWith("ยอดที่คิดได้")) : undefined;
   const ent = ctx.entities.find((e) => e.entity_id === d.entity_id);
   return {
-    v: 1, tenant_slug: "t", tenant_name: "T", draft: d, entities: ctx.entities, category_chips: [], accounts: ctx.accounts,
+    v: 1, tenant_slug: "t", tenant_name: "T", draft: d, entities: ctx.entities, category_chips: [], categories_all: [], accounts: ctx.accounts, jobs: [], jobs_required: false, contact: { kind: "none" },
     vat_effective: Boolean(d.has_vat && ent?.is_vat),
     computed: r.computed, mismatch: r.mismatch, used_bill_amounts: r.usedBillAmounts,
     errors: r.errors.filter((e) => e !== mmText), warnings: r.warnings,

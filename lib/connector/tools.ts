@@ -2,45 +2,54 @@ import "server-only";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import { accountsFor } from "@/lib/accounting/bankAccounts";
-import { forwardCatsOf, FORWARD_CAT_KIND } from "@/lib/accounting/forwardCats";
+import { forwardCatsOf, isForwardCat, FORWARD_CAT_KIND } from "@/lib/accounting/forwardCats";
 import { hasModule } from "@/lib/shared/workspaces";
 import { mapDbError } from "@/lib/shared/dbError";
 import { bangkokDateISO } from "@/lib/shared/datetime";
-import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import { checkBill, mismatchText, previewSummary, taxIdValid, normalizeTaxId, CONNECTOR_TYPES, type BillDraft, type BillContext, type CheckResult, type ConnectorType } from "./bill";
-import { categoryChips, type CardData } from "./cardView";
+import { categoryChips, type CardContact, type CardData } from "./cardView";
+import { newContactRow, findExistingContact, type ContactRow, type ExistingContact } from "./contact";
+import { rankJobs } from "./jobs";
 import { BILL_CARD_HTML } from "./card/billCard.generated";
 import type { ConnectorMe } from "./session";
 
-/** การ์ดตรวจบิล (MCP App) — Claude แสดงในแชทเมื่อเรียก preview_bill */
-export const BILL_CARD_URI = "ui://insep-erp/bill-card";
-
 /**
- * เครื่องมือของ Claude connector (D141) — 5 ตัว · รอบแรกบันทึกได้แค่ รายจ่าย/รายรับ (+ ตั้งค้าง)
+ * เครื่องมือของ Claude connector (D141) — บันทึกได้แค่ รายจ่าย/รายรับ (+ ตั้งค้าง)
  *
  * 🚨 ทุกคำสั่งอ่าน/เขียนผ่าน `db` ที่ทำงานในนามผู้ใช้ (RLS) — ไม่มี service role
+ * 🚨 save_bill เรียกได้จาก "การ์ด" ทางเดียว (visibility: app · รอบ 3) — Claude บันทึกเองไม่ได้
+ *    (ใช้จริงแล้ว Claude บันทึกก่อนผู้ใช้เลือกเสร็จ และบันทึกเองขณะการ์ดยังมีปุ่มบันทึกค้าง = เสี่ยงบิลซ้ำ)
  * 🚨 save_bill เรียก fn_save_transaction ตัวเดียวกับฟอร์ม · ยอดเงินคิดใหม่ทุกครั้งด้วย checkBill()
- *    (ไม่เชื่อผลของ preview รอบก่อน)
  * ★ คำอธิบายเครื่องมือเขียนเป็นภาษาอังกฤษ (คนอ่านคือ Claude) · ข้อความที่ผู้ใช้เห็นเป็นภาษาไทย
  */
+
+/** การ์ดตรวจบิล (MCP App) — Claude แสดงในแชทเมื่อเรียก preview_bill */
+export const BILL_CARD_URI = "ui://insep-erp/bill-card";
 
 /** ข้อความที่ Claude ได้ตอนเชื่อมต่อ — ขั้นตอนบังคับ */
 export const SERVER_INSTRUCTIONS = `This connector records purchase/sales bills into a Thai ERP (accounting module).
 Workflow for every bill image the user sends:
 1. Call who_am_i once per conversation. Tell the user which customer (tenant) and business (entity) you are writing into.
-2. Read the bill carefully. Thai bills often print Buddhist-era years (2569 = 2026): always send transaction_date in Gregorian YYYY-MM-DD.
-3. Call find_contact with the seller's 13-digit tax ID (or name) to get contact_id.
-4. Call lookup_options to get the exact category names and money accounts; prefer the category the same contact used before.
-5. Call preview_bill. Send total_on_bill = the grand total printed on the bill (incl. VAT, before withholding tax) read independently from the line items.
-   price_mode "in" when unit prices already include VAT, "ex" when VAT is added below the subtotal.
-   If the bill prints a subtotal before VAT and a VAT amount, also send them as bill_before_vat and bill_vat.
-6. If preview_bill returns errors, re-read the bill. NEVER tweak quantities or prices just to make totals match.
-   If the error says the difference is within rounding (use_bill_amounts), only set use_bill_amounts = true when the user agrees.
-7. preview_bill shows the user an interactive card where they pick entity/category/account, fix line items and press Save themselves.
-   After preview_bill, write at most one short line and let the user act in the card. Do NOT call save_bill yourself unless the user
-   explicitly asks you to save in chat (e.g. the card is not visible). If the card reports it was saved, never save that bill again.
-Do not record bills the user did not send. One bill per save_bill call.`;
+2. Read the bill carefully. Thai bills often print Buddhist-era years (2569 = 2026): always send dates in Gregorian YYYY-MM-DD.
+3. Call find_contact with the seller's 13-digit tax ID (or name). If the seller is not registered, read its name, tax ID,
+   branch ("สำนักงานใหญ่" or the branch number) and address from the bill and pass them as new_contact to preview_bill.
+   The contact is added to the register when the user saves. Never drop a seller that prints a tax ID.
+4. Call lookup_options for exact category names, money accounts and jobs (jobs_required tells whether every line needs a job).
+5. BEFORE preview_bill, ask the user in ONE message only what you are unsure of: which business (if several), paid from which
+   account or unpaid, category, and the job of each line when jobs_required (one bill can have different jobs per line;
+   a new job name is fine; "no job" means job_none = true and is stored empty). Skip questions whose answer is obvious.
+6. Call preview_bill with the answers. total_on_bill = the grand total printed on the bill (incl. VAT, before withholding tax),
+   read independently from the lines. price_mode "in" when unit prices include VAT, "ex" when VAT is added below.
+   If the bill prints a subtotal before VAT and a VAT amount, also send bill_before_vat and bill_vat.
+   NEVER tweak quantities or prices just to make totals match; re-read the bill instead.
+7. preview_bill shows the user an interactive card. The user reviews and presses Save in the card. You cannot save bills:
+   save_bill is only available to the card. If the user asks you to save, tell them to press บันทึก in the card.
+   After preview_bill, write at most one short line.
+8. To change the category, account, job or contact of a bill that was saved through this connector, use edit_bill,
+   only after the user asks. Amounts and line items can only be changed in the app.
+Do not record bills the user did not send.`;
 
 type Ctx = { db: SupabaseClient; me: ConnectorMe };
 
@@ -71,6 +80,37 @@ async function loadContext({ db, me }: Ctx, entityId: string): Promise<BillConte
   };
 }
 
+/** บิลล่าสุดของกิจการที่เอามาดูประวัติงาน — พอให้จัดอันดับ และไม่ทำ URL ยาวเกิน (in() ของ tx_id) */
+const JOB_HISTORY_BILLS = 200;
+
+/**
+ * งานที่เคยใช้ของกิจการนี้ (คู่ค้าเจ้านี้ก่อน) + กิจการนี้ "ใช้งาน" ไหม (บังคับเลือกงาน)
+ * 🚨 อ่านไม่ได้ = คืน error (ไม่เดาว่าไม่บังคับ — เดาผิด = บิลลงโดยไม่มีงานเงียบ ๆ)
+ */
+async function loadJobs({ db }: Ctx, entityId: string, contact: { id?: string; name?: string }): Promise<{ jobs: string[]; required: boolean } | string> {
+  const tx = await db
+    .from("transactions")
+    .select("tx_id, contact_id, contact_name")
+    .eq("status", "ปกติ")
+    .eq("entity_id", entityId)
+    .order("transaction_date", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(JOB_HISTORY_BILLS);
+  if (tx.error) return "อ่านประวัติงานไม่สำเร็จ: " + mapDbError(tx.error);
+  const bills = tx.data ?? [];
+  if (!bills.length) return { jobs: [], required: false };
+  const its = await db.from("transaction_items").select("tx_id, item_job").in("tx_id", bills.map((b) => b.tx_id));
+  if (its.error) return "อ่านประวัติงานไม่สำเร็จ: " + mapDbError(its.error);
+  const byTx = new Map<string, string[]>();
+  for (const it of its.data ?? []) byTx.set(it.tx_id, [...(byTx.get(it.tx_id) ?? []), String(it.item_job ?? "")]);
+  const isContact = (b: { contact_id: string | null; contact_name: string | null }) =>
+    contact.id ? b.contact_id === contact.id : Boolean(contact.name) && String(b.contact_name ?? "").trim() === String(contact.name).trim();
+  const recent = bills.flatMap((b) => byTx.get(b.tx_id) ?? []);
+  const contactJobs = bills.filter(isContact).flatMap((b) => byTx.get(b.tx_id) ?? []);
+  const jobs = rankJobs(contactJobs, recent);
+  return { jobs, required: jobs.length > 0 };
+}
+
 /** บิลที่น่าจะซ้ำ (บันทึกไปแล้ว) — เลขใบกำกับเดียวกัน หรือ วันที่ + ยอดสุทธิ + คู่ค้าเดียวกัน */
 async function findDuplicates({ db }: Ctx, d: BillDraft, net: number): Promise<{ tx_id: string; transaction_date: string; net_amount: number; tax_invoice_no: string | null }[] | string> {
   const cols = "tx_id, transaction_date, net_amount, tax_invoice_no, contact_name, contact_id";
@@ -90,14 +130,63 @@ async function findDuplicates({ db }: Ctx, d: BillDraft, net: number): Promise<{
   return [...seen.values()];
 }
 
-// ── schema ของบิล (ใช้ทั้ง preview และ save) ─────────────────────────────────
+// ── คู่ค้า ─────────────────────────────────────────────────────────────────────
+type Resolved = { draft: BillDraft; contact: CardContact; row?: ContactRow; error?: string };
+
+/**
+ * คู่ค้าของบิล: มีในทะเบียน (contact_id) · คู่ค้าใหม่ (new_contact → เช็คซ้ำก่อน) · ไม่ระบุ
+ * ★ new_contact ที่เลขภาษี+สาขาตรงกับในทะเบียน = ผูกกับตัวเดิมเลย ไม่เพิ่มซ้ำ
+ */
+async function resolveContact({ db }: Ctx, d: BillDraft): Promise<Resolved | string> {
+  if (d.contact_id) {
+    const r = await db.from("contacts").select("contact_id, name, tax_id, branch").eq("contact_id", d.contact_id).maybeSingle();
+    if (r.error) return "อ่านทะเบียนคู่ค้าไม่สำเร็จ: " + mapDbError(r.error);
+    if (!r.data) return { draft: d, contact: { kind: "none" }, error: `ไม่พบคู่ค้า ${d.contact_id} ในทะเบียน — ใช้ find_contact ใหม่` };
+    return { draft: { ...d, contact_name: d.contact_name || r.data.name }, contact: { kind: "existing", contact_id: r.data.contact_id, name: r.data.name, tax_id: r.data.tax_id } };
+  }
+  if (d.new_contact) {
+    const row = newContactRow(d.new_contact, d.type);
+    if (typeof row === "string") return { draft: d, contact: { kind: "none" }, error: row };
+    const q = db.from("contacts").select("contact_id, name, tax_id, branch").limit(50);
+    const r = await (row.tax_id ? q.eq("tax_id", row.tax_id) : q.eq("name", row.name));
+    if (r.error) return "อ่านทะเบียนคู่ค้าไม่สำเร็จ: " + mapDbError(r.error);
+    const found = findExistingContact(row, (r.data ?? []) as ExistingContact[]);
+    if (found) {
+      const { new_contact: _drop, ...rest } = d;
+      void _drop;
+      return { draft: { ...rest, contact_id: found.contact_id, contact_name: found.name }, contact: { kind: "existing", contact_id: found.contact_id, name: found.name, tax_id: found.tax_id } };
+    }
+    return { draft: { ...d, contact_name: row.name }, contact: { kind: "new", name: row.name, tax_id: row.tax_id, branch: row.branch, address: row.address }, row };
+  }
+  return { draft: d, contact: { kind: "none" } };
+}
+
+/** เพิ่มคู่ค้าเข้าทะเบียน — แบบเดียวกับ addContactAction ของแอป (next_serial CONTACT → C-0001) */
+async function createContact({ db }: Ctx, row: ContactRow): Promise<string | { error: string }> {
+  const { data: seq, error: seqErr } = await db.rpc("next_serial", { p_key: "CONTACT" });
+  if (seqErr) return { error: "ออกเลขคู่ค้าไม่สำเร็จ: " + mapDbError(seqErr) };
+  const contactId = "C-" + String(seq).padStart(4, "0");
+  const { error } = await db.from("contacts").insert({ contact_id: contactId, ...row });
+  if (error) return { error: "เพิ่มคู่ค้าไม่สำเร็จ: " + mapDbError(error) };
+  return contactId;
+}
+
+// ── schema ของบิล (ใช้ทั้ง preview · recalc · save) ─────────────────────────────
 const itemSchema = z.object({
   name: z.string().describe("Item name as printed"),
   quantity: z.number().describe("Quantity (> 0)"),
   unit_price: z.number().describe("Unit price as printed on the bill (VAT-inclusive or not per price_mode)"),
   discount_baht: z.number().optional().describe("Line discount in baht, same VAT basis as unit_price"),
   category: z.string().optional().describe("Optional item category (free text)"),
-  job: z.string().optional().describe("Optional job/project tag (free text)"),
+  job: z.string().optional().describe("Job of this line (existing name from lookup_options or a new name)"),
+  job_none: z.boolean().optional().describe("true = the user chose no job for this line (stored empty)"),
+});
+
+const contactSchema = z.object({
+  name: z.string().describe("Seller/customer name as printed"),
+  tax_id: z.string().optional().describe("13-digit tax ID as printed"),
+  branch: z.string().optional().describe('"สำนักงานใหญ่" or the branch number as printed'),
+  address: z.string().optional().describe("Address as printed"),
 });
 
 const billShape = {
@@ -108,6 +197,7 @@ const billShape = {
   description: z.string().optional().describe("Short Thai description of the bill"),
   contact_name: z.string().optional().describe("Seller/customer name (use the name from find_contact when found)"),
   contact_id: z.string().optional().describe("contact_id from find_contact (exact branch)"),
+  new_contact: contactSchema.optional().describe("Seller/customer not found by find_contact — added to the register on save"),
   account_name: z.string().optional().describe("Exact money account name from lookup_options; omit when unpaid"),
   price_mode: z.enum(["in", "ex"]).describe('"in" = unit prices include VAT, "ex" = VAT added on top'),
   has_vat: z.boolean().describe("Bill charges 7% VAT"),
@@ -137,18 +227,34 @@ async function contactCategoryHistory({ db }: Ctx, d: BillDraft): Promise<string
     .eq(d.contact_id ? "contact_id" : "contact_name", who)
     .order("transaction_date", { ascending: false })
     .limit(20);
-  // อ่านไม่ได้ = ไม่มีปุ่มเสนอเพิ่ม (ไม่ใช่ด่าน · ปุ่ม "อื่น ๆ" ยังพาไปแชทได้)
+  // อ่านไม่ได้ = ไม่มีปุ่มเสนอเพิ่ม (ไม่ใช่ด่าน · ปุ่ม "อื่น ๆ" ยังกางหมวดทั้งหมดได้)
   return r.error ? [] : (r.data ?? []).map((x) => String(x.category ?? ""));
+}
+
+/** ตรวจทั้งบิล: คู่ค้า + งาน + ยอด — ใช้ทั้งการ์ด (preview/recalc) และตอนบันทึก */
+async function evaluate(ctx: Ctx, input: BillDraft): Promise<{ resolved: Resolved; c: BillContext; jobs: string[]; check: CheckResult } | string> {
+  const resolved = await resolveContact(ctx, input);
+  if (typeof resolved === "string") return resolved;
+  const d = resolved.draft;
+  const c0 = await loadContext(ctx, d.entity_id);
+  if (typeof c0 === "string") return c0;
+  const j = await loadJobs(ctx, d.entity_id, { id: d.contact_id, name: d.contact_name });
+  if (typeof j === "string") return j;
+  const c: BillContext = { ...c0, jobsRequired: j.required };
+  const check = checkBill(d, c);
+  if (resolved.error) check.errors.unshift(resolved.error);
+  return { resolved, c, jobs: j.jobs, check };
 }
 
 /**
  * ตรวจ + ประกอบข้อมูลการ์ด — ใช้ทั้ง preview_bill (Claude เรียก) และ recalc_bill (การ์ดเรียก)
  * 🚨 ตัวเลขทุกตัวมาจาก checkBill (entryCalc ตัวเดิม) — การ์ดไม่คิดเงินเอง
  */
-async function previewCard(ctx: Ctx, d: BillDraft): Promise<{ card: CardData; check: CheckResult } | string> {
-  const c = await loadContext(ctx, d.entity_id);
-  if (typeof c === "string") return c;
-  const check = checkBill(d, c);
+async function previewCard(ctx: Ctx, input: BillDraft): Promise<{ card: CardData; check: CheckResult } | string> {
+  const e = await evaluate(ctx, input);
+  if (typeof e === "string") return e;
+  const { resolved, c, jobs, check } = e;
+  const d = resolved.draft;
   let dup: Awaited<ReturnType<typeof findDuplicates>> = [];
   if (check.computed) {
     dup = await findDuplicates(ctx, d, check.computed.net_amount);
@@ -156,7 +262,7 @@ async function previewCard(ctx: Ctx, d: BillDraft): Promise<{ card: CardData; ch
   }
   const history = await contactCategoryHistory(ctx, d);
   const mm = check.mismatch && !check.usedBillAmounts ? mismatchText(check.mismatch, d.items) : null;
-  const ent = ctx.me.entities.find((e) => e.entity_id === d.entity_id);
+  const ent = ctx.me.entities.find((x) => x.entity_id === d.entity_id);
   const card: CardData = {
     v: 1,
     tenant_slug: ctx.me.tenantSlug,
@@ -164,22 +270,32 @@ async function previewCard(ctx: Ctx, d: BillDraft): Promise<{ card: CardData; ch
     draft: d,
     entities: ctx.me.entities,
     category_chips: categoryChips(d.category, history, c.categories[d.type] ?? []),
+    categories_all: [...(c.categories[d.type] ?? [])],
     accounts: c.accounts,
+    jobs,
+    jobs_required: Boolean(c.jobsRequired),
+    contact: resolved.contact,
     vat_effective: Boolean(d.has_vat && ent?.is_vat),
     computed: check.computed,
     mismatch: check.mismatch,
     used_bill_amounts: check.usedBillAmounts,
     // ยอดไม่ตรงอยู่ใน mismatch แล้ว — แยกออกให้การ์ดตัดสินปุ่มเอง (cardView.primaryAction)
-    errors: check.errors.filter((e) => e !== mm),
-    warnings: check.warnings,
+    errors: check.errors.filter((x) => x !== mm),
+    warnings: resolved.contact.kind === "none" ? [...check.warnings, NO_CONTACT_WARN] : check.warnings,
     possible_duplicates: dup,
   };
   return { card, check };
 }
 
+const NO_CONTACT_WARN = "บิลนี้ไม่ได้ผูกคู่ค้าในทะเบียน — ภพ.30/ภงด. จะไม่มีเลขผู้เสียภาษีของคู่ค้าใบนี้ (ถ้าบิลมีเลขภาษี ให้ Claude ส่งเป็นคู่ค้าใหม่)";
+
 function asDraft(a: z.infer<z.ZodObject<typeof billShape>>): BillDraft {
   return { ...a, type: a.type as ConnectorType };
 }
+
+const slugOk = (me: ConnectorMe, slug: string | undefined) => String(slug ?? "").trim().toLowerCase() === me.tenantSlug.toLowerCase();
+const slugError = (me: ConnectorMe, slug: string | undefined) =>
+  text(`ไม่บันทึก: tenant_slug "${slug}" ไม่ตรงกับบัญชีที่เชื่อมต่ออยู่ (${me.tenantSlug} · ${me.tenantName}) — ตรวจว่าใช้ connector ของลูกค้าถูกเจ้า`, true);
 
 export function buildServer(ctx: Ctx): McpServer {
   const { db, me } = ctx;
@@ -207,7 +323,7 @@ export function buildServer(ctx: Ctx): McpServer {
     "find_contact",
     {
       title: "ค้นคู่ค้า",
-      description: "Find a seller/customer by 13-digit Thai tax ID or by name. Returns contact_id per branch.",
+      description: "Find a seller/customer by 13-digit Thai tax ID or by name. Returns contact_id per branch. Not found = pass new_contact to preview_bill.",
       inputSchema: {
         tax_id: z.string().optional().describe("13-digit tax ID (dashes allowed)"),
         name: z.string().optional().describe("Part of the name"),
@@ -224,7 +340,7 @@ export function buildServer(ctx: Ctx): McpServer {
       sel = tid ? sel.eq("tax_id", tid) : sel.ilike("name", `%${q.replace(/[%_]/g, "")}%`);
       const { data, error } = await sel;
       if (error) return text("ค้นคู่ค้าไม่สำเร็จ: " + mapDbError(error), true);
-      if (!data?.length) notes.push("ไม่พบคู่ค้าในระบบ — บันทึกด้วย contact_name ได้ (ยังไม่สร้างคู่ค้าใหม่ให้ · เพิ่มได้ในแอป ตั้งค่า → คู่ค้า)");
+      if (!data?.length) notes.push("ไม่พบคู่ค้าในระบบ — อ่านชื่อ เลขผู้เสียภาษี สาขา ที่อยู่ จากบิล แล้วส่งเป็น new_contact ใน preview_bill (เพิ่มเข้าทะเบียนตอนผู้ใช้กดบันทึก)");
       return json({ matches: data ?? [], notes });
     },
   );
@@ -232,8 +348,8 @@ export function buildServer(ctx: Ctx): McpServer {
   server.registerTool(
     "lookup_options",
     {
-      title: "ตัวเลือกหมวด/บัญชี",
-      description: "Exact category names, money accounts and withholding rates for an entity, plus the last 5 bills of a contact (to reuse its category/job).",
+      title: "ตัวเลือกหมวด/บัญชี/งาน",
+      description: "Exact category names, money accounts, withholding rates and jobs for an entity (jobs_required = every line needs a job or job_none), plus the last 5 bills of a contact.",
       inputSchema: {
         entity_id: z.string(),
         type: z.enum(CONNECTOR_TYPES),
@@ -245,6 +361,8 @@ export function buildServer(ctx: Ctx): McpServer {
     async ({ entity_id, type, contact_id, contact_name }) => {
       const c = await loadContext(ctx, entity_id);
       if (typeof c === "string") return text(c, true);
+      const j = await loadJobs(ctx, entity_id, { id: contact_id, name: contact_name });
+      if (typeof j === "string") return text(j, true);
       const wht = await db.from("app_settings").select("value").eq("kind", "wht_rate").order("sort");
       let recent: unknown[] = [];
       const who = String(contact_id || contact_name || "").trim();
@@ -271,6 +389,8 @@ export function buildServer(ctx: Ctx): McpServer {
         categories: c.categories[type],
         accounts: c.accounts,
         wht_rates: (wht.data ?? []).map((x) => x.value),
+        jobs: j.jobs,
+        jobs_required: j.required,
         recent_bills_of_contact: recent,
       });
     },
@@ -281,26 +401,27 @@ export function buildServer(ctx: Ctx): McpServer {
     "preview_bill",
     {
       title: "ตรวจบิลก่อนบันทึก",
-      description: "Validate and compute a bill WITHOUT saving, and show the user an interactive card to pick entity/category/account, fix line items and save. Returns errors (re-read the bill), warnings and a summary.",
+      description: "Validate and compute a bill WITHOUT saving, and show the user an interactive card to review, adjust and save it. Returns errors (re-read the bill), warnings and a summary.",
       inputSchema: billShape,
       annotations: { readOnlyHint: true },
       _meta: { ui: { resourceUri: BILL_CARD_URI } },
     },
     async (a) => {
-      const d = asDraft(a);
-      const r = await previewCard(ctx, d);
+      const r = await previewCard(ctx, asDraft(a));
       if (typeof r === "string") return text(r, true);
       const { card, check } = r;
+      const d = card.draft;
       const ent = me.entities.find((e) => e.entity_id === d.entity_id);
       return {
         ...json({
-          ok: check.errors.length === 0,
+          ok: card.errors.length === 0 && !card.mismatch,
           errors: check.errors,
-          warnings: [...check.warnings, ...(card.possible_duplicates.length ? ["มีบิลที่หน้าตาเหมือนกันบันทึกไว้แล้ว — ถามผู้ใช้ก่อนว่าเป็นบิลใหม่จริงไหม (save_bill ต้องส่ง confirm_not_duplicate = true)"] : [])],
+          warnings: card.warnings,
+          contact: card.contact,
           possible_duplicates: card.possible_duplicates,
           summary: check.computed && ent ? previewSummary(d, ent.name, me.tenantName, check.computed) : null,
           computed: check.computed,
-          card: "แสดงการ์ดให้ผู้ใช้แล้ว — ผู้ใช้เลือก/แก้/กดบันทึกในการ์ดเอง",
+          card: "แสดงการ์ดให้ผู้ใช้แล้ว — ผู้ใช้ตรวจ/แก้/กดบันทึกในการ์ดเอง (Claude บันทึกเองไม่ได้)",
         }),
         structuredContent: card,
       };
@@ -329,47 +450,178 @@ export function buildServer(ctx: Ctx): McpServer {
     contents: [{ uri: BILL_CARD_URI, mimeType: RESOURCE_MIME_TYPE, text: BILL_CARD_HTML }],
   }));
 
-  server.registerTool(
+  // 🚨 บันทึกได้จากการ์ดทางเดียว (visibility: app) — การกดปุ่มในการ์ดคือการยืนยันของผู้ใช้
+  registerAppTool(
+    server,
     "save_bill",
     {
-      title: "บันทึกบิล",
-      description: "Save the bill into the ERP. Only after preview_bill passed and the user agreed. tenant_slug must equal who_am_i.tenant_slug.",
+      title: "บันทึกบิล (การ์ด)",
+      description: "Save the bill into the ERP. Called by the card when the user presses Save. tenant_slug must equal who_am_i.tenant_slug.",
       inputSchema: {
         tenant_slug: z.string().describe("Must equal tenant_slug from who_am_i — guards against writing into the wrong customer"),
-        confirm_not_duplicate: z.boolean().optional().describe("Set true only after the user confirmed a possible duplicate is a new bill"),
+        confirm_not_duplicate: z.boolean().optional().describe("true only after the user confirmed a possible duplicate is a new bill"),
         ...billShape,
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+      _meta: { ui: { resourceUri: BILL_CARD_URI, visibility: ["app"] } },
     },
     async ({ tenant_slug, confirm_not_duplicate, ...rest }) => {
       // 🚨 ด่านลงผิดเจ้า: connector หลายตัวเปิดพร้อมกันได้ — ชื่อย่อต้องตรงกับเจ้าของ token
-      if (String(tenant_slug ?? "").trim().toLowerCase() !== me.tenantSlug.toLowerCase()) {
-        return text(`ไม่บันทึก: tenant_slug "${tenant_slug}" ไม่ตรงกับบัญชีที่เชื่อมต่ออยู่ (${me.tenantSlug} · ${me.tenantName}) — ตรวจว่าใช้ connector ของลูกค้าถูกเจ้า`, true);
-      }
-      const d = asDraft(rest);
-      const c = await loadContext(ctx, d.entity_id);
-      if (typeof c === "string") return text(c, true);
-      const r = checkBill(d, c);
-      if (!r.payload || !r.computed) return withSc({ ok: false, errors: r.errors, warnings: r.warnings });
-      const dup = await findDuplicates(ctx, d, r.computed.net_amount);
+      if (!slugOk(me, tenant_slug)) return slugError(me, tenant_slug);
+      const e = await evaluate(ctx, asDraft(rest));
+      if (typeof e === "string") return text(e, true);
+      const { resolved, c, check } = e;
+      let d = resolved.draft;
+      if (!check.payload || !check.computed) return withSc({ ok: false, errors: check.errors, warnings: check.warnings });
+      const dup = await findDuplicates(ctx, d, check.computed.net_amount);
       if (typeof dup === "string") return text(dup, true);
       if (dup.length && !confirm_not_duplicate) {
         return withSc({ ok: false, errors: ["มีบิลที่หน้าตาเหมือนกันอยู่แล้ว — ถามผู้ใช้ก่อน ถ้าเป็นบิลใหม่จริงให้ส่ง confirm_not_duplicate = true"], possible_duplicates: dup });
       }
-      const { data, error } = await db.rpc("fn_save_transaction", { p: r.payload.p, p_items: r.payload.items });
-      if (error) return text("บันทึกไม่สำเร็จ: " + mapDbError(error), true);
+      // คู่ค้าใหม่: เพิ่มเข้าทะเบียนหลังด่านทุกตัวผ่านแล้ว (ล้มตรงไหนก่อนหน้านี้ = ไม่มีคู่ค้างอกค้าง)
+      let addedContact: string | null = null;
+      let payload = check.payload;
+      if (resolved.row) {
+        const id = await createContact(ctx, resolved.row);
+        if (typeof id !== "string") return withSc({ ok: false, errors: [id.error] });
+        addedContact = id;
+        const { new_contact: _drop, ...rest2 } = d;
+        void _drop;
+        d = { ...rest2, contact_id: id, contact_name: resolved.row.name };
+        const again = checkBill(d, c);
+        if (!again.payload) return withSc({ ok: false, errors: again.errors, warnings: again.warnings, added_contact: id });
+        payload = again.payload;
+      }
+      const { data, error } = await db.rpc("fn_save_transaction", { p: payload.p, p_items: payload.items });
+      if (error) return withSc({ ok: false, errors: ["บันทึกไม่สำเร็จ: " + mapDbError(error)], added_contact: addedContact });
       const res = data as { ok: boolean; tx_id: string; warning?: string | null };
-      const ent = me.entities.find((e) => e.entity_id === d.entity_id);
+      const ent = me.entities.find((x) => x.entity_id === d.entity_id);
       return withSc({
         ok: true,
         tx_id: res.tx_id,
+        added_contact: addedContact,
         // บันทึกได้บางส่วน ≠ สำเร็จ (D79) — เช่น รับวัตถุดิบเข้าสต็อกไม่สำเร็จ ต้องบอกผู้ใช้
-        warnings: [...r.warnings, ...(res.warning ? [res.warning] : [])],
-        summary: ent ? previewSummary(d, ent.name, me.tenantName, r.computed) : null,
+        warnings: [...check.warnings, ...(res.warning ? [res.warning] : [])],
+        summary: ent ? previewSummary(d, ent.name, me.tenantName, check.computed) : null,
         where_to_check: "แอป → บัญชี → ค้นบิล (แก้/ลบได้ที่นั่น)",
       });
     },
   );
 
+  server.registerTool(
+    "edit_bill",
+    {
+      title: "แก้บิลที่บันทึกผ่าน Claude",
+      description: "Change category, money account, job(s) or contact of a bill saved through this connector. Never changes amounts or line items. Only after the user asks.",
+      inputSchema: {
+        tenant_slug: z.string().describe("Must equal tenant_slug from who_am_i"),
+        tx_id: z.string().describe("Bill id, e.g. TR-20261028-0002"),
+        category: z.string().optional().describe("New exact category name from lookup_options"),
+        account_name: z.string().optional().describe("New exact money account name (paid bills only)"),
+        contact_id: z.string().optional().describe("Link to an existing contact"),
+        new_contact: contactSchema.optional().describe("Add this seller/customer to the register and link the bill"),
+        job_all: z.string().optional().describe("Set this job on every line"),
+        job_none_all: z.boolean().optional().describe("true = clear the job on every line"),
+        jobs: z.array(z.object({ line: z.number().describe("Line number starting at 1"), job: z.string().optional(), none: z.boolean().optional() })).optional()
+          .describe("Per-line jobs"),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    },
+    async (a) => {
+      if (!slugOk(me, a.tenant_slug)) return slugError(me, a.tenant_slug);
+      const r = await editBill(ctx, a);
+      return typeof r === "string" ? text(r, true) : json(r);
+    },
+  );
+
   return server;
+}
+
+// ── แก้บิลหลังบันทึก (หมวด · บัญชี · งาน · คู่ค้า) ─────────────────────────────────
+type EditInput = {
+  tx_id: string; category?: string; account_name?: string; contact_id?: string;
+  new_contact?: z.infer<typeof contactSchema>; job_all?: string; job_none_all?: boolean;
+  jobs?: { line: number; job?: string; none?: boolean }[];
+};
+
+const TX_COLS = "tx_id, transaction_date, type, account_name, category, contact_name, contact_id, description, base_amount, discount, amount_after_discount, vat_amount, wht_rate, wht_amount, net_amount, tax_invoice_no, tax_invoice_date, entity_id, source, status, ap_ar_status";
+
+/**
+ * แก้บิลที่บันทึกผ่าน Claude — ผ่าน fn_edit_transaction ตัวเดียวกับหน้าแก้บิลในแอป
+ * 🚨 ไม่แตะยอดเงิน/รายการ (ส่งค่าเดิมกลับทุกช่อง) — แก้ยอดต้องดูกระดาษ ทำในแอป
+ * 🚨 เฉพาะ source = claude · สถานะปกติ · หมวดที่จุดชนวนรับวัตถุดิบห้ามสลับเข้า/ออก (สต็อกผลิตไม่ตามให้)
+ * 🚨 บิลค้างจ่าย/รับ ห้ามเปลี่ยนบัญชี (บัญชีของบิลค้างตั้งตอนเคลีย)
+ */
+async function editBill(ctx: Ctx, a: EditInput): Promise<Record<string, unknown> | string> {
+  const { db } = ctx;
+  const t = await db.from("transactions").select(TX_COLS).eq("tx_id", a.tx_id).maybeSingle();
+  if (t.error) return "อ่านบิลไม่สำเร็จ: " + mapDbError(t.error);
+  const tx = t.data as Record<string, unknown> | null;
+  if (!tx) return `ไม่พบบิล ${a.tx_id}`;
+  if (tx.source !== "claude") return `บิล ${a.tx_id} ไม่ได้บันทึกผ่าน Claude — แก้ได้ที่แอป บัญชี → ค้นบิล`;
+  if (tx.status !== "ปกติ") return `บิล ${a.tx_id} ถูกยกเลิกแล้ว แก้ไม่ได้`;
+  const type = tx.type as ConnectorType;
+  const c = await loadContext(ctx, String(tx.entity_id));
+  if (typeof c === "string") return c;
+  const changes: string[] = [];
+  const p: Record<string, unknown> = { ...tx };
+
+  if (a.category !== undefined && a.category.trim() !== tx.category) {
+    const cat = a.category.trim();
+    if (!(c.categories[type] ?? []).includes(cat)) return `ไม่มีหมวด "${cat}" ใน${type}ของกิจการนี้ — ใช้ชื่อจาก lookup_options`;
+    if (isForwardCat(cat, c.forwardCats) || isForwardCat(String(tx.category ?? ""), c.forwardCats)) {
+      return "หมวดนี้เกี่ยวกับการรับวัตถุดิบเข้าสต็อกผลิต — เปลี่ยนเข้า/ออกจากหมวดนี้ต้องทำในแอป (สต็อกไม่ตามให้)";
+    }
+    changes.push(`หมวด ${tx.category} → ${cat}`);
+    p.category = cat;
+  }
+  if (a.account_name !== undefined && a.account_name.trim() !== tx.account_name) {
+    if (tx.ap_ar_status) return "บิลนี้ตั้งค้างอยู่ — บัญชีจะถูกตั้งตอนเคลียที่แอป (แท็บ ลูกหนี้-เจ้าหนี้)";
+    const acc = a.account_name.trim();
+    if (!c.accounts.includes(acc)) return `ไม่พบบัญชีเงิน "${acc}" ในกิจการนี้ — ใช้ชื่อจาก lookup_options`;
+    changes.push(`บัญชี ${tx.account_name} → ${acc}`);
+    p.account_name = acc;
+  }
+  if (a.contact_id || a.new_contact) {
+    const res = await resolveContact(ctx, { type, contact_id: a.contact_id, new_contact: a.new_contact } as BillDraft);
+    if (typeof res === "string") return res;
+    if (res.error) return res.error;
+    let id = res.draft.contact_id;
+    if (res.row) {
+      const made = await createContact(ctx, res.row);
+      if (typeof made !== "string") return made.error;
+      id = made;
+      changes.push(`เพิ่มคู่ค้าใหม่ ${made} ${res.row.name}`);
+    }
+    changes.push(`คู่ค้า → ${id} ${res.draft.contact_name ?? ""}`.trim());
+    p.contact_id = id;
+    p.contact_name = res.draft.contact_name;
+  }
+
+  const it = await db
+    .from("transaction_items")
+    .select("item_name, quantity, in_vat, ex_vat, total_price, discount_pct, discount_baht, item_category, item_job")
+    .eq("tx_id", a.tx_id)
+    .order("item_id");
+  if (it.error) return "อ่านรายการของบิลไม่สำเร็จ: " + mapDbError(it.error);
+  const items = (it.data ?? []).map((x) => ({ ...x }));
+  const setJob = (i: number, job: string) => {
+    if (String(items[i].item_job ?? "") !== job) changes.push(`รายการที่ ${i + 1} งาน → ${job || "(ไม่ระบุ)"}`);
+    items[i].item_job = job;
+  };
+  if (a.job_none_all) items.forEach((_, i) => setJob(i, ""));
+  else if (a.job_all !== undefined) items.forEach((_, i) => setJob(i, a.job_all!.trim()));
+  for (const j of a.jobs ?? []) {
+    const i = j.line - 1;
+    if (!items[i]) return `ไม่มีรายการที่ ${j.line} ในบิลนี้ (มี ${items.length} รายการ)`;
+    setJob(i, j.none ? "" : String(j.job ?? "").trim());
+  }
+
+  if (!changes.length) return { ok: true, tx_id: a.tx_id, changes: [], note: "ไม่มีอะไรเปลี่ยน" };
+  delete p.source; delete p.status; delete p.ap_ar_status; delete p.tx_id;
+  const { data, error } = await db.rpc("fn_edit_transaction", { p_tx_id: a.tx_id, p, p_items: items });
+  if (error) return "แก้บิลไม่สำเร็จ: " + mapDbError(error);
+  const res = data as { ok: boolean; error?: string };
+  if (!res.ok) return res.error ?? "แก้บิลไม่สำเร็จ";
+  return { ok: true, tx_id: a.tx_id, changes };
 }

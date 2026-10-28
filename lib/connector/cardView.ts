@@ -7,6 +7,12 @@
  */
 import type { BillDraft, Computed, Mismatch } from "./bill";
 
+/** คู่ค้าของบิล: มีในทะเบียน · ใหม่ (จะเพิ่มตอนบันทึก) · ไม่ผูก */
+export type CardContact =
+  | { kind: "existing"; contact_id: string; name: string; tax_id: string | null }
+  | { kind: "new"; name: string; tax_id: string | null; branch: string | null; address: string | null }
+  | { kind: "none" };
+
 /** ข้อมูลที่ preview_bill / recalc_bill ส่งให้การ์ด (structuredContent) */
 export type CardData = {
   v: 1;
@@ -18,8 +24,15 @@ export type CardData = {
   entities: { entity_id: string; name: string; is_vat: boolean }[];
   /** หมวดที่เสนอให้กด (ตัวที่เลือกอยู่ + ที่คู่ค้าเจ้านี้เคยใช้ · สูงสุด CATEGORY_CHIPS) */
   category_chips: string[];
+  /** หมวดทั้งหมดของประเภทนี้ (ปุ่ม อื่น ๆ กางในการ์ด ไม่ต้องย้อนไปแชท) */
+  categories_all: string[];
   /** บัญชีเงินของกิจการที่เลือก */
   accounts: string[];
+  /** งานที่เคยใช้ (งานของคู่ค้าเจ้านี้ก่อน · jobs.rankJobs) */
+  jobs: string[];
+  /** กิจการนี้เคยใช้งาน ⇒ ทุกแถวต้องเลือกงาน หรือ ไม่ระบุงาน */
+  jobs_required: boolean;
+  contact: CardContact;
   /** มี VAT จริงไหม (บิลมี VAT และกิจการจด VAT) */
   vat_effective: boolean;
   computed: Computed | null;

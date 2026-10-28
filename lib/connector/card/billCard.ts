@@ -12,6 +12,7 @@ import { App, applyDocumentTheme, applyHostStyleVariables } from "@modelcontextp
 import type { McpUiHostContext } from "@modelcontextprotocol/ext-apps";
 import { primaryAction, suspectSet, savedContextText, INLINE_ITEMS, EDIT_TOTAL_WARN, type CardData } from "../cardView";
 import type { DraftItem } from "../bill";
+import { jobSummary, similarJob, JOB_CHIPS } from "../jobs";
 
 const app = new App({ name: "Insep ERP bill card", version: "1.0.0" }, { availableDisplayModes: ["inline", "fullscreen"] });
 
@@ -21,6 +22,13 @@ let busy = false;
 let saved: string | null = null;
 let failText = "";
 let editTotal = false;
+/** ปุ่ม "อื่น ๆ" ของหมวด = กางหมวดทั้งหมดในการ์ด */
+let showAllCats = false;
+/** กล่องพิมพ์งานใหม่ · แถวที่จะใส่ (null = ทุกแถว) */
+let newJobOpen = false;
+let newJobRow: number | null = null;
+/** งานที่พิมพ์ใหม่ในการ์ดนี้ — ขึ้นเป็นตัวเลือกของแถวอื่นทันที */
+let extraJobs: string[] = [];
 let timer: ReturnType<typeof setTimeout> | undefined;
 
 const root = document.getElementById("root")!;
@@ -32,6 +40,28 @@ const fmtDate = (iso: string) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || "");
   return m ? `${Number(m[3])}/${Number(m[2])}/${Number(m[1]) + 543}` : iso;
 };
+
+/** งานทั้งหมดที่เลือกได้: เคยใช้ + พิมพ์ใหม่ในการ์ด + ที่อยู่ในบิลแล้ว */
+function allJobs(d: CardData): string[] {
+  const out: string[] = [];
+  for (const j of [...d.jobs, ...extraJobs, ...d.draft.items.map((it) => String(it.job ?? ""))]) {
+    const t = j.trim();
+    if (t && !out.includes(t)) out.push(t);
+  }
+  return out;
+}
+
+/** ใส่งานให้ทุกแถว หรือแถวเดียว · null = ไม่ระบุงาน (บันทึกเป็นค่าว่าง) */
+function applyJob(job: string | null, row: number | null) {
+  if (!data) return;
+  const items = data.draft.items.map((it, i) =>
+    row === null || i === row ? { ...it, job: job ?? "", job_none: job === null } : it);
+  // 🪤 วาดค่าใหม่ทันที — หน้าแก้รายการวาดใหม่หลัง recalc เฉพาะส่วนยอด (paintLive) ช่องเลือกงานเลยค้างค่าเดิม
+  //    (เลือกงานไม่ใช่การพิมพ์ วาดใหม่ทั้งหน้าได้โดยโฟกัสไม่หลุด)
+  data = { ...data, draft: { ...data.draft, items } };
+  render();
+  void recalc({ items });
+}
 
 // ── คุยกับ server ──────────────────────────────────────────────────────────────
 /** ส่งเฉพาะช่องของบิล (ธงยืนยันซ้ำเป็นของ save_bill เท่านั้น) */
@@ -119,19 +149,63 @@ function choicesHtml(d: CardData): string {
     ? `<div class="row"><div class="lab">ลงกิจการ</div><div class="chips">${d.entities
         .map((e) => chip(`${e.entity_id} ${e.name}`, e.entity_id === x.entity_id, "entity", e.entity_id)).join("")}</div></div>`
     : "";
-  const cats = `<div class="row"><div class="lab">หมวด</div><div class="chips">${d.category_chips
-    .map((c) => chip(c, c === x.category, "category", c)).join("")}${chip("อื่น ๆ ↗", false, "other-cat")}</div></div>`;
+  const catList = showAllCats ? d.categories_all : d.category_chips;
+  const cats = `<div class="row"><div class="lab">หมวด</div><div class="chips">${catList
+    .map((c) => chip(c, c === x.category, "category", c)).join("")}${
+    d.categories_all.length > d.category_chips.length ? chip(showAllCats ? "ย่อ" : "อื่น ๆ", false, "other-cat") : ""}</div></div>`;
   const accs = `<div class="row"><div class="lab">${x.type === "รายรับ" ? "รับเข้า" : "จ่ายจาก"}</div><div class="chips">${d.accounts
     .map((a) => chip(a, !x.unpaid && a === x.account_name, "account", a)).join("")}${chip(
     x.type === "รายรับ" ? "ตั้งค้างรับ" : "ตั้งค้างจ่าย", Boolean(x.unpaid), "unpaid")}</div></div>`;
-  return ent + cats + accs;
+  return contactHtml(d) + ent + cats + accs + jobsHtml(d);
+}
+
+function contactHtml(d: CardData): string {
+  const c = d.contact;
+  if (c.kind === "new") {
+    return `<div class="newc"><b>คู่ค้าใหม่ — จะเพิ่มเข้าทะเบียนตอนบันทึก</b><br>${esc(c.name)}${
+      c.tax_id ? ` · เลขผู้เสียภาษี ${esc(c.tax_id)}` : " · ไม่มีเลขผู้เสียภาษี"}${c.branch ? ` · ${esc(c.branch)}` : ""}${
+      c.address ? `<br><span class="mu">${esc(c.address)}</span>` : ""}</div>`;
+  }
+  if (c.kind === "existing") return `<div class="mu row">คู่ค้าในทะเบียน ${esc(c.contact_id)}${c.tax_id ? ` · ${esc(c.tax_id)}` : ""}</div>`;
+  return "";
+}
+
+function newJobHtml(): string {
+  if (!newJobOpen) return "";
+  const target = newJobRow === null ? "ทุกรายการ" : `รายการที่ ${newJobRow + 1}`;
+  return `<div class="newjob"><label class="lab">งานใหม่ (ใส่ให้${target})<input id="newjob" autocomplete="off"></label>
+    <div id="simjob"></div><div class="acts"><button class="pri" data-act="use-new-job">ใช้งานนี้</button><button class="sec" data-act="cancel-new-job">ยกเลิก</button></div></div>`;
+}
+
+function jobsHtml(d: CardData): string {
+  const jobs = allJobs(d);
+  if (!d.jobs_required && !jobs.length) return "";
+  const sum = jobSummary(d.draft.items);
+  const chips = jobs.slice(0, JOB_CHIPS).map((j) => chip(j, sum.kind === "single" && sum.job === j, "job", j)).join("");
+  const note =
+    sum.kind === "multi" ? `<div class="mu">หลายงาน (${sum.count} งาน) — แก้รายแถวที่ ดู/แก้รายการ · กดงานด้านบน = ใส่ให้ทุกรายการ</div>`
+    : sum.kind === "partial" ? `<div class="bad">ยังไม่เลือกงาน: รายการที่ ${sum.missing.join(", ")}</div>`
+    : "";
+  return `<div class="row"><div class="lab">งาน${d.jobs_required ? "" : " (ไม่บังคับ)"}</div><div class="chips">${chips}${
+    chip("+ งานใหม่", false, "new-job")}${chip("ไม่ระบุงาน", sum.kind === "no_job", "job-none")}</div>${note}${newJobHtml()}</div>`;
+}
+
+function jobSelect(d: CardData, it: DraftItem, i: number): string {
+  const cur = it.job_none ? "__none" : String(it.job ?? "").trim();
+  const opts = [
+    `<option value=""${cur === "" ? " selected" : ""}>— เลือกงาน —</option>`,
+    ...allJobs(d).map((j) => `<option value="${esc(j)}"${cur === j ? " selected" : ""}>${esc(j)}</option>`),
+    `<option value="__none"${cur === "__none" ? " selected" : ""}>ไม่ระบุงาน</option>`,
+    `<option value="__new">+ งานใหม่…</option>`,
+  ].join("");
+  return `<select class="job" data-row-job="${i}" aria-label="งานของรายการ ${i + 1}">${opts}</select>`;
 }
 
 function itemsInlineHtml(d: CardData): string {
   const sus = suspectSet(d);
   const items = d.draft.items;
   const rows = items.slice(0, INLINE_ITEMS).map((it, i) =>
-    `<div class="li${sus.has(i) ? " sus" : ""}"><span>${esc(it.name)}</span><span class="num">${it.quantity} × ${baht(it.unit_price)}</span></div>`).join("");
+    `<div class="li${sus.has(i) ? " sus" : ""}"><span>${esc(it.name)}${it.job && !it.job_none ? `<br><span class="mu">งาน ${esc(it.job)}</span>` : ""}</span><span class="num">${it.quantity} × ${baht(it.unit_price)}</span></div>`).join("");
   const more = items.length > INLINE_ITEMS ? `<div class="mu">+ อีก ${items.length - INLINE_ITEMS} รายการ</div>` : "";
   const hidden = [...sus].some((i) => i >= INLINE_ITEMS) ? `<div class="bad">แถวที่น่าจะผิดอยู่ในรายการที่ซ่อนไว้</div>` : "";
   return `<div class="row"><div class="lab">รายการ ${items.length} รายการ · ราคา${d.draft.price_mode === "in" ? "รวม" : "ไม่รวม"} VAT</div>${rows}${more}${hidden}
@@ -143,8 +217,11 @@ function itemsEditHtml(d: CardData): string {
       <input class="nm" data-f="name" value="${esc(it.name)}" aria-label="ชื่อรายการ ${i + 1}">
       <input class="q" data-f="quantity" inputmode="decimal" value="${esc(it.quantity)}" aria-label="จำนวน ${i + 1}">
       <input class="p" data-f="unit_price" inputmode="decimal" value="${esc(it.unit_price)}" aria-label="ราคาต่อหน่วย ${i + 1}">
-      <button class="x" data-act="del" data-val="${i}" aria-label="ลบรายการ ${i + 1}">✕</button></div>`).join("");
-  return `<div class="row"><div class="er hd"><span>รายการ</span><span>จำนวน</span><span>ราคา/หน่วย</span><span></span></div>${rows}</div>`;
+      <button class="x" data-act="del" data-val="${i}" aria-label="ลบรายการ ${i + 1}">✕</button>
+      ${d.jobs_required || allJobs(d).length ? jobSelect(d, it, i) : ""}</div>`).join("");
+  const jobBar = d.jobs_required || allJobs(d).length
+    ? `<div class="chips row">${chip("+ งานใหม่", false, "new-job")}</div>${newJobHtml()}` : "";
+  return `<div class="row"><div class="er hd"><span>รายการ</span><span>จำนวน</span><span>ราคา/หน่วย</span><span></span></div>${rows}</div>${jobBar}`;
 }
 
 function totalsHtml(d: CardData): string {
@@ -228,7 +305,21 @@ root.addEventListener("click", (e) => {
     case "category": return void recalc({ category: val });
     case "account": return void recalc({ account_name: val, unpaid: false });
     case "unpaid": return void recalc({ unpaid: !data.draft.unpaid });
-    case "other-cat": return ask("ขอดูหมวดอื่นสำหรับบิลนี้ แล้วเปิดการ์ดใหม่");
+    case "other-cat": showAllCats = !showAllCats; return render();
+    case "job": return applyJob(val, null);
+    case "job-none": return applyJob(null, null);
+    case "new-job": newJobOpen = true; newJobRow = null; render(); return void document.getElementById("newjob")?.focus();
+    case "cancel-new-job": newJobOpen = false; return render();
+    case "use-similar": newJobOpen = false; { const row = newJobRow; render(); return applyJob(val, row); }
+    case "use-new-job": {
+      const v = (document.getElementById("newjob") as HTMLInputElement | null)?.value.trim() ?? "";
+      if (!v) return;
+      if (!extraJobs.includes(v)) extraJobs = [...extraJobs, v];
+      newJobOpen = false;
+      const row = newJobRow;
+      render();
+      return applyJob(v, row);
+    }
     case "chat": return ask("ขอแก้บิลนี้: ");
     case "edit": return void setFull(true);
     case "done-edit": return void setFull(false);
@@ -254,6 +345,14 @@ root.addEventListener("input", (e) => {
   const el = e.target as HTMLInputElement;
   if (!data) return;
   if (el.id === "tob") return void recalc({ total_on_bill: Number(el.value) || 0, use_bill_amounts: false }, 500);
+  if (el.id === "newjob") {
+    const sim = similarJob(el.value, allJobs(data));
+    const box = document.getElementById("simjob");
+    if (box) box.innerHTML = sim
+      ? `<div class="warn">มีงาน "${esc(sim)}" อยู่แล้ว ใช่อันนี้ไหม <button class="link" data-act="use-similar" data-val="${esc(sim)}">ใช้ "${esc(sim)}"</button></div>`
+      : "";
+    return;
+  }
   const row = el.closest<HTMLElement>(".er[data-row]");
   const f = el.dataset.f as keyof DraftItem | undefined;
   if (!row || !f) return;
@@ -262,6 +361,19 @@ root.addEventListener("input", (e) => {
     j === i ? { ...it, [f]: f === "name" ? el.value : Number(el.value) || 0 } : it);
   // แก้รายการ = เลิกใช้ยอดตามบิลที่เคยกด (ต้องตัดสินใหม่จากยอดใหม่)
   void recalc({ items, use_bill_amounts: false }, 500);
+});
+
+root.addEventListener("change", (e) => {
+  const el = e.target as HTMLSelectElement;
+  if (!data || el.dataset.rowJob === undefined) return;
+  const i = Number(el.dataset.rowJob);
+  if (el.value === "__new") {
+    newJobOpen = true;
+    newJobRow = i;
+    render();
+    return void document.getElementById("newjob")?.focus();
+  }
+  applyJob(el.value === "__none" ? null : el.value, i);
 });
 
 // ── เชื่อมกับ Claude ────────────────────────────────────────────────────────────

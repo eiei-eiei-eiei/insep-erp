@@ -109,4 +109,49 @@ describe("D141 — บิลจาก Claude", () => {
     const { data: row } = await admin().from("transactions").select("source").eq("tenant_id", A.tenantId).eq("tx_id", txId).single();
     expect(row?.source).toBe("claude");
   });
+
+  it("รอบ 3: พนักงานบัญชีเพิ่มคู่ค้าใหม่ได้ (next_serial CONTACT + insert · เส้นทางเดียวกับ create ในเครื่องมือ)", async () => {
+    const { data: seq, error: e1 } = await acc.client.rpc("next_serial", { p_key: "CONTACT" });
+    expect(e1).toBeNull();
+    const id = "C-" + String(seq).padStart(4, "0");
+    const { error } = await acc.client.from("contacts").insert({
+      contact_id: id, name: "ร้านทดสอบ connector", tax_id: "0107536000102", branch: "สำนักงานใหญ่", contact_type: "ผู้ขาย",
+    });
+    expect(error).toBeNull();
+    const { data: row } = await admin().from("contacts").select("tenant_id, name").eq("tenant_id", A.tenantId).eq("contact_id", id).single();
+    expect(row?.name).toBe("ร้านทดสอบ connector");
+  });
+
+  it("🚨 รอบ 3: แก้หมวด/งาน/คู่ค้าด้วย fn_edit_transaction (ส่งยอดเดิมกลับ) แล้วยอดเงินไม่ขยับ", async () => {
+    const { data } = await acc.client.rpc("fn_save_transaction", {
+      p: {
+        transaction_date: "2026-10-28", type: "รายจ่าย", category: "ทดสอบ connector", contact_name: "ร้านทดสอบ", account_name: "",
+        description: "ทดสอบ connector แก้", base_amount: 200, discount: 0, amount_after_discount: 200, vat_amount: 14,
+        wht_rate: 0, wht_amount: 0, net_amount: 214, entity_id: A.entityId, ap_ar_status: "AP", source: "claude",
+      },
+      p_items: [
+        { item_name: "ก", quantity: 1, in_vat: 107, ex_vat: 100, total_price: 100, item_job: "บาร์" },
+        { item_name: "ข", quantity: 1, in_vat: 107, ex_vat: 100, total_price: 100, item_job: "บาร์" },
+      ],
+    });
+    const txId = (data as { tx_id: string }).tx_id;
+    // แบบเดียวกับ editBill: อ่านค่าเดิมทั้งแถว เปลี่ยนเฉพาะช่องที่แก้ แล้วส่งกลับ
+    const { data: tx } = await acc.client.from("transactions")
+      .select("transaction_date, type, account_name, category, contact_name, contact_id, description, base_amount, discount, amount_after_discount, vat_amount, wht_rate, wht_amount, net_amount, tax_invoice_no, tax_invoice_date, entity_id")
+      .eq("tx_id", txId).single();
+    const { data: items } = await acc.client.from("transaction_items")
+      .select("item_name, quantity, in_vat, ex_vat, total_price, discount_pct, discount_baht, item_category, item_job").eq("tx_id", txId).order("item_id");
+    const p = { ...tx, category: "ทดสอบ connector 2" };
+    const its = items!.map((x, i) => ({ ...x, item_job: i === 1 ? "" : "บ่อปลา" })); // แถว 2 = ไม่ระบุงาน → ค่าว่าง
+    const { data: res, error } = await acc.client.rpc("fn_edit_transaction", { p_tx_id: txId, p, p_items: its });
+    expect(error).toBeNull();
+    expect((res as { ok: boolean }).ok).toBe(true);
+    const { data: after } = await admin().from("transactions").select("category, net_amount, vat_amount, amount_after_discount").eq("tenant_id", A.tenantId).eq("tx_id", txId).single();
+    expect(after).toMatchObject({ category: "ทดสอบ connector 2" });
+    expect(Number(after!.net_amount)).toBe(214);
+    expect(Number(after!.vat_amount)).toBe(14);
+    const { data: it2 } = await admin().from("transaction_items").select("item_job, total_price").eq("tenant_id", A.tenantId).eq("tx_id", txId).order("item_id");
+    expect(it2!.map((x) => x.item_job)).toEqual(["บ่อปลา", null]);
+    expect(it2!.map((x) => Number(x.total_price))).toEqual([100, 100]);
+  });
 });

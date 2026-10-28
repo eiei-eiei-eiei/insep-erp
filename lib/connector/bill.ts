@@ -13,6 +13,7 @@
 import { entryCalc, priceFromInput, round2, num, missingInvoiceWarn, type VatMode, type EntryCalcResult } from "../accounting/calc";
 import { buildItemInputs, type BillItem, type SaveTxInput, type TxItemInput } from "../accounting/itemInputs";
 import { isForwardCat } from "../accounting/forwardCats";
+import type { NewContactInput } from "./contact";
 
 /** ประเภทบิลที่ connector บันทึกได้ (รอบแรก) — แบ่งงวด/สำรองจ่าย/โอน ทำในแอปเหมือนเดิม */
 export const CONNECTOR_TYPES = ["รายจ่าย", "รายรับ"] as const;
@@ -37,6 +38,8 @@ export type DraftItem = {
   discount_baht?: number;
   category?: string;
   job?: string;
+  /** ตั้งใจไม่ระบุงาน (ผ่านด่านบังคับเลือกงาน) — บันทึกเป็นค่าว่าง ไม่ใช่คำว่า "ไม่ระบุงาน" (ผู้ใช้สั่ง) */
+  job_none?: boolean;
 };
 
 export type BillDraft = {
@@ -48,6 +51,8 @@ export type BillDraft = {
   description?: string;
   contact_name?: string;
   contact_id?: string;
+  /** คู่ค้าที่ยังไม่มีในทะเบียน — เพิ่มให้ก่อนบันทึกบิล (ไม่ส่งพร้อม contact_id) */
+  new_contact?: NewContactInput;
   /** บัญชีเงินที่จ่าย/รับ · ว่างได้เมื่อตั้งค้าง หรือเป็นรายรับ (กติกาเดียวกับฟอร์ม) */
   account_name?: string;
   /** ราคาบนบิล "รวม VAT แล้ว" หรือ "ยังไม่รวม" — โหมดเป็นของบิล ไม่ใช่ของแถว (D98) */
@@ -86,6 +91,8 @@ export type BillContext = {
   /** ชื่อบัญชีเงินที่ใช้กับกิจการนี้ได้ (accountsFor + ยังเปิดใช้) */
   accounts: string[];
   forwardCats: readonly string[];
+  /** กิจการนี้เคยใช้ "งาน" ⇒ ทุกรายการต้องเลือกงาน หรือกด ไม่ระบุงาน (ตัดสินจากข้อมูลจริง · jobs.ts) */
+  jobsRequired?: boolean;
   /** หมวดที่เลือกได้ต่อประเภท (ชุดเดียวกับดร็อปดาวน์ในฟอร์ม: expense_cat + หมวดรับวัตถุดิบ · income_cat) */
   categories: Record<ConnectorType, readonly string[]>;
   /** วันนี้ (Asia/Bangkok) YYYY-MM-DD */
@@ -165,7 +172,8 @@ function toBillItems(d: BillDraft, mode: VatMode): BillItem[] {
     return {
       itemName: String(it.name ?? "").trim(),
       itemCategory: String(it.category ?? "").trim(),
-      itemJob: String(it.job ?? "").trim(),
+      // ไม่ระบุงาน = ค่าว่างในฐานข้อมูล
+      itemJob: it.job_none ? "" : String(it.job ?? "").trim(),
       quantity: qty,
       exVat: p.exVat,
       inVat: p.inVat,
@@ -214,6 +222,9 @@ export function checkBill(d: BillDraft, ctx: BillContext): CheckResult {
     if (!(num(it.quantity) > 0)) errors.push(`รายการที่ ${n}: จำนวนต้องมากกว่า 0`);
     if (!(num(it.unit_price) >= 0)) errors.push(`รายการที่ ${n}: ราคาติดลบไม่ได้`);
     if (num(it.discount_baht) < 0) errors.push(`รายการที่ ${n}: ส่วนลดติดลบไม่ได้`);
+    if (ctx.jobsRequired && !it.job_none && !String(it.job ?? "").trim()) {
+      errors.push(`รายการที่ ${n} (${String(it.name ?? "").trim()}) ยังไม่ได้เลือกงาน — เลือกงาน หรือกด ไม่ระบุงาน`);
+    }
   });
 
   const whtRate = num(d.wht_rate);
