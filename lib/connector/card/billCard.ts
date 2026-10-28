@@ -10,7 +10,11 @@
 // ★ ใช้ตัวที่ SDK build ย่อมาแล้ว — import ตัวปกติลาก zod เต็มก้อนมา (การ์ดโต 528KB → ~350KB)
 import { App, applyDocumentTheme, applyHostStyleVariables } from "@modelcontextprotocol/ext-apps/app-with-deps";
 import type { McpUiHostContext } from "@modelcontextprotocol/ext-apps";
-import { primaryAction, suspectSet, savedContextText, INLINE_ITEMS, EDIT_TOTAL_WARN, type CardData } from "../cardView";
+import {
+  primaryAction, suspectSet, savedContextText, INLINE_ITEMS, EDIT_TOTAL_WARN, type CardData,
+  contactPrimary, contactDoneText, isContactCard, type ContactCardData,
+} from "../cardView";
+import type { NewContactInput } from "../contact";
 import type { DraftItem } from "../bill";
 import { jobSummary, similarJob, JOB_CHIPS } from "../jobs";
 
@@ -29,6 +33,11 @@ let newJobOpen = false;
 let newJobRow: number | null = null;
 /** งานที่พิมพ์ใหม่ในการ์ดนี้ — ขึ้นเป็นตัวเลือกของแถวอื่นทันที */
 let extraJobs: string[] = [];
+/** คู่ค้าใหม่ที่กำลังแก้ในหน้าเต็มจอ (รอบ 4 · null = ไม่มีคู่ค้าใหม่) */
+let ncLocal: NewContactInput | null = null;
+/** การ์ดคู่ค้า (add_contact · รอบ 4) — มีค่า = การ์ดนี้เป็นการ์ดคู่ค้า ไม่ใช่การ์ดบิล */
+let cdata: ContactCardData | null = null;
+let cdone: string | null = null;
 let timer: ReturnType<typeof setTimeout> | undefined;
 
 const root = document.getElementById("root")!;
@@ -129,6 +138,11 @@ function ask(text: string) {
 async function setFull(on: boolean) {
   full = on;
   editTotal = false;
+  if (on && data) {
+    const nc = data.draft.new_contact;
+    const c = data.contact;
+    ncLocal = nc ? { ...nc } : c.kind === "new" ? { name: c.name, tax_id: c.tax_id ?? "", branch: c.branch ?? "", address: c.address ?? "" } : null;
+  }
   try {
     const ctx = app.getHostContext();
     if (ctx?.availableDisplayModes?.includes(on ? "fullscreen" : "inline")) {
@@ -164,7 +178,8 @@ function contactHtml(d: CardData): string {
   if (c.kind === "new") {
     return `<div class="newc"><b>คู่ค้าใหม่ — จะเพิ่มเข้าทะเบียนตอนบันทึก</b><br>${esc(c.name)}${
       c.tax_id ? ` · เลขผู้เสียภาษี ${esc(c.tax_id)}` : " · ไม่มีเลขผู้เสียภาษี"}${c.branch ? ` · ${esc(c.branch)}` : ""}${
-      c.address ? `<br><span class="mu">${esc(c.address)}</span>` : ""}</div>`;
+      c.address ? `<br><span class="mu">${esc(c.address)}</span>` : ""}
+      <br><button class="link" data-act="edit"${saved ? " disabled" : ""}>แก้ข้อมูลคู่ค้า</button></div>`;
   }
   if (c.kind === "existing") return `<div class="mu row">คู่ค้าในทะเบียน ${esc(c.contact_id)}${c.tax_id ? ` · ${esc(c.tax_id)}` : ""}</div>`;
   return "";
@@ -212,6 +227,23 @@ function itemsInlineHtml(d: CardData): string {
     <button class="sec wide" data-act="edit"${saved ? " disabled" : ""}>ดู/แก้รายการ</button></div>`;
 }
 
+/** หน้าเต็มจอ: ช่องแก้คู่ค้าใหม่ (ชื่อ · เลขภาษี · สาขา · ที่อยู่) */
+function contactEditHtml(): string {
+  if (!ncLocal) return "";
+  const f = (k: keyof NewContactInput, label: string, mode = "text") =>
+    `<label class="lab">${label}<input data-nc="${k}" inputmode="${mode}" value="${esc(ncLocal?.[k] ?? "")}"></label>`;
+  return `<div class="newc row"><b>คู่ค้าใหม่ — ตรวจกับหัวบิลก่อนบันทึก</b></div>
+    ${f("name", "ชื่อ")}${f("tax_id", "เลขผู้เสียภาษี", "numeric")}${f("branch", 'สาขา ("สำนักงานใหญ่" หรือเลขสาขา)')}${f("address", "ที่อยู่")}`;
+}
+
+/** สถานะคู่ค้าในหน้าเต็มจอ (วาดใหม่ทุกครั้งที่คิดใหม่ ไม่แตะช่องที่พิมพ์) */
+function contactStatusHtml(d: CardData): string {
+  if (!ncLocal) return "";
+  if (d.contact.kind === "existing") return `<div class="ok">มีในทะเบียนแล้ว ${esc(d.contact.contact_id)} ${esc(d.contact.name)} — ใช้ตัวเดิม ไม่เพิ่มซ้ำ</div>`;
+  if (d.contact.kind === "new") return `<div class="mu">จะเพิ่มเป็นคู่ค้าใหม่ตอนบันทึก${d.contact.branch ? ` · ${esc(d.contact.branch)}` : ""}</div>`;
+  return "";
+}
+
 function itemsEditHtml(d: CardData): string {
   const rows = d.draft.items.map((it, i) => `<div class="er" data-row="${i}">
       <input class="nm" data-f="name" value="${esc(it.name)}" aria-label="ชื่อรายการ ${i + 1}">
@@ -221,7 +253,7 @@ function itemsEditHtml(d: CardData): string {
       ${d.jobs_required || allJobs(d).length ? jobSelect(d, it, i) : ""}</div>`).join("");
   const jobBar = d.jobs_required || allJobs(d).length
     ? `<div class="chips row">${chip("+ งานใหม่", false, "new-job")}</div>${newJobHtml()}` : "";
-  return `<div class="row"><div class="er hd"><span>รายการ</span><span>จำนวน</span><span>ราคา/หน่วย</span><span></span></div>${rows}</div>${jobBar}`;
+  return `${contactEditHtml()}<div class="row"><div class="er hd"><span>รายการ</span><span>จำนวน</span><span>ราคา/หน่วย</span><span></span></div>${rows}</div>${jobBar}`;
 }
 
 function totalsHtml(d: CardData): string {
@@ -271,7 +303,7 @@ function render() {
     <div class="mu">${esc(x.type)} · ${esc(fmtDate(x.transaction_date))}${x.tax_invoice_no ? ` · ใบกำกับ ${esc(x.tax_invoice_no)}` : ""}</div>`;
   root.innerHTML = `<div class="card${full ? " full" : ""}">${head}
     ${full ? itemsEditHtml(d) : choicesHtml(d) + itemsInlineHtml(d)}
-    <div id="live">${totalsHtml(d)}${warningsHtml(d)}<div id="acts">${actionsHtml(d)}</div></div></div>`;
+    <div id="live">${full ? contactStatusHtml(d) : ""}${totalsHtml(d)}${warningsHtml(d)}<div id="acts">${actionsHtml(d)}</div></div></div>`;
   paintSuspects();
 }
 
@@ -279,7 +311,7 @@ function render() {
 function paintLive() {
   const live = document.getElementById("live");
   if (!live || !data) return render();
-  live.innerHTML = `${totalsHtml(data)}${warningsHtml(data)}<div id="acts">${actionsHtml(data)}</div>`;
+  live.innerHTML = `${contactStatusHtml(data)}${totalsHtml(data)}${warningsHtml(data)}<div id="acts">${actionsHtml(data)}</div>`;
   paintSuspects();
 }
 
@@ -297,6 +329,7 @@ function paintSuspects() {
 // ── กด/พิมพ์ ───────────────────────────────────────────────────────────────────
 root.addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest<HTMLElement>("[data-act]");
+  if (b && cdata) return contactClick(b);
   if (!b || !data || saved) return;
   const val = b.dataset.val ?? "";
   switch (b.dataset.act) {
@@ -343,8 +376,15 @@ root.addEventListener("click", (e) => {
 
 root.addEventListener("input", (e) => {
   const el = e.target as HTMLInputElement;
+  // 🪤 ต้องมาก่อน if (!data) — การ์ดคู่ค้าไม่มีข้อมูลบิล ถ้าสลับลำดับ = แก้ช่องแล้วไม่ตรวจซ้ำ และกดเพิ่มด้วยค่าเดิม
+  if (cdata) return contactInput(el);
   if (!data) return;
   if (el.id === "tob") return void recalc({ total_on_bill: Number(el.value) || 0, use_bill_amounts: false }, 500);
+  if (el.dataset.nc && ncLocal) {
+    ncLocal = { ...ncLocal, [el.dataset.nc]: el.value };
+    // แก้คู่ค้า = ตรวจใหม่ทั้งหมด (อาจไปตรงกับคู่ค้าเดิมในทะเบียน) · ทิ้ง contact_id ที่ server เคยผูกให้
+    return void recalc({ new_contact: { ...ncLocal }, contact_id: undefined }, 600);
+  }
   if (el.id === "newjob") {
     const sim = similarJob(el.value, allJobs(data));
     const box = document.getElementById("simjob");
@@ -376,6 +416,79 @@ root.addEventListener("change", (e) => {
   applyJob(el.value === "__none" ? null : el.value, i);
 });
 
+// ── การ์ดคู่ค้า (add_contact) ──────────────────────────────────────────────────
+function renderContact() {
+  const d = cdata!;
+  const f = (k: "name" | "tax_id" | "branch" | "address", label: string, mode = "text") =>
+    `<label class="lab">${label}<input data-cf="${k}" inputmode="${mode}" value="${esc(d.input[k] ?? "")}"${cdone ? " disabled" : ""}></label>`;
+  root.innerHTML = `<div class="card"><div class="hd1"><b>เพิ่มคู่ค้า${d.input.type === "รายรับ" ? " (ลูกค้า)" : " (ผู้ขาย)"}</b><span class="mu">${esc(d.tenant_name)}</span></div>
+    <div class="mu">ตรวจกับหัวบิลก่อนกดเพิ่ม</div>
+    ${f("name", "ชื่อ")}${f("tax_id", "เลขผู้เสียภาษี", "numeric")}${f("branch", 'สาขา ("สำนักงานใหญ่" หรือเลขสาขา)')}${f("address", "ที่อยู่")}
+    <div id="clive">${contactLiveHtml()}</div></div>`;
+}
+
+function contactLiveHtml(): string {
+  const d = cdata!;
+  if (cdone) return `<div class="done">${esc(cdone)}</div>`;
+  const a = contactPrimary(d);
+  const st = d.existing ? ""
+    : d.row ? `<div class="ok">พร้อมเพิ่ม: ${esc(d.row.name)}${d.row.tax_id ? ` · ${esc(d.row.tax_id)}` : ""}${d.row.branch ? ` · ${esc(d.row.branch)}` : ""}</div>` : "";
+  const link = d.link ? `<div class="mu row">ผูกกับบิล ${esc(d.link.tx_id)}${d.link.summary ? ` · ${esc(d.link.summary)}` : ""}</div>` : "";
+  return `${st}${link}<div class="acts"><button class="pri" data-act="c-primary"${busy || a.kind === "fix" ? " disabled" : ""}>${busy ? "กำลังทำงาน…" : esc(a.label)}</button></div>${
+    a.hint ? `<div class="hint">${esc(a.hint)}</div>` : ""}${failText ? `<div class="bad">${esc(failText)}</div>` : ""}`;
+}
+
+function paintContactLive() {
+  const el = document.getElementById("clive");
+  if (el) el.innerHTML = contactLiveHtml();
+}
+
+function contactArgs(): Record<string, unknown> {
+  const d = cdata!;
+  return { ...d.input, ...(d.link ? { link_tx_id: d.link.tx_id } : {}) };
+}
+
+function contactInput(el: HTMLInputElement) {
+  const k = el.dataset.cf as "name" | "tax_id" | "branch" | "address" | undefined;
+  if (!k || !cdata || cdone) return;
+  cdata = { ...cdata, input: { ...cdata.input, [k]: el.value } };
+  if (timer) clearTimeout(timer);
+  timer = setTimeout(async () => {
+    try {
+      const r = await app.callServerTool({ name: "recalc_contact", arguments: contactArgs() });
+      const sc = r.structuredContent;
+      // ★ เก็บค่าที่กำลังพิมพ์ไว้ (ผลรอบก่อนอาจกลับมาช้ากว่าที่พิมพ์ต่อ)
+      if (isContactCard(sc)) cdata = { ...sc, input: cdata!.input };
+      failText = r.isError ? textOf(r) : "";
+    } catch {
+      failText = "เชื่อมต่อระบบไม่สำเร็จ — ลองอีกครั้ง";
+    }
+    paintContactLive();
+  }, 600);
+}
+
+async function contactClick(b: HTMLElement) {
+  if (b.dataset.act !== "c-primary" || !cdata || busy || cdone) return;
+  if (contactPrimary(cdata).kind === "fix") return;
+  busy = true;
+  paintContactLive();
+  try {
+    const r = await app.callServerTool({ name: "create_contact", arguments: { tenant_slug: cdata.tenant_slug, ...contactArgs() } });
+    const sc = r.structuredContent as { ok?: boolean; contact_id?: string; created?: boolean; linked?: string | null; errors?: string[] } | undefined;
+    if (sc?.ok && sc.contact_id) {
+      cdone = `${sc.created ? "เพิ่มคู่ค้าแล้ว" : "ใช้คู่ค้าเดิม"} ${sc.contact_id}${sc.linked ? ` · ผูกกับบิล ${sc.linked} แล้ว` : ""}`;
+      failText = "";
+      app.updateModelContext({ content: [{ type: "text", text: contactDoneText(sc.contact_id, Boolean(sc.created), sc.linked ?? null) }] }).catch(() => undefined);
+    } else {
+      failText = sc?.errors?.[0] ?? (textOf(r) || "เพิ่มคู่ค้าไม่สำเร็จ");
+    }
+  } catch {
+    failText = "เพิ่มคู่ค้าไม่สำเร็จ — เชื่อมต่อระบบไม่ได้ ลองอีกครั้ง";
+  }
+  busy = false;
+  renderContact();
+}
+
 // ── เชื่อมกับ Claude ────────────────────────────────────────────────────────────
 function applyCtx(ctx: McpUiHostContext | undefined) {
   if (!ctx) return;
@@ -387,8 +500,10 @@ function applyCtx(ctx: McpUiHostContext | undefined) {
 }
 
 app.ontoolresult = (r) => {
-  const sc = r.structuredContent as CardData | undefined;
-  if (sc && sc.v === 1) { data = sc; render(); }
+  const sc = r.structuredContent;
+  if (isContactCard(sc)) { cdata = sc; renderContact(); return; }
+  const bill = sc as CardData | undefined;
+  if (bill && bill.v === 1) { data = bill; render(); }
 };
 app.onhostcontextchanged = (ctx) => applyCtx(ctx as McpUiHostContext);
 

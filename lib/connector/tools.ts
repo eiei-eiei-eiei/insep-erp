@@ -9,7 +9,7 @@ import { hasModule } from "@/lib/shared/workspaces";
 import { mapDbError } from "@/lib/shared/dbError";
 import { bangkokDateISO } from "@/lib/shared/datetime";
 import { checkBill, mismatchText, previewSummary, taxIdValid, normalizeTaxId, CONNECTOR_TYPES, type BillDraft, type BillContext, type CheckResult, type ConnectorType } from "./bill";
-import { categoryChips, type CardContact, type CardData } from "./cardView";
+import { categoryChips, type CardContact, type CardData, type ContactCardData } from "./cardView";
 import { newContactRow, findExistingContact, type ContactRow, type ExistingContact } from "./contact";
 import { rankJobs } from "./jobs";
 import { BILL_CARD_HTML } from "./card/billCard.generated";
@@ -47,8 +47,11 @@ Workflow for every bill image the user sends:
 7. preview_bill shows the user an interactive card. The user reviews and presses Save in the card. You cannot save bills:
    save_bill is only available to the card. If the user asks you to save, tell them to press บันทึก in the card.
    After preview_bill, write at most one short line.
-8. To change the category, account, job or contact of a bill that was saved through this connector, use edit_bill,
+8. To change the category, account, job or (existing) contact of a bill saved through this connector, use edit_bill,
    only after the user asks. Amounts and line items can only be changed in the app.
+9. To add a seller/customer to the register outside a bill card (e.g. for a bill already saved), call add_contact
+   (with link_tx_id to link it to that bill). It shows a card; the user checks the details and presses the button.
+   You cannot add contacts directly.
 Do not record bills the user did not send.`;
 
 type Ctx = { db: SupabaseClient; me: ConnectorMe };
@@ -185,7 +188,7 @@ const itemSchema = z.object({
 const contactSchema = z.object({
   name: z.string().describe("Seller/customer name as printed"),
   tax_id: z.string().optional().describe("13-digit tax ID as printed"),
-  branch: z.string().optional().describe('"สำนักงานใหญ่" or the branch number as printed'),
+  branch: z.string().optional().describe('"สำนักงานใหญ่" for head office, or the branch number as printed (e.g. 00152)'),
   address: z.string().optional().describe("Address as printed"),
 });
 
@@ -197,7 +200,7 @@ const billShape = {
   description: z.string().optional().describe("Short Thai description of the bill"),
   contact_name: z.string().optional().describe("Seller/customer name (use the name from find_contact when found)"),
   contact_id: z.string().optional().describe("contact_id from find_contact (exact branch)"),
-  new_contact: contactSchema.optional().describe("Seller/customer not found by find_contact — added to the register on save"),
+  new_contact: contactSchema.optional().describe("Seller/customer not found by find_contact — shown in the card and added to the register when the user saves"),
   account_name: z.string().optional().describe("Exact money account name from lookup_options; omit when unpaid"),
   price_mode: z.enum(["in", "ex"]).describe('"in" = unit prices include VAT, "ex" = VAT added on top'),
   has_vat: z.boolean().describe("Bill charges 7% VAT"),
@@ -518,8 +521,7 @@ export function buildServer(ctx: Ctx): McpServer {
         tx_id: z.string().describe("Bill id, e.g. TR-20261028-0002"),
         category: z.string().optional().describe("New exact category name from lookup_options"),
         account_name: z.string().optional().describe("New exact money account name (paid bills only)"),
-        contact_id: z.string().optional().describe("Link to an existing contact"),
-        new_contact: contactSchema.optional().describe("Add this seller/customer to the register and link the bill"),
+        contact_id: z.string().optional().describe("Link to an existing contact (to add a new one use add_contact with link_tx_id)"),
         job_all: z.string().optional().describe("Set this job on every line"),
         job_none_all: z.boolean().optional().describe("true = clear the job on every line"),
         jobs: z.array(z.object({ line: z.number().describe("Line number starting at 1"), job: z.string().optional(), none: z.boolean().optional() })).optional()
@@ -534,13 +536,127 @@ export function buildServer(ctx: Ctx): McpServer {
     },
   );
 
+  const contactShape = {
+    ...contactSchema.shape,
+    type: z.enum(CONNECTOR_TYPES).optional().describe("รายจ่าย = seller (default), รายรับ = customer"),
+    link_tx_id: z.string().optional().describe("Bill saved through this connector to link after adding (e.g. TR-20261028-0002)"),
+  };
+
+  registerAppTool(
+    server,
+    "add_contact",
+    {
+      title: "เพิ่มคู่ค้าใหม่ (การ์ด)",
+      description: "Show a card for the user to check and add a seller/customer to the register (optionally linking a bill saved through this connector). Does not add anything by itself.",
+      inputSchema: contactShape,
+      annotations: { readOnlyHint: true },
+      _meta: { ui: { resourceUri: BILL_CARD_URI } },
+    },
+    async (a) => {
+      const card = await contactCard(ctx, a);
+      if (typeof card === "string") return text(card, true);
+      return { ...json({ card: "แสดงการ์ดคู่ค้าให้ผู้ใช้แล้ว — ผู้ใช้ตรวจแล้วกดเพิ่มเอง", error: card.error, existing: card.existing, link: card.link }), structuredContent: card };
+    },
+  );
+
+  registerAppTool(
+    server,
+    "recalc_contact",
+    {
+      title: "ตรวจคู่ค้าใหม่ (การ์ด)",
+      description: "Re-check the contact card after the user edits a field. Called by the card only.",
+      inputSchema: contactShape,
+      annotations: { readOnlyHint: true },
+      _meta: { ui: { resourceUri: BILL_CARD_URI, visibility: ["app"] } },
+    },
+    async (a) => {
+      const card = await contactCard(ctx, a);
+      if (typeof card === "string") return text(card, true);
+      return { ...text(card.error ?? "ok"), structuredContent: card };
+    },
+  );
+
+  // 🚨 เพิ่มคู่ค้าได้จากการ์ดทางเดียว — การกดปุ่มในการ์ดคือการยืนยันของผู้ใช้
+  registerAppTool(
+    server,
+    "create_contact",
+    {
+      title: "เพิ่มคู่ค้า (การ์ด)",
+      description: "Add the checked contact to the register (and link the bill). Called by the card when the user presses the button.",
+      inputSchema: { tenant_slug: z.string(), ...contactShape },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+      _meta: { ui: { resourceUri: BILL_CARD_URI, visibility: ["app"] } },
+    },
+    async ({ tenant_slug, ...a }) => {
+      if (!slugOk(me, tenant_slug)) return slugError(me, tenant_slug);
+      // ตรวจใหม่ทั้งหมด ไม่เชื่อผลของการ์ดรอบก่อน
+      const card = await contactCard(ctx, a);
+      if (typeof card === "string") return text(card, true);
+      if (card.error || (!card.row && !card.existing) || card.link?.error) {
+        return withSc({ ok: false, errors: [card.error ?? card.link?.error ?? "ข้อมูลคู่ค้าไม่ครบ"] });
+      }
+      let contactId = card.existing?.contact_id ?? null;
+      let created = false;
+      if (!contactId && card.row) {
+        const id = await createContact(ctx, card.row);
+        if (typeof id !== "string") return withSc({ ok: false, errors: [id.error] });
+        contactId = id;
+        created = true;
+      }
+      let linked: string | null = null;
+      if (card.link && contactId) {
+        const r = await editBill(ctx, { tx_id: card.link.tx_id, contact_id: contactId });
+        if (typeof r === "string") return withSc({ ok: false, contact_id: contactId, created, errors: [`${created ? "เพิ่มคู่ค้าแล้ว" : "พบคู่ค้า"} ${contactId} แต่ผูกกับบิลไม่สำเร็จ: ${r}`] });
+        linked = card.link.tx_id;
+      }
+      return withSc({ ok: true, contact_id: contactId, created, linked });
+    },
+  );
+
   return server;
+}
+
+/** ตรวจคู่ค้าใหม่ + หาตัวซ้ำ + บิลที่จะผูก → ข้อมูลการ์ดคู่ค้า */
+async function contactCard(
+  ctx: Ctx,
+  a: { name: string; tax_id?: string; branch?: string; address?: string; type?: ConnectorType; link_tx_id?: string },
+): Promise<ContactCardData | string> {
+  const type: ConnectorType = a.type ?? "รายจ่าย";
+  const res = await resolveContact(ctx, { type, new_contact: { name: a.name, tax_id: a.tax_id, branch: a.branch, address: a.address } } as BillDraft);
+  if (typeof res === "string") return res;
+  let link: ContactCardData["link"] = null;
+  if (a.link_tx_id) {
+    const t = await ctx.db.from("transactions").select("tx_id, transaction_date, contact_name, net_amount, source, status").eq("tx_id", a.link_tx_id).maybeSingle();
+    if (t.error) return "อ่านบิลไม่สำเร็จ: " + mapDbError(t.error);
+    const tx = t.data;
+    link = {
+      tx_id: a.link_tx_id,
+      summary: tx ? `${tx.transaction_date} · ${tx.contact_name ?? "(ไม่มีชื่อคู่ค้า)"} · ${Number(tx.net_amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}` : "",
+      error: !tx ? `ไม่พบบิล ${a.link_tx_id}`
+        : tx.source !== "claude" ? `บิล ${a.link_tx_id} ไม่ได้บันทึกผ่าน Claude — ผูกคู่ค้าได้ที่แอป บัญชี → ค้นบิล`
+        : tx.status !== "ปกติ" ? `บิล ${a.link_tx_id} ถูกยกเลิกแล้ว` : null,
+    };
+  }
+  const existing = res.contact.kind === "existing"
+    ? { contact_id: res.contact.contact_id, name: res.contact.name, tax_id: res.contact.tax_id, branch: null }
+    : null;
+  return {
+    v: 1,
+    kind: "contact",
+    tenant_slug: ctx.me.tenantSlug,
+    tenant_name: ctx.me.tenantName,
+    input: { name: a.name, tax_id: a.tax_id, branch: a.branch, address: a.address, type },
+    row: res.row ?? null,
+    existing,
+    error: res.error ?? null,
+    link,
+  };
 }
 
 // ── แก้บิลหลังบันทึก (หมวด · บัญชี · งาน · คู่ค้า) ─────────────────────────────────
 type EditInput = {
   tx_id: string; category?: string; account_name?: string; contact_id?: string;
-  new_contact?: z.infer<typeof contactSchema>; job_all?: string; job_none_all?: boolean;
+  job_all?: string; job_none_all?: boolean;
   jobs?: { line: number; job?: string; none?: boolean }[];
 };
 
@@ -582,19 +698,13 @@ async function editBill(ctx: Ctx, a: EditInput): Promise<Record<string, unknown>
     changes.push(`บัญชี ${tx.account_name} → ${acc}`);
     p.account_name = acc;
   }
-  if (a.contact_id || a.new_contact) {
-    const res = await resolveContact(ctx, { type, contact_id: a.contact_id, new_contact: a.new_contact } as BillDraft);
+  // 🚨 รอบ 4: ผูกได้เฉพาะคู่ค้าที่มีในทะเบียนแล้ว — เพิ่มคู่ค้าใหม่ต้องผ่านการ์ด add_contact ให้ผู้ใช้รีเช็คก่อน
+  if (a.contact_id && a.contact_id !== tx.contact_id) {
+    const res = await resolveContact(ctx, { type, contact_id: a.contact_id } as BillDraft);
     if (typeof res === "string") return res;
     if (res.error) return res.error;
-    let id = res.draft.contact_id;
-    if (res.row) {
-      const made = await createContact(ctx, res.row);
-      if (typeof made !== "string") return made.error;
-      id = made;
-      changes.push(`เพิ่มคู่ค้าใหม่ ${made} ${res.row.name}`);
-    }
-    changes.push(`คู่ค้า → ${id} ${res.draft.contact_name ?? ""}`.trim());
-    p.contact_id = id;
+    changes.push(`คู่ค้า → ${a.contact_id} ${res.draft.contact_name ?? ""}`.trim());
+    p.contact_id = a.contact_id;
     p.contact_name = res.draft.contact_name;
   }
 

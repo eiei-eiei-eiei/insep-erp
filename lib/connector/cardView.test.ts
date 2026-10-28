@@ -109,3 +109,33 @@ describe("C5 — หมวดที่เสนอเป็นปุ่ม", () 
 it("C5 — ข้อความบอก Claude หลังบันทึกจากการ์ด มีเลขบิลและห้ามเรียกซ้ำ", () => {
   expect(savedContextText("TR-9")).toMatch(/TR-9.*ไม่ต้องเรียก save_bill ซ้ำ/);
 });
+
+describe("C8 — การ์ดคู่ค้าใหม่ (รอบ 4)", () => {
+  const base = (p: Partial<import("./cardView").ContactCardData> = {}): import("./cardView").ContactCardData => ({
+    v: 1, kind: "contact", tenant_slug: "t", tenant_name: "T",
+    input: { name: "x", tax_id: "0105551103594", branch: "สำนักงานใหญ่", type: "รายจ่าย" },
+    row: { name: "x", tax_id: "0105551103594", branch: "สำนักงานใหญ่", address: null, contact_type: "ผู้ขาย" },
+    existing: null, error: null, link: null, ...p,
+  });
+  it("ผ่าน = เพิ่มคู่ค้า · มีบิลให้ผูก = เพิ่มและผูกกับบิล", async () => {
+    const { contactPrimary } = await import("./cardView");
+    expect(contactPrimary(base())).toMatchObject({ kind: "create", label: "เพิ่มคู่ค้า" });
+    expect(contactPrimary(base({ link: { tx_id: "TR-1", summary: "", error: null } })).label).toBe("เพิ่มและผูกกับบิล");
+  });
+  it("มีในทะเบียนแล้ว = ใช้ตัวเดิม ไม่เพิ่มซ้ำ", async () => {
+    const { contactPrimary } = await import("./cardView");
+    const a = contactPrimary(base({ existing: { contact_id: "C-0066", name: "มหาจักร", tax_id: "0105551103594", branch: "สำนักงานใหญ่" } }));
+    expect(a.kind).toBe("use_existing");
+    expect(a.hint).toMatch(/C-0066.*ไม่เพิ่มซ้ำ/);
+  });
+  it("ข้อมูลไม่ผ่าน / บิลผูกไม่ได้ = ปุ่มเทา พร้อมเหตุผล", async () => {
+    const { contactPrimary } = await import("./cardView");
+    expect(contactPrimary(base({ row: null, error: "เลขผู้เสียภาษีผิด" }))).toMatchObject({ kind: "fix", hint: "เลขผู้เสียภาษีผิด" });
+    expect(contactPrimary(base({ link: { tx_id: "TR-1", summary: "", error: "บิลนี้ไม่ได้บันทึกผ่าน Claude" } })).kind).toBe("fix");
+  });
+  it("แยกการ์ดคู่ค้าออกจากการ์ดบิล", async () => {
+    const { isContactCard } = await import("./cardView");
+    expect(isContactCard(base())).toBe(true);
+    expect(isContactCard({ v: 1, draft: {} })).toBe(false);
+  });
+});

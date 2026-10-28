@@ -29,15 +29,34 @@ export type ExistingContact = { contact_id: string; name: string; tax_id: string
 export const CONTACT_TYPE_OF: Record<ConnectorType, string> = { รายจ่าย: "ผู้ขาย", รายรับ: "ลูกค้า" };
 
 /**
+ * สาขาตามที่พิมพ์บนบิล → รูปที่ฟอร์มในแอปเข้าใจ ("สำนักงานใหญ่" หรือตัวเลขล้วน)
+ * 🐛 D141 รอบ 4: "Head Office" / "สนญ." / "HQ" เคยตกไปเป็น "เลขสาขาต้องเป็นตัวเลข" (Claude เลยใส่ 00000 เอง)
+ *    และ "สำนักงานใหญ่ (00000)" ถูกเก็บเป็น "00000" — ไม่สม่ำเสมอกับข้อมูลที่ฟอร์มบันทึก
+ * ★ อ่านไม่ออก = ส่งต่อตามเดิม ให้ตัวตรวจของฟอร์มฟ้อง (ไม่เดาว่าเป็นสำนักงานใหญ่ — เดาผิด = ใบกำกับพิมพ์สาขาผิด)
+ */
+export function normalizeBranch(raw: string | null | undefined): string {
+  const s = String(raw ?? "").trim();
+  if (!s) return "";
+  if (/สำนักงานใหญ่|สนญ|head\s*office|^h\.?\s*q\.?$/i.test(s)) return "สำนักงานใหญ่";
+  const num = /^(?:สาขา(?:ที่)?|branch(?:\s*no\.?)?)?\s*[:#]?\s*(\d{1,5})$/i.exec(s);
+  if (num) return /^0+$/.test(num[1]) ? "สำนักงานใหญ่" : num[1];
+  return s;
+}
+
+/** ข้อความเมื่อสาขาอ่านไม่ออก — บอกรูปที่รับให้ชัด (ของเดิมบอกแค่ "ตัวเลข" ทำให้ใส่ 00000 แทนคำว่าสำนักงานใหญ่) */
+const BRANCH_HELP = 'ใส่ "สำนักงานใหญ่" หรือเลขสาขา 1-5 หลักตามที่พิมพ์บนบิล (เช่น 00152)';
+
+/**
  * ตรวจคู่ค้าใหม่ → แถวที่จะบันทึก หรือเหตุผลที่บันทึกไม่ได้
  * 🚨 เลขภาษีต้องผ่าน checksum ด้วย (ไม่ใช่แค่ 13 หลัก) — เพิ่มเข้าทะเบียนแล้วเลขผิดจะติดไปทุกบิลถัดไป
  */
 export function newContactRow(nc: NewContactInput, type: ConnectorType): ContactRow | string {
   const taxId = normalizeTaxId(nc.tax_id);
-  const form = branchFormOf(nc.branch, taxId);
+  const branch = normalizeBranch(nc.branch);
+  const form = branchFormOf(branch, taxId);
   const input = { name: String(nc.name ?? ""), taxId, isExport: false, ...form };
   const err = validateNewCustomer(input);
-  if (err) return `คู่ค้าใหม่: ${err}`;
+  if (err) return /สาขา/.test(err) ? `คู่ค้าใหม่: สาขา "${branch}" อ่านไม่ออก — ${BRANCH_HELP}` : `คู่ค้าใหม่: ${err}`;
   if (taxId && !taxIdValid(taxId)) return `คู่ค้าใหม่: เลขผู้เสียภาษี ${taxId} ไม่ผ่านการตรวจหลักสุดท้าย — อ่านเลขบนบิลใหม่`;
   return {
     name: input.name.trim(),

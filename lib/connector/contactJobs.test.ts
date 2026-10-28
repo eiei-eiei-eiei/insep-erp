@@ -17,6 +17,22 @@ describe("C7 — คู่ค้าใหม่", () => {
     expect(newContactRow({ name: "ไทวัสดุ", tax_id: "0105555021215" }, "รายจ่าย")).toMatchObject({ branch: "สำนักงานใหญ่" });
   });
 
+  it("🐛 รอบ 4: สาขาทุกรูปที่หมายถึงสำนักงานใหญ่ → 'สำนักงานใหญ่' (ไม่ใช่ 00000)", () => {
+    for (const b of ["สำนักงานใหญ่", "สำนักงานใหญ่ (00000)", "Head Office", "head office", "สนญ.", "HQ", "00000", "0"]) {
+      expect(newContactRow({ name: "x", tax_id: "0105551103594", branch: b }, "รายจ่าย"), b).toMatchObject({ branch: "สำนักงานใหญ่" });
+    }
+  });
+
+  it("รอบ 4: สาขาที่มีคำนำหน้า → เลขสาขา 5 หลัก", () => {
+    for (const b of ["สาขาที่ 00152", "สาขา 152", "Branch 152", "Branch No. 00152", "152"]) {
+      expect(newContactRow({ name: "x", tax_id: "0105555021215", branch: b }, "รายจ่าย"), b).toMatchObject({ branch: "00152" });
+    }
+  });
+
+  it("รอบ 4: สาขาอ่านไม่ออก = บอกรูปที่รับให้ชัด (ไม่เดาว่าเป็นสำนักงานใหญ่)", () => {
+    expect(newContactRow({ name: "x", tax_id: "0105555021215", branch: "สาขาบางนา" }, "รายจ่าย")).toMatch(/อ่านไม่ออก — ใส่ "สำนักงานใหญ่" หรือเลขสาขา/);
+  });
+
   it("ร้านเล็กไม่มีเลขภาษี → ไม่มีสาขา (ไม่พิมพ์วงเล็บสาขา)", () => {
     expect(newContactRow({ name: "ร้านป้าแดง" }, "รายจ่าย")).toMatchObject({ tax_id: null, branch: null });
   });

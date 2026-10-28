@@ -116,6 +116,24 @@ describe("C4 — ด่านเรียงถูก", () => {
     expect(save.indexOf("createContact(")).toBeLessThan(save.indexOf('rpc("fn_save_transaction"'));
   });
 
+  it("🚨 รอบ 4: เพิ่มคู่ค้าได้จากการ์ดทางเดียว — create_contact เป็น app-only · edit_bill ไม่รับ new_contact แล้ว", () => {
+    const s = code("lib/connector/tools.ts");
+    expect(toolBody(s, "create_contact")).toMatch(/visibility: \["app"\]/);
+    expect(toolBody(s, "recalc_contact")).toMatch(/visibility: \["app"\]/);
+    expect(toolBody(s, "add_contact")).not.toMatch(/createContact\(/);
+    expect(toolBody(s, "edit_bill")).not.toMatch(/new_contact/);
+    expect(s.slice(s.indexOf("async function editBill"))).not.toMatch(/createContact\(/);
+    // createContact ถูกเรียกแค่ 2 ที่: ตอนบันทึกบิลจากการ์ด · ตอนกดเพิ่มในการ์ดคู่ค้า
+    expect(s.match(/await createContact\(/g)?.length).toBe(2);
+  });
+
+  it("🐛 รอบ 4: การ์ดคู่ค้าต้องรับการพิมพ์ก่อนด่าน 'ไม่มีข้อมูลบิล' (เคยแก้ช่องแล้วไม่ตรวจซ้ำ + กดเพิ่มด้วยค่าเดิม)", () => {
+    const s = code("lib/connector/card/billCard.ts");
+    const h = s.slice(s.indexOf('root.addEventListener("input"'));
+    expect(h.indexOf("if (cdata) return contactInput(el);")).toBeGreaterThan(0);
+    expect(h.indexOf("if (cdata) return contactInput(el);")).toBeLessThan(h.indexOf("if (!data) return;"));
+  });
+
   it("🚨 edit_bill ไม่แตะยอดเงิน — ส่งค่าเดิมกลับ และแก้ได้เฉพาะบิลที่ source = claude", () => {
     const s = code("lib/connector/tools.ts");
     const fn = s.slice(s.indexOf("async function editBill"));

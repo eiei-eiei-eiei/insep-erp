@@ -142,3 +142,51 @@ export const EDIT_TOTAL_WARN =
 export function savedContextText(txId: string): string {
   return `ผู้ใช้กดบันทึกบิลในการ์ดแล้ว เลขที่ ${txId} — ไม่ต้องเรียก save_bill ซ้ำ`;
 }
+
+// ── การ์ดตรวจคู่ค้าใหม่ (add_contact · D141 รอบ 4) ───────────────────────────────
+/**
+ * ผู้ใช้ขอ: เพิ่มคู่ค้าใหม่ต้องมีการ์ดให้รีเช็คก่อน (รอบ 3 Claude เพิ่มผ่าน edit_bill ทันทีโดยไม่มีอะไรให้ดู)
+ * ★ ใช้การ์ดชุดเดียวกับการ์ดบิล — แยกด้วย kind
+ */
+export type ContactCardData = {
+  v: 1;
+  kind: "contact";
+  tenant_slug: string;
+  tenant_name: string;
+  /** ค่าที่กรอกอยู่ (แก้ในการ์ดได้) */
+  input: { name: string; tax_id?: string; branch?: string; address?: string; type: "รายจ่าย" | "รายรับ" };
+  /** แถวที่จะเพิ่ม (ผ่านการตรวจแล้ว) · null = ยังไม่ผ่าน */
+  row: { name: string; tax_id: string | null; branch: string | null; address: string | null; contact_type: string } | null;
+  /** มีในทะเบียนแล้ว (เลขภาษี+สาขาตรง) ⇒ ใช้ตัวเดิม ไม่เพิ่มซ้ำ */
+  existing: { contact_id: string; name: string; tax_id: string | null; branch: string | null } | null;
+  error: string | null;
+  /** บิลที่จะผูกหลังเพิ่ม (เฉพาะบิลที่บันทึกผ่าน Claude) */
+  link: { tx_id: string; summary: string; error: string | null } | null;
+};
+
+export type AnyCard = CardData | ContactCardData;
+export const isContactCard = (d: unknown): d is ContactCardData =>
+  Boolean(d && typeof d === "object" && (d as { kind?: string }).kind === "contact");
+
+export type ContactPrimary = { kind: "create" | "use_existing" | "fix"; label: string; hint: string };
+
+/** ปุ่มหลักของการ์ดคู่ค้า — ทุกครั้งที่ไม่ใช่ปุ่มเพิ่ม ต้องบอกเหตุผล (D83) */
+export function contactPrimary(d: ContactCardData): ContactPrimary {
+  const linkBad = d.link?.error;
+  if (d.error || (!d.row && !d.existing)) return { kind: "fix", label: "เพิ่มคู่ค้า", hint: d.error ?? "กรอกข้อมูลคู่ค้าให้ครบ" };
+  if (linkBad) return { kind: "fix", label: "เพิ่มคู่ค้า", hint: linkBad };
+  const tail = d.link ? ` แล้วผูกกับบิล ${d.link.tx_id}` : "";
+  if (d.existing) {
+    return {
+      kind: "use_existing",
+      label: d.link ? "ผูกกับคู่ค้าเดิม" : "ใช้คู่ค้าเดิม",
+      hint: `มีในทะเบียนแล้ว ${d.existing.contact_id} ${d.existing.name} — ไม่เพิ่มซ้ำ${tail}`,
+    };
+  }
+  return { kind: "create", label: d.link ? "เพิ่มและผูกกับบิล" : "เพิ่มคู่ค้า", hint: "" };
+}
+
+/** ข้อความบอก Claude หลังเพิ่ม/ผูกคู่ค้าจากการ์ด */
+export function contactDoneText(contactId: string, created: boolean, linkedTx: string | null): string {
+  return `ผู้ใช้กด${created ? "เพิ่มคู่ค้า" : "ใช้คู่ค้าเดิม"} ${contactId} ในการ์ดแล้ว${linkedTx ? ` และผูกกับบิล ${linkedTx} แล้ว` : ""} — ไม่ต้องทำซ้ำ`;
+}
