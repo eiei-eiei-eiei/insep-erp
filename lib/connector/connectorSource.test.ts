@@ -3,7 +3,7 @@
  * 🪤 ตรวจโค้ดจริง ไม่ใช่คำในคอมเมนต์ — ตัดคอมเมนต์ทิ้งก่อน (D92/D95)
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 const ROOT = path.resolve(__dirname, "../..");
@@ -14,6 +14,44 @@ const code = (rel: string) =>
     .replace(/(^|[^:"'`])\/\/[^\n]*/g, "$1");
 
 const ENDPOINT = ["app/api/mcp/route.ts", "app/api/mcp/oauth-protected-resource/route.ts", "lib/connector/session.ts", "lib/connector/tools.ts", "lib/connector/bill.ts"];
+
+/**
+ * คอลัมน์ของ `tenants` ตามที่ migration สร้าง/ลบจริง (create table ใน 0025 + alter add/drop ทุกไฟล์ตามลำดับ)
+ * 🔴 D141: connector อ่าน `tenants.brand_name` ซึ่งถูกลบไปตั้งแต่ 0030 (แบรนด์ย้ายไป app_settings · D47)
+ *    ⇒ ทุกคำขอจาก Claude ได้ 403 · build/lint/test ผ่านหมดเพราะ select เป็นแค่ข้อความ
+ */
+function tenantColumns(): Set<string> {
+  const dir = path.join(ROOT, "supabase/migrations");
+  const files = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
+  const cols = new Set<string>();
+  for (const f of files) {
+    const s = readFileSync(path.join(dir, f), "utf8").replace(/--[^\n]*/g, " ");
+    const create = /create table (?:if not exists )?(?:public\.)?tenants \(([\s\S]*?)\n\);/i.exec(s);
+    if (create) for (const m of create[1].matchAll(/^\s*([a-z_]+)\s+[a-z]/gim)) cols.add(m[1]);
+    for (const m of s.matchAll(/alter table (?:public\.)?tenants (add|drop) column (?:if (?:not )?exists )?([a-z_]+)/gi)) {
+      if (m[1].toLowerCase() === "add") cols.add(m[2]);
+      else cols.delete(m[2]);
+    }
+  }
+  return cols;
+}
+
+describe("C4 — 🔴 อ่านเฉพาะคอลัมน์ของ tenants ที่มีอยู่จริง", () => {
+  const cols = tenantColumns();
+  it("ตัวอ่าน migration เจอคอลัมน์หลัก และรู้ว่า brand_name ถูกลบแล้ว (กันเทสผ่านเพราะอ่านไม่เจออะไร)", () => {
+    for (const c of ["id", "slug", "name", "modules_enabled", "is_active", "is_platform"]) expect(cols.has(c), c).toBe(true);
+    expect(cols.has("brand_name")).toBe(false);
+  });
+  it.each(["lib/connector/session.ts", "lib/connector/tools.ts", "app/(auth)/oauth/consent/page.tsx", "lib/platform/connector-db.ts"])(
+    "%s",
+    (f) => {
+      const s = code(f);
+      for (const m of s.matchAll(/from\("tenants"\)\s*\.select\("([^"]+)"/g)) {
+        for (const c of m[1].split(",").map((x) => x.trim())) expect(cols.has(c), `${f}: tenants.${c} ไม่มีอยู่จริง`).toBe(true);
+      }
+    },
+  );
+});
 
 describe("C4 — เส้นทาง /api/mcp ไม่มี service role", () => {
   it.each(ENDPOINT)("%s ไม่แตะ service role / admin client", (f) => {

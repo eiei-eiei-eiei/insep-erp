@@ -40,7 +40,7 @@ export default async function ConsentPage({
     supabase.rpc("connector_allowed"),
     // 🪤 ต้องกรอง id — บทบาท main อ่าน profiles ได้ทั้ง tenant (maybeSingle เจอหลายแถว = error)
     supabase.from("profiles").select("username, display_name").eq("id", me.user?.id ?? "").maybeSingle(),
-    supabase.from("tenants").select("name, brand_name").maybeSingle(),
+    supabase.from("tenants").select("name").maybeSingle(), // ไม่มี brand_name แล้ว (D47)
   ]);
 
   if (details.error || !details.data) {
@@ -59,7 +59,7 @@ export default async function ConsentPage({
   const d = details.data;
   const ok = allowed.data === true && !allowed.error;
   const who = prof.data?.display_name || prof.data?.username || d.user.email;
-  const tenant = ten.data?.brand_name || ten.data?.name || "";
+  const tenant = ten.data?.name || "";
 
   return (
     <main className={box}>

@@ -29,6 +29,8 @@ async function handle(req: Request): Promise<Response> {
 
   const auth = await authenticate(token);
   if (!auth.ok) {
+    // ★ บันทึกสาเหตุลง log ของ Vercel — Claude แสดงแค่ "ถูกปฏิเสธ" ไม่บอกเหตุผล (D141 เสียเวลาไล่เพราะไม่มีบรรทัดนี้)
+    console.warn(`[mcp] ${auth.status} ${auth.message}${auth.detail ? ` | ${auth.detail}` : ""}`);
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (auth.status === 401) headers["WWW-Authenticate"] = wwwAuthenticate(origin, "invalid_token");
     return new Response(JSON.stringify({ error: auth.status === 401 ? "invalid_token" : "forbidden", error_description: auth.message }), {

@@ -25,7 +25,7 @@ export type ConnectorMe = {
 export type AuthResult =
   | { ok: true; me: ConnectorMe; db: SupabaseClient }
   /** 401 = ให้ Claude ไปล็อกอินใหม่ · 403 = ล็อกอินได้แต่ไม่มีสิทธิ์ (ล็อกอินใหม่ไม่ช่วย) */
-  | { ok: false; status: 401 | 403; message: string };
+  | { ok: false; status: 401 | 403; message: string; /** สาเหตุสำหรับ log ฝั่ง server (ไม่ส่งให้ Claude · ไม่มี token) */ detail?: string };
 
 /** client ที่ทำงานในนามเจ้าของ token */
 export function tokenClient(token: string): SupabaseClient {
@@ -42,11 +42,11 @@ export function tokenClient(token: string): SupabaseClient {
 export async function authenticate(token: string): Promise<AuthResult> {
   const db = tokenClient(token);
   const { data: u, error: ue } = await db.auth.getUser(token);
-  if (ue || !u.user) return { ok: false, status: 401, message: "token หมดอายุหรือใช้ไม่ได้ — เชื่อมต่อ connector ใหม่" };
+  if (ue || !u.user) return { ok: false, status: 401, message: "token หมดอายุหรือใช้ไม่ได้ — เชื่อมต่อ connector ใหม่", detail: `getUser: ${ue?.message ?? "no user"}` };
 
   // 🚨 อ่านไม่ได้ ≠ ไม่อนุญาต ≠ อนุญาต — ตอบ 403 (ปิดตาย) ไม่ใช่ปล่อยผ่าน
   const allowed = await db.rpc("connector_allowed");
-  if (allowed.error) return { ok: false, status: 403, message: "ตรวจสิทธิ์ connector ไม่สำเร็จ — ลองใหม่อีกครั้ง" };
+  if (allowed.error) return { ok: false, status: 403, message: "ตรวจสิทธิ์ connector ไม่สำเร็จ — ลองใหม่อีกครั้ง", detail: `connector_allowed: ${allowed.error.message}` };
   if (allowed.data !== true) {
     return {
       ok: false,
@@ -59,11 +59,13 @@ export async function authenticate(token: string): Promise<AuthResult> {
 
   const [prof, ten, ents] = await Promise.all([
     db.from("profiles").select("username, display_name, role").eq("id", u.user.id).maybeSingle(),
-    db.from("tenants").select("slug, name, brand_name, modules_enabled").maybeSingle(),
+    // 🪤 tenants ไม่มีคอลัมน์ brand_name แล้ว (แบรนด์ย้ายไป app_settings · D47) — เคยอ่านแล้วล้มทั้งเส้น (D141)
+    db.from("tenants").select("slug, name, modules_enabled").maybeSingle(),
     db.from("entities").select("entity_id, name, is_vat").order("entity_id"),
   ]);
   if (prof.error || ten.error || ents.error || !prof.data || !ten.data) {
-    return { ok: false, status: 403, message: "อ่านข้อมูลผู้ใช้/กิจการไม่สำเร็จ — ลองใหม่อีกครั้ง" };
+    const why = [prof.error && `profiles: ${prof.error.message}`, ten.error && `tenants: ${ten.error.message}`, ents.error && `entities: ${ents.error.message}`, !prof.data && "profiles: no row", !ten.data && "tenants: no row"].filter(Boolean).join(" · ");
+    return { ok: false, status: 403, message: "อ่านข้อมูลผู้ใช้/กิจการไม่สำเร็จ — ลองใหม่อีกครั้ง", detail: why };
   }
 
   const role = toRole(prof.data.role as string);
@@ -84,7 +86,7 @@ export async function authenticate(token: string): Promise<AuthResult> {
       displayName: String(prof.data.display_name ?? prof.data.username ?? ""),
       role,
       tenantSlug: String(ten.data.slug),
-      tenantName: String(ten.data.brand_name || ten.data.name),
+      tenantName: String(ten.data.name),
       modules: (ten.data.modules_enabled as string[] | null) ?? null,
       entities: (ents.data ?? []).map((e) => ({
         entity_id: String(e.entity_id),
