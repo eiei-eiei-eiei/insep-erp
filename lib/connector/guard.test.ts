@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  connectorEnabled, isConnectorPath, bearerToken, resourceMetadata, wwwAuthenticate, safeNext,
+  connectorEnabled, isConnectorPath, bearerToken, resourceMetadata, wwwAuthenticate, safeNext, tenantDisplayName,
   MCP_PATH, RESOURCE_META_PATH,
 } from "./guard";
 
@@ -36,6 +36,12 @@ describe("C2 — ประตู Claude connector (D141)", () => {
   it("WWW-Authenticate ชี้ไปที่ metadata", () => {
     expect(wwwAuthenticate("https://erp.example.com")).toBe(`Bearer resource_metadata="https://erp.example.com${RESOURCE_META_PATH}"`);
     expect(wwwAuthenticate("https://erp.example.com", "invalid_token")).toMatch(/^Bearer error="invalid_token", resource_metadata=/);
+  });
+
+  it("ชื่อลูกค้าในแชท = ชื่อแบรนด์ · ไม่ได้ตั้ง = ชื่อลูกค้า (ไม่ใช่ชื่อสินค้า)", () => {
+    expect(tenantDisplayName("นงจด", "กิจการเริ่มต้น")).toBe("นงจด");
+    expect(tenantDisplayName("  ", "กิจการเริ่มต้น")).toBe("กิจการเริ่มต้น");
+    expect(tenantDisplayName(undefined, "กิจการเริ่มต้น")).toBe("กิจการเริ่มต้น");
   });
 
   it("🚨 safeNext: กลับได้เฉพาะหน้าอนุญาต — กัน open redirect", () => {

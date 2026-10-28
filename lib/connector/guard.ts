@@ -65,6 +65,14 @@ export function wwwAuthenticate(origin: string, error?: "invalid_token"): string
  * ปลายทางหลังล็อกอินที่ยอมให้เด้งกลับ — เฉพาะหน้าอนุญาตของ connector
  * 🚨 กัน open redirect: ต้องขึ้นต้นด้วย path นี้ตรง ๆ ห้าม `//` ห้าม scheme
  */
+/**
+ * ชื่อลูกค้าที่ Claude พูดในแชท + หน้าอนุญาต = **ชื่อแบรนด์** (app_settings kind brand_name · แหล่งเดียว D47)
+ * ไม่ได้ตั้งแบรนด์ = ชื่อลูกค้าใน tenants · 🪤 ห้ามใช้ DEFAULT_BRANDING.name (ชื่อสินค้า PROOF ไม่ใช่ชื่อลูกค้า)
+ */
+export function tenantDisplayName(brandName: string | null | undefined, tenantName: string | null | undefined): string {
+  return String(brandName ?? "").trim() || String(tenantName ?? "").trim();
+}
+
 export function safeNext(raw: string | null | undefined): string | null {
   const s = String(raw ?? "");
   if (s !== CONSENT_PATH && !s.startsWith(CONSENT_PATH + "?")) return null;

@@ -2,6 +2,7 @@ import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { toRole, can, type Role } from "@/lib/shared/roles";
 import { hasModule } from "@/lib/shared/workspaces";
+import { tenantDisplayName } from "./guard";
 
 /**
  * ตัวตนของผู้ที่เรียก /api/mcp (D141)
@@ -57,11 +58,12 @@ export async function authenticate(token: string): Promise<AuthResult> {
     };
   }
 
-  const [prof, ten, ents] = await Promise.all([
+  const [prof, ten, ents, brand] = await Promise.all([
     db.from("profiles").select("username, display_name, role").eq("id", u.user.id).maybeSingle(),
     // 🪤 tenants ไม่มีคอลัมน์ brand_name แล้ว (แบรนด์ย้ายไป app_settings · D47) — เคยอ่านแล้วล้มทั้งเส้น (D141)
     db.from("tenants").select("slug, name, modules_enabled").maybeSingle(),
     db.from("entities").select("entity_id, name, is_vat").order("entity_id"),
+    db.from("app_settings").select("value").eq("kind", "brand_name").limit(1),
   ]);
   if (prof.error || ten.error || ents.error || !prof.data || !ten.data) {
     const why = [prof.error && `profiles: ${prof.error.message}`, ten.error && `tenants: ${ten.error.message}`, ents.error && `entities: ${ents.error.message}`, !prof.data && "profiles: no row", !ten.data && "tenants: no row"].filter(Boolean).join(" · ");
@@ -86,7 +88,8 @@ export async function authenticate(token: string): Promise<AuthResult> {
       displayName: String(prof.data.display_name ?? prof.data.username ?? ""),
       role,
       tenantSlug: String(ten.data.slug),
-      tenantName: String(ten.data.name),
+      // ชื่อแบรนด์ (D47) · อ่านแบรนด์ไม่ได้ = ใช้ชื่อลูกค้าแทน (เป็นแค่ชื่อที่พูดในแชท ไม่ใช่ด่านสิทธิ์)
+      tenantName: tenantDisplayName(brand.data?.[0]?.value as string | undefined, ten.data.name as string),
       modules: (ten.data.modules_enabled as string[] | null) ?? null,
       entities: (ents.data ?? []).map((e) => ({
         entity_id: String(e.entity_id),

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import type { Route } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { decideConsent } from "./actions";
+import { tenantDisplayName } from "@/lib/connector/guard";
 
 /**
  * หน้าอนุญาตให้ Claude เชื่อมต่อ (D141) — Supabase OAuth 2.1 server ส่งผู้ใช้มาที่นี่
@@ -35,12 +36,13 @@ export default async function ConsentPage({
 
   const supabase = await createClient();
   const { data: me } = await supabase.auth.getUser();
-  const [details, allowed, prof, ten] = await Promise.all([
+  const [details, allowed, prof, ten, brand] = await Promise.all([
     supabase.auth.oauth.getAuthorizationDetails(id),
     supabase.rpc("connector_allowed"),
     // 🪤 ต้องกรอง id — บทบาท main อ่าน profiles ได้ทั้ง tenant (maybeSingle เจอหลายแถว = error)
     supabase.from("profiles").select("username, display_name").eq("id", me.user?.id ?? "").maybeSingle(),
     supabase.from("tenants").select("name").maybeSingle(), // ไม่มี brand_name แล้ว (D47)
+    supabase.from("app_settings").select("value").eq("kind", "brand_name").limit(1),
   ]);
 
   if (details.error || !details.data) {
@@ -59,7 +61,7 @@ export default async function ConsentPage({
   const d = details.data;
   const ok = allowed.data === true && !allowed.error;
   const who = prof.data?.display_name || prof.data?.username || d.user.email;
-  const tenant = ten.data?.name || "";
+  const tenant = tenantDisplayName(brand.data?.[0]?.value as string | undefined, ten.data?.name);
 
   return (
     <main className={box}>
