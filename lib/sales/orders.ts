@@ -14,6 +14,7 @@
  */
 
 import { round2, reverseVatWht, toAccItem, taxDocNo, type AccItem } from "./calc";
+import { revenueAccountFor } from "./cashAccount";
 
 export type OrderAction =
   | "DEPOSIT_AND_SEND"
@@ -85,7 +86,13 @@ export type ContactInfo = { taxId: string; branch: string; address: string; cont
  *   ไม่งั้นหน้าเว็บส่ง `isVat: true` มาเองได้ = ผู้ไม่จด VAT ออกใบกำกับภาษี (ผิดกฎหมาย ม.86/13)
  *   ค่าปริยาย `true` เพื่อให้จุดเรียก/เทสเดิมได้ผลเท่าเดิมทุกตัว
  */
-export type RevenueConfig = { accountName: string; entityId: string; isVat?: boolean };
+export type RevenueConfig = {
+  accountName: string;
+  entityId: string;
+  isVat?: boolean;
+  /** D142 — บัญชีที่เงินสดเข้า (ว่าง/ไม่ส่ง = ลง `accountName` เหมือนเดิม) */
+  cashAccountName?: string;
+};
 
 export type OrderUpdate = {
   status: string;
@@ -381,7 +388,7 @@ export function processOrder(
 
     revenue = {
       idempotencyKey,
-      accountName: config.accountName,
+      accountName: revenueAccountFor(payload.method, config),
       entityId: config.entityId,
       category: order.category || "รายได้จากการขาย",
       contactName: order.customerName,

@@ -221,9 +221,17 @@ async function resolveSalesVat(
 
 /** config รายรับขาย (บัญชี + กิจการ) จาก app_settings — go-live ต้องตั้งค่า */
 async function loadRevenueConfig(supabase: Awaited<ReturnType<typeof db>>) {
-  const { data } = await supabase.from("app_settings").select("kind, value").in("kind", ["sales_revenue_account", "sales_revenue_entity"]);
+  const { data } = await supabase
+    .from("app_settings")
+    .select("kind, value")
+    .in("kind", ["sales_revenue_account", "sales_revenue_entity", "sales_cash_account"]);
   const get = (k: string) => (data ?? []).find((r) => r.kind === k)?.value as string | undefined;
-  return { accountName: get("sales_revenue_account") ?? "", entityId: get("sales_revenue_entity") ?? "" };
+  return {
+    accountName: get("sales_revenue_account") ?? "",
+    entityId: get("sales_revenue_entity") ?? "",
+    // D142 — ไม่ตั้ง = เงินสดลงบัญชีหลักเหมือนเดิม (revenueAccountFor ตัดสิน)
+    cashAccountName: get("sales_cash_account") ?? "",
+  };
 }
 
 // ── S2: ประมวลผล action ออเดอร์ (atomic + idempotent + LINE) ──────────────────

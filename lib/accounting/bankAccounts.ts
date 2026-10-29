@@ -13,6 +13,7 @@
  */
 export const ACCOUNT_SETTING_LABEL = {
   sales_revenue_account: "บัญชีรับรายได้ขาย (ตั้งค่า → กิจการ)",
+  sales_cash_account: "บัญชีเงินสดขาย (ตั้งค่า → กิจการ)",
   bar_revenue_account: "บัญชีรายได้บาร์ (บาร์ → ตั้งค่า)",
   bar_cash_account: "บัญชีเงินสดบาร์ (บาร์ → ตั้งค่า)",
   payroll_pay_account: "บัญชีจ่ายเงินเดือน (เงินเดือน → ตั้งค่า)",
@@ -45,9 +46,16 @@ export function accountsFor<T extends Acc>(accounts: T[], entityId: string | nul
   });
 }
 
-/** ฉบับชื่อล้วน (หน้าตั้งค่าที่โหลดแค่ชื่อ) — ตัดที่ปิดใช้ออก ยกเว้นค่าที่เลือกอยู่ */
-export function activeAccountNames(rows: { account_name: string; active?: boolean | null }[], keep?: string | null): string[] {
-  return rows.filter((r) => isActiveAccount(r) || (keep && r.account_name === keep)).map((r) => r.account_name);
+/**
+ * ฉบับชื่อล้วน (หน้าตั้งค่าที่โหลดแค่ชื่อ) — ตัดที่ปิดใช้ออก ยกเว้นค่าที่เลือกอยู่
+ * `keep` ส่งหลายค่าได้ (การ์ดที่มีหลายช่องเลือกบัญชี เช่น บัญชีหลัก + บัญชีเงินสด D142)
+ */
+export function activeAccountNames(
+  rows: { account_name: string; active?: boolean | null }[],
+  keep?: string | null | (string | null | undefined)[],
+): string[] {
+  const kept = new Set((Array.isArray(keep) ? keep : [keep]).filter((k): k is string => !!k));
+  return rows.filter((r) => isActiveAccount(r) || kept.has(r.account_name)).map((r) => r.account_name);
 }
 
 /** ตรวจชื่อบัญชีก่อนส่ง — `self` = ชื่อเดิมของบัญชีที่กำลังแก้ (ไม่นับว่าซ้ำกับตัวเอง) */

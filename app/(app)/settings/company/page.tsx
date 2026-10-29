@@ -4,7 +4,7 @@ import { getTenantPlan } from "@/lib/shared/tenant-plan";
 import { companySectionsFor } from "@/lib/shared/moduleScope";
 
 export default async function CompanySettingsPage() {
-  const [{ entities, docEntityId, revenueEntityId, revenueAccountName, accounts }, plan] = await Promise.all([
+  const [{ entities, docEntityId, revenueEntityId, revenueAccountName, cashAccountName, accounts }, plan] = await Promise.all([
     getCompanySettings(),
     getTenantPlan(),
   ]);
@@ -23,6 +23,7 @@ export default async function CompanySettingsPage() {
       docEntityId={docEntityId}
       revenueEntityId={revenueEntityId}
       revenueAccountName={revenueAccountName}
+      cashAccountName={cashAccountName}
       accounts={accounts}
     />
   );

@@ -87,6 +87,8 @@ export async function getCompanySettings(): Promise<{
   /** กิจการ + บัญชีที่รับรายได้ขาย (D80) — เดิมไม่มีหน้าจอตั้งเลย ต้องยิง SQL เอง */
   revenueEntityId: string;
   revenueAccountName: string;
+  /** D142 — บัญชีที่เงินสดจากการขายเข้า (ว่าง = ลงบัญชีหลักเหมือนเดิม) */
+  cashAccountName: string;
   accounts: string[];
 }> {
   const supabase = await createClient();
@@ -98,7 +100,7 @@ export async function getCompanySettings(): Promise<{
     supabase
       .from("app_settings")
       .select("kind, value")
-      .in("kind", ["sales_doc_entity", "sales_revenue_entity", "sales_revenue_account"]),
+      .in("kind", ["sales_doc_entity", "sales_revenue_entity", "sales_revenue_account", "sales_cash_account"]),
     supabase.from("bank_accounts").select("account_name, active").order("account_name"),
   ]);
   const byKind = (k: string) => (settings.data ?? []).filter((x) => x.kind === k).map((x) => x.value as string);
@@ -108,8 +110,12 @@ export async function getCompanySettings(): Promise<{
     docEntityId: byKind("sales_doc_entity")[0] ?? byKind("sales_revenue_entity")[0] ?? "",
     revenueEntityId: byKind("sales_revenue_entity")[0] ?? "",
     revenueAccountName: byKind("sales_revenue_account")[0] ?? "",
-    // ★ D125: ตัดบัญชีที่ปิดใช้ออก แต่คงบัญชีรับรายได้ขายที่ตั้งไว้อยู่แล้ว
-    accounts: activeAccountNames((accounts.data ?? []) as { account_name: string; active: boolean | null }[], byKind("sales_revenue_account")[0]),
+    cashAccountName: byKind("sales_cash_account")[0] ?? "",
+    // ★ D125: ตัดบัญชีที่ปิดใช้ออก แต่คงบัญชีที่ตั้งไว้อยู่แล้วทั้ง 2 ช่อง (ไม่งั้นช่องโชว์ว่างแล้วบันทึกทับ)
+    accounts: activeAccountNames(
+      (accounts.data ?? []) as { account_name: string; active: boolean | null }[],
+      [byKind("sales_revenue_account")[0], byKind("sales_cash_account")[0]],
+    ),
   };
 }
 

@@ -6,6 +6,7 @@ import { saveEntityInfoAction, saveDocEntityAction, saveSalesRevenueAction } fro
 import type { SettingsEntity } from "../settings-data";
 import { Card, Field, MissingHint, SaveButton, Select, TextArea, TextInput, useSaver } from "@/lib/shared/ui";
 import { companyFromEntity } from "@/lib/sales/company";
+import { cashSettingText } from "@/lib/sales/cashAccount";
 import { FILING_METHODS, FILING_METHOD_LABEL, toFilingMethod } from "@/lib/accounting/taxFiling";
 import { companyHeaderPreviewHtml } from "../../sales/_components/print";
 import type { CompanySections } from "@/lib/shared/moduleScope";
@@ -33,6 +34,7 @@ export function CompanyCard({
   docEntityId,
   revenueEntityId,
   revenueAccountName,
+  cashAccountName,
   accounts,
   sections,
 }: {
@@ -41,6 +43,7 @@ export function CompanyCard({
   docEntityId: string;
   revenueEntityId: string;
   revenueAccountName: string;
+  cashAccountName: string;
   accounts: string[];
 }) {
   const router = useRouter();
@@ -56,6 +59,7 @@ export function CompanyCard({
   // กิจการเดียว = เลือกให้เลยไม่ต้องถาม (หลักเดียวกับที่ซ่อนดร็อปดาวน์กิจการทั้งแอป — D53)
   const [revId, setRevId] = useState(revenueEntityId || (multiEntity ? "" : entities[0]?.entity_id ?? ""));
   const [revAcc, setRevAcc] = useState(revenueAccountName);
+  const [cashAcc, setCashAcc] = useState(cashAccountName);
 
   const preview = useMemo(
     () =>
@@ -91,7 +95,7 @@ export function CompanyCard({
   }
   function saveRev() {
     rev.run(
-      () => saveSalesRevenueAction({ entityId: revId, accountName: revAcc }),
+      () => saveSalesRevenueAction({ entityId: revId, accountName: revAcc, cashAccountName: cashAcc }),
       "ตั้งกิจการ/บัญชีที่รับรายได้แล้ว",
       () => router.refresh(),
     );
@@ -281,11 +285,34 @@ export function CompanyCard({
               ))}
             </Select>
           </Field>
+          {/* D142 — เงินสดเข้าธนาคารตอนเอาไปฝาก ไม่ใช่ตอนขาย ⇒ แยกบัญชีได้ (ไม่ตั้ง = เหมือนเดิม) */}
+          <Field label="บัญชีที่เงินสดเข้า">
+            <Select value={cashAcc} onChange={(e) => setCashAcc(e.target.value)}>
+              {/* 🪤 ไม่เขียนว่า "ด้านซ้าย" — จอแคบช่องเรียงลงล่าง */}
+              <option value="">— ใช้บัญชีเดียวกับบัญชีที่เงินเข้า —</option>
+              {accounts.map((a) => (
+                <option key={a} value={a}>{a}</option>
+              ))}
+            </Select>
+          </Field>
           <SaveButton pending={rev.pending} onClick={saveRev} disabled={!revId || !revAcc}>
             บันทึกกิจการ/บัญชีรับรายได้
           </SaveButton>
         </div>
         <MissingHint checks={[{ label: "กิจการที่รับรายได้", ok: !!revId }, { label: "บัญชีที่เงินเข้า", ok: !!revAcc }]} prefix="ยังเลือกไม่ครบ" />
+        {/*
+          🪤 ประโยคบอก "ค่าที่บันทึกไว้" เสมอ — เดิมเปลี่ยนตามดร็อปดาวน์ทันที แล้วขึ้นต้นว่า "ตอนนี้…"
+             ทั้งที่ยังไม่ได้กดบันทึก = อ่านแล้วนึกว่ามีผลแล้ว (ตระกูล D80) · ค่าที่เลือกค้างไว้บอกแยกเป็นสีเหลือง
+        */}
+        <p className="mt-2 text-xs text-faint">
+          {cashSettingText(revenueAccountName, cashAccountName)}
+        </p>
+        {/* เลือกบัญชีเดียวกับบัญชีหลัก = server เก็บเป็น "ไม่ตั้ง" → เทียบแบบเดียวกัน ไม่งั้นเตือนค้างหลังบันทึก */}
+        {(revAcc !== revenueAccountName || (cashAcc === revAcc ? "" : cashAcc) !== cashAccountName) && (
+          <p className="mt-1 text-xs text-warn">
+            ยังไม่ได้บันทึก — กด บันทึกกิจการ/บัญชีรับรายได้ ก่อน ค่าที่เลือกจึงจะมีผล
+          </p>
+        )}
       </Card>
       )}
     </div>

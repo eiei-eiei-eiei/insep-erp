@@ -137,18 +137,26 @@ export async function saveDocEntityAction(entityId: string): Promise<SaveResult>
 export async function saveSalesRevenueAction(input: {
   entityId: string;
   accountName: string;
+  /** D142 — บัญชีเงินสด · ว่าง = ลบค่าตั้ง (เงินสดกลับไปลงบัญชีหลักเหมือนเดิม) */
+  cashAccountName?: string;
 }): Promise<SaveResult> {
   const supabase = await createClient();
   const entityId = input.entityId.trim();
   const accountName = input.accountName.trim();
+  // เลือกบัญชีเดียวกับบัญชีหลัก = ไม่ได้แยก → เก็บเป็น "ไม่ตั้ง" (ความหมายเดียวกัน ไม่มีค่าค้างให้งง)
+  const cashRaw = (input.cashAccountName ?? "").trim();
+  const cashAccountName = cashRaw === input.accountName.trim() ? "" : cashRaw;
   if (!entityId) return fail("เลือกกิจการที่รับรายได้ก่อน");
   if (!accountName) return fail("เลือกบัญชีที่เงินเข้าก่อน");
 
   for (const [kind, value] of [
     ["sales_revenue_entity", entityId],
     ["sales_revenue_account", accountName],
+    ["sales_cash_account", cashAccountName],
   ] as [string, string][]) {
-    await supabase.from("app_settings").delete().eq("kind", kind);
+    const del = await supabase.from("app_settings").delete().eq("kind", kind);
+    if (del.error) return fail(mapDbError(del.error));
+    if (!value) continue; // ว่าง = ไม่ตั้ง
     const { error } = await supabase.from("app_settings").insert({ kind, value });
     if (error) return fail(mapDbError(error));
   }
