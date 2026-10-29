@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { assertTestEnv, cleanupTestTenants, seedTenant, signIn, admin, type Tenant } from "./harness";
+import { assertTestEnv, cleanupTestTenants, seedTenant, seedUser, signIn, admin, type Tenant } from "./harness";
 
 /**
  * D143 · 0099 — ตารางการรับเงิน sales_payments
@@ -111,5 +111,99 @@ describe("สิทธิ์", () => {
     const upd = await asA.from("sales_payments").update({ method: "เงินสด" }).eq("qu_no", QU).select();
     expect(upd.data ?? []).toHaveLength(0);
     expect((await rows()).map((x) => x.method)).toEqual(["เช็ค", "โอนเงิน"]);
+  });
+});
+
+// ── D144 · 0100 — แก้วิธีชำระ ────────────────────────────────────────────────
+describe("แก้วิธีชำระ fn_sales_edit_payment (D144)", () => {
+  const BANK = "ธนาคารทดสอบ D144";
+  const CASH = "เงินสดทดสอบ D144";
+
+  beforeAll(async () => {
+    const r = await admin().from("bank_accounts").insert([
+      { tenant_id: A.tenantId, account_id: "T-ACC-D144-B", account_name: BANK, entity_ids: [], opening_balance: 0 },
+      { tenant_id: A.tenantId, account_id: "T-ACC-D144-C", account_name: CASH, entity_ids: [], opening_balance: 0 },
+    ]);
+    if (r.error) throw new Error(r.error.message);
+  });
+
+  async function tx(seq: number) {
+    const p = (await rows()).find((x) => x.seq === seq)!;
+    const t = await admin().from("transactions").select("account_name, description, net_amount, vat_amount, tax_invoice_no")
+      .eq("tenant_id", A.tenantId).eq("tx_id", p.tx_id).single();
+    return { pay: p, tx: t.data! };
+  }
+
+  it("เช็ค → เงินสด: แถว · บิล (บัญชี + วงเล็บคำอธิบาย) · ช่องเดิมของออเดอร์ เปลี่ยนพร้อมกัน · ยอดไม่ขยับ", async () => {
+    const before = await tx(1);
+    const { data, error } = await asA.rpc("fn_sales_edit_payment", {
+      p_qu_no: QU, p_seq: 1, p_method: "เงินสด", p_cheque: null, p_account: CASH,
+    });
+    expect(error).toBeNull();
+    expect(data).toMatchObject({ ok: true, from_method: "เช็ค", to_account: CASH, doc_no: "TAX-P-1" });
+    const after = await tx(1);
+    expect(after.pay.method).toBe("เงินสด");
+    expect(after.pay.cheque_detail).toBeNull();
+    expect(after.tx.account_name).toBe(CASH);
+    expect(after.tx.description).toBe(`อ้างอิง QU: ${QU} (เงินสด)`);
+    // 🚨 ตัวเลขภาษี/เลขเอกสารไม่ขยับ
+    expect([after.tx.net_amount, after.tx.vat_amount, after.tx.tax_invoice_no])
+      .toEqual([before.tx.net_amount, before.tx.vat_amount, before.tx.tax_invoice_no]);
+    const so = await admin().from("sales_orders").select("payment_method, check_detail1")
+      .eq("tenant_id", A.tenantId).eq("qu_no", QU).single();
+    // ครั้งที่ 1 ไม่ใช่ครั้งล่าสุด → ช่องวิธีชำระของออเดอร์คงเป็นของครั้งที่ 2 · ช่องเช็คของมัดจำถูกล้าง
+    expect(so.data).toMatchObject({ payment_method: "โอนเงิน", check_detail1: null });
+  });
+
+  it("ครั้งล่าสุด → ช่องวิธีชำระของออเดอร์ตามด้วย · ไม่ส่งบัญชี = บัญชีเดิม", async () => {
+    const before = await tx(2);
+    const { error } = await asA.rpc("fn_sales_edit_payment", {
+      p_qu_no: QU, p_seq: 2, p_method: "เช็ค", p_cheque: "ธนาคารกรุงเทพ เลขที่เช็ค : 5 ลงวันที่ -", p_account: null,
+    });
+    expect(error).toBeNull();
+    const after = await tx(2);
+    expect(after.pay).toMatchObject({ method: "เช็ค", cheque_detail: "ธนาคารกรุงเทพ เลขที่เช็ค : 5 ลงวันที่ -" });
+    expect(after.tx.account_name).toBe(before.tx.account_name);
+    const so = await admin().from("sales_orders").select("payment_method, check_detail2")
+      .eq("tenant_id", A.tenantId).eq("qu_no", QU).single();
+    expect(so.data).toMatchObject({ payment_method: "เช็ค", check_detail2: "ธนาคารกรุงเทพ เลขที่เช็ค : 5 ลงวันที่ -" });
+  });
+
+  it("กันข้อมูลผิด: เช็คไม่มีรายละเอียด · วิธีนอกชุด · บัญชีที่ไม่มีจริง · ครั้งที่ไม่มี", async () => {
+    const cases = [
+      { p_seq: 1, p_method: "เช็ค", p_cheque: null, p_account: null, msg: "รายละเอียดเช็ค" },
+      { p_seq: 1, p_method: "คริปโต", p_cheque: null, p_account: null, msg: "วิธีชำระไม่ถูกต้อง" },
+      { p_seq: 1, p_method: "โอนเงิน", p_cheque: null, p_account: "บัญชีมั่ว", msg: "ไม่พบบัญชี" },
+      { p_seq: 99, p_method: "โอนเงิน", p_cheque: null, p_account: null, msg: "ไม่พบการรับเงิน" },
+    ];
+    for (const c of cases) {
+      const { error } = await asA.rpc("fn_sales_edit_payment", { p_qu_no: QU, ...c, msg: undefined });
+      expect(error?.message, c.p_method).toContain(c.msg);
+    }
+  });
+
+  it("🚨 พนักงานขาย (ไม่มี sales.config) แก้ไม่ได้", async () => {
+    const { client } = await seedUser(A, "sales");
+    const { error } = await client.rpc("fn_sales_edit_payment", {
+      p_qu_no: QU, p_seq: 1, p_method: "โอนเงิน", p_cheque: null, p_account: null,
+    });
+    expect(error?.message).toContain("หัวหน้าฝ่ายขาย");
+    expect((await rows()).find((x) => x.seq === 1)?.method).toBe("เงินสด");
+  });
+
+  it("🚨 ลูกค้าอื่นแก้ของ A ไม่ได้ (ไม่เห็นแถว)", async () => {
+    const { error } = await asB.rpc("fn_sales_edit_payment", {
+      p_qu_no: QU, p_seq: 1, p_method: "โอนเงิน", p_cheque: null, p_account: null,
+    });
+    expect(error?.message).toContain("ไม่พบการรับเงิน");
+  });
+
+  it("🚨 บิลที่ถูกยกเลิกแล้ว แก้ไม่ได้", async () => {
+    const p = (await rows()).find((x) => x.seq === 1)!;
+    await admin().from("transactions").update({ status: "ยกเลิก" }).eq("tenant_id", A.tenantId).eq("tx_id", p.tx_id);
+    const { error } = await asA.rpc("fn_sales_edit_payment", {
+      p_qu_no: QU, p_seq: 1, p_method: "โอนเงิน", p_cheque: null, p_account: null,
+    });
+    expect(error?.message).toContain("ถูกยกเลิกไปแล้ว");
   });
 });

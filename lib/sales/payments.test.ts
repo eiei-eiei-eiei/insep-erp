@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
-import { PAY_LABEL, payLabelFor, paymentForDoc, type SalesPayment } from "./payments";
+import {
+  PAY_LABEL, payLabelFor, paymentForDoc, type SalesPayment,
+  PAY_METHODS, chequeText, receiptDocFor, hasReceivedPayment, editPaymentDoneText, parseCheque,
+} from "./payments";
 import { processOrder, type OrderState, type RevenueConfig } from "./orders";
 
 /**
@@ -105,5 +108,72 @@ describe("S15 SQL ⇄ TS (0099)", () => {
   it("ใบเสร็จอ่านแถวของครั้งนั้นผ่าน paymentForDoc", () => {
     const print = readFileSync("app/(app)/sales/_components/print.ts", "utf8");
     expect(print).toMatch(/paymentForDoc\(docType, order\.payments\)/);
+  });
+});
+
+// ── D144 · เฟส 2 แก้วิธีชำระ ──────────────────────────────────────────────────
+
+describe("S15 แก้วิธีชำระ (D144)", () => {
+  it("PAY_METHODS ตรงกับ array ใน fn_sales_edit_payment ล่าสุด", () => {
+    const dir = "supabase/migrations";
+    const f = readdirSync(dir).filter((x) => x.endsWith(".sql")).sort().reverse()
+      .find((x) => readFileSync(`${dir}/${x}`, "utf8").includes("create or replace function fn_sales_edit_payment("));
+    const src = readFileSync(`${dir}/${f}`, "utf8");
+    const arr = src.match(/v_method = any \(array\[([^\]]*)\]\)/)?.[1] ?? "";
+    expect([...arr.matchAll(/'([^']+)'/g)].map((m) => m[1])).toEqual([...PAY_METHODS]);
+  });
+  it("RPC ต้องเช็ค sales.config และบล็อกบิลที่ยกเลิกแล้ว", () => {
+    const dir = "supabase/migrations";
+    const f = readdirSync(dir).filter((x) => x.endsWith(".sql")).sort().reverse()
+      .find((x) => readFileSync(`${dir}/${x}`, "utf8").includes("create or replace function fn_sales_edit_payment("));
+    const src = readFileSync(`${dir}/${f}`, "utf8");
+    expect(src).toContain("has_cap('sales.config')");
+    expect(src).toMatch(/status = 'ยกเลิก'/);
+  });
+  it("chequeText รูปเดิมของหน้าต่างรับเงิน", () => {
+    expect(chequeText("กสิกรไทย", "123", "2026-10-30")).toBe("ธนาคารกสิกรไทย เลขที่เช็ค : 123 ลงวันที่ 2026-10-30");
+    expect(chequeText("ธนาคารกรุงเทพ", "9", "")).toBe("ธนาคารกรุงเทพ เลขที่เช็ค : 9 ลงวันที่ -");
+    expect(chequeText("", "", "")).toBe("- เลขที่เช็ค : - ลงวันที่ -");
+  });
+  it("หน้าต่างรับเงินใช้ chequeText ตัวเดียวกัน (ไม่ประกอบเอง)", () => {
+    const src = readFileSync("app/(app)/sales/_components/OrdersTab.tsx", "utf8");
+    expect(src).toMatch(/chequeText\(chequeBank, chequeNo, chequeDate\)/);
+    expect(src).not.toMatch(/เลขที่เช็ค : \$\{/);
+  });
+  it("receiptDocFor — กติกาเดียวกับปุ่มพิมพ์เดิม", () => {
+    expect(receiptDocFor("มัดจำ", { dueDate: "", deposit: 100 })).toBe("tax-invoice-deposit");
+    expect(receiptDocFor("ชำระยอดค้าง", { dueDate: "2026-11-01", deposit: 100 })).toBe("tax-invoice-balance");
+    expect(receiptDocFor("ชำระเต็ม", { dueDate: "", deposit: 0 })).toBe("tax-invoice-receipt-do");
+    expect(receiptDocFor("ชำระเต็ม", { dueDate: "2026-11-01", deposit: 0 })).toBe("tax-invoice-receipt");
+    expect(receiptDocFor("รับชำระ", { dueDate: "", deposit: 0 })).toBeNull();
+  });
+  it("hasReceivedPayment — ตัดสินจากยอด ไม่ใช่สถานะ", () => {
+    const o = { status: "รอคลังจัดส่ง", netPayable: 1000, grandTotal: 1000 };
+    expect(hasReceivedPayment({ ...o, outstandingBalance: 1000 })).toBe(false); // ส่งเครดิต ยังไม่รับเงิน
+    expect(hasReceivedPayment({ ...o, outstandingBalance: 500 })).toBe(true); // รับมัดจำแล้ว
+    expect(hasReceivedPayment({ ...o, status: "ปิดการขาย", outstandingBalance: 0 })).toBe(true);
+    expect(hasReceivedPayment({ ...o, status: "ยกเลิก", outstandingBalance: 0 })).toBe(false);
+  });
+  it("ข้อความหลังแก้บอกบัญชีที่ย้ายและเลขที่พิมพ์ใหม่ได้", () => {
+    const t = editPaymentDoneText("โอนเงิน", { from_method: "เงินสด", from_account: "เงินสดในมือ", to_account: "กสิกร", doc_no: "TAX-1" });
+    expect(t).toBe("แก้วิธีชำระแล้ว: เงินสด → โอนเงิน · บิลรายรับย้ายบัญชี เงินสดในมือ → กสิกร · พิมพ์ใบ TAX-1 ใหม่ได้เลย (เลขเดิม)");
+    // บัญชีเดิม = ไม่พูดถึงบัญชี (ไม่ตั้งบัญชีเงินสดแยก)
+    expect(editPaymentDoneText("บัตรเครดิต", { from_method: null, from_account: "ก", to_account: "ก", doc_no: null }))
+      .toBe("แก้วิธีชำระแล้ว: ไม่ระบุ → บัตรเครดิต");
+  });
+});
+
+describe("S15 parseCheque — เติมเช็คเดิมตอนแก้ (D144)", () => {
+  it("ย้อนรูปของ chequeText ได้ครบ 3 ช่อง", () => {
+    expect(parseCheque(chequeText("กรุงเทพ", "D144-01", "2026-10-30")))
+      .toEqual({ bank: "ธนาคารกรุงเทพ", no: "D144-01", date: "2026-10-30" });
+  });
+  it("ช่องที่เคยว่าง (-) กลับเป็นว่าง · วันที่ไม่ใช่รูป yyyy-mm-dd = ว่าง", () => {
+    expect(parseCheque(chequeText("", "", ""))).toEqual({ bank: "", no: "", date: "" });
+    expect(parseCheque("ธนาคารกสิกร เลขที่เช็ค : 5 ลงวันที่ 30/10/2569")).toEqual({ bank: "ธนาคารกสิกร", no: "5", date: "" });
+  });
+  it("รูปอื่น/ว่าง → ไม่เดาแยก ใส่ทั้งก้อนในช่องธนาคาร", () => {
+    expect(parseCheque("เช็คกสิกร 12345")).toEqual({ bank: "เช็คกสิกร 12345", no: "", date: "" });
+    expect(parseCheque("")).toEqual({ bank: "", no: "", date: "" });
   });
 });

@@ -14,6 +14,8 @@ import {
   type ActionPayload,
   type GeneratedSerials,
 } from "@/lib/sales/orders";
+import { revenueAccountFor } from "@/lib/sales/cashAccount";
+import { PAY_METHODS } from "@/lib/sales/payments";
 import { getSalesBootstrap, getOrders, getOrderItems, getOrderPayments, getPendingWarehouse, getWarehouseStock, getSyncHistory, getOrderState, getCustomerId, getSaleMenuFull, getMenuLinkOptions } from "./data";
 
 export type SaveResult = { ok: boolean; error?: string; data?: unknown };
@@ -378,6 +380,37 @@ export async function processOrderActionAction(quNo: string, action: OrderAction
   revalidatePath("/sales");
   revalidatePath("/accounting");
   return { ok: true, data: { newStatus: res.newStatus, duplicate: res.duplicate, warning: res.duplicate ? "รายการนี้ลงบัญชีไปแล้ว (ข้ามการบันทึกซ้ำ)" : "" } };
+}
+
+/**
+ * D144 — แก้วิธีชำระของการรับเงินที่บันทึกไปแล้ว (หัวหน้าฝ่ายขายขึ้นไป · RPC เช็ค sales.config ซ้ำ)
+ *
+ * ★ บัญชีปลายทางตัดสินที่นี่ด้วย `revenueAccountFor()` ตัวเดียวกับตอนรับเงิน (D142)
+ *   ⇒ เปลี่ยนเงินสด → โอน บิลย้ายจากบัญชีเงินสดกลับบัญชีหลักเอง · ไม่ได้ตั้งบัญชีรับรายได้ = ไม่แตะบัญชี
+ * 🚨 ไม่แตะยอด/VAT/เลขเอกสาร/วันที่ — แก้แล้วพิมพ์ใบเดิมซ้ำได้ด้วยเลขเดิม
+ */
+export async function editPaymentMethodAction(input: {
+  quNo: string;
+  seq: number;
+  method: string;
+  chequeDetail: string;
+}): Promise<SaveResult> {
+  if (!(PAY_METHODS as readonly string[]).includes(input.method)) return fail("วิธีชำระไม่ถูกต้อง");
+  if (input.method === "เช็ค" && !input.chequeDetail.trim()) return fail("เปลี่ยนเป็นเช็ค ต้องกรอกรายละเอียดเช็คด้วย");
+  const supabase = await db();
+  const config = await loadRevenueConfig(supabase);
+  const account = config.accountName ? revenueAccountFor(input.method, config) : null;
+  const { data, error } = await supabase.rpc("fn_sales_edit_payment", {
+    p_qu_no: input.quNo,
+    p_seq: input.seq,
+    p_method: input.method,
+    p_cheque: input.method === "เช็ค" ? input.chequeDetail.trim() : null,
+    p_account: account,
+  });
+  if (error) return fail(mapDbError(error));
+  revalidatePath("/sales");
+  revalidatePath("/accounting");
+  return { ok: true, data };
 }
 
 /**

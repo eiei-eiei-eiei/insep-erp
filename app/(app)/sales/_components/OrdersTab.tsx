@@ -16,6 +16,8 @@ import {
 import { can, toRole } from "@/lib/shared/roles";
 import { actionPostsRevenue, docDateNote, manualNoError, manualNoFields } from "@/lib/sales/backdate";
 import { cancelLockedText } from "@/lib/production/monthClose";
+import { PAY_METHODS, chequeText, hasReceivedPayment } from "@/lib/sales/payments";
+import { EditPaymentDialog } from "./EditPaymentDialog";
 
 const itemsCache = new Map<string, OrderItem[]>();
 async function loadItems(quNo: string): Promise<OrderItem[]> {
@@ -35,6 +37,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
   const [tab, setTab] = useState<"open" | "closed">("open");
   const [search, setSearch] = useState("");
   const [dialog, setDialog] = useState<{ order: OrderRow; action: OrderAction } | null>(null);
+  const [editPay, setEditPay] = useState<OrderRow | null>(null);
   const { setMsg } = useSaver();
   const { confirmNode, ask } = useConfirm();
   const [err, setErr] = useState(false);
@@ -218,6 +221,18 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
       {o.status === "ปิดการขาย" && (
         <ActBtn tone="secondary" icon={<IconPrint size={14} />} onClick={() => doPrintClosed(o)}>พิมพ์ใบกำกับฯ</ActBtn>
       )}
+      {/* D144 — แก้วิธีชำระของการรับเงินที่บันทึกไปแล้ว · หัวหน้าฝ่ายขายขึ้นไป (RPC เช็ค sales.config ซ้ำ) */}
+      {canWrite && hasReceivedPayment(o) && (
+        <ActBtn
+          tone="secondary"
+          icon={<IconEdit size={14} />}
+          onClick={() => setEditPay(o)}
+          disabled={!canCancel}
+          title={canCancel ? undefined : "แก้วิธีชำระได้เฉพาะหัวหน้าฝ่ายขายขึ้นไป"}
+        >
+          แก้วิธีชำระ
+        </ActBtn>
+      )}
       {canCancel && o.status !== "ยกเลิก" && (
         <ActBtn tone="danger" icon={<IconTrash size={14} />} onClick={() => cancel(o)}>ยกเลิก</ActBtn>
       )}
@@ -334,6 +349,14 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
           }}
         />
       )}
+      {editPay && (
+        <EditPaymentDialog
+          order={editPay}
+          company={boot.company}
+          onClose={() => setEditPay(null)}
+          onChanged={refresh}
+        />
+      )}
     </Card>
   );
 }
@@ -349,17 +372,24 @@ function ActBtn({
   icon,
   onClick,
   children,
+  disabled,
+  title,
 }: {
   tone: keyof typeof ACT_TONES;
   icon?: React.ReactNode;
   onClick: () => void;
   children: React.ReactNode;
+  /** ปุ่มเทาแทนการซ่อน + บอกเหตุผลที่ title (D86 — ซ่อนปุ่มแย่กว่าปุ่มเทา) */
+  disabled?: boolean;
+  title?: string;
 }) {
   // มือถือ: touch target ≥ 44px (หน้านี้ใช้นอกสถานที่จริง — ไปส่งของ/เก็บเงิน) · desktop คงขนาดเดิม
   return (
     <button
       onClick={onClick}
-      className={`inline-flex min-h-[44px] items-center gap-1.5 whitespace-nowrap rounded border px-3 text-xs font-semibold transition sm:min-h-0 sm:px-2.5 sm:py-1.5 ${ACT_TONES[tone]}`}
+      disabled={disabled}
+      title={title}
+      className={`inline-flex min-h-[44px] items-center gap-1.5 whitespace-nowrap rounded border px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0 sm:px-2.5 sm:py-1.5 ${ACT_TONES[tone]}`}
     >
       {icon}
       {children}
@@ -420,12 +450,8 @@ function PaymentDialog({
   const { pending, run } = useSaver();
 
   function submit() {
-    let chequeDetails = "";
-    if (needsMethod && method === "เช็ค") {
-      let bank = chequeBank || "-";
-      if (!bank.includes("ธนาคาร") && bank !== "-") bank = "ธนาคาร" + bank;
-      chequeDetails = `${bank} เลขที่เช็ค : ${chequeNo || "-"} ลงวันที่ ${chequeDate || "-"}`;
-    }
+    // D144 — รูปข้อความเช็คแหล่งเดียวกับหน้าต่างแก้วิธีชำระ (print.ts อ่านรูปนี้)
+    const chequeDetails = needsMethod && method === "เช็ค" ? chequeText(chequeBank, chequeNo, chequeDate) : "";
     const payload: ActionPayload = {
       docDate,
       method: needsMethod ? method : undefined,
@@ -487,10 +513,7 @@ function PaymentDialog({
             <label className="block">
               <span className="mb-1 block font-bold text-muted">ช่องทางการชำระ</span>
               <select value={method} onChange={(e) => setMethod(e.target.value)} className="w-full rounded-lg border border-line p-2 outline-none focus:border-brand">
-                <option>โอนเงิน</option>
-                <option>เงินสด</option>
-                <option>บัตรเครดิต</option>
-                <option>เช็ค</option>
+                {PAY_METHODS.map((m) => <option key={m}>{m}</option>)}
               </select>
             </label>
           )}

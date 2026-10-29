@@ -26,6 +26,78 @@ export function payLabelFor(action: OrderAction): PayLabel | null {
   return null;
 }
 
+/**
+ * วิธีชำระที่เลือกได้ในหน้าขาย (หน้าต่างรับเงินของจัดการออเดอร์)
+ * 🚨 ชุดเดียวกับ array ใน fn_sales_edit_payment (0100) — เทสเทียบ
+ */
+export const PAY_METHODS = ["โอนเงิน", "เงินสด", "บัตรเครดิต", "เช็ค"] as const;
+export type PayMethod = (typeof PAY_METHODS)[number];
+
+/**
+ * ข้อความรายละเอียดเช็คที่เก็บลง DB — รูปเดียวกับที่หน้าต่างรับเงินเขียนมาตั้งแต่ระบบเดิม
+ * (`formatChequeDetail` ใน print.ts อ่านรูปนี้ตรง ๆ) · ใช้ทั้งตอนรับเงินและตอนแก้วิธีชำระ
+ */
+export function chequeText(bank: string, no: string, date: string): string {
+  let b = bank.trim() || "-";
+  if (!b.includes("ธนาคาร") && b !== "-") b = "ธนาคาร" + b;
+  return `${b} เลขที่เช็ค : ${no.trim() || "-"} ลงวันที่ ${date || "-"}`;
+}
+
+/**
+ * แยกข้อความเช็คกลับเป็น 3 ช่อง — เติมค่าเดิมให้ตอนแก้ (แก้แค่เลขที่ที่กรอกผิด ไม่ต้องพิมพ์ธนาคารใหม่)
+ * ★ ย้อนรูปของ `chequeText()` · รูปอื่น (ข้อมูลเก่า/พิมพ์เอง) → ใส่ทั้งก้อนในช่องธนาคาร ไม่เดาแยก
+ */
+export function parseCheque(text: string): { bank: string; no: string; date: string } {
+  const m = /^(.*) เลขที่เช็ค : (.*) ลงวันที่ (.*)$/.exec((text ?? "").trim());
+  if (!m) return { bank: (text ?? "").trim(), no: "", date: "" };
+  const clean = (s: string) => (s.trim() === "-" ? "" : s.trim());
+  return { bank: clean(m[1]), no: clean(m[2]), date: /^\d{4}-\d{2}-\d{2}$/.test(m[3].trim()) ? m[3].trim() : "" };
+}
+
+/**
+ * ใบเสร็จของการรับเงินครั้งนี้ — ปุ่ม "พิมพ์ใบนี้ใหม่" หลังแก้วิธีชำระ
+ * ★ กติกาเดียวกับปุ่มพิมพ์เดิมของหน้าจัดการออเดอร์ (ชำระเต็มตอนสั่ง = มีใบส่งสินค้าในใบเดียว)
+ */
+export function receiptDocFor(label: string, order: { dueDate: string; deposit: number }): string | null {
+  if (label === PAY_LABEL.deposit) return "tax-invoice-deposit";
+  if (label === PAY_LABEL.balance) return "tax-invoice-balance";
+  if (label === PAY_LABEL.full) {
+    return order.dueDate === "" && (order.deposit || 0) === 0 ? "tax-invoice-receipt-do" : "tax-invoice-receipt";
+  }
+  return null;
+}
+
+/**
+ * ออเดอร์นี้เคยรับเงินแล้วหรือยัง — ปุ่ม "แก้วิธีชำระ" (D144) โชว์เฉพาะออเดอร์ที่มีการรับเงิน
+ * ★ ตัดสินจากยอด (ค้างน้อยกว่ายอดสุทธิ) ไม่ใช่สถานะ — "รอคลังจัดส่ง" มีทั้งแบบรับมัดจำแล้วและแบบส่งเครดิต
+ */
+export function hasReceivedPayment(o: { status: string; outstandingBalance: number; netPayable: number; grandTotal: number }): boolean {
+  if (o.status === "ยกเลิก") return false;
+  const net = o.netPayable || o.grandTotal;
+  return net > 0 && o.outstandingBalance < net;
+}
+
+/** ผลของ fn_sales_edit_payment (0100) */
+export type EditPaymentResult = {
+  from_method: string | null;
+  from_account: string | null;
+  to_account: string | null;
+  doc_no: string | null;
+};
+
+/**
+ * ข้อความหลังแก้วิธีชำระ — บอกครบว่าเปลี่ยนอะไรไปบ้าง (บัญชีของบิลเปลี่ยนตามด้วย ต้องเห็น)
+ * 🚨 ประโยคตัดสินที่นี่ ไม่ใช่ในคอมโพเนนต์ (D84/D91)
+ */
+export function editPaymentDoneText(toMethod: string, r: EditPaymentResult): string {
+  const parts = [`แก้วิธีชำระแล้ว: ${r.from_method || "ไม่ระบุ"} → ${toMethod}`];
+  if (r.from_account && r.to_account && r.from_account !== r.to_account) {
+    parts.push(`บิลรายรับย้ายบัญชี ${r.from_account} → ${r.to_account}`);
+  }
+  if (r.doc_no) parts.push(`พิมพ์ใบ ${r.doc_no} ใหม่ได้เลย (เลขเดิม)`);
+  return parts.join(" · ");
+}
+
 export type SalesPayment = {
   seq: number;
   label: string;

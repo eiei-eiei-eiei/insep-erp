@@ -1186,3 +1186,8 @@ npm run db:audit-grants
 
 - [ ] ลง migration ทุก DB **ก่อน** git push: `npm run db:push:all` (dry-run ต้องเห็นแค่ `20261030000099_sales_payments.sql`) → `npm run db:push:all -- --apply --backup="D:/insep-erp-backup/2026-10-30-0099"` → `npm run db:audit-grants` → `npm run test:tenant`
 - ไม่มีค่าที่ต้องตั้งเพิ่ม · ข้อมูลเดิมย้ายเข้าตารางใหม่ให้เองตอนลง migration
+
+## D144 — แก้วิธีชำระของแอปขาย (migration 0100)
+
+- [ ] ลง migration ทุก DB **ก่อน** git push: `npm run db:push:all` (dry-run ต้องเห็นแค่ `20261030000100_sales_edit_payment.sql`) → `npm run db:push:all -- --apply --backup="D:/insep-erp-backup/2026-10-30-0100"` → `npm run db:audit-grants` → `npm run test:tenant`
+- บอกผู้ใช้: แก้วิธีชำระได้เฉพาะหัวหน้าฝ่ายขายขึ้นไป · แก้แล้วกด **พิมพ์ใบนี้ใหม่** ได้เลขเอกสารเดิม · ยอดและภาษีไม่เปลี่ยน
