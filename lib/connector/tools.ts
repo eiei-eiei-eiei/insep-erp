@@ -12,7 +12,7 @@ import { fetchAllTransactions, statementFor, taxReportBundleFor, missingInvoices
 import { monthArg, dateArg, matchesAmount, STATEMENT_ROW_CAP, SEARCH_ROW_CAP, money } from "./reports";
 import { checkBill, mismatchText, previewSummary, taxIdValid, normalizeTaxId, CONNECTOR_TYPES, type BillDraft, type BillContext, type CheckResult, type ConnectorType } from "./bill";
 import { categoryChips, type CardContact, type CardData, type ContactCardData } from "./cardView";
-import { newContactRow, findExistingContact, type ContactRow, type ExistingContact } from "./contact";
+import { newContactRow, findExistingContact, ilikeExact, type ContactRow, type ExistingContact } from "./contact";
 import { rankJobs } from "./jobs";
 import { BILL_CARD_HTML } from "./card/billCard.generated";
 import type { ConnectorMe } from "./session";
@@ -38,6 +38,9 @@ Workflow for every bill image the user sends:
 3. Call find_contact with the seller's 13-digit tax ID (or name). If the seller is not registered, read its name, tax ID,
    branch ("สำนักงานใหญ่" or the branch number) and address from the bill and pass them as new_contact to preview_bill.
    The contact is added to the register when the user saves. Never drop a seller that prints a tax ID.
+   Several bills from the same unregistered seller: send the SAME new_contact (same name/tax ID) on every preview_bill
+   and show all cards at once. The first card saved adds the seller; every later card is re-checked at save time and
+   links to that contact automatically. Do NOT split the bills into rounds or ask the user to save one first.
 4. Call lookup_options for exact category names, money accounts and jobs (jobs_required tells whether every line needs a job).
 5. BEFORE preview_bill, ask the user in ONE message only what you are unsure of: which business (if several), paid from which
    account or unpaid, category, and the job of each line when jobs_required (one bill can have different jobs per line;
@@ -55,6 +58,8 @@ Workflow for every bill image the user sends:
    to compare with the bank statement the user sends; search_transactions finds bills by date/amount/contact across accounts
    (e.g. booked to the wrong account); tax_report gives ภพ.30 and ภงด.3/53 figures from the app's own formulas.
    NEVER compute or adjust tax figures yourself — quote tax_report. These tools change nothing.
+   get_bill returns the line items of saved bills (item names, quantities, prices, item category and job per line) —
+   use it to verify what was saved (e.g. after edit_bill) before telling the user it is done.
 10. To add a seller/customer to the register outside a bill card (e.g. for a bill already saved), call add_contact
    (with link_tx_id to link it to that bill). It shows a card; the user checks the details and presses the button.
    You cannot add contacts directly.
@@ -159,7 +164,7 @@ async function resolveContact({ db }: Ctx, d: BillDraft): Promise<Resolved | str
     const row = newContactRow(d.new_contact, d.type);
     if (typeof row === "string") return { draft: d, contact: { kind: "none" }, error: row };
     const q = db.from("contacts").select("contact_id, name, tax_id, branch").limit(50);
-    const r = await (row.tax_id ? q.eq("tax_id", row.tax_id) : q.eq("name", row.name));
+    const r = await (row.tax_id ? q.eq("tax_id", row.tax_id) : q.ilike("name", ilikeExact(row.name)));
     if (r.error) return "อ่านทะเบียนคู่ค้าไม่สำเร็จ: " + mapDbError(r.error);
     const found = findExistingContact(row, (r.data ?? []) as ExistingContact[]);
     if (found) {
@@ -494,6 +499,8 @@ export function buildServer(ctx: Ctx): McpServer {
       // คู่ค้าใหม่: เพิ่มเข้าทะเบียนหลังด่านทุกตัวผ่านแล้ว (ล้มตรงไหนก่อนหน้านี้ = ไม่มีคู่ค้างอกค้าง)
       let addedContact: string | null = null;
       let payload = check.payload;
+      // การ์ดเปิดมาเป็นคู่ค้าใหม่ แต่ตอนกดบันทึกมีในทะเบียนแล้ว (บิลอื่นของร้านเดียวกันบันทึกไปก่อน) ⇒ ผูกตัวเดิม
+      const linked = rest.new_contact && !resolved.row && d.contact_id ? { contact_id: d.contact_id, name: d.contact_name ?? "", status: "linked" as const } : null;
       if (resolved.row) {
         const id = await createContact(ctx, resolved.row);
         if (typeof id !== "string") return withSc({ ok: false, errors: [id.error] });
@@ -513,6 +520,7 @@ export function buildServer(ctx: Ctx): McpServer {
         ok: true,
         tx_id: res.tx_id,
         added_contact: addedContact,
+        contact: addedContact ? { contact_id: addedContact, name: d.contact_name ?? "", status: "added" as const } : linked,
         // บันทึกได้บางส่วน ≠ สำเร็จ (D79) — เช่น รับวัตถุดิบเข้าสต็อกไม่สำเร็จ ต้องบอกผู้ใช้
         warnings: [...check.warnings, ...(res.warning ? [res.warning] : [])],
         summary: ent ? previewSummary(d, ent.name, me.tenantName, check.computed) : null,
@@ -632,10 +640,52 @@ export function buildServer(ctx: Ctx): McpServer {
           before_vat: Number(r.amount_after_discount), vat: Number(r.vat_amount), wht: Number(r.wht_amount), net: Number(r.net_amount),
           tax_invoice_no: r.tax_invoice_no, status: r.status, unpaid: r.ap_ar_status ?? null, settled_on: r.settled_on ?? null, source: r.source,
         }));
-        return json({ count: hits.length, rows: out, ...(hits.length > SEARCH_ROW_CAP ? { truncated: `แสดง ${SEARCH_ROW_CAP} จาก ${hits.length} — ใส่เงื่อนไขเพิ่ม` } : {}) });
+        return json({ count: hits.length, rows: out, lines_hint: "รายการในบิล (งาน/หมวดสินค้ารายบรรทัด) ใช้ get_bill", ...(hits.length > SEARCH_ROW_CAP ? { truncated: `แสดง ${SEARCH_ROW_CAP} จาก ${hits.length} — ใส่เงื่อนไขเพิ่ม` } : {}) });
       } catch (e) {
         return text(e instanceof Error ? e.message : "ค้นรายการไม่สำเร็จ", true);
       }
+    },
+  );
+
+  server.registerTool(
+    "get_bill",
+    {
+      title: "ดูรายละเอียดบิล",
+      description: "Read saved bills with their line items: item name, quantity, prices, line total, item category and job per line. Up to 20 bills per call. Read-only.",
+      inputSchema: {
+        tx_ids: z.array(z.string()).min(1).max(20).describe("Bill ids, e.g. TR-20261029-0001"),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ tx_ids }) => {
+      const ids = [...new Set(tx_ids.map((x) => x.trim()).filter(Boolean))];
+      const [h, it] = await Promise.all([
+        db.from("transactions")
+          .select("tx_id, transaction_date, type, entity_id, account_name, category, contact_id, contact_name, description, amount_after_discount, vat_amount, wht_amount, net_amount, tax_invoice_no, status, ap_ar_status, source")
+          .in("tx_id", ids),
+        db.from("transaction_items")
+          .select("tx_id, item_id, item_name, quantity, in_vat, ex_vat, discount_baht, total_price, item_category, item_job")
+          .in("tx_id", ids)
+          .order("item_id", { ascending: true }),
+      ]);
+      if (h.error) return text("อ่านบิลไม่สำเร็จ: " + mapDbError(h.error), true);
+      if (it.error) return text("อ่านรายการในบิลไม่สำเร็จ: " + mapDbError(it.error), true);
+      const items = (it.data ?? []) as Record<string, unknown>[];
+      const bills = (h.data ?? []).map((r) => ({
+        tx_id: r.tx_id, date: r.transaction_date, type: r.type, entity_id: r.entity_id, account: r.account_name,
+        category: r.category, contact_id: r.contact_id, contact: r.contact_name, description: r.description,
+        before_vat: money(r.amount_after_discount), vat: money(r.vat_amount), wht: money(r.wht_amount), net: money(r.net_amount),
+        tax_invoice_no: r.tax_invoice_no, status: r.status, unpaid: r.ap_ar_status ?? null, source: r.source,
+        lines: items.filter((x) => x.tx_id === r.tx_id).map((x, i) => ({
+          line: i + 1, name: x.item_name, quantity: Number(x.quantity),
+          unit_price_in_vat: money(x.in_vat), unit_price_ex_vat: money(x.ex_vat), discount_baht: money(x.discount_baht), line_total: money(x.total_price),
+          // ★ ไม่ระบุ = ค่าว่างใน DB (ผู้ใช้สั่ง) ⇒ ส่งเป็น null ให้ Claude อ่านว่า "ไม่ระบุ" ไม่ใช่ชื่องาน
+          item_category: String(x.item_category ?? "").trim() || null,
+          job: String(x.item_job ?? "").trim() || null,
+        })),
+      }));
+      const missing = ids.filter((x) => !bills.some((b) => b.tx_id === x));
+      return json({ bills, ...(missing.length ? { not_found: missing, note: "ไม่พบ หรือเป็นบิลของกิจการที่ผู้ใช้นี้มองไม่เห็น" } : {}) });
     },
   );
 

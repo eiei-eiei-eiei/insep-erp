@@ -81,6 +81,16 @@ export function findExistingContact(row: ContactRow, all: ExistingContact[]): Ex
     const k = key(row.tax_id, row.branch);
     return all.find((c) => c.tax_id && key(c.tax_id, c.branch) === k) ?? null;
   }
-  const n = row.name.trim();
-  return all.find((c) => !c.tax_id && c.name.trim() === n) ?? null;
+  const n = nameKey(row.name);
+  return all.find((c) => !c.tax_id && nameKey(c.name) === n) ?? null;
+}
+
+/** ชื่อคู่ค้าที่ไม่มีเลขภาษี: เทียบแบบไม่สนตัวพิมพ์เล็ก/ใหญ่และช่องว่างซ้อน (Claude อ่านบิลแต่ละใบได้ "Shopee" / "SHOPEE") */
+export function nameKey(name: string | null | undefined): string {
+  return String(name ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+/** ค่าสำหรับ ilike ที่ต้องตรงทั้งคำ — กัน % _ \ ในชื่อร้านกลายเป็น wildcard */
+export function ilikeExact(name: string): string {
+  return String(name).trim().replace(/[\\%_]/g, (m) => "\\" + m);
 }

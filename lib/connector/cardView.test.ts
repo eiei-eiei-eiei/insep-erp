@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { checkBill, type BillDraft, type BillContext } from "./bill";
-import { primaryAction, categoryChips, suspectSet, savedContextText, type CardData } from "./cardView";
+import { primaryAction, categoryChips, suspectSet, savedContextText, savedContactText, NEW_CONTACT_SHARED_NOTE, type CardData } from "./cardView";
 
 const ctx: BillContext = {
   entities: [
@@ -137,5 +137,17 @@ describe("C8 — การ์ดคู่ค้าใหม่ (รอบ 4)", (
     const { isContactCard } = await import("./cardView");
     expect(isContactCard(base())).toBe(true);
     expect(isContactCard({ v: 1, draft: {} })).toBe(false);
+  });
+});
+
+describe("C6 — รอบ 7: ข้อความคู่ค้าหลังบันทึก", () => {
+  it("เพิ่มใหม่ / ใช้ตัวเดิม บอกต่างกัน", () => {
+    expect(savedContactText({ contact_id: "C-0067", name: "Shopee", status: "added" })).toBe("เพิ่มคู่ค้าใหม่ C-0067 Shopee");
+    expect(savedContactText({ contact_id: "C-0067", name: "Shopee", status: "linked" })).toMatch(/ใช้คู่ค้าเดิม C-0067.*ไม่เพิ่มซ้ำ/);
+  });
+  it("บอก Claude ด้วยว่าคู่ค้าตัวไหน · ไม่มีคู่ค้า = ข้อความเดิม", () => {
+    expect(savedContextText("TR-1", { contact_id: "C-0067", name: "Shopee", status: "linked" })).toMatch(/TR-1 · ใช้คู่ค้าเดิม C-0067/);
+    expect(savedContextText("TR-1")).toBe("ผู้ใช้กดบันทึกบิลในการ์ดแล้ว เลขที่ TR-1 — ไม่ต้องเรียก save_bill ซ้ำ");
+    expect(NEW_CONTACT_SHARED_NOTE).toMatch(/ไม่เพิ่มซ้ำ/);
   });
 });

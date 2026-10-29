@@ -2,7 +2,7 @@
  * golden C7 — คู่ค้าใหม่จากบิล + งานรายแถว (D141 รอบ 3)
  */
 import { describe, it, expect } from "vitest";
-import { newContactRow, findExistingContact, CONTACT_TYPE_OF } from "./contact";
+import { newContactRow, findExistingContact, CONTACT_TYPE_OF, nameKey, ilikeExact } from "./contact";
 import { rankJobs, similarJob, jobSummary } from "./jobs";
 import { checkBill, type BillDraft, type BillContext } from "./bill";
 
@@ -111,5 +111,23 @@ describe("C7 — ด่านงานใน checkBill", () => {
 
   it("กิจการที่ไม่เคยใช้งาน: ไม่บังคับ", () => {
     expect(checkBill(d([{ name: "ก", quantity: 1, unit_price: 10 }]), ctx(false)).errors).toEqual([]);
+  });
+});
+
+describe("C8 — รอบ 7: หลายบิลของร้านเดียวกันที่ไม่มีเลขภาษี", () => {
+  const row = (nc: Parameters<typeof newContactRow>[0]) => newContactRow(nc, "รายจ่าย") as Exclude<ReturnType<typeof newContactRow>, string>;
+  it("ชื่อเทียบไม่สนตัวพิมพ์/ช่องว่างซ้อน (Shopee = SHOPEE)", () => {
+    const all = [{ contact_id: "C-0067", name: "Shopee", tax_id: null, branch: null }];
+    expect(findExistingContact(row({ name: " SHOPEE " }), all)?.contact_id).toBe("C-0067");
+    expect(findExistingContact(row({ name: "Shopee  Mall" }), [{ contact_id: "C-1", name: "shopee mall", tax_id: null, branch: null }])?.contact_id).toBe("C-1");
+    expect(nameKey("  A  b ")).toBe("a b");
+  });
+  it("ชื่อที่มีเลขภาษีในทะเบียน ไม่ถูกผูกด้วยชื่ออย่างเดียว (คนละสาขา/คนละบริษัทชื่อซ้ำได้)", () => {
+    expect(findExistingContact(row({ name: "Shopee" }), [{ contact_id: "C-9", name: "Shopee", tax_id: "0105555021215", branch: "สำนักงานใหญ่" }])).toBeNull();
+  });
+  it("ilikeExact กัน % _ และแบ็กสแลช กลายเป็น wildcard", () => {
+    expect(ilikeExact("50%_off")).toBe(String.raw`50\%\_off`);
+    expect(ilikeExact(String.raw`a\b`)).toBe(String.raw`a\\b`);
+    expect(ilikeExact(" ร้านป้าแดง ")).toBe("ร้านป้าแดง");
   });
 });

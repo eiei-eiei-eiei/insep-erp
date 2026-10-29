@@ -24,6 +24,7 @@
 - ⏳ เหลือ: Disconnect/Connect connector ใหม่ใน claude.ai · ตรวจบิลก่อนบันทึก = Always allow · แก้บิล = Needs approval (บันทึกบิลเป็น App-only ไม่มีปุ่มตั้ง) → TESTING 99.7 บนมือถือจริง (จดว่าปุ่มบันทึกในการ์ดมีป๊อปอัพอนุมัติซ้อนไหม · แป้นพิมพ์บังช่องไหม) · ส่งบิลจริงตาม 99.4-99.6 · ชื่อลูกค้าที่ Claude พูดเป็น `tenants.name` ("กิจการเริ่มต้น") ไม่ใช่ชื่อแบรนด์ใน app_settings — ปรับได้ถ้าผู้ใช้ต้องการ
 - 🔴 รหัสผ่าน DB ก้อนเจ้าของหลุดลงบันทึกแชทตอนไล่บั๊ก (error ของ `supabase db query` พิมพ์ connection string) — แนะนำให้ผู้ใช้ reset รหัสใน Supabase แล้วแก้ `supabase/targets.json`
 - ⚠️ ยังไม่รู้จนกว่าจะลองจริง: Supabase OAuth ต้องการ scope อะไรจาก Claude (metadata ไม่ประกาศ scope ไว้) · ถ้าเชื่อมต่อแล้วล้มที่ขั้น token ให้ส่งข้อความ error ให้ Claude
+- ✅ รอบ 7 (2026-10-29): หลายบิลร้านใหม่เดียวกันแสดงพร้อมกันได้ (ผูกคู่ค้าเดิมตอนบันทึก · ชื่อไม่สนตัวพิมพ์) + `get_bill` ดูงาน/หมวดรายบรรทัด · test 2202 · ⏳ ยังไม่ push ณ ตอนเขียน · ⏳ ผู้ใช้: Connect ใหม่ + TESTING 99.12
 - เปลี่ยน DB ที่ยิงทดสอบ: `.env.local` ชี้ DB ลูกค้า (proof-app) แต่ผู้ใช้บอท `claudeacc` อยู่ DB เจ้าของ ⇒ ยิงเครื่องมือด้วย session ของ claudeacc ต้องเปิด `next dev` พร้อม env URL/anon key ของ DB เจ้าของ (ทำใน scratchpad ไม่คอมมิต)
 - `.claude/launch.json` มี config `connector-smoke` (next start port 3100 + env) ไว้ยิงทดสอบบนเครื่อง ต้อง `npm run build` ก่อน
 

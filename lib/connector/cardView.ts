@@ -141,9 +141,26 @@ export const EDIT_TOTAL_WARN =
   "แก้ช่องนี้เฉพาะเมื่อ Claude อ่านยอดรวมบนบิลผิด — ใส่ตัวเลขที่พิมพ์บนกระดาษเท่านั้น ห้ามใส่ยอดที่ทำให้ตรงกับที่ระบบคิด";
 
 /** ข้อความที่การ์ดบอก Claude หลังบันทึกสำเร็จ (กัน Claude เรียก save_bill ซ้ำ) */
-export function savedContextText(txId: string): string {
-  return `ผู้ใช้กดบันทึกบิลในการ์ดแล้ว เลขที่ ${txId} — ไม่ต้องเรียก save_bill ซ้ำ`;
+export function savedContextText(txId: string, contact?: SavedContact | null): string {
+  const c = contact ? ` · ${savedContactText(contact)}` : "";
+  return `ผู้ใช้กดบันทึกบิลในการ์ดแล้ว เลขที่ ${txId}${c} — ไม่ต้องเรียก save_bill ซ้ำ`;
 }
+
+/**
+ * คู่ค้าของบิลที่บันทึกแล้ว (รอบ 7)
+ * · added = เพิ่มคู่ค้าใหม่เข้าทะเบียนตอนกดบันทึกใบนี้
+ * · linked = การ์ดเปิดมาเป็น "คู่ค้าใหม่" แต่ตอนกดบันทึกมีในทะเบียนแล้ว (เช่น เพิ่งบันทึกบิลอื่นของร้านเดียวกัน) ⇒ ผูกตัวเดิม
+ */
+export type SavedContact = { contact_id: string; name: string; status: "added" | "linked" };
+
+export function savedContactText(c: SavedContact): string {
+  return c.status === "added"
+    ? `เพิ่มคู่ค้าใหม่ ${c.contact_id} ${c.name}`
+    : `ใช้คู่ค้าเดิม ${c.contact_id} ${c.name} (มีในทะเบียนแล้ว ไม่เพิ่มซ้ำ)`;
+}
+
+/** บรรทัดในกล่องคู่ค้าใหม่ — ส่งหลายบิลของร้านเดียวกันพร้อมกันได้ ไม่ต้องแยกรอบ */
+export const NEW_CONTACT_SHARED_NOTE = "ถ้าบันทึกบิลอื่นของคู่ค้านี้ไปก่อน ใบนี้จะผูกกับคู่ค้าเดิมให้เอง ไม่เพิ่มซ้ำ";
 
 // ── การ์ดตรวจคู่ค้าใหม่ (add_contact · D141 รอบ 4) ───────────────────────────────
 /**

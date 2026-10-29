@@ -11,7 +11,7 @@
 import { App, applyDocumentTheme, applyHostStyleVariables } from "@modelcontextprotocol/ext-apps/app-with-deps";
 import type { McpUiHostContext } from "@modelcontextprotocol/ext-apps";
 import {
-  primaryAction, suspectSet, savedContextText, INLINE_ITEMS, EDIT_TOTAL_WARN, type CardData,
+  primaryAction, suspectSet, savedContextText, savedContactText, NEW_CONTACT_SHARED_NOTE, type SavedContact, INLINE_ITEMS, EDIT_TOTAL_WARN, type CardData,
   contactPrimary, contactDoneText, isContactCard, type ContactCardData,
 } from "../cardView";
 import type { NewContactInput } from "../contact";
@@ -25,6 +25,8 @@ let full = false;
 let busy = false;
 let saved: string | null = null;
 let failText = "";
+/** คู่ค้าของบิลที่บันทึกแล้ว (เพิ่มใหม่ / ใช้ตัวเดิม) */
+let savedContact: SavedContact | null = null;
 let editTotal = false;
 /** ปุ่ม "อื่น ๆ" ของหมวด = กางหมวดทั้งหมดในการ์ด */
 let showAllCats = false;
@@ -147,12 +149,13 @@ async function save() {
       name: "save_bill",
       arguments: { tenant_slug: data.tenant_slug, confirm_not_duplicate: Boolean(data.draft.confirm_not_duplicate), ...billArgs() },
     });
-    const sc = r.structuredContent as { ok?: boolean; tx_id?: string; errors?: string[] } | undefined;
+    const sc = r.structuredContent as { ok?: boolean; tx_id?: string; errors?: string[]; contact?: SavedContact | null } | undefined;
     if (sc?.ok && sc.tx_id) {
       saved = sc.tx_id;
+      savedContact = sc.contact ?? null;
       failText = "";
       // บอก Claude ว่าบันทึกแล้ว (ไม่ขึ้นเป็นข้อความในแชท) — กัน Claude เรียก save_bill ซ้ำ
-      app.updateModelContext({ content: [{ type: "text", text: savedContextText(sc.tx_id) }] }).catch(() => undefined);
+      app.updateModelContext({ content: [{ type: "text", text: savedContextText(sc.tx_id, savedContact) }] }).catch(() => undefined);
     } else {
       failText = sc?.errors?.[0] ?? (textOf(r) || "บันทึกไม่สำเร็จ");
     }
@@ -212,6 +215,7 @@ function contactHtml(d: CardData): string {
     return `<div class="newc"><b>คู่ค้าใหม่ — จะเพิ่มเข้าทะเบียนตอนบันทึก</b><br>${esc(c.name)}${
       c.tax_id ? ` · เลขผู้เสียภาษี ${esc(c.tax_id)}` : " · ไม่มีเลขผู้เสียภาษี"}${c.branch ? ` · ${esc(c.branch)}` : ""}${
       c.address ? `<br><span class="mu">${esc(c.address)}</span>` : ""}
+      <br><span class="mu">${esc(NEW_CONTACT_SHARED_NOTE)}</span>
       <br><button class="link" data-act="edit"${saved ? " disabled" : ""}>แก้ข้อมูลคู่ค้า</button></div>`;
   }
   if (c.kind === "existing") return `<div class="mu row">คู่ค้าในทะเบียน ${esc(c.contact_id)}${c.tax_id ? ` · ${esc(c.tax_id)}` : ""}</div>`;
@@ -331,7 +335,8 @@ function warningsHtml(d: CardData): string {
 
 function actionsHtml(d: CardData): string {
   if (saved) {
-    return `<div class="done">บันทึกแล้ว ${esc(saved)} — แก้หรือลบได้ที่แอป บัญชี → ค้นบิล</div>`;
+    return `<div class="done">บันทึกแล้ว ${esc(saved)} — แก้หรือลบได้ที่แอป บัญชี → ค้นบิล</div>${
+      savedContact ? `<div class="mu">${esc(savedContactText(savedContact))}</div>` : ""}`;
   }
   const a = primaryAction(d);
   const off = busy || a.kind === "fix";

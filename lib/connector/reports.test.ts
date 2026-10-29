@@ -54,7 +54,7 @@ describe("C6 — 🚨 เครื่องมือปิดเดือนอ�
     return s.slice(a, a + 1 + b);
   };
 
-  it.each(["account_statement", "search_transactions", "tax_report"])("%s: readOnlyHint · ไม่มี rpc/insert/update/delete", (n) => {
+  it.each(["account_statement", "search_transactions", "tax_report", "get_bill"])("%s: readOnlyHint · ไม่มี rpc/insert/update/delete", (n) => {
     const b = body(n);
     expect(b).toMatch(/readOnlyHint: true/);
     expect(b).not.toMatch(/\.rpc\(|\.insert\(|\.update\(|\.upsert\(|\.delete\(/);
@@ -97,5 +97,19 @@ describe("C6 — money (ปัดตอนส่งออก)", () => {
     expect(money(1.005)).toBe(1.01);
     expect(money(-0.1 - 0.2)).toBe(-0.3);
     expect(money("x")).toBe(0);
+  });
+});
+
+describe("C6 — รอบ 7: get_bill คืนงาน/หมวดสินค้ารายบรรทัด", () => {
+  const s = code("lib/connector/tools.ts");
+  const b = s.slice(s.indexOf('"get_bill",'), s.indexOf('"tax_report",'));
+  it("อ่าน item_job + item_category · ว่าง = null (ไม่ระบุ)", () => {
+    expect(b).toContain('from("transaction_items")');
+    expect(b).toMatch(/item_job/);
+    expect(b).toMatch(/item_category/);
+    expect(b).toContain('job: String(x.item_job ?? "").trim() || null');
+  });
+  it("search_transactions ชี้ไป get_bill", () => {
+    expect(s).toMatch(/lines_hint: "รายการในบิล/);
   });
 });

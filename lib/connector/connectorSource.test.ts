@@ -152,6 +152,16 @@ describe("C4 — ด่านเรียงถูก", () => {
     expect(fn).not.toMatch(/items\[i\]\.(quantity|ex_vat|in_vat|total_price|discount_baht|item_name)\s*=/);
   });
 
+  it("รอบ 7: คู่ค้าใหม่ร้านเดียวกันหลายใบ — บอก Claude ไม่ต้องแยกรอบ · save_bill บอกว่าผูกตัวเดิม · ด่านซ้ำยังอยู่ตอนบันทึก", () => {
+    const s = code("lib/connector/tools.ts");
+    expect(s).toMatch(/Do NOT split the bills into rounds/);
+    const save = toolBody(s, "save_bill");
+    expect(save).toMatch(/status: "linked" as const/);
+    // ด่านซ้ำตอนบันทึก = evaluate → resolveContact (ถามทะเบียนใหม่ทุกครั้ง) ก่อน createContact
+    expect(save.indexOf("evaluate(")).toBeLessThan(save.indexOf("createContact("));
+    expect(s).toContain('q.ilike("name", ilikeExact(row.name))');
+  });
+
   it("🚨 middleware ยกเว้น /api/mcp ก่อน updateSession (ไม่งั้น Claude ได้ 200 หน้า login)", () => {
     const s = code("middleware.ts");
     expect(s.indexOf("isConnectorPath(")).toBeGreaterThan(0);
