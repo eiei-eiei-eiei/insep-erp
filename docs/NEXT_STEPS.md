@@ -19,10 +19,12 @@
 - ✅ รอบ 3 (2026-10-28): ใช้จริง 2 บิลแล้วปรับ — คู่ค้าใหม่เพิ่มก่อนบันทึก · ถามก่อนแสดงการ์ด + save_bill เรียกได้จากการ์ดทางเดียว · งานรายแถว/งานใหม่/ไม่ระบุงาน(=ค่าว่าง) · edit_bill · test 2169 · test:tenant connector 10/10
 - ✅ บิลมหาจักรฯ TR-20261028-0002 ผูกคู่ค้า C-0066 แล้ว (สาขาเก็บเป็น สำนักงานใหญ่ ถูกต้อง · ยอดเท่าเดิม)
 - ✅ รอบ 4 (2026-10-28): สาขา HQ/สนญ./Head Office → สำนักงานใหญ่ · การ์ดตรวจคู่ค้าใหม่ add_contact (แก้ได้ · ตรวจซ้ำ · ผูกกับบิล) · edit_bill เลิกรับ new_contact · test 2178 · ✅ push แล้ว (df503a5)
-- ✅ รอบ 5 (2026-10-28): หมวดสินค้ารายแถวแสดง/แก้ในการ์ด + edit_bill แก้ได้ (ไม่บังคับ) · test 2179 · ⏳ ยังไม่ push ณ ตอนเขียน
+- ✅ รอบ 5 (2026-10-28): หมวดสินค้ารายแถวแสดง/แก้ในการ์ด + edit_bill แก้ได้ (ไม่บังคับ) · test 2179 · ✅ push แล้ว (3553e84)
+- ✅ รอบ 6 (2026-10-29): ปิดเดือน — `account_statement` · `search_transactions` · `tax_report` (อ่านอย่างเดียว · ตัวโหลดเดียวกับหน้าเว็บ `lib/accounting/reportLoaders.ts`) · test 2193 + skill `docs/skills/month-end-close/SKILL.md` · ยิงบนเครื่องกับ DB เจ้าของแล้ว · ⏳ ยังไม่ push ณ ตอนเขียน · ⏳ ผู้ใช้: Connect ใหม่ · อัปโหลด skill · เทส 99.11 · **เทียบลำดับช่อง ภพ.30 กับหน้าจอ e-Filing จริง** (เขียนจากความจำ)
 - ⏳ เหลือ: Disconnect/Connect connector ใหม่ใน claude.ai · ตรวจบิลก่อนบันทึก = Always allow · แก้บิล = Needs approval (บันทึกบิลเป็น App-only ไม่มีปุ่มตั้ง) → TESTING 99.7 บนมือถือจริง (จดว่าปุ่มบันทึกในการ์ดมีป๊อปอัพอนุมัติซ้อนไหม · แป้นพิมพ์บังช่องไหม) · ส่งบิลจริงตาม 99.4-99.6 · ชื่อลูกค้าที่ Claude พูดเป็น `tenants.name` ("กิจการเริ่มต้น") ไม่ใช่ชื่อแบรนด์ใน app_settings — ปรับได้ถ้าผู้ใช้ต้องการ
 - 🔴 รหัสผ่าน DB ก้อนเจ้าของหลุดลงบันทึกแชทตอนไล่บั๊ก (error ของ `supabase db query` พิมพ์ connection string) — แนะนำให้ผู้ใช้ reset รหัสใน Supabase แล้วแก้ `supabase/targets.json`
 - ⚠️ ยังไม่รู้จนกว่าจะลองจริง: Supabase OAuth ต้องการ scope อะไรจาก Claude (metadata ไม่ประกาศ scope ไว้) · ถ้าเชื่อมต่อแล้วล้มที่ขั้น token ให้ส่งข้อความ error ให้ Claude
+- เปลี่ยน DB ที่ยิงทดสอบ: `.env.local` ชี้ DB ลูกค้า (proof-app) แต่ผู้ใช้บอท `claudeacc` อยู่ DB เจ้าของ ⇒ ยิงเครื่องมือด้วย session ของ claudeacc ต้องเปิด `next dev` พร้อม env URL/anon key ของ DB เจ้าของ (ทำใน scratchpad ไม่คอมมิต)
 - `.claude/launch.json` มี config `connector-smoke` (next start port 3100 + env) ไว้ยิงทดสอบบนเครื่อง ต้อง `npm run build` ก่อน
 
 ## 0.-25 🆕 D138 — บาร์: ลบ/ปิดใช้เมนู · migration **0096** · ✅ ลงครบ 2 DB + เทสบนจอผ่าน (2026-10-27)

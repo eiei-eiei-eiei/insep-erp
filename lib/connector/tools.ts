@@ -8,6 +8,8 @@ import { forwardCatsOf, isForwardCat, FORWARD_CAT_KIND } from "@/lib/accounting/
 import { hasModule } from "@/lib/shared/workspaces";
 import { mapDbError } from "@/lib/shared/dbError";
 import { bangkokDateISO } from "@/lib/shared/datetime";
+import { fetchAllTransactions, statementFor, taxReportBundleFor, missingInvoicesFor } from "@/lib/accounting/reportLoaders";
+import { monthArg, dateArg, matchesAmount, STATEMENT_ROW_CAP, SEARCH_ROW_CAP, money } from "./reports";
 import { checkBill, mismatchText, previewSummary, taxIdValid, normalizeTaxId, CONNECTOR_TYPES, type BillDraft, type BillContext, type CheckResult, type ConnectorType } from "./bill";
 import { categoryChips, type CardContact, type CardData, type ContactCardData } from "./cardView";
 import { newContactRow, findExistingContact, type ContactRow, type ExistingContact } from "./contact";
@@ -49,7 +51,11 @@ Workflow for every bill image the user sends:
    After preview_bill, write at most one short line.
 8. To change the category, account, job or (existing) contact of a bill saved through this connector, use edit_bill,
    only after the user asks. Amounts and line items can only be changed in the app.
-9. To add a seller/customer to the register outside a bill card (e.g. for a bill already saved), call add_contact
+9. Month-end (read-only): account_statement gives the ERP movements of one money account (same numbers as the app's statement)
+   to compare with the bank statement the user sends; search_transactions finds bills by date/amount/contact across accounts
+   (e.g. booked to the wrong account); tax_report gives ภพ.30 and ภงด.3/53 figures from the app's own formulas.
+   NEVER compute or adjust tax figures yourself — quote tax_report. These tools change nothing.
+10. To add a seller/customer to the register outside a bill card (e.g. for a bill already saved), call add_contact
    (with link_tx_id to link it to that bill). It shows a card; the user checks the details and presses the button.
    You cannot add contacts directly.
 Do not record bills the user did not send.`;
@@ -539,6 +545,148 @@ export function buildServer(ctx: Ctx): McpServer {
       if (!slugOk(me, a.tenant_slug)) return slugError(me, a.tenant_slug);
       const r = await editBill(ctx, a);
       return typeof r === "string" ? text(r, true) : json(r);
+    },
+  );
+
+  // ── ปิดเดือน: อ่านอย่างเดียว (D141 รอบ 6) — กระบวนการอยู่ใน skill ของผู้ใช้ ตัวเลขอยู่ที่นี่ ─────────────
+  server.registerTool(
+    "account_statement",
+    {
+      title: "statement บัญชีเงิน",
+      description: "ERP movements of one money account for a month range, with opening/closing and running balance — the same numbers as the app's account statement. Use it to reconcile with the bank statement the user sends.",
+      inputSchema: {
+        account_name: z.string().describe("Exact money account name from lookup_options"),
+        from: z.string().describe("First month YYYY-MM (Gregorian)"),
+        to: z.string().optional().describe("Last month YYYY-MM (default = from)"),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_name, from, to }) => {
+      const f = monthArg(from);
+      const t = monthArg(to ?? from);
+      if (!f || !t) return text("เดือนต้องเป็น ค.ศ. รูปแบบ YYYY-MM", true);
+      // 🚨 บัญชีต้องมองเห็นได้ด้วยสิทธิ์ผู้ใช้ (RLS · D120) — ไม่งั้นได้ statement ว่างที่ดูเหมือน "ไม่มีรายการ"
+      const acc = await db.from("bank_accounts").select("account_name").eq("account_name", account_name).maybeSingle();
+      if (acc.error) return text("อ่านบัญชีเงินไม่สำเร็จ: " + mapDbError(acc.error), true);
+      if (!acc.data) return text(`ไม่พบบัญชีเงิน "${account_name}" — ใช้ชื่อจาก lookup_options ให้ตรงทุกตัวอักษร`, true);
+      try {
+        const st = await statementFor(db, account_name, { from: f, to: t });
+        const rows = st.rows.slice(0, STATEMENT_ROW_CAP).map((r) => ({
+          tx_id: r.txId, date: r.date, type: r.type, category: r.category, contact: r.contactName,
+          description: r.description, in: money(r.credit), out: money(r.debit), balance: money(r.runningBalance),
+          ...(r.transferId ? { transfer_id: r.transferId } : {}),
+        }));
+        return json({
+          account: account_name, from: f, to: t,
+          opening_balance: money(st.openingBalance), closing_balance: money(st.closingBalance),
+          months: st.months.map((m) => ({ month: m.month, in: money(m.totalIn), out: money(m.totalOut), closing_balance: money(m.closingBalance), count: m.count })),
+          rows,
+          ...(st.rows.length > STATEMENT_ROW_CAP ? { truncated: `แสดง ${STATEMENT_ROW_CAP} จาก ${st.rows.length} รายการ — ขอช่วงสั้นลง` } : {}),
+          note: "in = เงินเข้าบัญชี · out = เงินออก · บิลค้างจ่าย/ค้างรับนับเมื่อเคลีย (วันที่ชำระ) ตามกติกาของแอป",
+        });
+      } catch (e) {
+        return text(e instanceof Error ? e.message : "อ่าน statement ไม่สำเร็จ", true);
+      }
+    },
+  );
+
+  server.registerTool(
+    "search_transactions",
+    {
+      title: "ค้นรายการบัญชี",
+      description: "Find bills by date range and optionally amount (net or before-VAT, ±0.01), contact, account or text, across all accounts of the user's businesses. Use it to find a bank line that is not in the account statement (e.g. booked to the wrong account or month).",
+      inputSchema: {
+        from: z.string().describe("YYYY-MM-DD"),
+        to: z.string().describe("YYYY-MM-DD"),
+        entity_id: z.string().optional(),
+        amount: z.number().optional().describe("Match net_amount or amount before VAT (±0.01)"),
+        contact: z.string().optional().describe("Part of the contact name"),
+        account_name: z.string().optional(),
+        text: z.string().optional().describe("Part of the description or tax invoice no."),
+        include_void: z.boolean().optional(),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async (a) => {
+      const from = dateArg(a.from);
+      const to = dateArg(a.to);
+      if (!from || !to || from > to) return text("วันที่ต้องเป็น ค.ศ. YYYY-MM-DD และวันเริ่มไม่หลังวันสุดท้าย", true);
+      try {
+        const rows = await fetchAllTransactions(db, (q) => {
+          let x = q.gte("transaction_date", from).lte("transaction_date", to);
+          if (a.entity_id) x = x.eq("entity_id", a.entity_id);
+          if (a.account_name) x = x.eq("account_name", a.account_name);
+          if (!a.include_void) x = x.neq("status", "ยกเลิก");
+          return x;
+        });
+        const c = String(a.contact ?? "").trim().toLowerCase();
+        const tx = String(a.text ?? "").trim().toLowerCase();
+        const hits = rows.filter((r) =>
+          (a.amount == null || matchesAmount(a.amount, r.net_amount, r.amount_after_discount)) &&
+          (!c || String(r.contact_name ?? "").toLowerCase().includes(c)) &&
+          (!tx || `${r.description ?? ""} ${r.tax_invoice_no ?? ""} ${r.tx_id}`.toLowerCase().includes(tx)),
+        );
+        const out = hits.slice(0, SEARCH_ROW_CAP).map((r) => ({
+          tx_id: r.tx_id, date: r.transaction_date, type: r.type, entity_id: r.entity_id, account: r.account_name,
+          category: r.category, contact: r.contact_name, description: r.description,
+          before_vat: Number(r.amount_after_discount), vat: Number(r.vat_amount), wht: Number(r.wht_amount), net: Number(r.net_amount),
+          tax_invoice_no: r.tax_invoice_no, status: r.status, unpaid: r.ap_ar_status ?? null, settled_on: r.settled_on ?? null, source: r.source,
+        }));
+        return json({ count: hits.length, rows: out, ...(hits.length > SEARCH_ROW_CAP ? { truncated: `แสดง ${SEARCH_ROW_CAP} จาก ${hits.length} — ใส่เงื่อนไขเพิ่ม` } : {}) });
+      } catch (e) {
+        return text(e instanceof Error ? e.message : "ค้นรายการไม่สำเร็จ", true);
+      }
+    },
+  );
+
+  server.registerTool(
+    "tax_report",
+    {
+      title: "รายงานภาษีประจำเดือน",
+      description: "ภพ.30 (VAT) and ภงด.3/53 (withholding) figures for one business and month, computed by the app's own formulas, plus purchase bills with VAT but no tax invoice number and whether each form is marked as filed. Quote these numbers; never recompute them.",
+      inputSchema: {
+        entity_id: z.string(),
+        month: z.string().describe("YYYY-MM (Gregorian) — the tax month"),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ entity_id, month }) => {
+      const m = monthArg(month);
+      if (!m) return text("เดือนต้องเป็น ค.ศ. รูปแบบ YYYY-MM", true);
+      const ent = me.entities.find((e) => e.entity_id === entity_id);
+      if (!ent) return text(`ไม่พบกิจการ ${entity_id} — ใช้รหัสจาก who_am_i`, true);
+      try {
+        const [b, missing, filings] = await Promise.all([
+          taxReportBundleFor(db, m, entity_id),
+          missingInvoicesFor(db, m, entity_id),
+          db.from("tax_filings").select("kind, filed_on, reopened_at").eq("entity_id", entity_id).eq("period", m),
+        ]);
+        if (filings.error) return text("อ่านสถานะการยื่นไม่สำเร็จ: " + mapDbError(filings.error), true);
+        const filed = (k: string) => (filings.data ?? []).some((f) => f.kind === k && !f.reopened_at);
+        const tr = b.taxReport;
+        const wr = b.whtReport;
+        return json({
+          business: { entity_id, name: b.entity.name, tax_id: b.entity.tax_id, branch: b.entity.branch, vat_registered: ent.is_vat },
+          month: m,
+          pp30: ent.is_vat
+            ? {
+                sales_amount: tr.totalSalesAmount, output_vat: tr.totalSalesVat,
+                purchase_amount: tr.totalPurchaseAmount, input_vat: tr.totalPurchaseVat,
+                vat_carried_in: tr.forwardedVatIn, vat_payable: tr.netPayable, vat_carry_forward: tr.forwardedVatOut,
+                sales_count: tr.sales.length, purchase_count: tr.purchases.length,
+                filed: filed("vat"),
+                purchases: tr.purchases.map((r) => ({ date: r.date, invoice_no: r.invoiceNo, name: r.name, tax_id: r.taxId, amount: r.amount, vat: r.vat })),
+                sales: tr.sales.map((r) => ({ date: r.date, invoice_no: r.invoiceNo, name: r.name, tax_id: r.taxId, amount: r.amount, vat: r.vat })),
+              }
+            : { note: "กิจการนี้ไม่ได้จด VAT — ไม่ต้องยื่น ภพ.30" },
+          pnd3: { paid: wr.pnd3TotalPaid, wht: wr.pnd3TotalWht, count: wr.pnd3.length, filed: filed("pnd3"), rows: wr.pnd3 },
+          pnd53: { paid: wr.pnd53TotalPaid, wht: wr.pnd53TotalWht, count: wr.pnd53.length, filed: filed("pnd53"), rows: wr.pnd53 },
+          purchases_with_vat_but_no_invoice_no: missing,
+          note: "ตัวเลขทั้งหมดคิดด้วยสูตรเดียวกับหน้า บัญชี → เอกสารสรรพากร · กด ยื่นแล้ว/จ่ายแล้ว ได้ที่แท็บนั้นในแอป",
+        });
+      } catch (e) {
+        return text(e instanceof Error ? e.message : "อ่านรายงานภาษีไม่สำเร็จ", true);
+      }
     },
   );
 
