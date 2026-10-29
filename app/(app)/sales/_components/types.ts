@@ -1,5 +1,6 @@
 import type { MenuRow, CustomerRow, OrderRow } from "../data";
 import type { CompanyInfo } from "@/lib/sales/company";
+import type { SalesPayment } from "@/lib/sales/payments";
 
 export type { MenuRow, CustomerRow, OrderRow };
 
@@ -23,7 +24,7 @@ export type SalesBoot = {
 
 export type OrderItem = { name: string; qty: number; price: number };
 
-export type WarehouseOrder = OrderRow & { items: OrderItem[] };
+export type WarehouseOrder = OrderRow & { items: OrderItem[]; payments: SalesPayment[] };
 
 export type StockItem = {
   itemCode: string;

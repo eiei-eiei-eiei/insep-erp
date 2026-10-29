@@ -15,6 +15,7 @@ import { showToast } from "@/lib/shared/toast";
 import { reverseCalcPrint, roundTo2 } from "@/lib/sales/calc";
 import { formatThaiDate } from "@/lib/sales/orders";
 import { branchLabel, type CompanyInfo } from "@/lib/sales/company";
+import { paymentForDoc, type SalesPayment } from "@/lib/sales/payments";
 import type { OrderItem } from "./types";
 import { mountDocViewer, viewerHead } from "@/lib/shared/docViewer";
 
@@ -330,6 +331,11 @@ export type OrderLike = {
   /** D89 — เลขใบเสร็จของกิจการที่ไม่จด VAT (คู่ขนานกับ taxNo1/taxNo2) */
   rcptNo1?: string;
   rcptNo2?: string;
+  /**
+   * D143 — การรับเงินทีละครั้ง · ใบเสร็จอ่านวิธีชำระ/เช็คของครั้งนั้นจากที่นี่
+   * ไม่ส่ง/ไม่มีแถว (ออเดอร์เก่าที่ไม่มีบิลให้ backfill · ขายหน้าร้านที่เพิ่งขาย) = ใช้ช่องเดิมของออเดอร์
+   */
+  payments?: SalesPayment[];
 };
 
 type PreparedDoc = Record<string, unknown> & { docType: string; copyType: string };
@@ -375,7 +381,13 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
     documentDate: docDate1_th,
   };
 
-  if (docType === "tax-invoice-deposit") doc.chequeDetails = formatChequeDetail(order.checkDetail1);
+  // 🔴 D143 — ใบเสร็จต้องบอกวิธีชำระของ "ครั้งนั้น" · ช่องเดิมของออเดอร์ถูกเขียนทับเมื่อรับครั้งถัดไป
+  //    (พิมพ์ใบเสร็จมัดจำซ้ำหลังรับยอดค้าง เคยขึ้นวิธีชำระของยอดค้าง)
+  const pay = paymentForDoc(docType, order.payments);
+  if (pay) {
+    doc.paymentMethod = pay.method || order.paymentMethod;
+    doc.chequeDetails = formatChequeDetail(pay.chequeDetail);
+  } else if (docType === "tax-invoice-deposit") doc.chequeDetails = formatChequeDetail(order.checkDetail1);
   else if (docType === "tax-invoice-balance" || docType === "tax-invoice-receipt" || docType === "tax-invoice-receipt-do")
     doc.chequeDetails = formatChequeDetail(order.checkDetail2);
   else doc.chequeDetails = "";

@@ -3,6 +3,7 @@ import { getTenantPlan } from "@/lib/shared/tenant-plan";
 import { hasModule } from "@/lib/shared/workspaces";
 import { createClient } from "@/lib/supabase/server";
 import { formatThaiDate, type OrderState } from "@/lib/sales/orders";
+import type { SalesPayment } from "@/lib/sales/payments";
 import { companyFromEntity, pickDocEntity, type EntityDocRow } from "@/lib/sales/company";
 import { fetchAllRows } from "@/lib/shared/paginate";
 import { mustRead } from "@/lib/shared/dbError";
@@ -275,6 +276,34 @@ export async function getOrderItems(quNo: string) {
   return (data ?? []).map((i) => ({ name: i.item_name as string, qty: Number(i.qty) || 0, price: Number(i.price) || 0 }));
 }
 
+/** แถว sales_payments → SalesPayment (D143) */
+function mapPayment(r: Record<string, unknown>): SalesPayment {
+  return {
+    seq: Number(r.seq) || 0,
+    label: (r.label as string) ?? "",
+    amount: Number(r.amount) || 0,
+    method: (r.method as string) ?? "",
+    chequeDetail: (r.cheque_detail as string) ?? "",
+    docDate: (r.doc_date as string) ?? "",
+    docNo: (r.doc_no as string) ?? "",
+    txId: (r.tx_id as string) ?? "",
+  };
+}
+const PAYMENT_COLS = "qu_no, seq, label, amount, method, cheque_detail, doc_date, doc_no, tx_id";
+
+/**
+ * การรับเงินของออเดอร์ทีละครั้ง (D143) — ใบเสร็จอ่านวิธีชำระ/เช็คของครั้งนั้นจากที่นี่
+ * 🚨 อ่านไม่ได้ต้องฟ้อง (D89) — คืนว่างเงียบ ๆ = ใบเสร็จตกไปใช้ช่องเดิมของออเดอร์ซึ่งอาจเป็นของครั้งอื่น
+ */
+export async function getOrderPayments(quNo: string): Promise<SalesPayment[]> {
+  const supabase = await db();
+  const data = mustRead(
+    await supabase.from("sales_payments").select(PAYMENT_COLS).eq("qu_no", quNo).order("seq"),
+    "การรับเงินของออเดอร์",
+  );
+  return (data ?? []).map((r) => mapPayment(r as Record<string, unknown>));
+}
+
 /** ออเดอร์รอคลังจัดส่ง + items */
 export async function getPendingWarehouse() {
   const supabase = await db();
@@ -285,18 +314,25 @@ export async function getPendingWarehouse() {
   const list = mustRead(orders, "คิวออเดอร์รอจัดส่ง").map((r) => mapOrder(r as SoRow, cmap));
   const quNos = list.map((o) => o.quNo);
   const itemsByQu = new Map<string, { name: string; qty: number; price: number }[]>();
+  const paysByQu = new Map<string, SalesPayment[]>();
   if (quNos.length) {
-    const items = mustRead(
-      await supabase.from("sales_order_items").select("qu_no, item_name, qty, price").in("qu_no", quNos),
-      "รายการสินค้าในออเดอร์",
-    );
-    for (const it of items ?? []) {
+    const [items, pays] = await Promise.all([
+      supabase.from("sales_order_items").select("qu_no, item_name, qty, price").in("qu_no", quNos),
+      // D143 — หน้าคลังพิมพ์ใบกำกับภาษีมัดจำได้ ต้องได้วิธีชำระของครั้งนั้น
+      supabase.from("sales_payments").select(PAYMENT_COLS).in("qu_no", quNos).order("seq"),
+    ]);
+    for (const it of mustRead(items, "รายการสินค้าในออเดอร์") ?? []) {
       const arr = itemsByQu.get(it.qu_no as string) ?? [];
       arr.push({ name: it.item_name as string, qty: Number(it.qty) || 0, price: Number(it.price) || 0 });
       itemsByQu.set(it.qu_no as string, arr);
     }
+    for (const p of mustRead(pays, "การรับเงินของออเดอร์") ?? []) {
+      const arr = paysByQu.get(p.qu_no as string) ?? [];
+      arr.push(mapPayment(p as Record<string, unknown>));
+      paysByQu.set(p.qu_no as string, arr);
+    }
   }
-  return list.map((o) => ({ ...o, items: itemsByQu.get(o.quNo) ?? [] }));
+  return list.map((o) => ({ ...o, items: itemsByQu.get(o.quNo) ?? [], payments: paysByQu.get(o.quNo) ?? [] }));
 }
 
 /** สต็อกรวม: สุรา (stock_product live) + ทั่วไป (warehouse_stock) */

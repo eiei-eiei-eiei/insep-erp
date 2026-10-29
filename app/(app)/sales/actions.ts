@@ -14,7 +14,7 @@ import {
   type ActionPayload,
   type GeneratedSerials,
 } from "@/lib/sales/orders";
-import { getSalesBootstrap, getOrders, getOrderItems, getPendingWarehouse, getWarehouseStock, getSyncHistory, getOrderState, getCustomerId, getSaleMenuFull, getMenuLinkOptions } from "./data";
+import { getSalesBootstrap, getOrders, getOrderItems, getOrderPayments, getPendingWarehouse, getWarehouseStock, getSyncHistory, getOrderState, getCustomerId, getSaleMenuFull, getMenuLinkOptions } from "./data";
 
 export type SaveResult = { ok: boolean; error?: string; data?: unknown };
 function fail(error: string): SaveResult {
@@ -33,6 +33,10 @@ export async function getOrdersAction() {
 }
 export async function getOrderItemsAction(quNo: string) {
   return getOrderItems(quNo);
+}
+/** D143 — การรับเงินทีละครั้ง (ใบเสร็จอ่านวิธีชำระของครั้งนั้น) */
+export async function getOrderPaymentsAction(quNo: string) {
+  return getOrderPayments(quNo);
 }
 export async function getPendingWarehouseAction() {
   return getPendingWarehouse();

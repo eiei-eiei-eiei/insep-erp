@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import type { SalesBoot, OrderRow, OrderItem } from "./types";
 import { Card, StatusBadge, TextInput, useSaver, fmt, LoadError } from "./ui";
 import { todayISO } from "./ui";
-import { getOrdersAction, getOrderItemsAction, processOrderActionAction, cancelOrderAction, voidDepositInvoiceAction } from "../actions";
+import { getOrdersAction, getOrderItemsAction, getOrderPaymentsAction, processOrderActionAction, cancelOrderAction, voidDepositInvoiceAction } from "../actions";
 import type { OrderAction, ActionPayload } from "@/lib/sales/orders";
 import { printSalesDocs, printQuotation, openPrintWindow, type OrderLike } from "./print";
 import { roundTo2 } from "@/lib/sales/calc";
@@ -70,26 +70,43 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
       return (o.quNo + o.orderNo + o.customerName).toLowerCase().includes(q);
     });
 
+  /**
+   * รายการสินค้า + การรับเงินทีละครั้ง (D143) ของออเดอร์ที่จะพิมพ์
+   * 🚨 การรับเงินไม่ cache — รับยอดค้างแล้วพิมพ์ซ้ำต้องได้แถวใหม่
+   * 🚨 โหลดไม่สำเร็จ = ปิดหน้าต่างพิมพ์แล้วบอก (D89) · ไม่พิมพ์ใบเสร็จด้วยวิธีชำระที่อาจเป็นของครั้งอื่น
+   */
+  async function loadForPrint(o: OrderRow, w: Window): Promise<{ order: OrderLike; items: OrderItem[] } | null> {
+    try {
+      const [items, payments] = await Promise.all([loadItems(o.quNo), getOrderPaymentsAction(o.quNo)]);
+      return { order: { ...(o as OrderLike), payments }, items };
+    } catch {
+      w.close();
+      showToast({ ok: false, text: `โหลดข้อมูลเอกสารของ ${o.quNo} ไม่สำเร็จ — ลองกดพิมพ์ใหม่อีกครั้ง` });
+      return null;
+    }
+  }
   async function doPrintFirst(o: OrderRow) {
     const w = openPrintWindow(); // เปิดก่อน await กัน popup blocker (มือถือ/iPad)
     if (!w) { showToast({ ok: false, text: "เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — โปรดอนุญาต popup แล้วลองใหม่" }); return; }
-    const items = await loadItems(o.quNo);
+    const data = await loadForPrint(o, w);
+    if (!data) return;
     let docs: string[];
     if (o.status === "รอชำระมัดจำ") docs = ["invoice-deposit"]; // D45 — ใบแจ้งหนี้ค่ามัดจำ
     else if (o.deposit > 0) docs = ["invoice", "tax-invoice-deposit"];
     else if (o.status === "รอชำระเงิน (จ่ายเต็ม)") docs = ["invoice-only"];
     else docs = ["invoice"];
-    printSalesDocs(boot.company, o as OrderLike, items, docs, w);
+    printSalesDocs(boot.company, data.order, data.items, docs, w);
   }
   async function doPrintClosed(o: OrderRow) {
     const w = openPrintWindow();
     if (!w) { showToast({ ok: false, text: "เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — โปรดอนุญาต popup แล้วลองใหม่" }); return; }
-    const items = await loadItems(o.quNo);
+    const data = await loadForPrint(o, w);
+    if (!data) return;
     let docs: string[];
     if (o.deposit > 0) docs = ["tax-invoice-balance"];
     else if (o.dueDate === "" && o.deposit === 0) docs = ["tax-invoice-receipt-do"];
     else docs = ["tax-invoice-receipt"];
-    printSalesDocs(boot.company, o as OrderLike, items, docs, w);
+    printSalesDocs(boot.company, data.order, data.items, docs, w);
   }
   async function doReprintQuotation(o: OrderRow) {
     const w = openPrintWindow();

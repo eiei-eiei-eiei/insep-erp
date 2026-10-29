@@ -15,6 +15,7 @@
 
 import { round2, reverseVatWht, toAccItem, taxDocNo, type AccItem } from "./calc";
 import { revenueAccountFor } from "./cashAccount";
+import { PAY_LABEL, payLabelFor } from "./payments";
 
 export type OrderAction =
   | "DEPOSIT_AND_SEND"
@@ -140,6 +141,13 @@ export type RevenuePayload = {
   taxInvoiceNo: string;
   taxInvoiceDate: string;
   items: AccItem[];
+  /**
+   * D143 — แถว `sales_payments` ของการรับเงินครั้งนี้ (fn_apply_order_action 0099 เขียนต่อจากบิล)
+   * วิธีชำระ/เช็คของ **ครั้งนี้** — ช่องเดิมบนออเดอร์ถูกเขียนทับเมื่อรับครั้งถัดไป
+   */
+  paymentLabel: string;
+  paymentMethod: string;
+  chequeDetail: string;
 };
 
 export type ProcessResult = {
@@ -407,11 +415,14 @@ export function processOrder(
       taxInvoiceNo: docNo,
       taxInvoiceDate: payload.docDate || today(),
       items: accItems,
+      // isPayment เป็นจริงเฉพาะ action รับเงิน ⇒ payLabelFor ไม่คืน null ตรงนี้
+      paymentLabel: payLabelFor(action) ?? "",
+      paymentMethod: payload.method ?? "",
+      chequeDetail: payload.chequeDetails ?? "",
     };
 
-    // LINE 2.2 — แจ้งรับชำระเงิน
-    const actionLabel =
-      action === "DEPOSIT_AND_SEND" ? "มัดจำ" : action === "PAY_BALANCE" ? "ชำระยอดค้าง" : "ชำระเต็ม";
+    // LINE 2.2 — แจ้งรับชำระเงิน (ป้ายชุดเดียวกับแถว sales_payments)
+    const actionLabel = payLabelFor(action) ?? PAY_LABEL.full;
     const amtFmt = accNet.toLocaleString("th-TH", { minimumFractionDigits: 0 });
     const orderRef = order.orderNo || order.quNo;
     const remainingBalance =
