@@ -15,6 +15,7 @@ import {
   type GeneratedSerials,
 } from "@/lib/sales/orders";
 import { revenueAccountFor } from "@/lib/sales/cashAccount";
+import { defaultRevenueCat } from "@/lib/sales/revenueCats";
 import { PAY_METHODS } from "@/lib/sales/payments";
 import { planActionError, planAmounts, planError, receiveAmountError, shipNowError, isSent, type PlanRowInput } from "@/lib/sales/installments";
 import { getSalesBootstrap, getOrders, getOrderItems, getOrderPayments, getOrderPlan, getPendingWarehouse, getWarehouseStock, getSyncHistory, getOrderState, getCustomerId, getSaleMenuFull, getMenuLinkOptions } from "./data";
@@ -652,6 +653,12 @@ export async function posSaleAction(input: PosSalePayload): Promise<SaveResult> 
   }
   const docDate = input.docDate || today;
 
+  // D148 — หมวดของบิลหน้าร้าน = ค่าปริยายจากหมวดหมู่รายรับของบัญชี (ยังไม่ตั้ง = รายได้ค่าสินค้า เหมือนเดิม)
+  //  🚨 อ่านไม่ได้ต้องฟ้อง ไม่ใช่เดาค่าเริ่มต้น (D89) — ไม่งั้นบิลลงหมวดที่ไม่อยู่ในลิสต์เงียบ ๆ
+  const cats = await supabase.from("app_settings").select("value, sort").eq("kind", "income_cat").order("sort");
+  if (cats.error) return fail(mapDbError(cats.error));
+  const category = defaultRevenueCat((cats.data ?? []).map((r) => String(r.value ?? "")));
+
   // ① สร้างออเดอร์ (ไม่ยิง LINE — บิลเดียวต้องได้ข้อความเดียว)
   const saved = await saveQuotationCore(supabase, {
     customer: input.customer,
@@ -662,7 +669,7 @@ export async function posSaleAction(input: PosSalePayload): Promise<SaveResult> 
     isDepositRequired: false, // จ่ายจบหน้าร้าน
     depositPercent: 0,
     saleName: userName,
-    category: "รายได้ค่าสินค้า",
+    category,
     remarks: "ขายหน้าร้าน",
   });
   if (!saved.ok) return fail(saved.error);

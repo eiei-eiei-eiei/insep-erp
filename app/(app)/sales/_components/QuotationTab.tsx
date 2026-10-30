@@ -16,8 +16,7 @@ import { defaultPlanRows, planAmounts, planError, planTermsLines, type PlanRowIn
 import { printQuotation, openPrintWindow } from "./print";
 import { IconCart, IconPlus } from "@/lib/shared/icons";
 import { AddCustomerModal } from "./CustomerFields";
-
-const REVENUE_CATS = ["รายได้ค่าสินค้า", "รายได้ค่าบริการ", "รายได้ค่าที่ปรึกษา", "รายได้อื่น ๆ"];
+import { defaultRevenueCat, revenueCatHint, revenueCatOptions } from "@/lib/sales/revenueCats";
 
 export function QuotationTab({
   boot,
@@ -34,7 +33,9 @@ export function QuotationTab({
   const [selCustId, setSelCustId] = useState("");
   const [items, setItems] = useState<OrderItem[]>([]);
   const [discount, setDiscount] = useState(0);
-  const [category, setCategory] = useState("รายได้ค่าสินค้า");
+  // D148 — ประเภทรายได้ = หมวดหมู่รายรับของบัญชี (ยังไม่ตั้ง = 4 ตัวเดิม)
+  const defaultCat = defaultRevenueCat(boot.revenueCats);
+  const [category, setCategory] = useState(defaultCat);
   const [isWht, setIsWht] = useState(false);
   const [whtPct, setWhtPct] = useState(3);
   // D146 — แผนงวดแทนช่องติ๊กมัดจำ (มัดจำเดิม = แผน 2 งวด · ผู้ใช้ตัดสิน)
@@ -47,6 +48,7 @@ export function QuotationTab({
   const { pending, run, setMsg } = useSaver();
 
   const customer = customers.find((c) => c.id === selCustId);
+  const catHint = revenueCatHint(boot.revenueCats, category, boot.hasAccounting);
 
   // โหลดออเดอร์ที่จะแก้ไข → prefill "ทุก field" (ไม่งั้นค่าที่ไม่ถูก prefill จะทับของเดิมตอนอัปเดต)
   const editing = useRef(false);
@@ -56,7 +58,7 @@ export function QuotationTab({
     setMsg(null);
     setSelCustId(editOrder.customerId);
     setDiscount(editOrder.discount || 0);
-    setCategory(editOrder.category || "รายได้ค่าสินค้า");
+    setCategory(editOrder.category || defaultCat);
     setRemarks(editOrder.remarks || "");
     setIsWht((editOrder.whtPercent || 0) > 0);
     setWhtPct(editOrder.whtPercent > 0 ? editOrder.whtPercent : 3);
@@ -113,7 +115,7 @@ export function QuotationTab({
     setPlanOn(false);
     setPlanRows(defaultPlanRows());
     setSelCustId("");
-    setCategory("รายได้ค่าสินค้า");
+    setCategory(defaultCat);
     onDoneEdit();
   }
 
@@ -281,10 +283,11 @@ export function QuotationTab({
           <label className="block">
             <span className="mb-1 block text-xs font-bold text-muted">ประเภทรายได้ (สำหรับบัญชี)</span>
             <Select value={category} onChange={(e) => setCategory(e.target.value)}>
-              {REVENUE_CATS.map((c) => (
+              {revenueCatOptions(boot.revenueCats, category).map((c) => (
                 <option key={c}>{c}</option>
               ))}
             </Select>
+            {catHint && <span className="mt-1 block text-[11px] text-faint">{catHint}</span>}
           </label>
 
           {/* D146 — แบ่งชำระเป็นงวด (แทน "กำหนดเงื่อนไขมัดจำ" · มัดจำ = แผน 2 งวดที่เปิดมาให้) */}

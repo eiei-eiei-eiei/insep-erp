@@ -52,8 +52,10 @@ export async function getSalesBootstrap() {
     supabase.from("entities").select(ENTITY_DOC_COLS).order("entity_id"),
     supabase
       .from("app_settings")
-      .select("kind, value")
-      .in("kind", ["sales_doc_entity", "sales_revenue_entity", "pos_walkin_contact"]),
+      .select("kind, value, sort")
+      // D148 — income_cat = ลิสต์ "ประเภทรายได้" (หมวดหมู่รายรับของบัญชี · เรียงตาม sort เหมือนหน้าบัญชี)
+      .in("kind", ["sales_doc_entity", "sales_revenue_entity", "pos_walkin_contact", "income_cat"])
+      .order("sort"),
   ]);
 
   let role = "viewer";
@@ -128,8 +130,12 @@ export async function getSalesBootstrap() {
   const posWalkinId = customers.some((c) => c.id === walkinRaw) ? walkinRaw : "";
 
   // D133 — ไม่มีโมดูลผลิต = ประโยคในแอปขายไม่พูดถึงสุรา/ฟอร์ม ภส.
-  const hasProduction = hasModule((await getTenantPlan()).modules, "production");
-  return { role, userName, customers, menu: menuList, company, isVat, posWalkinId, hasProduction };
+  const plan = await getTenantPlan();
+  const hasProduction = hasModule(plan.modules, "production");
+  // D148 — ประเภทรายได้ = หมวดหมู่รายรับของบัญชี (ส่งค่าที่ตั้งจริง · ว่าง = lib ใช้ค่าเริ่มต้น)
+  const revenueCats = st.filter((r) => r.kind === "income_cat").map((r) => String(r.value ?? ""));
+  const hasAccounting = hasModule(plan.modules, "accounting");
+  return { role, userName, customers, menu: menuList, company, isVat, posWalkinId, hasProduction, revenueCats, hasAccounting };
 }
 
 export type OrderRow = {

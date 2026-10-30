@@ -20,6 +20,10 @@ export type SalesBoot = {
   posWalkinId: string;
   /** D133 — ซื้อโมดูลผลิตไหม (ไม่ซื้อ = ประโยคไม่พูดถึงสุรา/ฟอร์ม ภส. · ไม่มีหมวดเมนู "สุรา") */
   hasProduction: boolean;
+  /** D148 — หมวดหมู่รายรับที่ตั้งไว้ในบัญชี (ค่าที่ตั้งจริง · ว่าง = ใช้ค่าเริ่มต้นใน lib/sales/revenueCats) */
+  revenueCats: string[];
+  /** ซื้อโมดูลบัญชีไหม (ไม่ซื้อ = ไม่บอกให้ไปตั้งที่บัญชี) */
+  hasAccounting: boolean;
 };
 
 export type OrderItem = { name: string; qty: number; price: number };
