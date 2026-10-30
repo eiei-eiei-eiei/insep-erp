@@ -18,7 +18,7 @@ export const TENANT_TABLES = [
   "log_ferment_monitor", "log_dilute", "log_ferment_draw", "log_product", "stock_product",
   "log_redistill", "log_redistill_round",
   "transactions", "transaction_items", "tax_summaries", "tax_payments", "tax_filings", "wht_certificates",
-  "sale_menu", "sales_orders", "sales_order_items", "sales_payments", "warehouse_stock", "stock_moves",
+  "sale_menu", "sales_orders", "sales_order_items", "sales_payments", "sales_installments", "warehouse_stock", "stock_moves",
   // D96 — บาร์/POS (แยกขาดจากสต็อก/เอกสารฝั่งผลิตและขายโดยตั้งใจ)
   "bar_category", "bar_item", "bar_customer", "bar_menu", "bar_recipe", "bar_customer_fav",
   // D127 — เหล้าประจำบ้าน/ชุดตกแต่ง (แม่ก่อนลูก: item → house_slot → recipe_slot)
@@ -68,6 +68,7 @@ export const TABLE_LABEL_TH: Partial<Record<TenantTable, string>> = {
   sales_orders: "ออเดอร์ขาย",
   sales_order_items: "รายการในออเดอร์",
   sales_payments: "การรับเงินของออเดอร์",
+  sales_installments: "แผนงวดของออเดอร์",
   warehouse_stock: "สต็อกคลัง",
   stock_moves: "ความเคลื่อนไหวคลัง",
   // D96 — บาร์/POS · ★ ชื่อต้องไม่ซ้ำกับของฝั่งขาย (เมนูขาย / สต็อกคลัง / ความเคลื่อนไหวคลัง)
@@ -124,7 +125,7 @@ export const tableLabel = (t: string): string =>
  *    ผู้ใช้จะกรองหาการแก้ของตารางนั้นไม่เจอ ทั้งที่ระบบบันทึกไว้แล้ว
  */
 export const AUDITED_TABLES: readonly TenantTable[] = [
-  "transactions", "sales_orders", "sales_payments",
+  "transactions", "sales_orders", "sales_payments", "sales_installments",
   "log_material", "log_ferment", "log_distill", "log_distill_run",
   "log_ferment_monitor", "log_dilute", "log_ferment_draw", "log_product",
   "log_redistill", "log_redistill_round",

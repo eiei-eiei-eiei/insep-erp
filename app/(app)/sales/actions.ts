@@ -16,7 +16,8 @@ import {
 } from "@/lib/sales/orders";
 import { revenueAccountFor } from "@/lib/sales/cashAccount";
 import { PAY_METHODS } from "@/lib/sales/payments";
-import { getSalesBootstrap, getOrders, getOrderItems, getOrderPayments, getPendingWarehouse, getWarehouseStock, getSyncHistory, getOrderState, getCustomerId, getSaleMenuFull, getMenuLinkOptions } from "./data";
+import { planActionError, planAmounts, planError, receiveAmountError, shipNowError, isSent, type PlanRowInput } from "@/lib/sales/installments";
+import { getSalesBootstrap, getOrders, getOrderItems, getOrderPayments, getOrderPlan, getPendingWarehouse, getWarehouseStock, getSyncHistory, getOrderState, getCustomerId, getSaleMenuFull, getMenuLinkOptions } from "./data";
 
 export type SaveResult = { ok: boolean; error?: string; data?: unknown };
 function fail(error: string): SaveResult {
@@ -225,6 +226,19 @@ async function resolveSalesVat(
   return { isVat };
 }
 
+type SalesDocType = "sales_inv" | "sales_tax" | "sales_rcpt";
+/**
+ * ขอเลขเอกสาร 1 ใบ — รูปแบบตามที่ตั้งไว้ใน ตั้งค่า → เลขเอกสาร (D100) · เป็นเลขของ **วันที่บนเอกสาร**
+ * 🚨 เดิมทิ้ง `error` → ออกเลขไม่ได้แล้วได้ `null` = เอกสารไม่มีเลขที่โดยไม่มีอะไรฟ้อง
+ *    ตอนนี้ตัวออกเลขมีด่านสิทธิ์/รูปแบบที่ raise ได้จริง ต้องหยุดทั้งรายการแทน
+ * ★ จุดเดียวในไฟล์ที่ขอเลข (docNumberingSql.test.ts ล็อก) — ใบแจ้งหนี้รายงวด (D145) ก็มาทางนี้
+ */
+async function nextSalesDocNo(supabase: Awaited<ReturnType<typeof db>>, type: SalesDocType, docDate: string): Promise<string> {
+  const { data, error } = await supabase.rpc("fn_next_doc_no", { p_type: type, p_entity: null, p_date: docDate });
+  if (error || !data) throw new Error(error ? mapDbError(error) : "ออกเลขเอกสารไม่สำเร็จ");
+  return data as string;
+}
+
 /** config รายรับขาย (บัญชี + กิจการ) จาก app_settings — go-live ต้องตั้งค่า */
 async function loadRevenueConfig(supabase: Awaited<ReturnType<typeof db>>) {
   const { data } = await supabase
@@ -270,6 +284,20 @@ async function applyOrderActionCore(
     return { ok: false, error: "ยังไม่ได้ตั้งกิจการที่รับรายได้จากการขาย — ไปที่ ตั้งค่า → กิจการ → การ์ด “กิจการและบัญชีที่รับรายได้จากการขาย”" };
   }
 
+  // ── D145 — แบ่งชำระหลายงวด: ปุ่มต้องตรงกับชนิดออเดอร์ · รับตามลำดับ · ยอดงวดสุดท้ายต้องเต็ม ──
+  //   (RPC ตรวจลำดับ/ยอดซ้ำอีกชั้น — ที่นี่เพื่อข้อความไทยที่ชัดก่อนขอเลขเอกสาร)
+  const plan = order.installments ?? [];
+  const planErr = planActionError(action, plan.length > 0);
+  if (planErr) return { ok: false, error: planErr };
+  if (action === "RECEIVE_INSTALLMENT") {
+    const e = receiveAmountError(plan, Number(payload.installmentSeq), Number(payload.amount) || 0, order.outstandingBalance);
+    if (e) return { ok: false, error: e };
+  }
+  if (action === "SHIP_PLAN") {
+    const e = shipNowError(order.status);
+    if (e) return { ok: false, error: e };
+  }
+
   // ข้อมูลคู่ค้า (taxId/branch/address) จาก contacts
   const customerId = await getCustomerId(quNo);
   const [{ data: contactRow }, items] = await Promise.all([
@@ -289,7 +317,7 @@ async function applyOrderActionCore(
   // 4.3 — กิจการไม่จด VAT ไม่มีสิทธิ์ได้เลขใบกำกับภาษี (ด่านสุดท้ายคือ trigger ใน 0036)
   const vat = await resolveSalesVat(supabase, config.entityId);
   if ('conflict' in vat) return { ok: false, error: vat.conflict };
-  const need = neededSerials(action, order, vat.isVat);
+  const need = neededSerials(action, order, vat.isVat, { seq: payload.installmentSeq, amount: payload.amount });
   const gen: GeneratedSerials = {};
 
   // ── D100 เฟส 3 — วันที่เอกสาร + เลขที่กรอกเอง ──────────────────────────────────
@@ -308,16 +336,8 @@ async function applyOrderActionCore(
   if (manual.pay && !wantPay) return { ok: false, error: "ครั้งนี้ไม่ได้ออกใบกำกับภาษี/ใบเสร็จใหม่ — ช่องเลขต้องว่าง" };
   const payType = vat.isVat ? "sales_tax" : "sales_rcpt";
 
-  /**
-   * ขอเลขเอกสาร 1 ใบ — รูปแบบตามที่ตั้งไว้ใน ตั้งค่า → เลขเอกสาร (D100) · เป็นเลขของ **วันที่บนเอกสาร**
-   * 🚨 เดิมทิ้ง `error` → ออกเลขไม่ได้แล้วได้ `null` = เอกสารไม่มีเลขที่โดยไม่มีอะไรฟ้อง
-   *    ตอนนี้ตัวออกเลขมีด่านสิทธิ์/รูปแบบที่ raise ได้จริง ต้องหยุดทั้งรายการแทน
-   */
-  async function nextDoc(type: "sales_inv" | "sales_tax" | "sales_rcpt"): Promise<string> {
-    const { data, error } = await supabase.rpc("fn_next_doc_no", { p_type: type, p_entity: null, p_date: docDate });
-    if (error || !data) throw new Error(error ? mapDbError(error) : "ออกเลขเอกสารไม่สำเร็จ");
-    return data as string;
-  }
+  /** ขอเลขเอกสาร 1 ใบ ของวันที่บนเอกสาร (ดู nextSalesDocNo) */
+  const nextDoc = (type: SalesDocType) => nextSalesDocNo(supabase, type, docDate);
   /** เลขที่เขียนบนใบกระดาษไปแล้ว — ต้องยังไม่มีเอกสารใช้ (สิทธิ์ sales.config ตรวจใน RPC) */
   async function manualDoc(type: "sales_inv" | "sales_tax" | "sales_rcpt", no: string): Promise<string> {
     const bad = manualNoError(no);
@@ -410,6 +430,81 @@ export async function editPaymentMethodAction(input: {
   if (error) return fail(mapDbError(error));
   revalidatePath("/sales");
   revalidatePath("/accounting");
+  return { ok: true, data };
+}
+
+// ── D145 — แบ่งชำระหลายงวด ──────────────────────────────────────────────────────
+
+/** แผนงวดของออเดอร์ (ว่าง = จ่ายแบบเดิม) */
+export async function getOrderPlanAction(quNo: string) {
+  return getOrderPlan(quNo);
+}
+
+/**
+ * ตั้ง/ปรับแผนงวด — ส่งมาเฉพาะงวดที่ยังไม่ล็อก (รับแล้ว/ออกใบแจ้งหนี้แล้วคงไว้ตามเดิม)
+ * ★ ยอดเป็นบาทคิดที่นี่ด้วย `planAmounts()` (งวดสุดท้ายรับเศษ) · RPC ตรวจผลรวมซ้ำ
+ * ★ ส่งว่างตอนยังไม่มีงวดล็อก = ยกเลิกแผน (กลับเป็นจ่ายครั้งเดียว)
+ */
+export async function setOrderPlanAction(quNo: string, rows: PlanRowInput[]): Promise<SaveResult> {
+  const supabase = await db();
+  const order = await getOrderState(quNo);
+  if (!order) return fail("ไม่พบออเดอร์นี้ในระบบ");
+  const { data: so, error: soErr } = await supabase
+    .from("sales_orders").select("net_payable, grand_total").eq("qu_no", quNo).maybeSingle();
+  if (soErr) return fail(mapDbError(soErr));
+  const net = Number(so?.net_payable) || Number(so?.grand_total) || 0;
+  const plan = order.installments ?? [];
+  const lockedUnpaid = plan.filter((i) => !i.paid && i.invNo).reduce((s, i) => s + i.amount, 0);
+  const locked = plan.some((i) => i.paid || i.invNo);
+  const remain = Math.round((order.outstandingBalance - lockedUnpaid) * 100) / 100;
+
+  let payload: Record<string, unknown>[] = [];
+  if (rows.length || locked) {
+    const err = planError(rows, net, remain, isSent(order.status));
+    if (err) return fail(err);
+    const amounts = planAmounts(net, rows.map((r) => r.percent), remain);
+    payload = rows.map((r, i) => ({
+      label: r.label.trim(), percent: r.percent, amount: amounts[i],
+      due_date: r.dueDate || null, ship_point: r.shipPoint,
+    }));
+  }
+  const { data, error } = await supabase.rpc("fn_sales_set_plan", { p_qu_no: quNo, p_rows: payload });
+  if (error) return fail(mapDbError(error));
+  revalidatePath("/sales");
+  return { ok: true, data };
+}
+
+/**
+ * ใบแจ้งหนี้ของงวดถัดไป (ยังไม่ลงบัญชี — เหมือนใบแจ้งหนี้มัดจำ D45) · เลขชุดใบแจ้งหนี้ของวันที่บนเอกสาร
+ */
+export async function issueInstallmentInvoiceAction(input: {
+  quNo: string; seq: number; docDate?: string; dueDate?: string;
+}): Promise<SaveResult> {
+  const dateErr = docDateError(input.docDate);
+  if (dateErr) return fail(dateErr);
+  const docDate = input.docDate || bangkokDateISO();
+  const supabase = await db();
+  let invNo: string;
+  try {
+    invNo = await nextSalesDocNo(supabase, "sales_inv", docDate);
+  } catch (e) {
+    return fail((e as Error).message);
+  }
+  const { data, error } = await supabase.rpc("fn_sales_installment_invoice", {
+    p_qu_no: input.quNo, p_seq: input.seq, p_inv_no: invNo,
+    p_inv_date: docDate, p_due_date: input.dueDate || null,
+  });
+  if (error) return fail(mapDbError(error));
+  revalidatePath("/sales");
+  return { ok: true, data };
+}
+
+/** ยกเลิกใบแจ้งหนี้ของงวดที่ยังไม่รับเงิน (เพื่อปรับยอดงวด) — หัวหน้าฝ่ายขายขึ้นไป */
+export async function voidInstallmentInvoiceAction(quNo: string, seq: number): Promise<SaveResult> {
+  const supabase = await db();
+  const { data, error } = await supabase.rpc("fn_sales_void_installment_invoice", { p_qu_no: quNo, p_seq: seq });
+  if (error) return fail(mapDbError(error));
+  revalidatePath("/sales");
   return { ok: true, data };
 }
 

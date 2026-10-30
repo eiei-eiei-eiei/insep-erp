@@ -16,6 +16,7 @@
 import { round2, reverseVatWht, toAccItem, taxDocNo, type AccItem } from "./calc";
 import { revenueAccountFor } from "./cashAccount";
 import { PAY_LABEL, payLabelFor } from "./payments";
+import { installmentLabel, statusAfterInstallment, statusAfterShipNow, type Installment } from "./installments";
 
 export type OrderAction =
   | "DEPOSIT_AND_SEND"
@@ -24,7 +25,10 @@ export type OrderAction =
   | "ISSUE_INVOICE_FULL"
   | "ISSUE_INVOICE_DEPOSIT"
   | "PAY_BALANCE"
-  | "FULL_PAYMENT_LATER";
+  | "FULL_PAYMENT_LATER"
+  // D145 — แบ่งชำระหลายงวด
+  | "RECEIVE_INSTALLMENT"
+  | "SHIP_PLAN";
 
 /** สถานะใหม่ D45 — ออกใบแจ้งหนี้มัดจำแล้ว รอลูกค้าโอน (ยังไม่มีรายการบัญชี) */
 export const STATUS_AWAIT_DEPOSIT = "รอชำระมัดจำ";
@@ -49,6 +53,8 @@ export type OrderState = {
   /** D89 — เลขใบเสร็จของกิจการที่ไม่จด VAT (คู่ขนานกับ taxNo1/taxNo2) */
   rcptNo1?: string;
   rcptNo2?: string;
+  /** D145 — แผนงวด (ว่าง/ไม่ส่ง = จ่ายแบบเดิม) */
+  installments?: Installment[];
 };
 
 export type ActionPayload = {
@@ -57,6 +63,8 @@ export type ActionPayload = {
   docDate?: string; // 'yyyy-MM-dd'
   creditDays?: number;
   chequeDetails?: string;
+  /** D145 — รับเงินของงวดไหน (RECEIVE_INSTALLMENT) */
+  installmentSeq?: number;
   /**
    * D100 เฟส 3 — เลขที่เขียนบนใบกระดาษไปแล้ว (ช่วงระบบล่ม) · ว่าง = ให้ระบบออกเลขเอง
    *   inv = ใบแจ้งหนี้ · pay = ใบกำกับภาษี/ใบเสร็จของการรับเงินครั้งนี้
@@ -148,6 +156,8 @@ export type RevenuePayload = {
   paymentLabel: string;
   paymentMethod: string;
   chequeDetail: string;
+  /** D145 — รับเงินของงวดไหน → sales_payments.installment_seq (RPC ตรวจลำดับ + ปรับยอดงวด) */
+  installmentSeq?: number;
 };
 
 export type ProcessResult = {
@@ -202,7 +212,13 @@ export type NeededSerials = {
   rcpt2?: boolean;
 };
 
-export function neededSerials(action: OrderAction, order: OrderState, isVat = true): NeededSerials {
+export function neededSerials(
+  action: OrderAction,
+  order: OrderState,
+  isVat = true,
+  /** D145 — งวดที่รับ + ยอด (ตัดสินว่าครั้งนี้ส่งคลังด้วยไหม → ต้องมีเลขใบแจ้งหนี้/ใบส่งสินค้า) */
+  inst?: { seq?: number; amount?: number },
+): NeededSerials {
   const noInv = !order.invNo;
   /**
    * ช่องรับเงินมี 2 ช่องเสมอ ไม่ว่าจดหรือไม่จด VAT — ต่างแค่คอลัมน์ที่ไปลง
@@ -233,6 +249,16 @@ export function neededSerials(action: OrderAction, order: OrderState, isVat = tr
       slot2 = noSlot2; break;
     case "FULL_PAYMENT_LATER":
       slot1 = noSlot1; break;
+    case "RECEIVE_INSTALLMENT": {
+      // ใบเสร็จของงวดนี้ = เลขใหม่เสมอ (เก็บที่แถวการรับเงิน ไม่ใช่ช่องของออเดอร์)
+      const it = (order.installments ?? []).find((i) => i.seq === inst?.seq);
+      const after = (Number(order.outstandingBalance) || 0) - (Number(inst?.amount) || 0);
+      inv = noInv && !!it && statusAfterInstallment(order.status, it.shipPoint, after).ship;
+      slot1 = true;
+      break;
+    }
+    case "SHIP_PLAN":
+      inv = noInv; break;
   }
 
   // 🚨 ไม่จด VAT ห้ามได้เลขใบกำกับภาษีเด็ดขาด (ประมวลรัษฎากร ม.86/13) —
@@ -263,8 +289,8 @@ export function processOrder(
   const outstandingBalance = Number(order.outstandingBalance) || 0;
   const update: OrderUpdate = { status: currentStatus };
 
-  // chequeDetails (S2)
-  if (payload.chequeDetails) {
+  // chequeDetails (S2) · D145 รับเงินรายงวด: เช็คอยู่ที่แถวการรับเงินของงวดนั้น ไม่ลงช่องเดิมของออเดอร์
+  if (payload.chequeDetails && action !== "RECEIVE_INSTALLMENT") {
     if (action === "DEPOSIT_AND_SEND") update.checkDetail1 = payload.chequeDetails;
     else update.checkDetail2 = payload.chequeDetails;
   }
@@ -310,6 +336,31 @@ export function processOrder(
     update.docToPrint = "invoice";
     update.nextStatus = "ส่งของแล้วรอชำระเงิน";
     dateField = "docDate1"; // 22
+  } else if (action === "RECEIVE_INSTALLMENT") {
+    // ★ D145 — รับเงินของงวดหนึ่ง (ตรวจลำดับ/ยอดแล้วที่ receiveAmountError ฝั่ง server + ซ้ำใน RPC)
+    //   🚨 ไม่ลงช่องเลขเดิมของออเดอร์ (tax_no1/2) — ใบเสร็จรายงวดเก็บเลขที่แถวการรับเงิน
+    const inst = (order.installments ?? []).find((i) => i.seq === payload.installmentSeq);
+    const amt = round2(Number(payload.amount) || 0);
+    const after = round2(outstandingBalance - amt);
+    const st = statusAfterInstallment(currentStatus, !!inst?.shipPoint, after);
+    update.status = st.status;
+    if (st.nextStatus) update.nextStatus = st.nextStatus;
+    update.deposit = round2((Number(order.deposit) || 0) + amt); // รับไปแล้วทั้งหมด (เอกสารใช้หัก)
+    update.outstandingBalance = after;
+    update.paymentMethod = payload.method;
+    if (st.ship) {
+      if (!order.invNo && gen.invNo) update.invNo = gen.invNo;
+      update.docToPrint = "invoice";
+      dateField = "docDate1";
+    }
+  } else if (action === "SHIP_PLAN") {
+    // ★ D145 — ส่งคลังตอนนี้ (ก่อนถึงจุดส่งของ) · ไม่มีการรับเงิน
+    const st = statusAfterShipNow(outstandingBalance);
+    update.status = st.status;
+    update.nextStatus = st.nextStatus;
+    if (!order.invNo && gen.invNo) update.invNo = gen.invNo;
+    update.docToPrint = "invoice";
+    dateField = "docDate1";
   } else if (action === "ISSUE_INVOICE_FULL") {
     update.status = "รอชำระเงิน (จ่ายเต็ม)";
     if (!order.invNo && gen.invNo) update.invNo = gen.invNo;
@@ -361,7 +412,15 @@ export function processOrder(
     isPayment = true;
     isFirstPayment = false;
     accNet = outstandingBalance;
+  } else if (action === "RECEIVE_INSTALLMENT") {
+    // D145 — ถอด VAT/WHT ต่องวดแบบเดียวกับมัดจำ · รายการสินค้าแนบเฉพาะงวดแรกที่รับ (เหมือนมัดจำ S4)
+    isPayment = true;
+    isFirstPayment = (Number(order.deposit) || 0) === 0;
+    accNet = round2(Number(payload.amount) || 0);
   }
+  const inst = action === "RECEIVE_INSTALLMENT"
+    ? (order.installments ?? []).find((i) => i.seq === payload.installmentSeq)
+    : undefined;
 
   let revenue: RevenuePayload | null = null;
   let lineMsg: string | null = null;
@@ -386,13 +445,18 @@ export function processOrder(
       ? items.map((it) => toAccItem(it.name, Number(it.qty), Number(it.price), entityIsVat))
       : [];
 
-    const docNo = taxDocNo(
-      { taxNo2: update.taxNo2, rcptNo2: update.rcptNo2, taxNo1: update.taxNo1, rcptNo1: update.rcptNo1, invNo: update.invNo },
-      { taxNo2: order.taxNo2, rcptNo2: order.rcptNo2, taxNo1: order.taxNo1, rcptNo1: order.rcptNo1, invNo: order.invNo },
-    );
+    // D145 — ใบเสร็จรายงวดได้เลขใหม่ทุกงวด (ไม่อยู่ในช่องเลขของออเดอร์)
+    const docNo = inst
+      ? gen.taxNo1 || gen.rcptNo1 || ""
+      : taxDocNo(
+          { taxNo2: update.taxNo2, rcptNo2: update.rcptNo2, taxNo1: update.taxNo1, rcptNo1: update.rcptNo1, invNo: update.invNo },
+          { taxNo2: order.taxNo2, rcptNo2: order.rcptNo2, taxNo1: order.taxNo1, rcptNo1: order.rcptNo1, invNo: order.invNo },
+        );
 
     const orderRefForKey = order.orderNo || order.quNo;
-    const idempotencyKey = action === "PAY_BALANCE" ? `${orderRefForKey}-balance` : orderRefForKey;
+    const idempotencyKey = inst
+      ? `${orderRefForKey}-i${inst.seq}` // กดซ้ำงวดเดิม = duplicate · งวดอื่นได้ key ของตัวเอง
+      : action === "PAY_BALANCE" ? `${orderRefForKey}-balance` : orderRefForKey;
 
     revenue = {
       idempotencyKey,
@@ -415,14 +479,15 @@ export function processOrder(
       taxInvoiceNo: docNo,
       taxInvoiceDate: payload.docDate || today(),
       items: accItems,
-      // isPayment เป็นจริงเฉพาะ action รับเงิน ⇒ payLabelFor ไม่คืน null ตรงนี้
-      paymentLabel: payLabelFor(action) ?? "",
+      // isPayment เป็นจริงเฉพาะ action รับเงิน ⇒ ป้ายไม่ว่าง · รายงวดใช้ชื่องวด
+      paymentLabel: inst ? installmentLabel(inst) : payLabelFor(action) ?? "",
       paymentMethod: payload.method ?? "",
       chequeDetail: payload.chequeDetails ?? "",
+      ...(inst ? { installmentSeq: inst.seq } : {}),
     };
 
     // LINE 2.2 — แจ้งรับชำระเงิน (ป้ายชุดเดียวกับแถว sales_payments)
-    const actionLabel = payLabelFor(action) ?? PAY_LABEL.full;
+    const actionLabel = inst ? installmentLabel(inst) : payLabelFor(action) ?? PAY_LABEL.full;
     const amtFmt = accNet.toLocaleString("th-TH", { minimumFractionDigits: 0 });
     const orderRef = order.orderNo || order.quNo;
     const remainingBalance =

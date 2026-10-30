@@ -405,6 +405,9 @@ const ACTION_TITLES: Record<OrderAction, string> = {
   ISSUE_INVOICE_DEPOSIT: "ออกใบแจ้งหนี้ค่ามัดจำ",
   PAY_BALANCE: "ชำระยอดค้าง",
   FULL_PAYMENT_LATER: "ชำระเต็มจำนวน",
+  // D145 — แบ่งชำระหลายงวด (หน้าจอมาในเฟส 3c)
+  RECEIVE_INSTALLMENT: "รับชำระงวด",
+  SHIP_PLAN: "ส่งคลังตอนนี้",
 };
 
 function PaymentDialog({

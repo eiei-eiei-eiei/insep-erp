@@ -58,7 +58,8 @@ function pastDateError(d: string | undefined, today: string, label: string): str
 export function actionPostsRevenue(action: OrderAction): boolean {
   return (
     action === "DEPOSIT_AND_SEND" || action === "FULL_PAYMENT_AND_SEND" ||
-    action === "FULL_PAYMENT_LATER" || action === "PAY_BALANCE"
+    action === "FULL_PAYMENT_LATER" || action === "PAY_BALANCE" ||
+    action === "RECEIVE_INSTALLMENT" // D145
   );
 }
 

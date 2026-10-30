@@ -4,6 +4,7 @@ import { hasModule } from "@/lib/shared/workspaces";
 import { createClient } from "@/lib/supabase/server";
 import { formatThaiDate, type OrderState } from "@/lib/sales/orders";
 import type { SalesPayment } from "@/lib/sales/payments";
+import type { Installment } from "@/lib/sales/installments";
 import { companyFromEntity, pickDocEntity, type EntityDocRow } from "@/lib/sales/company";
 import { fetchAllRows } from "@/lib/shared/paginate";
 import { mustRead } from "@/lib/shared/dbError";
@@ -304,6 +305,47 @@ export async function getOrderPayments(quNo: string): Promise<SalesPayment[]> {
   return (data ?? []).map((r) => mapPayment(r as Record<string, unknown>));
 }
 
+/**
+ * แผนงวดของออเดอร์ (D145) — ว่าง = จ่ายแบบเดิม
+ * ★ "รับแล้ว" = มีแถวการรับเงินของงวดนั้นที่บิลยังไม่ถูกยกเลิก (กติกาเดียวกับ sales_installment_paid ใน 0101)
+ * 🚨 อ่านไม่ได้ต้องฟ้อง (D89) — คืนว่างเงียบ ๆ = ออเดอร์แบ่งงวดถูกมองเป็นจ่ายครั้งเดียว
+ */
+export async function getOrderPlan(quNo: string): Promise<Installment[]> {
+  const supabase = await db();
+  const [inst, pays] = await Promise.all([
+    supabase.from("sales_installments")
+      .select("seq, label, percent, amount, due_date, inv_no, inv_date, ship_point")
+      .eq("qu_no", quNo).order("seq"),
+    supabase.from("sales_payments").select("installment_seq, tx_id").eq("qu_no", quNo).not("installment_seq", "is", null),
+  ]);
+  const rows = mustRead(inst, "แผนงวดของออเดอร์") ?? [];
+  if (!rows.length) return [];
+  const payRows = mustRead(pays, "การรับเงินของออเดอร์") ?? [];
+  const txIds = payRows.map((p) => p.tx_id as string).filter(Boolean);
+  const voided = new Set<string>();
+  if (txIds.length) {
+    const tx = mustRead(
+      await supabase.from("transactions").select("tx_id, status").in("tx_id", txIds),
+      "บิลรายรับของงวด",
+    );
+    for (const t of tx ?? []) if (t.status === "ยกเลิก") voided.add(t.tx_id as string);
+  }
+  const paidSeqs = new Set(
+    payRows.filter((p) => !p.tx_id || !voided.has(p.tx_id as string)).map((p) => Number(p.installment_seq)),
+  );
+  return rows.map((r) => ({
+    seq: Number(r.seq),
+    label: (r.label as string) ?? "",
+    percent: r.percent == null ? null : Number(r.percent),
+    amount: Number(r.amount) || 0,
+    dueDate: (r.due_date as string) ?? "",
+    invNo: (r.inv_no as string) ?? "",
+    invDate: (r.inv_date as string) ?? "",
+    shipPoint: !!r.ship_point,
+    paid: paidSeqs.has(Number(r.seq)),
+  }));
+}
+
 /** ออเดอร์รอคลังจัดส่ง + items */
 export async function getPendingWarehouse() {
   const supabase = await db();
@@ -401,7 +443,10 @@ export async function getOrderState(quNo: string): Promise<OrderState | null> {
     "สถานะออเดอร์",
   );
   if (!data) return null;
+  // D145 — แผนงวด (processOrder ตัดสินสถานะ/การส่งคลังจากธงจุดส่งของ + งวดที่รับแล้ว)
+  const installments = await getOrderPlan(quNo);
   return {
+    installments,
     quNo: data.qu_no as string,
     orderNo: (data.order_no as string) ?? "",
     status: (data.status as string) ?? "",
