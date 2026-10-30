@@ -1200,4 +1200,9 @@ npm run db:audit-grants
 ## D146 — ตัวแก้งวดในใบเสนอราคา (migration 0102)
 
 - [ ] ลง migration ทุก DB **ก่อน** git push: `npm run db:push:all` (dry-run ต้องเห็นแค่ `20261030000102_sales_installment_invoice_status.sql`) → `npm run db:push:all -- --apply --backup="D:/insep-erp-backup/2026-10-30-0102"` → `npm run db:audit-grants` → `npm run test:tenant`
-- [ ] 🚨 **อย่า git push จนกว่าเฟส 3c เสร็จ** — ออเดอร์แบ่งงวดยังรับเงินจากหน้าจอไม่ได้
+- [x] ~~🚨 อย่า git push จนกว่าเฟส 3c เสร็จ~~ — 3c เสร็จแล้ว (D147)
+
+## D147 — รับชำระรายงวด + เอกสารรายงวด (ไม่มี migration)
+
+- [ ] git push ได้แล้ว (0098-0102 ต้องลงครบทุก DB ก่อน — ลงแล้ว 2026-10-30) · งานแบ่งชำระหลายงวด D143-D147 จบ
+- [ ] ถ้าลูกค้ารับเงินสดบ่อย ตั้ง **ตั้งค่า → กิจการ → บัญชีที่เงินสดเข้า** (D142) ก่อนเริ่มรับงวด

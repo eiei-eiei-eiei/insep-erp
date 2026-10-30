@@ -153,6 +153,28 @@ export function planTermsLines(rows: { seq: number; label: string; percent: numb
   );
 }
 
+/**
+ * ตัวเลขบนใบแจ้งหนี้/ใบเสร็จของงวด k (D147 · เฟส 3c)
+ *   ยอดตามสัญญา · รับไปแล้วก่อนหน้า · งวดนี้ · คงเหลือหลังงวดนี้ · "งวดที่ k/n"
+ * ★ "รับไปแล้วก่อนหน้า" = งวดที่เลขน้อยกว่า k ที่รับแล้ว (ยอดจริงของงวด — เก็บยอดที่รับจริงตั้งแต่ 0101)
+ * ★ คงเหลือ = ยอดตามสัญญา − รับก่อนหน้า − งวดนี้ (ไม่อ่านยอดค้างปัจจุบัน — พิมพ์ซ้ำทีหลังต้องได้เลขเดิม)
+ */
+export function installmentDocFigures(plan: Installment[], seq: number, net: number) {
+  const sorted = [...plan].sort((a, b) => a.seq - b.seq);
+  const me = sorted.find((i) => i.seq === seq);
+  const paidBefore = r2(sorted.filter((i) => i.seq < seq && i.paid).reduce((s, i) => s + i.amount, 0));
+  const amount = me ? r2(me.amount) : 0;
+  return {
+    k: seq,
+    n: sorted.length,
+    label: me?.label ?? "",
+    contract: r2(net),
+    paidBefore,
+    amount,
+    remaining: r2(net - paidBefore - amount),
+  };
+}
+
 /** action ของออเดอร์แบ่งงวด — ปุ่มแบบเดิม (มัดจำ/ยอดค้าง/จ่ายเต็ม/ส่งเครดิต) ใช้กับออเดอร์ที่มีแผนไม่ได้ */
 const PLAN_ACTIONS = ["RECEIVE_INSTALLMENT", "SHIP_PLAN"];
 

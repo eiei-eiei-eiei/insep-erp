@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import {
-  STATUS_INSTALLMENT, installmentLabel, nextUnpaid, isLocked, planAmounts, planError, defaultPlanRows, planTermsLines,
+  STATUS_INSTALLMENT, installmentLabel, nextUnpaid, isLocked, planAmounts, planError, defaultPlanRows, planTermsLines, installmentDocFigures,
   receiveAmountError, statusAfterInstallment, statusAfterShipNow, shipNowError, planActionError,
   type Installment,
 } from "./installments";
-import { PAY_LABEL } from "./payments";
+import { PAY_LABEL, paymentForDoc } from "./payments";
 import { processOrder, neededSerials, type OrderState, type RevenueConfig } from "./orders";
 
 /**
@@ -247,5 +247,54 @@ describe("S16 ใบเสนอราคา (D146)", () => {
     const uq = readdirSync(dir).filter((x) => x.endsWith(".sql")).sort().reverse()
       .find((x) => readFileSync(`${dir}/${x}`, "utf8").includes("create or replace function fn_update_quotation("));
     expect(readFileSync(`${dir}/${uq}`, "utf8")).toMatch(/if v_status <> 'รอคอนเฟิร์ม' then/);
+  });
+});
+
+// ── D147 · เฟส 3c เอกสารรายงวด + หน้าจัดการออเดอร์ ───────────────────────────────
+describe("S16 ตัวเลขบนเอกสารรายงวด (D147)", () => {
+  const plan = [
+    inst(1, 500, { paid: true, label: "มัดจำ" }),
+    inst(2, 190, { paid: true }),
+    inst(3, 310, { invNo: "INV-3", label: "ส่งของ" }),
+  ];
+  it("ใบเสร็จงวด 2: ตามสัญญา · รับก่อนหน้า (งวด 1) · งวดนี้ · คงเหลือ", () => {
+    expect(installmentDocFigures(plan, 2, 1000)).toEqual({ k: 2, n: 3, label: "งวด 2", contract: 1000, paidBefore: 500, amount: 190, remaining: 310 });
+  });
+  it("ใบแจ้งหนี้งวดสุดท้าย: คงเหลือหลังงวดนี้ = 0", () => {
+    expect(installmentDocFigures(plan, 3, 1000)).toMatchObject({ k: 3, n: 3, paidBefore: 690, amount: 310, remaining: 0 });
+  });
+  it("งวดแรก: ไม่มีรับก่อนหน้า", () => {
+    expect(installmentDocFigures(plan, 1, 1000)).toMatchObject({ paidBefore: 0, amount: 500, remaining: 500 });
+  });
+  it("พิมพ์ซ้ำหลังรับงวดถัดไปแล้ว ตัวเลขของใบเดิมไม่ขยับ (ไม่อ่านยอดค้างปัจจุบัน)", () => {
+    const later = plan.map((i) => (i.seq === 3 ? { ...i, paid: true } : i));
+    expect(installmentDocFigures(later, 2, 1000)).toEqual(installmentDocFigures(plan, 2, 1000));
+  });
+});
+
+describe("S16 หน้าจอ/เอกสาร (D147)", () => {
+  it("ใบเสร็จรายงวดจับคู่การรับเงินด้วยเลขงวด", () => {
+    const pays = [
+      { seq: 1, label: "งวดที่ 1 (มัดจำ)", amount: 500, method: "เงินสด", chequeDetail: "", docDate: "", docNo: "T1", txId: "", installmentSeq: 1 },
+      { seq: 2, label: "งวดที่ 2", amount: 190, method: "โอนเงิน", chequeDetail: "", docDate: "", docNo: "T2", txId: "", installmentSeq: 2 },
+    ];
+    expect(paymentForDoc("tax-invoice-installment:2", pays)?.docNo).toBe("T2");
+    expect(paymentForDoc("tax-invoice-installment:3", pays)).toBeNull();
+  });
+  it("ออเดอร์แบ่งงวดไม่โชว์ปุ่มรับเงินแบบเดิม (server ปฏิเสธอยู่แล้ว — ปุ่มที่กดแล้วพังห้ามมี)", () => {
+    const src = readFileSync("app/(app)/sales/_components/OrdersTab.tsx", "utf8");
+    for (const a of ["ISSUE_INVOICE_DEPOSIT\"", "action: \"DEPOSIT_AND_SEND\" })}>รับมัดจำ", "PAY_BALANCE\" })}", "FULL_PAYMENT_LATER\" })}"]) {
+      const at = src.indexOf(a);
+      expect(at, a).toBeGreaterThan(0);
+    }
+    // ทุกเงื่อนไขของปุ่มรับเงินแบบเดิมต้องมี !hasPlan(o)
+    const legacyGates = [...src.matchAll(/\{canWrite && o\.status[^\n]*?&& \(\n/g)].map((m) => m[0]);
+    expect(legacyGates.length).toBeGreaterThanOrEqual(5);
+    for (const g of legacyGates) expect(g, g).toMatch(/hasPlan\(o\)/);
+  });
+  it("เอกสารรายงวด: ผู้ไม่จด VAT ห้ามมีคำว่าใบกำกับภาษี (ม.86/13)", () => {
+    const src = readFileSync("app/(app)/sales/_components/print.ts", "utf8");
+    expect(src).toMatch(/isVat \? `ใบกำกับภาษี\/ใบเสร็จรับเงิน \(\$\{tag\}\)` : `ใบเสร็จรับเงิน \(\$\{tag\}\)`/);
+    expect(src).toContain("installmentDocFigures(plan, seq, netPayable)");
   });
 });

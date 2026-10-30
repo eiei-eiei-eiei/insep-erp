@@ -176,6 +176,10 @@ export type OrderRow = {
   // D89 — เลขใบเสร็จของกิจการที่ไม่จด VAT (คู่ขนานกับ taxNo1/taxNo2)
   rcptNo1: string;
   rcptNo2: string;
+  /** D147 — แผนงวด (ว่าง = จ่ายแบบเดิม) · getOrders เติมให้ · ที่อื่นที่ไม่เติม = ไม่มีแผน */
+  installments?: Installment[];
+  /** D147 — การรับเงินรายงวด (บิลยังไม่ยกเลิก) */
+  instPayments?: SalesPayment[];
 };
 
 const ORDER_COLS =
@@ -264,7 +268,13 @@ export async function getOrders(): Promise<OrderRow[]> {
     fetchAllOrders(supabase),
     contactInfoMap(supabase),
   ]);
-  return orders.map((r) => mapOrder(r, cmap));
+  // D147 — แผนงวด + การรับเงินรายงวด (การ์ดออเดอร์โชว์ตารางงวด) · คำขอเดียวทั้งหน้า
+  const { plans, payments } = await loadPlans(supabase);
+  return orders.map((r) => ({
+    ...mapOrder(r, cmap),
+    installments: plans.get(r.qu_no as string) ?? [],
+    instPayments: payments.get(r.qu_no as string) ?? [],
+  }));
 }
 
 export async function getOrderItems(quNo: string) {
@@ -288,9 +298,10 @@ function mapPayment(r: Record<string, unknown>): SalesPayment {
     docDate: (r.doc_date as string) ?? "",
     docNo: (r.doc_no as string) ?? "",
     txId: (r.tx_id as string) ?? "",
+    installmentSeq: r.installment_seq == null ? null : Number(r.installment_seq),
   };
 }
-const PAYMENT_COLS = "qu_no, seq, label, amount, method, cheque_detail, doc_date, doc_no, tx_id";
+const PAYMENT_COLS = "qu_no, seq, label, amount, method, cheque_detail, doc_date, doc_no, tx_id, installment_seq";
 
 /**
  * การรับเงินของออเดอร์ทีละครั้ง (D143) — ใบเสร็จอ่านวิธีชำระ/เช็คของครั้งนั้นจากที่นี่
@@ -312,14 +323,28 @@ export async function getOrderPayments(quNo: string): Promise<SalesPayment[]> {
  */
 export async function getOrderPlan(quNo: string): Promise<Installment[]> {
   const supabase = await db();
-  const [inst, pays] = await Promise.all([
-    supabase.from("sales_installments")
-      .select("seq, label, percent, amount, due_date, inv_no, inv_date, ship_point")
-      .eq("qu_no", quNo).order("seq"),
-    supabase.from("sales_payments").select("installment_seq, tx_id").eq("qu_no", quNo).not("installment_seq", "is", null),
-  ]);
+  return (await loadPlans(supabase, [quNo])).plans.get(quNo) ?? [];
+}
+
+/**
+ * แผนงวด + การรับเงินรายงวด ของหลายออเดอร์ในคำขอเดียว (D147) — แหล่งเดียวของ getOrderPlan/getOrders/คิวคลัง
+ * ★ ไม่ส่ง quNos = ทุกออเดอร์ของลูกค้ารายนี้ (RLS กรอง tenant)
+ * ★ "รับแล้ว" = มีแถวการรับเงินของงวดที่บิลยังไม่ยกเลิก (กติกาเดียวกับ sales_installment_paid ใน 0101)
+ */
+async function loadPlans(
+  supabase: Awaited<ReturnType<typeof db>>,
+  quNos?: string[],
+): Promise<{ plans: Map<string, Installment[]>; payments: Map<string, SalesPayment[]> }> {
+  const plans = new Map<string, Installment[]>();
+  const payments = new Map<string, SalesPayment[]>();
+  if (quNos && !quNos.length) return { plans, payments };
+  let iq = supabase.from("sales_installments")
+    .select("qu_no, seq, label, percent, amount, due_date, inv_no, inv_date, ship_point").order("seq");
+  let pq = supabase.from("sales_payments").select(PAYMENT_COLS).not("installment_seq", "is", null).order("seq");
+  if (quNos) { iq = iq.in("qu_no", quNos); pq = pq.in("qu_no", quNos); }
+  const [inst, pays] = await Promise.all([iq, pq]);
   const rows = mustRead(inst, "แผนงวดของออเดอร์") ?? [];
-  if (!rows.length) return [];
+  if (!rows.length) return { plans, payments };
   const payRows = mustRead(pays, "การรับเงินของออเดอร์") ?? [];
   const txIds = payRows.map((p) => p.tx_id as string).filter(Boolean);
   const voided = new Set<string>();
@@ -330,20 +355,30 @@ export async function getOrderPlan(quNo: string): Promise<Installment[]> {
     );
     for (const t of tx ?? []) if (t.status === "ยกเลิก") voided.add(t.tx_id as string);
   }
-  const paidSeqs = new Set(
-    payRows.filter((p) => !p.tx_id || !voided.has(p.tx_id as string)).map((p) => Number(p.installment_seq)),
-  );
-  return rows.map((r) => ({
-    seq: Number(r.seq),
-    label: (r.label as string) ?? "",
-    percent: r.percent == null ? null : Number(r.percent),
-    amount: Number(r.amount) || 0,
-    dueDate: (r.due_date as string) ?? "",
-    invNo: (r.inv_no as string) ?? "",
-    invDate: (r.inv_date as string) ?? "",
-    shipPoint: !!r.ship_point,
-    paid: paidSeqs.has(Number(r.seq)),
-  }));
+  const paid = new Set<string>();
+  for (const p of payRows) {
+    if (p.tx_id && voided.has(p.tx_id as string)) continue;
+    paid.add(`${p.qu_no}#${p.installment_seq}`);
+    const arr = payments.get(p.qu_no as string) ?? [];
+    arr.push(mapPayment(p as Record<string, unknown>));
+    payments.set(p.qu_no as string, arr);
+  }
+  for (const r of rows) {
+    const arr = plans.get(r.qu_no as string) ?? [];
+    arr.push({
+      seq: Number(r.seq),
+      label: (r.label as string) ?? "",
+      percent: r.percent == null ? null : Number(r.percent),
+      amount: Number(r.amount) || 0,
+      dueDate: (r.due_date as string) ?? "",
+      invNo: (r.inv_no as string) ?? "",
+      invDate: (r.inv_date as string) ?? "",
+      shipPoint: !!r.ship_point,
+      paid: paid.has(`${r.qu_no}#${r.seq}`),
+    });
+    plans.set(r.qu_no as string, arr);
+  }
+  return { plans, payments };
 }
 
 /** ออเดอร์รอคลังจัดส่ง + items */
@@ -374,7 +409,14 @@ export async function getPendingWarehouse() {
       paysByQu.set(p.qu_no as string, arr);
     }
   }
-  return list.map((o) => ({ ...o, items: itemsByQu.get(o.quNo) ?? [], payments: paysByQu.get(o.quNo) ?? [] }));
+  // D147 — ใบแจ้งหนี้/ใบส่งสินค้าของออเดอร์แบ่งงวดพิมพ์ "รับชำระแล้ว" แทน "มัดจำรับแล้ว"
+  const { plans } = await loadPlans(supabase, quNos);
+  return list.map((o) => ({
+    ...o,
+    items: itemsByQu.get(o.quNo) ?? [],
+    payments: paysByQu.get(o.quNo) ?? [],
+    installments: plans.get(o.quNo) ?? [],
+  }));
 }
 
 /** สต็อกรวม: สุรา (stock_product live) + ทั่วไป (warehouse_stock) */

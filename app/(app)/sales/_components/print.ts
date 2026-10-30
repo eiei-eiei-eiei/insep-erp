@@ -16,6 +16,7 @@ import { reverseCalcPrint, roundTo2 } from "@/lib/sales/calc";
 import { formatThaiDate } from "@/lib/sales/orders";
 import { branchLabel, type CompanyInfo } from "@/lib/sales/company";
 import { paymentForDoc, type SalesPayment } from "@/lib/sales/payments";
+import { installmentDocFigures, type Installment } from "@/lib/sales/installments";
 import type { OrderItem } from "./types";
 import { mountDocViewer, viewerHead } from "@/lib/shared/docViewer";
 
@@ -337,6 +338,8 @@ export type OrderLike = {
   /** D89 — เลขใบเสร็จของกิจการที่ไม่จด VAT (คู่ขนานกับ taxNo1/taxNo2) */
   rcptNo1?: string;
   rcptNo2?: string;
+  /** D147 — แผนงวด (มี = ออเดอร์แบ่งงวด · เอกสารรายงวดอ่านยอดจากที่นี่) */
+  installments?: Installment[];
   /**
    * D143 — การรับเงินทีละครั้ง · ใบเสร็จอ่านวิธีชำระ/เช็คของครั้งนั้นจากที่นี่
    * ไม่ส่ง/ไม่มีแถว (ออเดอร์เก่าที่ไม่มีบิลให้ backfill · ขายหน้าร้านที่เพิ่งขาย) = ใช้ช่องเดิมของออเดอร์
@@ -397,6 +400,50 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
   else if (docType === "tax-invoice-balance" || docType === "tax-invoice-receipt" || docType === "tax-invoice-receipt-do")
     doc.chequeDetails = formatChequeDetail(order.checkDetail2);
   else doc.chequeDetails = "";
+
+  // ★ D147 — ออเดอร์แบ่งงวด: ใบแจ้งหนี้/ใบส่งสินค้าหักด้วย "รับชำระแล้ว" (ไม่ใช่ "มัดจำรับแล้ว")
+  doc.planOrder = !!order.installments?.length;
+
+  // ── D147 — เอกสารรายงวด "invoice-installment:k" / "tax-invoice-installment:k" ─────────
+  //   ตัวเลขทั้งหมดจาก installmentDocFigures() — ยอดตามสัญญา · รับก่อนหน้า · งวดนี้ · คงเหลือ
+  const instMatch = /^(invoice-installment|tax-invoice-installment):(\d+)$/.exec(docType);
+  if (instMatch) {
+    const base = instMatch[1];
+    const seq = Number(instMatch[2]);
+    const plan = order.installments ?? [];
+    const f = installmentDocFigures(plan, seq, netPayable);
+    const inst = plan.find((i) => i.seq === seq);
+    const tag = `งวดที่ ${f.k}/${f.n}`;
+    doc.docType = base; // ลายเซ็น/กล่องชำระเงินตัดสินจากชนิดหลัก
+    doc.instTag = `${tag}${f.label ? ` (${f.label})` : ""}`;
+    doc.instContract = f.contract;
+    doc.instPaidBefore = f.paidBefore;
+    doc.instRemaining = f.remaining;
+    if (base === "invoice-installment") {
+      // ใบแจ้งหนี้ของงวด — ยังไม่ได้รับเงิน (ไม่ใช่ใบกำกับภาษี เหมือนใบแจ้งหนี้มัดจำ D45)
+      doc.receiptTitle = `ใบแจ้งหนี้ (${tag})`;
+      doc.receiptTitleEng = `Invoice (Installment ${f.k}/${f.n})`;
+      doc.docNo = inst?.invNo || "";
+      doc.documentDate = inst?.invDate ? formatThaiDate(inst.invDate) : docDate1_th;
+      doc.dueDate = inst?.dueDate ? formatThaiDate(inst.dueDate) : "";
+      doc.instDue = f.amount;
+      doc.outstandingBalance = f.amount; // > 0 → กล่องเลขบัญชีธนาคาร (เหมือนใบแจ้งหนี้อื่น)
+    } else {
+      // 4.3 — ผู้ไม่จด VAT ห้ามมีคำว่า "ใบกำกับภาษี" (ม.86/13)
+      doc.receiptTitle = isVat ? `ใบกำกับภาษี/ใบเสร็จรับเงิน (${tag})` : `ใบเสร็จรับเงิน (${tag})`;
+      doc.receiptTitleEng = isVat ? `Tax Invoice / Receipt (Installment ${f.k}/${f.n})` : `Receipt (Installment ${f.k}/${f.n})`;
+      doc.docNo = pay?.docNo || "";
+      doc.documentDate = pay?.docDate ? formatThaiDate(pay.docDate) : docDate1_th;
+      const amount = pay ? roundTo2(pay.amount) : f.amount;
+      const v = reverseCalcPrint(amount, whtPercent);
+      doc.receiptAmount = amount;
+      doc.receiptPreVat = v.preVat;
+      doc.receiptVat = v.vat;
+      doc.receiptWht = v.wht;
+      doc.outstandingBalance = 0;
+    }
+    return doc;
+  }
 
   if (docType === "invoice") {
     doc.receiptTitle = "ใบแจ้งหนี้/ใบส่งสินค้า";
@@ -495,6 +542,27 @@ function docSummaryRows(doc: PreparedDoc): string {
       : "");
   const whtRow = whtP > 0 ? `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;">หัก ณ ที่จ่าย ${whtP}%</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">-${n("receiptWht")}</td></tr>` : "";
 
+  // ── D147 — เอกสารรายงวด: ยอดตามสัญญา · รับก่อนหน้า · งวดนี้ · คงเหลือ (ผู้ใช้ตกลงรูปนี้) ──────
+  if (dt === "invoice-installment" || dt === "tax-invoice-installment") {
+    const cell = "padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;";
+    const contract = `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;">ยอดชำระตามสัญญา${whtP > 0 ? " (สุทธิ)" : ""}</td><td style="${cell}">${n("instContract")}</td></tr>`;
+    const before = Number(doc.instPaidBefore) > 0
+      ? `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;color:#15803d;">หัก รับชำระแล้วก่อนหน้า</td><td style="${cell}color:#15803d;">-${n("instPaidBefore")}</td></tr>`
+      : "";
+    const remain = `<tr><td style="padding:4px 12px;text-align:left;font-size:12px;color:#475569;">คงเหลือหลังงวดนี้</td><td style="padding:4px 12px;text-align:right;font-size:12px;color:#475569;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:2px solid #cbd5e1;">${n("instRemaining")}</td></tr>`;
+    if (dt === "invoice-installment") {
+      return `${head}${contract}${before}
+        <tr style="background-color:#fff1f2;"><td style="padding:8px 12px;text-align:left;font-weight:bold;font-size:14px;border-top:2px dashed #94a3b8;border-bottom:4px double #be123c;color:#be123c;">ยอดเรียกเก็บ${esc(doc.instTag as string)}</td><td style="padding:8px 12px;text-align:right;font-weight:bold;font-size:15px;border:2px solid #cbd5e1;border-top:2px dashed #94a3b8;border-bottom:4px double #be123c;color:#be123c;">${n("instDue")}</td></tr>
+        ${remain}`;
+    }
+    return `${head}${contract}${before}
+      <tr><td style="padding:4px 12px;text-align:left;font-size:13px;font-weight:bold;color:#15803d;border-top:2px dashed #94a3b8;">${esc(doc.instTag as string)} มูลค่า${isVat ? " (ก่อน VAT)" : ""}</td><td style="${cell}border-top:2px dashed #94a3b8;font-weight:bold;color:#15803d;">${n("receiptPreVat")}</td></tr>
+      ${isVat ? `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;">ภาษีมูลค่าเพิ่ม 7%</td><td style="${cell}">${n("receiptVat")}</td></tr>` : ""}
+      ${whtRow}
+      <tr style="background-color:#f0fdf4;"><td style="padding:8px 12px;text-align:left;font-weight:bold;font-size:14px;border-bottom:4px double #15803d;color:#15803d;">ยอดรับงวดนี้${isVat ? " (รวม VAT)" : ""}</td><td style="padding:8px 12px;text-align:right;font-weight:bold;font-size:15px;border:2px solid #cbd5e1;border-bottom:4px double #15803d;color:#15803d;">${n("receiptAmount")}</td></tr>
+      ${remain}`;
+  }
+
   if (dt === "tax-invoice-deposit") {
     return `${head}
       <tr><td style="padding:4px 12px;text-align:left;font-size:13px;font-weight:bold;color:#15803d;border-top:2px dashed #94a3b8;">มูลค่ามัดจำ (ก่อน VAT)</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;border-top:2px dashed #94a3b8;font-weight:bold;color:#15803d;">${n("receiptPreVat")}</td></tr>
@@ -530,7 +598,7 @@ function docSummaryRows(doc: PreparedDoc): string {
       ? `<tr style="background-color:#f0fdf4;"><td style="padding:8px 12px;text-align:left;font-weight:bold;font-size:14px;border-bottom:4px double #15803d;color:#15803d;">ยอดรับครั้งนี้ (รวม VAT)</td><td style="padding:8px 12px;text-align:right;font-weight:bold;font-size:15px;border:2px solid #cbd5e1;border-bottom:4px double #15803d;color:#15803d;">${n("receiptAmount")}</td></tr>`
       : `<tr style="background-color:#fff1f2;"><td style="padding:8px 12px;text-align:left;font-weight:bold;font-size:14px;border-bottom:4px double #be123c;color:#be123c;">ยอดค้างชำระ (รวม VAT)</td><td style="padding:8px 12px;text-align:right;font-weight:bold;font-size:15px;border:2px solid #cbd5e1;border-bottom:4px double #be123c;color:#be123c;">${n("outstandingBalance")}</td></tr>`;
     return `${head}
-      <tr><td style="padding:4px 12px;text-align:left;font-size:13px;font-weight:600;color:#15803d;border-top:2px dashed #94a3b8;">หัก มัดจำรับแล้ว (ก่อน VAT)</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;border-top:2px dashed #94a3b8;color:#15803d;font-weight:600;">-${n("depositPreVat")}</td></tr>
+      <tr><td style="padding:4px 12px;text-align:left;font-size:13px;font-weight:600;color:#15803d;border-top:2px dashed #94a3b8;">${doc.planOrder ? "หัก รับชำระแล้ว (ก่อน VAT)" : "หัก มัดจำรับแล้ว (ก่อน VAT)"}</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;border-top:2px dashed #94a3b8;color:#15803d;font-weight:600;">-${n("depositPreVat")}</td></tr>
       <tr><td style="padding:4px 12px;text-align:left;font-size:13px;font-weight:bold;color:#be123c;">ยอดคงค้างยกมา (ก่อน VAT)</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;font-weight:bold;color:#be123c;">${n("receiptPreVat")}</td></tr>
       ${isVat ? `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;">ภาษีมูลค่าเพิ่ม 7%</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">${n("receiptVat")}</td></tr>` : ""}
       ${whtRow}${bal}`;
@@ -553,10 +621,10 @@ function docSummaryRows(doc: PreparedDoc): string {
 function docSignatures(dt: string): string {
   const sig = (label: string, w = 180) => `<td style="vertical-align:top;"><div style="height:24px;"></div><div style="margin-top:5px;width:${w}px;border-top:1px dashed #64748b;margin-left:auto;margin-right:auto;"></div><div style="margin-top:5px;color:#475569;">( ${label} )</div><div style="margin-top:5px;color:#64748b;font-size:12px;">วันที่ / Date: ______/______/________</div></td>`;
   let cells = "";
-  if (dt === "invoice-only" || dt === "invoice-deposit") cells += sig("ผู้ชำระเงิน / Payer", 200);
+  if (dt === "invoice-only" || dt === "invoice-deposit" || dt === "invoice-installment") cells += sig("ผู้ชำระเงิน / Payer", 200);
   if (dt === "invoice" || dt === "tax-invoice-receipt-do") cells += sig("ผู้รับสินค้า / Receiver");
   if (dt === "invoice" || dt === "tax-invoice-receipt-do") cells += sig("ผู้ส่งสินค้า / Deliverer");
-  if (["tax-invoice-deposit", "tax-invoice-balance", "tax-invoice-receipt", "tax-invoice-receipt-do"].includes(dt)) cells += sig("ผู้รับเงิน / Collector");
+  if (["tax-invoice-deposit", "tax-invoice-balance", "tax-invoice-receipt", "tax-invoice-receipt-do", "tax-invoice-installment"].includes(dt)) cells += sig("ผู้รับเงิน / Collector");
   cells += sig("ผู้มีอำนาจลงนาม / Auth. Signature");
   return `<table style="width:100%;margin-top:40px;text-align:center;font-size:13px;"><tr>${cells}</tr></table>`;
 }

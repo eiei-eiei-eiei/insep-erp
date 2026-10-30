@@ -2,7 +2,7 @@
 
 import { showToast } from "@/lib/shared/toast";
 import { useConfirm } from "@/lib/shared/ui";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import type { SalesBoot, OrderRow, OrderItem } from "./types";
 import { Card, StatusBadge, TextInput, useSaver, fmt, LoadError } from "./ui";
 import { todayISO } from "./ui";
@@ -18,6 +18,8 @@ import { can, toRole } from "@/lib/shared/roles";
 import { actionPostsRevenue, docDateNote, manualNoError, manualNoFields } from "@/lib/sales/backdate";
 import { cancelLockedText } from "@/lib/production/monthClose";
 import { PAY_METHODS, chequeText, hasReceivedPayment } from "@/lib/sales/payments";
+import { receiveAmountError, type Installment } from "@/lib/sales/installments";
+import { PlanPanel } from "./PlanPanel";
 import { EditPaymentDialog } from "./EditPaymentDialog";
 
 const itemsCache = new Map<string, OrderItem[]>();
@@ -37,7 +39,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"open" | "closed">("open");
   const [search, setSearch] = useState("");
-  const [dialog, setDialog] = useState<{ order: OrderRow; action: OrderAction } | null>(null);
+  const [dialog, setDialog] = useState<{ order: OrderRow; action: OrderAction; installment?: Installment } | null>(null);
   const [editPay, setEditPay] = useState<OrderRow | null>(null);
   const { setMsg } = useSaver();
   const { confirmNode, ask } = useConfirm();
@@ -191,9 +193,15 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
   // ปุ่มจัดการออเดอร์ (ใช้ร่วมทั้งตาราง desktop และการ์ด mobile)
   // D43: เดิมมีปุ่ม 7 สี (amber/indigo/purple/blue/teal/slate/red) = ตาลาย แยกไม่ออกว่าอันไหนสำคัญ
   // → เหลือ 3 ระดับตามความหมาย: primary (สิ่งที่ควรทำต่อ) · secondary (ทำได้) · danger (ทำลาย)
+  // D147 — ออเดอร์แบ่งงวด: ปุ่มรับเงินแบบเดิมใช้ไม่ได้ (server ปฏิเสธ planActionError)
+  //   ปุ่มรับชำระ/ใบแจ้งหนี้/ส่งคลังอยู่ในตารางงวด (PlanPanel) · ที่นี่เหลือแค่ แก้ไข · แก้วิธีชำระ · ยกเลิก
+  const hasPlan = (o: OrderRow) => !!o.installments?.length;
   const orderActions = (o: OrderRow) => (
     <>
-      {canWrite && o.status === "รอคอนเฟิร์ม" && (
+      {canWrite && o.status === "รอคอนเฟิร์ม" && hasPlan(o) && (
+        <ActBtn tone="secondary" icon={<IconEdit size={14} />} onClick={() => onEdit(o)}>แก้ไข</ActBtn>
+      )}
+      {canWrite && o.status === "รอคอนเฟิร์ม" && !hasPlan(o) && (
         <>
           {/* D45 — เงื่อนไขมัดจำ: ปกติต้องวางบิลค่ามัดจำก่อน ลูกค้าถึงโอน → ปุ่มนี้เด่นสุด */}
           <ActBtn tone={o.isDeposit ? "primary" : "secondary"} icon={<IconDoc size={14} />} onClick={() => setDialog({ order: o, action: "ISSUE_INVOICE_DEPOSIT" })}>ใบแจ้งหนี้มัดจำ</ActBtn>
@@ -203,7 +211,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
           <ActBtn tone="secondary" icon={<IconEdit size={14} />} onClick={() => onEdit(o)}>แก้ไข</ActBtn>
         </>
       )}
-      {canWrite && o.status === "รอชำระมัดจำ" && (
+      {canWrite && o.status === "รอชำระมัดจำ" && !hasPlan(o) && (
         <>
           <ActBtn tone="primary" icon={<IconMoney size={14} />} onClick={() => setDialog({ order: o, action: "DEPOSIT_AND_SEND" })}>รับมัดจำ &amp; ส่งคลัง</ActBtn>
           <ActBtn tone="secondary" icon={<IconMoney size={14} />} onClick={() => setDialog({ order: o, action: "FULL_PAYMENT_AND_SEND" })}>รับเต็ม &amp; ส่งคลัง</ActBtn>
@@ -212,10 +220,10 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
           )}
         </>
       )}
-      {o.status !== "รอคอนเฟิร์ม" && o.status !== "ยกเลิก" && (
+      {o.status !== "รอคอนเฟิร์ม" && o.status !== "ยกเลิก" && !hasPlan(o) && (
         <ActBtn tone="secondary" icon={<IconPrint size={14} />} onClick={() => doPrintFirst(o)}>พิมพ์ชุดแรก</ActBtn>
       )}
-      {canWrite && o.status === "รอชำระเงิน (จ่ายเต็ม)" && (
+      {canWrite && o.status === "รอชำระเงิน (จ่ายเต็ม)" && !hasPlan(o) && (
         <ActBtn tone="primary" icon={<IconMoney size={14} />} onClick={() => setDialog({ order: o, action: "FULL_PAYMENT_AND_SEND" })}>รับเต็ม &amp; ส่งคลัง</ActBtn>
       )}
       {o.status === "รอคลังจัดส่ง" && (
@@ -223,13 +231,13 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
           <IconClock size={13} />รอคลังแพ็ค
         </span>
       )}
-      {canWrite && o.status === "ส่งของแล้วรอชำระยอดค้าง" && (
+      {canWrite && o.status === "ส่งของแล้วรอชำระยอดค้าง" && !hasPlan(o) && (
         <ActBtn tone="primary" icon={<IconMoney size={14} />} onClick={() => setDialog({ order: o, action: "PAY_BALANCE" })}>รับยอดค้าง</ActBtn>
       )}
-      {canWrite && o.status.includes("ส่งของแล้วรอชำระเงิน") && (
+      {canWrite && o.status.includes("ส่งของแล้วรอชำระเงิน") && !hasPlan(o) && (
         <ActBtn tone="primary" icon={<IconMoney size={14} />} onClick={() => setDialog({ order: o, action: "FULL_PAYMENT_LATER" })}>รับเต็มจำนวน</ActBtn>
       )}
-      {o.status === "ปิดการขาย" && (
+      {o.status === "ปิดการขาย" && !hasPlan(o) && (
         <ActBtn tone="secondary" icon={<IconPrint size={14} />} onClick={() => doPrintClosed(o)}>พิมพ์ใบกำกับฯ</ActBtn>
       )}
       {/* D144 — แก้วิธีชำระของการรับเงินที่บันทึกไปแล้ว · หัวหน้าฝ่ายขายขึ้นไป (RPC เช็ค sales.config ซ้ำ) */}
@@ -248,6 +256,26 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
         <ActBtn tone="danger" icon={<IconTrash size={14} />} onClick={() => cancel(o)}>ยกเลิก</ActBtn>
       )}
     </>
+  );
+
+  /** พิมพ์เอกสารรายงวด / ใบแจ้งหนี้-ใบส่งสินค้า ของออเดอร์แบ่งงวด (ข้อมูลล่าสุด · ไม่ cache การรับเงิน) */
+  async function doPrintPlanDoc(o: OrderRow, docType: string) {
+    const w = openPrintWindow();
+    if (!w) { showToast({ ok: false, text: "เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — โปรดอนุญาต popup แล้วลองใหม่" }); return; }
+    const data = await loadForPrint(o, w);
+    if (!data) return;
+    printSalesDocs(boot.company, data.order, data.items, [docType], w);
+  }
+  const planPanel = (o: OrderRow) => (
+    <PlanPanel
+      order={o}
+      canWrite={canWrite}
+      canConfig={canCancel}
+      onReceive={(inst) => setDialog({ order: o, action: "RECEIVE_INSTALLMENT", installment: inst })}
+      onShipNow={() => setDialog({ order: o, action: "SHIP_PLAN" })}
+      onPrint={(dt) => doPrintPlanDoc(o, dt)}
+      onChanged={refresh}
+    />
   );
 
   return (
@@ -296,7 +324,8 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
               </thead>
               <tbody>
                 {filtered.map((o) => (
-                  <tr key={o.quNo} className="border-b hover:bg-raised">
+                  <Fragment key={o.quNo}>
+                  <tr className={hasPlan(o) && o.status !== "ยกเลิก" ? "hover:bg-raised" : "border-b hover:bg-raised"}>
                     <td className="whitespace-nowrap text-muted">{o.timestamp}</td>
                     <td className="whitespace-nowrap font-medium text-ink">
                       <div className="flex items-center gap-1">
@@ -311,6 +340,12 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
                     <td className="whitespace-nowrap text-center"><StatusBadge status={o.status} /></td>
                     <td><div className="flex flex-wrap items-center justify-center gap-1">{orderActions(o)}</div></td>
                   </tr>
+                  {hasPlan(o) && o.status !== "ยกเลิก" && (
+                    <tr className="border-b">
+                      <td colSpan={7} className="pt-0">{planPanel(o)}</td>
+                    </tr>
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -336,6 +371,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
                   {o.outstandingBalance > 0 && <span className="text-faint">ค้าง <b className="text-crit">฿{fmt(o.outstandingBalance)}</b></span>}
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1.5">{orderActions(o)}</div>
+                {hasPlan(o) && o.status !== "ยกเลิก" && <div className="mt-2">{planPanel(o)}</div>}
               </div>
             ))}
           </div>
@@ -346,6 +382,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
         <PaymentDialog
           order={dialog.order}
           action={dialog.action}
+          installment={dialog.installment}
           /* หาด้วย customerId — ลูกค้าหลายสาขาชื่อเดียวกันมีเครดิตเทอมคนละค่า (dueDate ผิด) · fallback ชื่อสำหรับออเดอร์เก่าที่ไม่มี id */
           creditDays={
             (boot.customers.find((c) => c.id === dialog.order.customerId) ??
@@ -417,7 +454,7 @@ const ACTION_TITLES: Record<OrderAction, string> = {
   PAY_BALANCE: "ชำระยอดค้าง",
   FULL_PAYMENT_LATER: "ชำระเต็มจำนวน",
   // D145 — แบ่งชำระหลายงวด (หน้าจอมาในเฟส 3c)
-  RECEIVE_INSTALLMENT: "รับชำระงวด",
+  RECEIVE_INSTALLMENT: "รับชำระ", // + " งวดที่ k" ต่อท้ายในหัวป๊อปอัพ
   SHIP_PLAN: "ส่งคลังตอนนี้",
 };
 
@@ -428,9 +465,12 @@ function PaymentDialog({
   canManual,
   onClose,
   onDone,
+  installment,
 }: {
   order: OrderRow;
   action: OrderAction;
+  /** D147 — รับชำระงวดไหน (RECEIVE_INSTALLMENT) */
+  installment?: Installment;
   creditDays: number;
   /** D100 เฟส 3 — กรอกเลขเอกสารเอง (ใบกระดาษช่วงระบบล่ม) = ระดับหัวหน้า (sales.config) */
   canManual: boolean;
@@ -438,13 +478,18 @@ function PaymentDialog({
   onDone: (text: string) => void;
 }) {
   const isDepositInvoice = action === "ISSUE_INVOICE_DEPOSIT"; // D45 — วางบิลมัดจำ (ยังไม่รับเงิน)
-  const needsAmount = action === "DEPOSIT_AND_SEND" || isDepositInvoice;
-  const needsMethod = ["DEPOSIT_AND_SEND", "FULL_PAYMENT_AND_SEND", "PAY_BALANCE", "FULL_PAYMENT_LATER"].includes(action);
+  const isInstallment = action === "RECEIVE_INSTALLMENT"; // D147
+  const needsAmount = action === "DEPOSIT_AND_SEND" || isDepositInvoice || isInstallment;
+  const needsMethod = ["DEPOSIT_AND_SEND", "FULL_PAYMENT_AND_SEND", "PAY_BALANCE", "FULL_PAYMENT_LATER", "RECEIVE_INSTALLMENT"].includes(action);
   const target = order.netPayable || order.grandTotal;
   // ยอดมัดจำ default: ตามเงื่อนไข % ในใบเสนอราคา → ถ้าวางบิลมัดจำไว้แล้วใช้ยอดใบนั้น
   const depPct = order.isDeposit && order.depositPercent > 0 ? order.depositPercent : 50;
   const defaultDeposit = order.depInvAmount > 0 && !isDepositInvoice ? order.depInvAmount : roundTo2((target * depPct) / 100);
-  const [amount, setAmount] = useState(needsAmount ? defaultDeposit : target);
+  const [amount, setAmount] = useState(isInstallment ? installment?.amount ?? 0 : needsAmount ? defaultDeposit : target);
+  // D147 — กติกาเดียวกับ server/RPC (รับตามลำดับ · ไม่เกินยอดค้าง · งวดสุดท้ายต้องเต็ม) — บอกก่อนกด
+  const instErr = isInstallment && installment
+    ? receiveAmountError(order.installments ?? [], installment.seq, amount, order.outstandingBalance)
+    : null;
   const [depositDays, setDepositDays] = useState(7); // ครบกำหนดชำระมัดจำ (แก้ได้)
   const [method, setMethod] = useState("โอนเงิน");
   const [docDate, setDocDate] = useState(todayISO());
@@ -472,13 +517,18 @@ function PaymentDialog({
       chequeDetails: chequeDetails || undefined,
       creditDays: isDepositInvoice ? depositDays : action === "DEPOSIT_AND_SEND" || action === "SEND_TO_WH" ? creditDays : undefined,
       amount: needsAmount ? amount : action === "PAY_BALANCE" || action === "FULL_PAYMENT_LATER" ? order.outstandingBalance : undefined,
+      installmentSeq: isInstallment ? installment?.seq : undefined,
       manualNos: manualOpen
         ? { inv: manualFields.inv ? manualInv.trim() : "", pay: manualFields.pay ? manualPay.trim() : "" }
         : undefined,
     };
     run(() => processOrderActionAction(order.quNo, action, payload), "", (data) => {
       const d = data as { warning?: string };
-      onDone(d.warning ? `บันทึกแล้ว — ${d.warning}` : "อัปเดตสถานะเรียบร้อย");
+      onDone(
+        d.warning ? `บันทึกแล้ว — ${d.warning}`
+          : isInstallment ? `รับชำระงวดที่ ${installment?.seq} แล้ว — พิมพ์ใบเสร็จได้ที่ปุ่ม ใบเสร็จ ของงวด`
+          : "อัปเดตสถานะเรียบร้อย",
+      );
     });
   }
 
@@ -486,7 +536,7 @@ function PaymentDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/50 p-4">
       <div className="w-full max-w-md rounded-lg bg-card p-5">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-ink">{ACTION_TITLES[action]}</h2>
+          <h2 className="text-lg font-bold text-ink">{ACTION_TITLES[action]}{isInstallment && installment ? ` งวดที่ ${installment.seq}` : ""}</h2>
           <button onClick={onClose} className="text-2xl leading-none text-faint hover:text-crit">
             &times;
           </button>
@@ -495,7 +545,11 @@ function PaymentDialog({
           <div className="rounded bg-raised p-2 text-muted">
             {order.quNo} · {order.customerName}
             <br />
-            {action === "PAY_BALANCE" || action === "FULL_PAYMENT_LATER" ? (
+            {isInstallment && installment ? (
+              <>{installment.label} · ยอดงวด <b className="text-brand">฿{fmt(installment.amount)}</b> · ค้างทั้งหมด ฿{fmt(order.outstandingBalance)}</>
+            ) : action === "SHIP_PLAN" ? (
+              <>ส่งคลังก่อนรับเงินครบ · ค้าง <b className="text-brand">฿{fmt(order.outstandingBalance)}</b> — รับงวดที่เหลือได้หลังส่งของ</>
+            ) : action === "PAY_BALANCE" || action === "FULL_PAYMENT_LATER" ? (
               <>ยอดที่ต้องชำระ (Net): <b className="text-brand">฿{fmt(order.outstandingBalance)}</b></>
             ) : (
               <>ยอดสุทธิทั้งบิล (Net): <b className="text-brand">฿{fmt(target)}</b></>
@@ -505,9 +559,10 @@ function PaymentDialog({
           {needsAmount && (
             <label className="block">
               <span className="mb-1 block font-bold text-muted">
-                {isDepositInvoice ? `ยอดมัดจำที่เรียกเก็บ${order.isDeposit && order.depositPercent > 0 ? ` (${order.depositPercent}% ตามใบเสนอราคา)` : ""}` : "ยอดเงินมัดจำที่รับ"}
+                {isDepositInvoice ? `ยอดมัดจำที่เรียกเก็บ${order.isDeposit && order.depositPercent > 0 ? ` (${order.depositPercent}% ตามใบเสนอราคา)` : ""}` : isInstallment ? "ยอดที่รับจริง (ไม่เท่ายอดงวดได้ — ส่วนต่างไปงวดสุดท้าย)" : "ยอดเงินมัดจำที่รับ"}
               </span>
               <input type="number" step="0.01" min={0.01} max={target} value={amount} onChange={(e) => setAmount(Number(e.target.value) || 0)} className="w-full rounded-lg border border-line p-2 outline-none focus:border-brand" />
+              {instErr && <span className="mt-1 block text-xs text-warn">{instErr}</span>}
             </label>
           )}
 
@@ -572,7 +627,7 @@ function PaymentDialog({
             </div>
           )}
 
-          <button onClick={submit} disabled={pending || !!manualErr} className="w-full rounded-lg bg-brand py-2 font-bold text-on-brand hover:opacity-90 disabled:opacity-50">
+          <button onClick={submit} disabled={pending || !!manualErr || !!instErr} className="w-full rounded-lg bg-brand py-2 font-bold text-on-brand hover:opacity-90 disabled:opacity-50">
             {pending ? "กำลังบันทึก…" : "บันทึก"}
           </button>
         </div>

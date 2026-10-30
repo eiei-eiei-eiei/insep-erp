@@ -107,6 +107,8 @@ export type SalesPayment = {
   docDate: string;
   docNo: string;
   txId: string;
+  /** D147 — รับเงินของงวดไหน (null = รับแบบเดิม มัดจำ/ยอดค้าง/จ่ายเต็ม) */
+  installmentSeq?: number | null;
 };
 
 /** ใบเสร็จแต่ละชนิดเป็นของการรับเงินแบบไหน */
@@ -123,6 +125,9 @@ const DOC_LABEL: Record<string, PayLabel> = {
  * ★ ป้ายซ้ำ (ไม่ควรเกิดในเฟส 1) → เอาครั้งล่าสุด
  */
 export function paymentForDoc(docType: string, payments: SalesPayment[] | undefined): SalesPayment | null {
+  // D147 — ใบเสร็จรายงวด "tax-invoice-installment:k" จับคู่ด้วยเลขงวด (ป้ายงวดเปลี่ยนชื่อได้)
+  const inst = /^tax-invoice-installment:(\d+)$/.exec(docType);
+  if (inst) return payments?.find((p) => p.installmentSeq === Number(inst[1])) ?? null;
   const label = DOC_LABEL[docType];
   if (!label || !payments?.length) return null;
   const hit = payments.filter((p) => p.label === label).sort((a, b) => b.seq - a.seq);
