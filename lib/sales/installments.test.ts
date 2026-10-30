@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import {
-  STATUS_INSTALLMENT, installmentLabel, nextUnpaid, isLocked, planAmounts, planError,
+  STATUS_INSTALLMENT, installmentLabel, nextUnpaid, isLocked, planAmounts, planError, defaultPlanRows, planTermsLines,
   receiveAmountError, statusAfterInstallment, statusAfterShipNow, shipNowError, planActionError,
   type Installment,
 } from "./installments";
@@ -42,7 +42,8 @@ describe("S16 planError", () => {
     expect(planError([row(20), row(20), row(10)], 100000, 50000, false)).toBeNull();
   });
   it("รวม % ไม่เท่ายอดค้าง → บอกทั้งสองตัวเลข", () => {
-    expect(planError([row(30), row(30)], 100000, 50000, false)).toBe("งวดที่ยังไม่รับรวมได้ 60% แต่ยอดค้างคือ 50% — ต้องเท่ากัน");
+    expect(planError([row(30), row(30)], 100000, 50000, false)).toBe("งวดรวมได้ 60% แต่ต้องได้ 50% (เท่ายอดค้าง)");
+    expect(planError([row(50), row(40)], 100000, 100000, false)).toBe("งวดรวมได้ 90% แต่ต้องได้ 100%"); // ใบเสนอราคาใหม่
   });
   it("ยอดค้างเป็น % ไม่ลงตัว (ลูกค้าจ่ายขาด) ก็ตั้งได้", () => {
     // รับงวดแรก 49,500 จากแผน 50,000 → ค้าง 50,500 = 50.5%
@@ -201,5 +202,50 @@ describe("S16 SQL ⇄ TS (0101)", () => {
   it("สถานะใหม่ที่ RPC รู้จักว่า 'ยังไม่ส่ง' ตรงกับ TS (ส่งคลังแล้ว = ตั้งจุดส่งของไม่ได้)", () => {
     const src = readFileSync(`${dir}/${files.find((f) => f.includes("_sales_installments"))}`, "utf8");
     expect(src).toContain("v_sent := v_order.status in ('รอคลังจัดส่ง', 'ส่งของแล้วรอชำระยอดค้าง', 'ส่งของแล้วรอชำระเงิน')");
+  });
+});
+
+// ── D146 · เฟส 3b ใบเสนอราคา ─────────────────────────────────────────────────
+
+describe("S16 ใบเสนอราคา (D146)", () => {
+  it("แผนตั้งต้น = มัดจำ x% (จุดส่งของ) + ส่วนที่เหลือ — เท่าโฟลว์มัดจำเดิม", () => {
+    expect(defaultPlanRows(30)).toEqual([
+      { label: "มัดจำ", percent: 30, shipPoint: true },
+      { label: "ส่วนที่เหลือ", percent: 70, shipPoint: false },
+    ]);
+    expect(defaultPlanRows(0)[0].percent).toBe(50); // ใบเก่าไม่ได้ระบุ % → 50
+    expect(defaultPlanRows(100)[0].percent).toBe(50); // 100% ไม่ใช่การแบ่งงวด
+  });
+  it("บรรทัดเงื่อนไขบนใบเสนอราคา", () => {
+    expect(planTermsLines([
+      { seq: 1, label: "มัดจำ", percent: 50, amount: 50000, shipPoint: false },
+      { seq: 2, label: "ส่งของ", percent: 50, amount: 50000, shipPoint: true },
+    ])).toEqual([
+      "งวดที่ 1 มัดจำ 50% = 50,000.00 บาท",
+      "งวดที่ 2 ส่งของ 50% = 50,000.00 บาท (ส่งสินค้าหลังรับงวดนี้)",
+    ]);
+    expect(planTermsLines([{ seq: 1, label: "ก", percent: null, amount: 1.5, shipPoint: false }])).toEqual(["งวดที่ 1 ก = 1.50 บาท"]);
+  });
+  it("สร้าง/แก้ใบเสนอราคา: มีแผน = ปิดมัดจำเดิม · ตรวจแผนก่อนบันทึก · แก้ไม่ได้เมื่อมีงวดล็อก", () => {
+    const src = readFileSync("app/(app)/sales/actions.ts", "utf8");
+    expect(src).toMatch(/buildQuotationDbPayload\(withPlan\(input\), vat\.isVat\)[\s\S]*fn_save_quotation/);
+    expect(src).toMatch(/buildQuotationDbPayload\(withPlan\(input\), vat\.isVat\)[\s\S]*fn_update_quotation/);
+    expect(src.indexOf("quotationPlanError(input, totals.netPayable)")).toBeLessThan(src.indexOf('rpc("fn_save_quotation"'));
+    expect(src).toMatch(/installments\?\.some\(\(i\) => i\.paid \|\| i\.invNo\)[\s\S]*แก้ใบเสนอราคาไม่ได้/);
+  });
+  it("หน้าใบเสนอราคาเลิกใช้ช่องติ๊กมัดจำแบบเดิม", () => {
+    const src = readFileSync("app/(app)/sales/_components/QuotationTab.tsx", "utf8");
+    // 🪤 ตรวจโค้ดจริง ไม่ใช่คำในไฟล์ (D95) — คอมเมนต์อธิบายว่า "แทน กำหนดเงื่อนไขมัดจำ" ได้
+    expect(src).not.toMatch(/setIsDeposit|\/> กำหนดเงื่อนไขมัดจำ/);
+    expect(src).toContain("<InstallmentEditor");
+  });
+  it("0102: ใบแจ้งหนี้งวดแรก → รอชำระมัดจำ (fn_update_quotation รับแค่ รอคอนเฟิร์ม)", () => {
+    const dir = "supabase/migrations";
+    const f = readdirSync(dir).filter((x) => x.endsWith(".sql")).sort().reverse()
+      .find((x) => readFileSync(`${dir}/${x}`, "utf8").includes("create or replace function fn_sales_installment_invoice("));
+    expect(readFileSync(`${dir}/${f}`, "utf8")).toMatch(/set status = 'รอชำระมัดจำ'\s+where tenant_id = v_tenant and qu_no = p_qu_no and status = 'รอคอนเฟิร์ม'/);
+    const uq = readdirSync(dir).filter((x) => x.endsWith(".sql")).sort().reverse()
+      .find((x) => readFileSync(`${dir}/${x}`, "utf8").includes("create or replace function fn_update_quotation("));
+    expect(readFileSync(`${dir}/${uq}`, "utf8")).toMatch(/if v_status <> 'รอคอนเฟิร์ม' then/);
   });
 });

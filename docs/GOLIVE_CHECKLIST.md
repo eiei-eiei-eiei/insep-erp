@@ -1196,3 +1196,8 @@ npm run db:audit-grants
 
 - [ ] ลง migration ทุก DB **ก่อน** git push: `npm run db:push:all` (dry-run ต้องเห็นแค่ `20261030000101_sales_installments.sql`) → `npm run db:push:all -- --apply --backup="D:/insep-erp-backup/2026-10-30-0101"` → `npm run db:audit-grants` → `npm run test:tenant`
 - ยังไม่มีหน้าจอให้ตั้งค่า — หน้าจอแบ่งงวดมาในเฟส 3b/3c
+
+## D146 — ตัวแก้งวดในใบเสนอราคา (migration 0102)
+
+- [ ] ลง migration ทุก DB **ก่อน** git push: `npm run db:push:all` (dry-run ต้องเห็นแค่ `20261030000102_sales_installment_invoice_status.sql`) → `npm run db:push:all -- --apply --backup="D:/insep-erp-backup/2026-10-30-0102"` → `npm run db:audit-grants` → `npm run test:tenant`
+- [ ] 🚨 **อย่า git push จนกว่าเฟส 3c เสร็จ** — ออเดอร์แบ่งงวดยังรับเงินจากหน้าจอไม่ได้

@@ -102,7 +102,21 @@ export type QuotationPayload = {
   saleName: string;
   category: string;
   remarks?: string;
+  /**
+   * D146 — แผนงวด (ว่าง/ไม่ส่ง = จ่ายครั้งเดียว) · มีแผน = ปิดเงื่อนไขมัดจำแบบเดิม (แผนงวดแทนที่)
+   * ★ ใบเสนอราคาใหม่ทุกใบใช้แผนงวดแทนช่องติ๊กมัดจำ (ผู้ใช้ตัดสิน · มัดจำเดิม = แผน 2 งวด)
+   */
+  plan?: PlanRowInput[];
 };
+
+/** มีแผนงวด → เงื่อนไขมัดจำแบบเดิมต้องปิด (ไม่งั้นหน้าจัดการออเดอร์โชว์ปุ่มมัดจำแบบเดิมซ้อน) */
+function withPlan(input: QuotationPayload): QuotationPayload {
+  return input.plan?.length ? { ...input, isDepositRequired: false, depositPercent: 0 } : input;
+}
+/** ตรวจแผนงวดของใบเสนอราคาก่อนบันทึก — ยังไม่มีเงินเข้า ⇒ ยอดที่ต้องแบ่ง = ยอดสุทธิทั้งใบ */
+function quotationPlanError(input: QuotationPayload, net: number): string | null {
+  return input.plan?.length ? planError(input.plan, net, net, false) : null;
+}
 
 function buildQuotationDbPayload(input: QuotationPayload, isVat: boolean) {
   const t = quotationTotals(input, isVat);
@@ -144,7 +158,10 @@ async function saveQuotationCore(
   const config = await loadRevenueConfig(supabase);
   const vat = await resolveSalesVat(supabase, config.entityId);
   if ("conflict" in vat) return { ok: false, error: vat.conflict };
-  const { p, items, totals } = buildQuotationDbPayload(input, vat.isVat);
+  const { p, items, totals } = buildQuotationDbPayload(withPlan(input), vat.isVat);
+  // D146 — แผนงวดผิดต้องรู้ก่อนสร้างใบเสนอราคา (ไม่งั้นได้ใบเสนอราคาที่ไม่มีแผนค้างไว้)
+  const planErr = quotationPlanError(input, totals.netPayable);
+  if (planErr) return { ok: false, error: planErr };
   const { data, error } = await supabase.rpc("fn_save_quotation", { p, p_items: items });
   if (error) return { ok: false, error: mapDbError(error) };
   const res = data as { ok: boolean; qu_no: string; order_no: string; qu_expire: string };
@@ -162,9 +179,11 @@ export async function saveQuotationAction(input: QuotationPayload): Promise<Save
   const supabase = await db();
   const res = await saveQuotationCore(supabase, input);
   if (!res.ok) return fail(res.error);
+  // D146 — แผนงวดบันทึกหลังได้เลข QU · ล้ม = ใบเสนอราคาอยู่แล้วแต่ไม่มีแผน → บอกเหลือง ไม่ใช่เขียว (D79)
+  const warning = input.plan?.length ? await savePlanAfter(res.quNo, input.plan) : "";
   await sendLine(supabase, `🛒 ออเดอร์ใหม่\n[${res.quNo}] ${input.customer.name}\n${res.itemCount} รายการ | ยอด ฿${res.grandTotal.toLocaleString("th-TH", { minimumFractionDigits: 0 })}`);
   revalidatePath("/sales");
-  return { ok: true, data: { ok: true, qu_no: res.quNo, order_no: res.orderNo, qu_expire: res.quExpire } };
+  return { ok: true, data: { ok: true, qu_no: res.quNo, order_no: res.orderNo, qu_expire: res.quExpire, warning } };
 }
 
 export async function updateQuotationAction(quNo: string, input: QuotationPayload): Promise<SaveResult> {
@@ -172,11 +191,20 @@ export async function updateQuotationAction(quNo: string, input: QuotationPayloa
   const config = await loadRevenueConfig(supabase);
   const vat = await resolveSalesVat(supabase, config.entityId);
   if ('conflict' in vat) return fail(vat.conflict);
-  const { p, items, totals } = buildQuotationDbPayload(input, vat.isVat);
+  // D146 — งวดที่ออกใบแจ้งหนี้/รับเงินแล้ว = ยอดสุทธิห้ามเปลี่ยน (DB บล็อกซ้ำด้วยสถานะ — 0102)
+  const current = await getOrderState(quNo);
+  if (current?.installments?.some((i) => i.paid || i.invNo)) {
+    return fail("ออเดอร์นี้ออกใบแจ้งหนี้หรือรับเงินงวดไปแล้ว — แก้ใบเสนอราคาไม่ได้ (ปรับงวดได้ที่หน้าจัดการออเดอร์)");
+  }
+  const { p, items, totals } = buildQuotationDbPayload(withPlan(input), vat.isVat);
+  const planErr = quotationPlanError(input, totals.netPayable);
+  if (planErr) return fail(planErr);
   const { data, error } = await supabase.rpc("fn_update_quotation", { p_qu_no: quNo, p, p_items: items });
   if (error) return fail(mapDbError(error));
-  const res = data as { ok: boolean; error?: string; qu_no?: string };
+  const res = data as { ok: boolean; error?: string; qu_no?: string; warning?: string };
   if (!res.ok) return fail(res.error ?? "แก้ไขไม่สำเร็จ");
+  // ยอดสุทธิอาจเปลี่ยน → ตั้งแผนใหม่ทั้งชุด (ส่งว่าง = ยกเลิกแผน กลับเป็นจ่ายครั้งเดียว)
+  if (input.plan?.length || current?.installments?.length) res.warning = await savePlanAfter(quNo, input.plan ?? []);
   await sendLine(supabase, `✏️ แก้ไขออเดอร์\n[${quNo}] ${input.customer.name}\n${items.length} รายการ | ยอด ฿${totals.grandTotal.toLocaleString("th-TH", { minimumFractionDigits: 0 })}`);
   revalidatePath("/sales");
   return { ok: true, data: res };
@@ -431,6 +459,12 @@ export async function editPaymentMethodAction(input: {
   revalidatePath("/sales");
   revalidatePath("/accounting");
   return { ok: true, data };
+}
+
+/** บันทึกแผนงวดหลังสร้าง/แก้ใบเสนอราคา — คืนข้อความเตือน (ว่าง = สำเร็จ) */
+async function savePlanAfter(quNo: string, plan: PlanRowInput[]): Promise<string> {
+  const r = await setOrderPlanAction(quNo, plan);
+  return r.ok ? "" : `บันทึกใบเสนอราคาแล้ว แต่แผนงวดไม่ถูกบันทึก — ${r.error} · กดแก้ไขใบเสนอราคาแล้วตั้งงวดใหม่`;
 }
 
 // ── D145 — แบ่งชำระหลายงวด ──────────────────────────────────────────────────────

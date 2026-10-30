@@ -141,6 +141,8 @@ export type QuotationDoc = {
   netPayable: number;
   remarks: string;
   saleName: string;
+  /** D146 — เงื่อนไขการชำระเป็นงวด (บรรทัดจาก `planTermsLines()`) · ว่าง = ไม่พิมพ์หัวข้อนี้ */
+  planTerms?: string[];
 };
 
 function quotationHtml(c: CompanyInfo, d: QuotationDoc): string {
@@ -183,6 +185,10 @@ function quotationHtml(c: CompanyInfo, d: QuotationDoc): string {
             ${bankLines(c)}
             <div style="font-weight:600;margin-bottom:4px;color:#b45309;font-size:13px;">หมายเหตุ / Remarks:</div>
             <div style="color:#475569;line-height:1.4;font-size:13px;white-space:pre-wrap;">${esc(d.remarks || "-")}</div>
+            ${d.planTerms?.length
+              ? `<div style="font-weight:600;margin:8px 0 4px;color:#b45309;font-size:13px;">เงื่อนไขการชำระเงิน / Payment Terms:</div>
+                 <div style="color:#475569;line-height:1.5;font-size:13px;">${d.planTerms.map((l) => `<div>${esc(l)}</div>`).join("")}</div>`
+              : ""}
           </div>
         </td>
         <td style="width:45%;vertical-align:top;">

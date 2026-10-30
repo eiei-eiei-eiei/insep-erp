@@ -8,8 +8,11 @@ import {
   saveQuotationAction,
   updateQuotationAction,
   getOrderItemsAction,
+  getOrderPlanAction,
   type QuotationPayload,
 } from "../actions";
+import { InstallmentEditor } from "./InstallmentEditor";
+import { defaultPlanRows, planAmounts, planError, planTermsLines, type PlanRowInput } from "@/lib/sales/installments";
 import { printQuotation, openPrintWindow } from "./print";
 import { IconCart, IconPlus } from "@/lib/shared/icons";
 import { AddCustomerModal } from "./CustomerFields";
@@ -34,8 +37,9 @@ export function QuotationTab({
   const [category, setCategory] = useState("รายได้ค่าสินค้า");
   const [isWht, setIsWht] = useState(false);
   const [whtPct, setWhtPct] = useState(3);
-  const [isDeposit, setIsDeposit] = useState(false);
-  const [depositPct, setDepositPct] = useState(50);
+  // D146 — แผนงวดแทนช่องติ๊กมัดจำ (มัดจำเดิม = แผน 2 งวด · ผู้ใช้ตัดสิน)
+  const [planOn, setPlanOn] = useState(false);
+  const [planRows, setPlanRows] = useState<PlanRowInput[]>(() => defaultPlanRows());
   const [remarks, setRemarks] = useState("");
   const [saleName, setSaleName] = useState("");
   const [showAddCust, setShowAddCust] = useState(false);
@@ -56,10 +60,24 @@ export function QuotationTab({
     setRemarks(editOrder.remarks || "");
     setIsWht((editOrder.whtPercent || 0) > 0);
     setWhtPct(editOrder.whtPercent > 0 ? editOrder.whtPercent : 3);
-    setIsDeposit(editOrder.isDeposit);
-    setDepositPct(editOrder.depositPercent > 0 ? editOrder.depositPercent : 50);
     setSaleName(editOrder.saleName || "");
     getOrderItemsAction(editOrder.quNo).then((its) => setItems(its.map((i) => ({ ...i }))));
+    // แผนงวดเดิม → เติมกลับ · ใบเสนอราคาเก่าที่ติ๊กมัดจำไว้ (ยังไม่มีแผน) → แปลงเป็นแผน 2 งวด
+    setPlanOn(editOrder.isDeposit);
+    setPlanRows(defaultPlanRows(editOrder.depositPercent));
+    getOrderPlanAction(editOrder.quNo)
+      .then((plan) => {
+        if (!plan.length) return;
+        const net = editOrder.netPayable || editOrder.grandTotal;
+        setPlanOn(true);
+        setPlanRows(plan.map((i) => ({
+          label: i.label,
+          percent: i.percent ?? (net > 0 ? Math.round((i.amount / net) * 10000) / 100 : 0),
+          shipPoint: i.shipPoint,
+          dueDate: i.dueDate,
+        })));
+      })
+      .catch(() => setMsg({ ok: false, text: `โหลดแผนงวดของ ${editOrder.quNo} ไม่สำเร็จ — ปิดแล้วเปิดแก้ใหม่` }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editOrder?.quNo]);
 
@@ -72,7 +90,8 @@ export function QuotationTab({
 
   // 4.3 — กิจการที่ออกเอกสารไม่จด VAT → ไม่ถอด VAT และไม่โชว์บรรทัด VAT
   const isVat = boot.isVat;
-  const totals = quotationTotals({ items, discount, isWhtRequired: isWht, whtPercent: whtPct, isDepositRequired: isDeposit, depositPercent: depositPct }, isVat);
+  const totals = quotationTotals({ items, discount, isWhtRequired: isWht, whtPercent: whtPct, isDepositRequired: false, depositPercent: 0 }, isVat);
+  const planErr = planOn && totals.netPayable > 0 ? planError(planRows, totals.netPayable, totals.netPayable, false) : null;
 
   function addRawItem(name: string, price: number) {
     setItems((prev) => {
@@ -91,32 +110,47 @@ export function QuotationTab({
     setDiscount(0);
     setRemarks("");
     setIsWht(false);
-    setIsDeposit(false);
+    setPlanOn(false);
+    setPlanRows(defaultPlanRows());
     setSelCustId("");
     setCategory("รายได้ค่าสินค้า");
     onDoneEdit();
   }
 
   function submit() {
-    if (!customer || items.length === 0 || !saleName.trim()) return;
+    if (!customer || items.length === 0 || !saleName.trim() || planErr) return;
+    const plan = planOn ? planRows.map((r) => ({ ...r, label: r.label.trim() })) : [];
     const payload: QuotationPayload = {
       customer: { id: customer.id, name: customer.name, address: customer.address, taxId: customer.taxId, branch: customer.branch, creditTerm: customer.creditTerm },
       items,
       discount,
       isWhtRequired: isWht,
       whtPercent: whtPct,
-      isDepositRequired: isDeposit,
-      depositPercent: depositPct,
+      isDepositRequired: false, // D146 — มัดจำแบบเดิมถูกแทนด้วยแผนงวด
+      depositPercent: 0,
       saleName,
       category,
       remarks,
+      plan,
     };
     const snapItems = [...items];
+    // เงื่อนไขงวดบนใบเสนอราคา — ยอดคิดด้วยฟังก์ชันเดียวกับที่ server บันทึก
+    const amts = plan.length ? planAmounts(totals.netPayable, plan.map((r) => r.percent), totals.netPayable) : [];
+    const planTerms = planTermsLines(plan.map((r, i) => ({ seq: i + 1, label: r.label, percent: r.percent, amount: amts[i], shipPoint: r.shipPoint })));
+    // D79 — แผนงวดบันทึกไม่สำเร็จ = เหลือง ไม่ใช่เขียว
+    const warnIfAny = (data: unknown) => {
+      const w = (data as { warning?: string } | undefined)?.warning;
+      if (w) setMsg({ ok: true, warn: true, text: w });
+    };
     if (editOrder) {
-      run(() => updateQuotationAction(editOrder.quNo, payload), `อัปเดต ${editOrder.quNo} แล้ว`, () => reset());
+      run(() => updateQuotationAction(editOrder.quNo, payload), `อัปเดต ${editOrder.quNo} แล้ว`, (data) => {
+        warnIfAny(data);
+        reset();
+      });
     } else {
       const w = openPrintWindow(); // เปิดก่อน await กัน popup blocker (มือถือ/iPad)
       run(() => saveQuotationAction(payload), "สร้างใบเสนอราคาแล้ว", (data) => {
+        warnIfAny(data);
         const res = data as { qu_no: string; qu_expire: string };
         printQuotation(boot.company, {
           quNo: res.qu_no,
@@ -138,6 +172,7 @@ export function QuotationTab({
           netPayable: totals.netPayable,
           remarks,
           saleName,
+          planTerms,
         }, w);
         reset();
       });
@@ -252,14 +287,14 @@ export function QuotationTab({
             </Select>
           </label>
 
+          {/* D146 — แบ่งชำระเป็นงวด (แทน "กำหนดเงื่อนไขมัดจำ" · มัดจำ = แผน 2 งวดที่เปิดมาให้) */}
           <label className="flex items-center gap-2 border-t pt-2 text-sm font-bold text-muted">
-            <input type="checkbox" checked={isDeposit} onChange={(e) => setIsDeposit(e.target.checked)} /> กำหนดเงื่อนไขมัดจำ
+            <input type="checkbox" checked={planOn} onChange={(e) => setPlanOn(e.target.checked)} /> แบ่งชำระเป็นงวด (มัดจำ / หลายงวด)
           </label>
-          {isDeposit && (
-            <div className="flex items-center gap-2 rounded border border-warn-line bg-warn-bg p-2 text-xs">
-              <span>% มัดจำ:</span>
-              <input type="number" min={0} max={100} value={depositPct} onChange={(e) => setDepositPct(Number(e.target.value) || 0)} className="w-16 rounded border p-1 text-center" />
-              <span className="ml-auto font-bold text-warn">= ฿{fmt(totals.expectedDeposit)}</span>
+          {planOn && (
+            <div className="rounded border border-warn-line bg-warn-bg p-2">
+              <InstallmentEditor rows={planRows} onChange={setPlanRows} net={totals.netPayable} remain={totals.netPayable} />
+              <p className="mt-1 text-[11px] text-faint">% คิดจากยอดชำระสุทธิ{isWht ? " (หลังหัก ณ ที่จ่าย)" : ""} · ปรับงวดทีหลังได้ที่หน้าจัดการออเดอร์</p>
             </div>
           )}
 
@@ -311,7 +346,7 @@ export function QuotationTab({
 
           <button
             onClick={submit}
-            disabled={pending || items.length === 0 || !selCustId || !saleName.trim()}
+            disabled={pending || items.length === 0 || !selCustId || !saleName.trim() || !!planErr}
             className={`w-full rounded-lg py-3 font-bold text-on-brand transition disabled:cursor-not-allowed disabled:opacity-50 ${editOrder ? "bg-brand hover:opacity-90" : "bg-brand hover:opacity-90"}`}
           >
             {pending ? "กำลังทำงาน…" : editOrder ? "อัปเดตใบเสนอราคา" : "ออกใบเสนอราคา (A4)"}
@@ -321,6 +356,7 @@ export function QuotationTab({
               { label: "ลูกค้า", ok: !!selCustId },
               { label: "รายการในตะกร้า", ok: items.length > 0 },
               { label: "ผู้เสนอราคา", ok: !!saleName.trim() },
+              { label: "แผนงวดให้ถูกต้อง", ok: !planErr },
             ]}
           />
           {editOrder && (

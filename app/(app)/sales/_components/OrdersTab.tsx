@@ -6,7 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import type { SalesBoot, OrderRow, OrderItem } from "./types";
 import { Card, StatusBadge, TextInput, useSaver, fmt, LoadError } from "./ui";
 import { todayISO } from "./ui";
-import { getOrdersAction, getOrderItemsAction, getOrderPaymentsAction, processOrderActionAction, cancelOrderAction, voidDepositInvoiceAction } from "../actions";
+import { getOrdersAction, getOrderItemsAction, getOrderPaymentsAction, getOrderPlanAction, processOrderActionAction, cancelOrderAction, voidDepositInvoiceAction } from "../actions";
+import { planTermsLines } from "@/lib/sales/installments";
 import type { OrderAction, ActionPayload } from "@/lib/sales/orders";
 import { printSalesDocs, printQuotation, openPrintWindow, type OrderLike } from "./print";
 import { roundTo2 } from "@/lib/sales/calc";
@@ -114,7 +115,15 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
   async function doReprintQuotation(o: OrderRow) {
     const w = openPrintWindow();
     if (!w) { showToast({ ok: false, text: "เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — โปรดอนุญาต popup แล้วลองใหม่" }); return; }
-    const items = await loadItems(o.quNo);
+    let items: OrderItem[];
+    let plan: Awaited<ReturnType<typeof getOrderPlanAction>>;
+    try {
+      [items, plan] = await Promise.all([loadItems(o.quNo), getOrderPlanAction(o.quNo)]);
+    } catch {
+      w.close();
+      showToast({ ok: false, text: `โหลดข้อมูลใบเสนอราคา ${o.quNo} ไม่สำเร็จ — ลองกดพิมพ์ใหม่อีกครั้ง` });
+      return;
+    }
     let estDiscount = roundTo2(o.subTotal + o.vatAmount - o.grandTotal);
     if (Math.abs(estDiscount) < 0.1) estDiscount = 0;
     printQuotation(boot.company, {
@@ -137,6 +146,8 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
       netPayable: o.netPayable,
       remarks: o.remarks,
       saleName: o.saleName,
+      // D146 — เงื่อนไขงวดตามแผนปัจจุบัน (ยอดงวดที่รับแล้วเป็นยอดที่รับจริง)
+      planTerms: planTermsLines(plan),
     }, w);
   }
 

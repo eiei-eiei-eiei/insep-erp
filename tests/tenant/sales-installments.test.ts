@@ -205,3 +205,31 @@ describe("ออเดอร์แบบเดิม + ยกเลิก", () =
     expect(error?.message).toContain("ยกเลิก");
   });
 });
+
+// ── D146 · 0102 — ใบแจ้งหนี้งวดแรกล็อกการแก้ใบเสนอราคา ─────────────────────────
+describe("ใบแจ้งหนี้งวดแรก ↔ สถานะออเดอร์ (D146)", () => {
+  const Q2 = "QU-INST-2";
+  async function status() {
+    const r = await admin().from("sales_orders").select("status").eq("tenant_id", A.tenantId).eq("qu_no", Q2).single();
+    return r.data?.status;
+  }
+  beforeAll(async () => {
+    await order(Q2, "ORD-INST-2");
+    const { error } = await asA.rpc("fn_sales_set_plan", { p_qu_no: Q2, p_rows: [row("มัดจำ", 50, 500, true), row("ที่เหลือ", 50, 500)] });
+    if (error) throw new Error(error.message);
+  });
+  it("ออกใบแจ้งหนี้งวดแรก → รอชำระมัดจำ · แก้ใบเสนอราคาไม่ได้ (DB บล็อก)", async () => {
+    const r = await asA.rpc("fn_sales_installment_invoice", {
+      p_qu_no: Q2, p_seq: 1, p_inv_no: "INV-I2-1", p_inv_date: "2026-10-30", p_due_date: null,
+    });
+    expect(r.error).toBeNull();
+    expect(await status()).toBe("รอชำระมัดจำ");
+    const upd = await asA.rpc("fn_update_quotation", { p_qu_no: Q2, p: { grand_total: 2000, net_payable: 2000 }, p_items: [] });
+    expect((upd.data as { ok: boolean })?.ok ?? false).toBe(false);
+  });
+  it("ยกเลิกใบแจ้งหนี้จนไม่เหลือ + ยังไม่รับเงิน → กลับรอคอนเฟิร์ม (แก้ใบเสนอราคาได้อีก)", async () => {
+    const r = await asA.rpc("fn_sales_void_installment_invoice", { p_qu_no: Q2, p_seq: 1 });
+    expect(r.error).toBeNull();
+    expect(await status()).toBe("รอคอนเฟิร์ม");
+  });
+});

@@ -83,7 +83,11 @@ export function planError(rows: PlanRowInput[], net: number, remain: number, sen
   if (rows.some((r) => !(r.percent > 0))) return "ทุกงวดต้องมี % มากกว่า 0";
   const sum = r2(rows.reduce((s, r) => s + r.percent, 0));
   const need = r2((remain / net) * 100);
-  if (Math.abs(sum - need) > 0.01) return `งวดที่ยังไม่รับรวมได้ ${sum}% แต่ยอดค้างคือ ${need}% — ต้องเท่ากัน`;
+  // 🪤 ประโยคเดียวใช้ทั้งใบเสนอราคาใหม่ (ยังไม่มีเงินเข้า · ต้องได้ 100%) และปรับงวด (ต้องได้เท่ายอดค้าง)
+  //    เทสเบราว์เซอร์เจอ: เดิมพูดว่า "งวดที่ยังไม่รับ … ยอดค้าง" บนใบเสนอราคาใหม่ = ไม่เข้ากับสิ่งที่ผู้ใช้กำลังทำ
+  if (Math.abs(sum - need) > 0.01) {
+    return `งวดรวมได้ ${sum}% แต่ต้องได้ ${need}%${need < 100 ? " (เท่ายอดค้าง)" : ""}`;
+  }
   const amts = planAmounts(net, rows.map((r) => r.percent), remain);
   if (amts.some((a) => a <= 0)) return "งวดสุดท้ายเหลือยอดไม่ถึง 0.01 บาท — ลด % ของงวดก่อนหน้า";
   if (rows.filter((r) => r.shipPoint).length > 1) return "จุดส่งของเลือกได้งวดเดียว";
@@ -123,6 +127,30 @@ export function statusAfterInstallment(
   if (current === "รอคลังจัดส่ง") return { status: current, nextStatus: afterShip, ship: false };
   if (shipPoint || done) return { status: "รอคลังจัดส่ง", nextStatus: afterShip, ship: true };
   return { status: STATUS_INSTALLMENT, ship: false };
+}
+
+/**
+ * แผนตั้งต้นตอนเปิด "แบ่งชำระเป็นงวด" ในใบเสนอราคา — มัดจำ x% แล้วส่งของ (= โฟลว์มัดจำเดิม D45)
+ * ★ ใบเสนอราคาเดิมที่ติ๊กมัดจำไว้ (ยังไม่มีแผน) แปลงเป็นแผนนี้ตอนเปิดแก้
+ */
+export function defaultPlanRows(depositPct = 50): PlanRowInput[] {
+  const p = depositPct > 0 && depositPct < 100 ? depositPct : 50;
+  return [
+    { label: "มัดจำ", percent: p, shipPoint: true },
+    { label: "ส่วนที่เหลือ", percent: r2(100 - p), shipPoint: false },
+  ];
+}
+
+/**
+ * บรรทัดเงื่อนไขการชำระบนใบเสนอราคา — "งวดที่ 1 มัดจำ 50% = 5,000.00 บาท (ส่งสินค้าหลังรับงวดนี้)"
+ * ★ ใช้ทั้งพรีวิวในหน้าสร้างใบเสนอราคาและตอนพิมพ์ (ประโยคเดียวกัน)
+ */
+export function planTermsLines(rows: { seq: number; label: string; percent: number | null; amount: number; shipPoint: boolean }[]): string[] {
+  const money = (n: number) => n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return rows.map((r) =>
+    `งวดที่ ${r.seq} ${r.label.trim()}${r.percent != null ? ` ${r.percent}%` : ""} = ${money(r.amount)} บาท` +
+    (r.shipPoint ? " (ส่งสินค้าหลังรับงวดนี้)" : ""),
+  );
 }
 
 /** action ของออเดอร์แบ่งงวด — ปุ่มแบบเดิม (มัดจำ/ยอดค้าง/จ่ายเต็ม/ส่งเครดิต) ใช้กับออเดอร์ที่มีแผนไม่ได้ */
