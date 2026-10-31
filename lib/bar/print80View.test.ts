@@ -52,4 +52,8 @@ describe("🚨 ตัวแสดงเอกสารมีชุดเดี�
     expect(bar).toMatch(/from "\.\.\/shared\/docViewer"/);
     expect(sales).toMatch(/from "@\/lib\/shared\/docViewer"/);
   });
+  it("สลิปเงินเดือนก็เรียก mountDocViewer จาก lib/shared (ไม่ก๊อปแถบปุ่มไปอีกชุด)", () => {
+    const slip = readFileSync("lib/payroll/slip.ts", "utf8");
+    expect(slip).toMatch(/from "\.\.\/shared\/docViewer"/);
+  });
 });

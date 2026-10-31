@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { Card, Field, NumBox, SaveButton, Select, TextInput, useSaver, Empty, fmt, useConfirm } from "@/lib/shared/ui";
 import { calcPayrollLine } from "@/lib/payroll/calc";
 import { ratesOn } from "@/lib/payroll/sso";
-import { printSlips, type SlipData } from "@/lib/payroll/slip";
+import { printSlips, slipCompany, type SlipCompany, type SlipData } from "@/lib/payroll/slip";
+import type { FilingEntity } from "@/lib/payroll/filingHtml";
 import { legCoverage, legTotal, suggestLegDate } from "@/lib/payroll/legs";
 import { shownLine, differsFromStored, employeeForCalc, tableCaption } from "@/lib/payroll/periodView";
 import { notInPeriodReason } from "@/lib/payroll/employment";
@@ -51,6 +52,8 @@ export function PeriodTab({
   const [periodId, setPeriodId] = useState(periods[0]?.periodId ?? "");
   const [period, setPeriod] = useState<PeriodRow | null>(periods[0] ?? null);
   const [items, setItems] = useState<ItemRow[]>([]);
+  /** กิจการของงวด — หัวสลิป · null = อ่านไม่สำเร็จ (ปุ่มพิมพ์บอกผู้ใช้เอง) */
+  const [entity, setEntity] = useState<FilingEntity | null>(null);
   const [draft, setDraft] = useState<Record<string, LineInput>>({});
   const [loading, setLoading] = useState(false);
 
@@ -67,6 +70,7 @@ export function PeriodTab({
     getPeriodDetailAction(id).then((d) => {
       setPeriod(d.period);
       setItems(d.items);
+      setEntity(d.entity);
       setDraft(Object.fromEntries(d.items.map((i) => [i.empId, {
         empId: i.empId,
         workDays: i.inputs.workDays ?? d.period?.workDaysStd ?? 0,
@@ -189,32 +193,40 @@ export function PeriodTab({
     });
   }
 
-  function doPrint() {
+  /** สลิป 1 ใบ — ตัวเลขชุดเดียวกับที่ตารางแสดง (`shown`: ลงบัญชีแล้ว = ค่าที่แช่ไว้ · ร่าง = คิดสด) */
+  function slipOf(it: ItemRow, company: SlipCompany): SlipData {
+    const l = shown[it.empId];
+    const d = draft[it.empId];
+    const emp = empOf(it, employees);
+    const baseLabel =
+      emp?.wageType === "monthly"
+        ? "เงินเดือน"
+        : `${emp?.wageType === "daily" ? "ค่าแรง" : "เงินเดือน"} (${d?.workDays ?? 0} วัน)`;
+    return {
+      ...company,
+      periodLabel: `${String(period!.month).padStart(2, "0")}/${period!.year}`,
+      payDate: period!.payDate ?? undefined,
+      empName: nameOf(it, employees),
+      empId: it.empId,
+      groupLabel: it.groupCode ?? undefined,
+      baseLabel,
+      baseAmount: l?.baseAmount ?? it.baseAmount,
+      items: l?.items ?? [],
+      sso: l?.sso ?? it.sso,
+      wht: l?.wht ?? it.wht,
+      gross: l?.gross ?? it.gross,
+      net: l?.net ?? it.net,
+    };
+  }
+
+  /** พิมพ์สลิป — ไม่ส่ง = ทั้งงวด · ส่งแถวเดียว = คนเดียว */
+  function doPrint(only?: ItemRow) {
     if (!period) return;
-    const slips: SlipData[] = items.map((it) => {
-      const l = shown[it.empId];
-      const d = draft[it.empId];
-      const emp = empOf(it, employees);
-      const baseLabel =
-        emp?.wageType === "monthly"
-          ? "เงินเดือน"
-          : `${emp?.wageType === "daily" ? "ค่าแรง" : "เงินเดือน"} (${d?.workDays ?? 0} วัน)`;
-      return {
-        companyName: config.entityId || "บริษัท",
-        periodLabel: `${String(period.month).padStart(2, "0")}/${period.year}`,
-        payDate: period.payDate ?? undefined,
-        empName: nameOf(it, employees),
-        empId: it.empId,
-        groupLabel: it.groupCode ?? undefined,
-        baseLabel,
-        baseAmount: l?.baseAmount ?? it.baseAmount,
-        items: l?.items ?? [],
-        sso: l?.sso ?? it.sso,
-        wht: l?.wht ?? it.wht,
-        gross: l?.gross ?? it.gross,
-        net: l?.net ?? it.net,
-      };
-    });
+    // 🚨 หัวสลิปต้องเป็นชื่อกิจการจริง — อ่านไม่ได้/ยังไม่ตั้งชื่อ = ไม่พิมพ์ พร้อมบอกเหตุผล
+    const company = slipCompany(entity);
+    if ("error" in company) { showToast({ ok: false, text: company.error }); return; }
+    const rows = only ? [only] : items;
+    const slips = rows.filter((it) => draft[it.empId]).map((it) => slipOf(it, company));
     if (slips.length === 0) { showToast({ ok: false, text: "งวดนี้ยังไม่มีพนักงาน" }); return; }
     printSlips(slips);
   }
@@ -383,6 +395,11 @@ export function PeriodTab({
                             )}
                           </td>
                           <td className="whitespace-nowrap">
+                            <button
+                              onClick={() => doPrint(it)}
+                              title={`สลิปของ ${nameOf(it, employees)} — พิมพ์ / คัดลอกเป็นภาพ / แชร์`}
+                              className="mr-3 text-xs text-brand hover:underline"
+                            >สลิป</button>
                             {!locked && (
                               <button
                                 disabled={pending}
@@ -414,7 +431,7 @@ export function PeriodTab({
               <SaveButton pending={pending} onClick={doSave} disabled={locked || !rates || items.length === 0}>
                 คำนวณ &amp; บันทึก
               </SaveButton>
-              <button onClick={doPrint} disabled={items.length === 0}
+              <button onClick={() => doPrint()} disabled={items.length === 0}
                 className="rounded-lg border border-line px-4 py-2 text-sm text-muted hover:bg-raised disabled:opacity-50">
                 พิมพ์สลิปทั้งงวด
               </button>

@@ -157,7 +157,12 @@ export async function getPeriods(): Promise<PeriodRow[]> {
   return (data ?? []).map(toPeriod);
 }
 
-export async function getPeriodDetail(periodId: string): Promise<{ period: PeriodRow | null; items: ItemRow[] }> {
+export async function getPeriodDetail(periodId: string): Promise<{
+  period: PeriodRow | null;
+  items: ItemRow[];
+  /** กิจการของงวด — หัวสลิปเงินเดือน (ชื่อ/ที่อยู่/เลขผู้เสียภาษี) · null = อ่านไม่สำเร็จ */
+  entity: FilingEntity | null;
+}> {
   const supabase = await createClient();
   const [p, it] = await Promise.all([
     supabase
@@ -167,9 +172,21 @@ export async function getPeriodDetail(periodId: string): Promise<{ period: Perio
       .maybeSingle(),
     supabase.from("payroll_items").select("*").eq("period_id", periodId).order("emp_id"),
   ]);
+  const period = p.data ? toPeriod(p.data) : null;
+  // 🪤 อ่านกิจการไม่สำเร็จ → คืน null (ไม่ throw) — หน้างวดจ่ายยังต้องเปิดได้
+  //    แล้วปุ่มพิมพ์สลิปเป็นคนบอกผู้ใช้เองว่าอ่านหัวสลิปไม่ได้ (ไม่พิมพ์หัวเปล่า/รหัสกิจการแทนชื่อ)
+  let entity: FilingEntity | null = null;
+  if (period) {
+    try {
+      entity = await filingEntity(period.entityId || null);
+    } catch {
+      entity = null;
+    }
+  }
   return {
-    period: p.data ? toPeriod(p.data) : null,
+    period,
     items: (it.data ?? []).map(toItem),
+    entity,
   };
 }
 
