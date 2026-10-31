@@ -33,6 +33,15 @@ import type { PayrollConfig } from "./PayrollApp";
  */
 
 
+/**
+ * ความกว้างขั้นต่ำของช่องกรอกในตารางงวด
+ * 🪤 ช่องกรอกเป็น `w-full` → คอลัมน์กว้างเท่าหัวคอลัมน์ หัวสั้น ("ลากิจ" · "โบนัส") เหลือที่ให้ตัวเลข ~24px
+ *    พิมพ์ 5000 แล้วช่องโชว์ "500" = ตัวเลขบนจอไม่ตรงกับค่าที่บันทึก (ค่าที่บันทึกถูก แต่คนกรอกมองไม่เห็น)
+ *    ใช้ min-width ไม่ใช่ width — `w-*` ชนกับ `w-full` ใน inputCls แล้วแพ้ (บทเรียน B-8 D96)
+ *    5.5rem = เหลือที่ให้ตัวเลข ~64px พอสำหรับ 8 หลัก (ตารางเลื่อนซ้ายขวาได้อยู่แล้ว)
+ */
+const CELL_W = "min-w-[5.5rem]";
+
 export function PeriodTab({
   config,
   employees,
@@ -362,23 +371,23 @@ export function PeriodTab({
                             )}
                           </td>
                           <td className="num">
-                            <NumBox value={d.workDays} readOnly={locked}
+                            <NumBox value={d.workDays} readOnly={locked} className={CELL_W}
                               onChange={(v) => setRow(it.empId, { workDays: v === "" ? 0 : v })} />
                           </td>
                           {config.inputs.map((i) => (
                             <td key={i.code} className="num">
-                              <NumBox value={d.values[i.code] ?? 0} blankZero readOnly={locked}
+                              <NumBox value={d.values[i.code] ?? 0} blankZero readOnly={locked} className={CELL_W}
                                 onChange={(v) => setVal(it.empId, i.code, v === "" ? 0 : v, "values")} />
                             </td>
                           ))}
                           {manualComps.map((c) => (
                             <td key={c.code} className="num">
-                              <NumBox value={d.manual[c.code] ?? 0} blankZero readOnly={locked}
+                              <NumBox value={d.manual[c.code] ?? 0} blankZero readOnly={locked} className={CELL_W}
                                 onChange={(v) => setVal(it.empId, c.code, v === "" ? 0 : v, "manual")} />
                             </td>
                           ))}
                           <td className="num">
-                            <NumBox value={d.whtOverride ?? ""} blankZero readOnly={locked}
+                            <NumBox value={d.whtOverride ?? ""} blankZero readOnly={locked} className={CELL_W}
                               onChange={(v) => setRow(it.empId, { whtOverride: v === "" ? null : v })} />
                           </td>
                           <td className="num">{fmt(l?.gross ?? it.gross)}</td>
