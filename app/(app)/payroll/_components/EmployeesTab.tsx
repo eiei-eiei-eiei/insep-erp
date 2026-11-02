@@ -3,15 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, Field, NumBox, SaveButton, Select, TextInput, useSaver, Empty, EscToClose } from "@/lib/shared/ui";
+import { WAGE_LABEL, wageSwitchWarning, wageUnit } from "@/lib/payroll/workDays";
 import { saveEmployeeAction } from "../actions";
 import type { EmployeeRow } from "../data";
 import type { PayrollConfig } from "./PayrollApp";
-
-const WAGE_LABEL: Record<string, string> = {
-  monthly: "รายเดือน (เต็มจำนวน)",
-  monthly_prorate: "รายเดือน (ลดตามวันมาทำงาน)",
-  daily: "รายวัน",
-};
 
 const WHT_LABEL: Record<string, string> = {
   none: "ไม่หัก",
@@ -57,6 +52,10 @@ export function EmployeesTab({ config, initial }: { config: PayrollConfig; initi
   const set = <K extends keyof EmployeeRow>(k: K, v: EmployeeRow[K]) =>
     setEdit((p) => (p ? { ...p, [k]: v } : p));
 
+  // 🚨 ตัวเลขช่องเดียวกันมีความหมายต่างกันตามวิธีคิดค่าจ้าง — สลับแล้วลืมแก้ = จ่ายผิดหลายเท่า
+  const saved = edit?.empId ? rowsAll.find((e) => e.empId === edit.empId) : undefined;
+  const switchWarn = wageSwitchWarning(saved?.wageType, edit?.wageType, saved?.baseWage, edit?.baseWage);
+
   return (
     <div className="space-y-4">
       <Card title={`พนักงาน (${rowsAll.length})`}>
@@ -85,7 +84,7 @@ export function EmployeesTab({ config, initial }: { config: PayrollConfig; initi
                   <td>{e.name}</td>
                   <td>{e.groupCode ?? "—"}</td>
                   <td>{WAGE_LABEL[e.wageType]}</td>
-                  <td className="num">{e.baseWage.toLocaleString()}</td>
+                  <td className="num">{e.baseWage.toLocaleString()} <span className="text-xs text-faint">{wageUnit(e.wageType)}</span></td>
                   <td>{WHT_LABEL[e.whtMode]}</td>
                   <td>{e.active ? "ทำงานอยู่" : "พ้นสภาพ"}</td>
                   <td>
@@ -126,6 +125,7 @@ export function EmployeesTab({ config, initial }: { config: PayrollConfig; initi
               <Field label={edit.wageType === "daily" ? "ค่าแรงต่อวัน" : "เงินเดือน"}>
                 <NumBox value={edit.baseWage ?? 0} blankZero onChange={(v) => set("baseWage", v === "" ? 0 : v)} />
               </Field>
+              {switchWarn && <p className="text-xs text-warn sm:col-span-2">⚠ {switchWarn}</p>}
               <Field label="เลขประจำตัวประชาชน">
                 <TextInput value={edit.nationalId ?? ""} onChange={(e) => set("nationalId", e.target.value)} placeholder="13 หลัก" />
               </Field>

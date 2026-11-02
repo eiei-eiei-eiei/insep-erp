@@ -98,7 +98,7 @@ export function PayrollApp({
       )}
       {visited.has("ตั้งค่าการคำนวณ") && (
         <div className={show("ตั้งค่าการคำนวณ")}>
-          <ConfigTab config={config} />
+          <ConfigTab config={config} employees={employees} />
         </div>
       )}
     </div>

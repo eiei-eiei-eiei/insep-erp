@@ -15,7 +15,20 @@ import type {
   VarStep,
   VarRounding,
   VarSource,
+  WageType,
+  WorkDayWageType,
 } from "@/lib/payroll/types";
+import {
+  WAGE_LABEL,
+  WAGE_TYPES,
+  WORK_DAY_SOURCES,
+  componentForWage,
+  dailyWageWarnings,
+  ruleOf,
+  wageBaseText,
+  wageTypesText,
+  workDayRuleText,
+} from "@/lib/payroll/workDays";
 import {
   VAR_SOURCE_LABEL,
   VAR_OP_LABEL,
@@ -36,12 +49,14 @@ import {
   deletePayComponentAction,
   savePayVariableAction,
   deletePayVariableAction,
+  saveWorkDayRuleAction,
   savePayPostLegAction,
   deletePayPostLegAction,
   savePayRatesAction,
   deletePayRatesAction,
   savePayrollSettingAction,
 } from "../actions";
+import type { EmployeeRow } from "../data";
 import type { PayrollConfig } from "./PayrollApp";
 
 /**
@@ -132,13 +147,14 @@ function AccountSelect({
   );
 }
 
-export function ConfigTab({ config }: { config: PayrollConfig }) {
+export function ConfigTab({ config, employees }: { config: PayrollConfig; employees: EmployeeRow[] }) {
   return (
     <div className="space-y-4">
       <BasicSettings config={config} />
+      <WorkDays config={config} />
       <Groups config={config} />
       <Inputs config={config} />
-      <Formulas config={config} />
+      <Formulas config={config} employees={employees} />
       <PostLegs config={config} />
       <Rates config={config} />
     </div>
@@ -263,12 +279,14 @@ function Inputs({ config }: { config: PayrollConfig }) {
         (รหัสเป็นภาษาอังกฤษเพราะใช้เป็นคีย์ของข้อมูล ส่วนชื่อที่แสดงเป็นไทยได้)
         <br />
         ★ ปุ่ม ▲▼ ย้ายลำดับคอลัมน์ได้ — ช่องที่เพิ่มทีหลังไม่จำเป็นต้องอยู่ท้ายสุดตลอดไป
+        <br />
+        ★ <b>จำค่าจากงวดก่อน</b> เหมาะกับค่าที่เท่าเดิมทุกเดือน เช่นค่าตำแหน่ง — ตอนสร้างงวดใหม่ระบบยกค่าของคนเดิมจากงวดล่าสุดมาให้ แก้ในงวดนั้นได้
       </p>
       <div className="overflow-x-auto">
         <table className="tbl">
           <thead>
             <tr className="text-left text-faint">
-              <th>ลำดับ</th><th>ชื่อที่แสดง</th><th>หน่วย</th><th></th>
+              <th>ลำดับ</th><th>ชื่อที่แสดง</th><th>หน่วย</th><th>จำค่าจากงวดก่อน</th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -292,6 +310,19 @@ function Inputs({ config }: { config: PayrollConfig }) {
                 </td>
                 <td>{i.label}</td>
                 <td>{i.unit ?? "—"}</td>
+                <td>
+                  <input
+                    type="checkbox"
+                    disabled={pending}
+                    checked={i.carryForward}
+                    aria-label={`จำค่า ${i.label} จากงวดก่อน`}
+                    onChange={(e) => run(
+                      () => savePayInputAction({ ...i, unit: i.unit ?? "", carryForward: e.target.checked }),
+                      "บันทึกแล้ว",
+                      () => router.refresh(),
+                    )}
+                  />
+                </td>
                 <td>
                   <button
                     disabled={pending}
@@ -343,7 +374,7 @@ function blankComponent(): PayComponent {
     // 🪤 ตัวคูณเริ่มต้นเคยเป็น 0 → เลือกวิธีคิด "ตัวแปรกลาง" แล้วไม่แตะตัวคูณ
     //    = ยอดเป็น 0 ทุกงวดโดยไม่มีอะไรฟ้อง · เริ่มที่ 1 แล้วให้คนที่อยากคูณเป็นคนแก้
     amount: 0, rate: 0, multiplier: 1, tiers: [],
-    inputKeys: [], inputAgg: "sum", groupCodes: [],
+    inputKeys: [], inputAgg: "sum", groupCodes: [], wageTypes: [],
     taxable: true, ssoBase: false, otBase: false, prorateBase: false,
     sort: 0, active: true,
   };
@@ -359,8 +390,10 @@ function blankComponent(): PayComponent {
  *    (พิสูจน์ในเบราว์เซอร์แล้วว่าโหนด input เปลี่ยนตัวจริงหลังพิมพ์ 1 ครั้ง)
  */
 function SlotPicker({
-  kind, value, inputKey, inputOpts, onKind, onValue, onInput,
+  kinds, kind, value, inputKey, inputOpts, onKind, onValue, onInput,
 }: {
+  /** จำกัดตัวเลือก — ไม่ส่ง = ทุกตัว */
+  kinds?: VarSource[];
   kind: VarSource;
   value?: number;
   inputKey?: string;
@@ -372,7 +405,7 @@ function SlotPicker({
   return (
     <div className="flex flex-wrap gap-2">
       <Select value={kind} onChange={(e) => onKind(e.target.value as VarSource)}>
-        {(Object.keys(VAR_SOURCE_LABEL) as VarSource[]).map((k) => (
+        {(kinds ?? (Object.keys(VAR_SOURCE_LABEL) as VarSource[])).map((k) => (
           <option key={k} value={k}>{VAR_SOURCE_LABEL[k]}</option>
         ))}
       </Select>
@@ -439,15 +472,98 @@ function TierEditor({
   );
 }
 
+/**
+ * สูตรวันทำงาน — ลูกค้าเห็นว่าตารางงวดคิดวันทำงานมาจากอะไร
+ * ★ รายเดือนเต็มแสดงด้วยแต่แก้ไม่ได้ เพราะเงินไม่ขึ้นกับวันทำงาน
+ */
+function WorkDays({ config }: { config: PayrollConfig }) {
+  const router = useRouter();
+  const { pending, run } = useSaver();
+  const [edit, setEdit] = useState<{ wage: WorkDayWageType; v: PayVariable } | null>(null);
+  const inputOpts = config.inputs.map((i) => ({ value: i.code, label: i.label }));
+  const inputLabels = Object.fromEntries(config.inputs.map((i) => [i.code, i.label]));
+
+  const set = <K extends keyof PayVariable>(k: K, val: PayVariable[K]) =>
+    setEdit((p) => (p ? { ...p, v: { ...p.v, [k]: val } } : p));
+  function setStep(idx: number, patch: Partial<VarStep>) {
+    setEdit((p) => {
+      if (!p) return p;
+      const d = [...(p.v.steps ?? [])];
+      d[idx] = { ...d[idx], ...patch };
+      return { ...p, v: { ...p.v, steps: d } };
+    });
+  }
+
+  function open(wage: WorkDayWageType) {
+    const rule = ruleOf(config.workDayRules, wage);
+    setEdit({ wage, v: rule ?? { code: "", name: "", source: "work_days_std", steps: [] } });
+  }
+
+  return (
+    <Card title="ค่าจ้างและวันทำงาน">
+      <p className="mb-2 text-xs text-faint">
+        ค่าตั้งต้นของตารางงวด — วันทำงานในตารางคิดจากสูตรนี้ แล้วแก้รายคนได้ในตาราง ·
+        เปลี่ยนสูตรแล้วมีผลกับงวดร่าง ส่วนงวดที่ลงบัญชีแล้วไม่ขยับ
+      </p>
+      <div className="overflow-x-auto">
+        <table className="tbl">
+          <thead>
+            <tr className="text-left text-faint"><th>วิธีคิดค่าจ้าง</th><th>ค่าจ้างฐาน</th><th>วันทำงาน</th><th></th></tr>
+          </thead>
+          <tbody>
+            {WAGE_TYPES.map((w) => (
+              <tr key={w}>
+                <td>{WAGE_LABEL[w]}</td>
+                <td className="text-xs text-muted">{wageBaseText(w)}</td>
+                <td className="text-xs text-muted">{workDayRuleText(w, config.workDayRules, inputLabels)}</td>
+                <td>
+                  {w !== "monthly" && <button onClick={() => open(w)} className="text-muted hover:underline">แก้</button>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {edit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setEdit(null); }}>
+          <EscToClose onClose={() => { setEdit(null); }} />
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-card p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="mb-3 font-semibold text-ink">วันทำงาน — {WAGE_LABEL[edit.wage]}</h3>
+            <VarForm
+              v={edit.v} inputOpts={inputOpts} inputLabels={inputLabels}
+              set={set} setStep={setStep} kinds={WORK_DAY_SOURCES}
+            />
+            <p className="mt-2 text-xs text-faint">
+              คนรายวันได้เงินตามวันที่มาจริง — ถ้าไม่อยากให้ระบบคิดเป็นวันมาตรฐาน ให้สร้างช่องกรอก เช่น &ldquo;วันมาทำงาน&rdquo; แล้วเลือกช่องนั้นเป็นตัวตั้ง
+            </p>
+            <div className="mt-3 flex justify-end gap-2">
+              <button onClick={() => setEdit(null)} className="rounded-lg border border-line px-4 py-2 text-sm">ยกเลิก</button>
+              <SaveButton
+                pending={pending}
+                onClick={() => run(() => saveWorkDayRuleAction(edit.wage, edit.v), "บันทึกแล้ว", () => { setEdit(null); router.refresh(); })}
+              >บันทึก</SaveButton>
+            </div>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 type EditTarget =
   | { type: "var"; v: PayVariable; isNew: boolean }
   | { type: "comp"; c: PayComponent; isNew: boolean };
 
-function Formulas({ config }: { config: PayrollConfig }) {
+function Formulas({ config, employees }: { config: PayrollConfig; employees: EmployeeRow[] }) {
   const router = useRouter();
   const { pending, run } = useSaver();
   const { confirmNode, askDelete } = useAskDelete();
   const [edit, setEdit] = useState<EditTarget | null>(null);
+  // ปุ่มดูตามชนิดค่าจ้าง — ซ่อนแค่บนจอ ข้อมูลยังชุดเดียว
+  const [view, setView] = useState<WageType | "all">("all");
+  const shownComps = view === "all" ? config.components : config.components.filter((c) => componentForWage(c, view));
+  const dailyWarn = dailyWageWarnings(config.components, config.variables, employees.filter((e) => e.active));
 
   const inputOpts = config.inputs.map((i) => ({ value: i.code, label: i.label }));
   const inputLabels = Object.fromEntries(config.inputs.map((i) => [i.code, i.label]));
@@ -503,6 +619,30 @@ function Formulas({ config }: { config: PayrollConfig }) {
         </div>
       </div>
 
+      {dailyWarn.length > 0 && (
+        <div className="mb-3 rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">
+          {dailyWarn.map((w, i) => <p key={i}>⚠ {w}</p>)}
+        </div>
+      )}
+
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="text-xs text-faint">ดูรายการของ</span>
+        {(["all", ...WAGE_TYPES] as const).map((w) => (
+          <button
+            key={w}
+            onClick={() => setView(w)}
+            className={`rounded-full px-3 py-1 text-xs ${view === w ? "bg-brand text-on-brand" : "bg-raised text-muted"}`}
+          >
+            {w === "all" ? "ทุกแบบ" : WAGE_LABEL[w]}
+          </button>
+        ))}
+      </div>
+      {view !== "all" && (
+        <p className="mb-3 rounded-lg bg-raised px-3 py-2 text-xs text-muted">
+          ค่าจ้างฐาน = {wageBaseText(view)} · วันทำงาน = {workDayRuleText(view, config.workDayRules, inputLabels)}
+        </p>
+      )}
+
       {/* ── ตัวแปร (คิดก่อน) ── */}
       <div className="mb-1 mt-2 text-[10px] font-medium uppercase tracking-widest text-muted">
         ตัวแปร — คิดก่อน
@@ -538,17 +678,18 @@ function Formulas({ config }: { config: PayrollConfig }) {
         <table className="tbl">
           <thead>
             <tr className="text-left text-faint">
-              <th>ชื่อ</th><th>ประเภท</th><th>สูตรที่ใช้จริง</th><th>กลุ่ม</th>
+              <th>ชื่อ</th><th>ประเภท</th><th>สูตรที่ใช้จริง</th><th>กลุ่ม</th><th>ใช้กับ</th>
               <th>ภาษี</th><th>ปกส.</th><th>ฐานตัวแปร</th><th>prorate</th><th></th>
             </tr>
           </thead>
           <tbody>
-            {config.components.map((c) => (
+            {shownComps.map((c) => (
               <tr key={c.code}>
                 <td>{c.name}{c.active === false && <span className="ml-1 text-xs text-faint">(ปิดอยู่)</span>}</td>
                 <td>{c.kind === "earning" ? "เพิ่ม" : "หัก"}</td>
                 <td className="text-xs text-muted">{componentFormulaText(c, { inputLabels, variableNames })}</td>
                 <td className="text-xs">{(c.groupCodes ?? []).join(", ") || "ทุกกลุ่ม"}</td>
+                <td className="text-xs">{wageTypesText(c)}</td>
                 <td>{c.taxable ? "✓" : "—"}</td>
                 <td>{c.ssoBase ? "✓" : "—"}</td>
                 <td>{c.otBase ? "✓" : "—"}</td>
@@ -565,7 +706,7 @@ function Formulas({ config }: { config: PayrollConfig }) {
             ))}
           </tbody>
         </table>
-        {config.components.length === 0 && <Empty>— ยังไม่มีรายการ —</Empty>}
+        {shownComps.length === 0 && <Empty>— ยังไม่มีรายการ —</Empty>}
       </div>
 
       {edit && (
@@ -622,9 +763,11 @@ function Formulas({ config }: { config: PayrollConfig }) {
 
 /** ฟอร์มของ "ตัวแปร" */
 function VarForm({
-  v, inputOpts, inputLabels, set, setStep,
+  v, inputOpts, inputLabels, set, setStep, kinds,
 }: {
   v: PayVariable;
+  /** ส่งมา = ฟอร์มสูตรวันทำงาน: จำกัดตัวเลือก และซ่อนชื่อ/การปัด/เปิดปิด */
+  kinds?: VarSource[];
   inputOpts: { value: string; label: string }[];
   inputLabels: Record<string, string>;
   set: <K extends keyof PayVariable>(k: K, val: PayVariable[K]) => void;
@@ -633,15 +776,18 @@ function VarForm({
   const steps = v.steps ?? [];
   return (
     <>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {/* ★ ไม่มีช่องรหัสแล้ว — ระบบตั้งให้เอง (ผู้ใช้จำรหัสที่ตัวเองตั้งไม่ได้อยู่ดี)
-            🚨 ของที่บันทึกแล้วห้ามเปลี่ยนรหัส เพราะงวดที่แช่ค่าไว้อ้างรหัสนี้ */}
-        <Field label="ชื่อที่คนอ่านรู้เรื่อง"><TextInput value={v.name} onChange={(e) => set("name", e.target.value)} placeholder="อัตราค่าล่วงเวลาต่อชั่วโมง" /></Field>
-      </div>
+      {!kinds && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {/* ★ ไม่มีช่องรหัสแล้ว — ระบบตั้งให้เอง (ผู้ใช้จำรหัสที่ตัวเองตั้งไม่ได้อยู่ดี)
+              🚨 ของที่บันทึกแล้วห้ามเปลี่ยนรหัส เพราะงวดที่แช่ค่าไว้อ้างรหัสนี้ */}
+          <Field label="ชื่อที่คนอ่านรู้เรื่อง"><TextInput value={v.name} onChange={(e) => set("name", e.target.value)} placeholder="อัตราค่าล่วงเวลาต่อชั่วโมง" /></Field>
+        </div>
+      )}
 
       <div className="mt-3">
         <Field label="ตัวตั้ง">
           <SlotPicker
+            kinds={kinds}
             kind={v.source} value={v.constValue} inputKey={v.inputKey} inputOpts={inputOpts}
             onKind={(k) => set("source", k)}
             onValue={(x) => set("constValue", x)}
@@ -667,6 +813,7 @@ function VarForm({
                     ))}
                   </Select>
                   <SlotPicker
+                    kinds={kinds}
                     kind={d.kind} value={d.value} inputKey={d.inputKey} inputOpts={inputOpts}
                     onKind={(k) => setStep(idx, { kind: k })}
                     onValue={(x) => setStep(idx, { value: x })}
@@ -679,7 +826,7 @@ function VarForm({
                 </>
               ) : (
                 <button
-                  onClick={() => set("steps", [...steps, { op: "div", kind: "work_days_std" }])}
+                  onClick={() => set("steps", [...steps, kinds ? { op: "sub", kind: "input" } : { op: "div", kind: "work_days_std" }])}
                   className="text-xs text-brand hover:underline"
                 >+ เพิ่มขั้น</button>
               )}
@@ -692,22 +839,26 @@ function VarForm({
         </p>
       </div>
 
-      <div className="mt-3">
-        <Field label="ความละเอียดของค่าที่ได้">
-          <Select value={v.rounding ?? "none"} onChange={(e) => set("rounding", e.target.value as VarRounding)}>
-            {(Object.keys(VAR_ROUNDING_LABEL) as VarRounding[]).map((r) => (
-              <option key={r} value={r}>{VAR_ROUNDING_LABEL[r]}</option>
-            ))}
-          </Select>
-        </Field>
-      </div>
+      {!kinds && (
+        <div className="mt-3">
+          <Field label="ความละเอียดของค่าที่ได้">
+            <Select value={v.rounding ?? "none"} onChange={(e) => set("rounding", e.target.value as VarRounding)}>
+              {(Object.keys(VAR_ROUNDING_LABEL) as VarRounding[]).map((r) => (
+                <option key={r} value={r}>{VAR_ROUNDING_LABEL[r]}</option>
+              ))}
+            </Select>
+          </Field>
+        </div>
+      )}
 
       <FormulaBox text={variableFormulaText(v, inputLabels)} warnings={variableWarnings(v)} />
 
-      <label className="mt-3 flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={v.active !== false} onChange={(e) => set("active", e.target.checked)} />
-        เปิดใช้งาน
-      </label>
+      {!kinds && (
+        <label className="mt-3 flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={v.active !== false} onChange={(e) => set("active", e.target.checked)} />
+          เปิดใช้งาน
+        </label>
+      )}
     </>
   );
 }
@@ -801,6 +952,12 @@ function CompForm({
           value={c.groupCodes ?? []}
           onChange={(v) => set("groupCodes", v)}
           empty="— ยังไม่มีกลุ่มพนักงาน (รายการนี้จะให้ทุกคน) —"
+        />
+        <span className="block text-sm text-muted">ใช้กับวิธีคิดค่าจ้าง (ไม่ติ๊กเลย = ทุกแบบ)</span>
+        <CheckList
+          options={WAGE_TYPES.map((w) => ({ value: w, label: WAGE_LABEL[w] }))}
+          value={c.wageTypes ?? []}
+          onChange={(v) => set("wageTypes", v as WageType[])}
         />
       </div>
 

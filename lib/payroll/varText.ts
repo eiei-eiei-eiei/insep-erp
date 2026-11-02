@@ -14,6 +14,7 @@ import type { PayComponent, PayVariable, VarOp, VarRounding, VarSource } from ".
 export const VAR_SOURCE_LABEL: Record<VarSource, string> = {
   base_wage: "ฐานเงินเดือน / ค่าแรงของพนักงาน",
   prorated_base: "ค่าจ้างฐานหลังคิดตามวันมาทำงานแล้ว",
+  wage_per_day: "ค่าจ้างต่อวัน (รายวัน = ค่าแรงต่อวัน · รายเดือน = เงินเดือน ÷ วันมาตรฐาน)",
   work_days_std: "วันทำงานมาตรฐานของงวดนั้น",
   work_days_actual: "วันมาทำงานจริงของคนนั้น",
   hours_per_day: "ชั่วโมงทำงานต่อวัน",
@@ -25,6 +26,7 @@ export const VAR_SOURCE_LABEL: Record<VarSource, string> = {
 export const VAR_SOURCE_SHORT: Record<VarSource, string> = {
   base_wage: "ฐานเงินเดือน",
   prorated_base: "ค่าจ้างหลัง prorate",
+  wage_per_day: "ค่าจ้างต่อวัน",
   work_days_std: "วันมาตรฐาน",
   work_days_actual: "วันมาทำงานจริง",
   hours_per_day: "ชม./วัน",

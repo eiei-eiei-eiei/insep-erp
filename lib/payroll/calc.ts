@@ -11,6 +11,7 @@ import type {
   PeriodInputs,
   PayVariable,
   VarSource,
+  WageType,
 } from "./types";
 
 /**
@@ -38,9 +39,14 @@ export function roundMoney(v: number, rounding: PayrollSettings["rounding"]): nu
   return rounding === "satang" ? Math.round(x * 100) / 100 : Math.round(x);
 }
 
-/** รายการนี้ใช้กับลูกจ้างคนนี้ไหม — ไม่ระบุกลุ่ม = ทุกคน */
-export function appliesTo(c: PayComponent, groupCode: string | null | undefined): boolean {
+/** รายการนี้ใช้กับลูกจ้างคนนี้ไหม — ไม่ระบุกลุ่ม/ชนิดค่าจ้าง = ทุกคน · ต้องผ่านทั้งสองด่าน */
+export function appliesTo(
+  c: PayComponent,
+  groupCode: string | null | undefined,
+  wageType?: WageType,
+): boolean {
   if (c.active === false) return false;
+  if (wageType && c.wageTypes && c.wageTypes.length > 0 && !c.wageTypes.includes(wageType)) return false;
   if (!c.groupCodes || c.groupCodes.length === 0) return true;
   return groupCode != null && c.groupCodes.includes(groupCode);
 }
@@ -66,6 +72,8 @@ export function tierAmount(tiers: PayComponent["tiers"], value: number): number 
 export type VarContext = {
   baseWage: number;
   proratedBase: number;
+  /** ไม่ส่ง = 0 — ตัวแปรเดิมไม่ได้ใช้ค่านี้ */
+  wagePerDay?: number;
   workDaysStd: number;
   workDaysActual: number;
   hoursPerDay: number;
@@ -81,6 +89,7 @@ function slotValue(
   switch (kind) {
     case "base_wage": return n(ctx.baseWage);
     case "prorated_base": return n(ctx.proratedBase);
+    case "wage_per_day": return n(ctx.wagePerDay);
     case "work_days_std": return n(ctx.workDaysStd);
     case "work_days_actual": return n(ctx.workDaysActual);
     case "hours_per_day": return n(ctx.hoursPerDay);
@@ -176,7 +185,7 @@ export function calcPayrollLine(
   variables: PayVariable[] = [],
 ): PayrollLine {
   const R = (v: number) => roundMoney(v, settings.rounding);
-  const mine = components.filter((c) => appliesTo(c, emp.groupCode));
+  const mine = components.filter((c) => appliesTo(c, emp.groupCode, emp.wageType));
   const earnings = mine.filter((c) => c.kind === "earning");
   const deductionsCfg = mine.filter((c) => c.kind === "deduction");
 
@@ -220,6 +229,8 @@ export function calcPayrollLine(
   const varCtx: VarContext = {
     baseWage: varWageBase,
     proratedBase: baseAmount,
+    // ★ full precision — ปัดตอนคิดยอดรายการ ไม่ใช่ตรงนี้
+    wagePerDay: emp.wageType === "daily" ? varWageBase : varWageBase / workDaysStd,
     workDaysStd,
     workDaysActual: n(inputs.workDays),
     hoursPerDay,

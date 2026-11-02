@@ -13,9 +13,11 @@ describe("🚨 PeriodTab — ช่องกรอกในตารางงว
     expect(src).toMatch(/const CELL_W = "min-w-\[[\d.]+rem\]";/);
   });
 
-  it("ช่องกรอกทุกช่องในแถวงวด (readOnly={locked}) ใส่ CELL_W", () => {
-    const boxes = src.match(/<NumBox[^>]*readOnly=\{locked\}[^>]*/g) ?? [];
-    expect(boxes.length).toBeGreaterThanOrEqual(4);
+  it("ช่องกรอกทุกช่องในตารางงวดใส่ CELL_W", () => {
+    // ★ นับทุก NumBox ใน tbody แรก — ช่องวันทำงานมี 2 แบบ (ล็อก/แก้ได้) ไม่ได้ใช้ readOnly={locked} ทั้งคู่
+    const body = src.slice(src.indexOf("<tbody>"), src.indexOf("</tbody>"));
+    const boxes = body.match(/<NumBox[\s\S]*?\/>/g) ?? [];
+    expect(boxes.length).toBeGreaterThanOrEqual(5);
     for (const b of boxes) expect(b, b).toContain("className={CELL_W}");
   });
 });

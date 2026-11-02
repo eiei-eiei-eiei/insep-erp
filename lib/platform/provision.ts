@@ -20,6 +20,7 @@ import { usernameToEmail } from "../shared/auth-domain";
 import { generateInitialPassword } from "../shared/password";
 import { MODULES } from "../shared/workspaces";
 import { BRAND_COLORS } from "../shared/branding";
+import { defaultWorkDayRows } from "../payroll/workDays";
 
 // ── รูปแบบข้อมูล ─────────────────────────────────────────────────────────────
 
@@ -226,6 +227,10 @@ export async function createTenant(
     { tenant_id: tenantId, kind: "default_mode", value: "light" },
   ]);
   if (sErr) fail(`ตั้งแบรนด์: ${sErr.message}`);
+
+  // ★ สูตรวันทำงานเริ่มต้นเป็นแถวจริง ลูกค้าเห็นในหน้าตั้งค่าว่าระบบคิดจากอะไร (D152)
+  const { error: wErr } = await db.from("pay_variables").insert(defaultWorkDayRows(tenantId));
+  if (wErr) fail(`ตั้งสูตรวันทำงานเริ่มต้น: ${wErr.message}`);
 
   // ── 4. ผู้ใช้ role main ──
   //    ชื่อผู้ใช้ห้ามซ้ำ "ทั้งระบบ" (0032) → owner-<slug> ให้ชนยาก

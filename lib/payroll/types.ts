@@ -78,6 +78,8 @@ export type PayComponent = {
    *   (คนอยู่ได้กลุ่มเดียว → รายการที่ไม่ตรงกลุ่มถูกข้าม ไม่มีทางนับซ้ำ)
    */
   groupCodes?: string[];
+  /** ชนิดค่าจ้างที่ได้รายการนี้ — ว่าง/ไม่ระบุ = ทุกชนิด · ต้องผ่านทั้งด่านนี้และด่านกลุ่ม */
+  wageTypes?: WageType[];
 
   // ── 4 ธงที่ตัดสินว่ารายการนี้ไหลเข้าฐานไหนบ้าง ──────────────────────────────
   /** เข้าเงินได้พึงประเมิน (ฐานภาษี) */
@@ -102,6 +104,8 @@ export type PayComponent = {
 export type VarSource =
   | "base_wage"
   | "prorated_base"
+  /** รายวัน = ฐาน · รายเดือน = ฐาน ÷ วันมาตรฐาน — ตัวแปรตัวเดียวใช้ได้ทุกชนิดค่าจ้าง */
+  | "wage_per_day"
   | "work_days_std"
   | "work_days_actual"
   | "hours_per_day"
@@ -164,9 +168,14 @@ export type PayVariable = {
   divisors?: VarStep[];
   /** ปัดค่าที่ได้ — ไม่ระบุ = ไม่ปัด (พฤติกรรมเดิม) */
   rounding?: VarRounding;
+  /** มีค่า = แถวนี้คือสูตรวันทำงานของชนิดค่าจ้างนั้น ไม่ใช่ตัวแปรที่รายการเอาไปใช้ */
+  workDaysFor?: WorkDayWageType;
   sort?: number;
   active?: boolean;
 };
+
+/** ชนิดค่าจ้างที่ใช้วันทำงานคิดเงิน — รายเดือนเต็มไม่อยู่ในนี้ */
+export type WorkDayWageType = Exclude<WageType, "monthly">;
 
 /** ยอดที่ขาลงบัญชีหนึ่งจะลง — ชุดปิด */
 export type LegAmountSource =

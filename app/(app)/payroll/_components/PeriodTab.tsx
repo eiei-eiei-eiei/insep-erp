@@ -9,8 +9,9 @@ import { ratesOn } from "@/lib/payroll/sso";
 import { printSlips, slipCompany, type SlipCompany, type SlipData } from "@/lib/payroll/slip";
 import type { FilingEntity } from "@/lib/payroll/filingHtml";
 import { legCoverage, legTotal, suggestLegDate } from "@/lib/payroll/legs";
-import { shownLine, differsFromStored, employeeForCalc, tableCaption } from "@/lib/payroll/periodView";
+import { shownLine, differsFromStored, employeeForCalc, tableCaption, overStdEmpIds, rebaseNotice } from "@/lib/payroll/periodView";
 import { notInPeriodReason } from "@/lib/payroll/employment";
+import { formulaWorkDays, overrideFromInput, resolveWorkDays, ruleOf, storedOverride, workDayCaption } from "@/lib/payroll/workDays";
 import type { PayrollLine } from "@/lib/payroll/types";
 import {
   createPeriodAction,
@@ -54,7 +55,7 @@ export function PeriodTab({
   active: boolean;
 }) {
   const router = useRouter();
-  const { pending, run } = useSaver();
+  const { pending, run, setMsg } = useSaver();
   const { confirmNode, ask } = useConfirm();
   const now = new Date();
 
@@ -80,9 +81,17 @@ export function PeriodTab({
       setPeriod(d.period);
       setItems(d.items);
       setEntity(d.entity);
+      // ★ D151 — ฟอร์มด้านบนต้องเป็นค่าของงวดที่เลือก ไม่งั้นกด "เติมพนักงาน" แล้ววันมาตรฐาน
+      //   กับวันจ่ายของงวดถูกเขียนทับด้วยค่าปริยายของฟอร์มโดยไม่รู้ตัว
+      if (d.period) {
+        setYear(d.period.year);
+        setMonth(d.period.month);
+        setWorkDaysStd(d.period.workDaysStd);
+        setPayDate(d.period.payDate ?? "");
+      }
       setDraft(Object.fromEntries(d.items.map((i) => [i.empId, {
         empId: i.empId,
-        workDays: i.inputs.workDays ?? d.period?.workDaysStd ?? 0,
+        workDaysOverride: storedOverride(i.inputs, d.period?.workDaysStd ?? 0),
         values: i.inputs.values ?? {},
         manual: i.inputs.manual ?? {},
         whtOverride: i.inputs.whtOverride ?? null,
@@ -101,6 +110,23 @@ export function PeriodTab({
     [period, config.rates],
   );
 
+  /**
+   * วันทำงานของแต่ละแถว — ตัวคิดเดียวกับฝั่ง server (`resolveWorkDays`)
+   * ★ งวดที่ลงบัญชีแล้วใช้ค่าที่แช่ไว้ แก้สูตรทีหลังต้องไม่ขยับ
+   */
+  const days = useMemo(() => {
+    const out: Record<string, number> = {};
+    if (!period) return out;
+    for (const it of items) {
+      const d = draft[it.empId];
+      const emp = employees.find((e) => e.empId === it.empId);
+      out[it.empId] = locked || !d || !emp
+        ? it.inputs.workDays ?? period.workDaysStd
+        : resolveWorkDays(emp.wageType, config.workDayRules, period.workDaysStd, d.values, d.workDaysOverride);
+    }
+    return out;
+  }, [items, draft, period, locked, employees, config.workDayRules]);
+
   const live = useMemo(() => {
     if (!period || !rates) return {} as Record<string, PayrollLine>;
     const out: Record<string, PayrollLine> = {};
@@ -111,7 +137,7 @@ export function PeriodTab({
       if (!emp) continue;
       out[it.empId] = calcPayrollLine(
         emp,
-        { workDays: d.workDays, values: d.values, manual: d.manual, whtOverride: d.whtOverride },
+        { workDays: days[it.empId] ?? 0, values: d.values, manual: d.manual, whtOverride: d.whtOverride },
         config.components,
         rates,
         config.settings,
@@ -120,7 +146,7 @@ export function PeriodTab({
       );
     }
     return out;
-  }, [items, draft, period, rates, config, employees]);
+  }, [items, draft, days, period, rates, config, employees]);
 
   /**
    * ค่าที่ "เอาไปแสดง" — ตัดสินจาก **สถานะของงวด** ไม่ใช่ว่าเคยบันทึกไว้หรือยัง
@@ -205,12 +231,11 @@ export function PeriodTab({
   /** สลิป 1 ใบ — ตัวเลขชุดเดียวกับที่ตารางแสดง (`shown`: ลงบัญชีแล้ว = ค่าที่แช่ไว้ · ร่าง = คิดสด) */
   function slipOf(it: ItemRow, company: SlipCompany): SlipData {
     const l = shown[it.empId];
-    const d = draft[it.empId];
     const emp = empOf(it, employees);
     const baseLabel =
       emp?.wageType === "monthly"
         ? "เงินเดือน"
-        : `${emp?.wageType === "daily" ? "ค่าแรง" : "เงินเดือน"} (${d?.workDays ?? 0} วัน)`;
+        : `${emp?.wageType === "daily" ? "ค่าแรง" : "เงินเดือน"} (${days[it.empId] ?? 0} วัน)`;
     return {
       ...company,
       periodLabel: `${String(period!.month).padStart(2, "0")}/${period!.year}`,
@@ -241,6 +266,37 @@ export function PeriodTab({
   }
 
   const posted = (code: string) => Boolean(period?.postState?.[code]);
+
+  // งวดของปี/เดือนในฟอร์ม — มีแล้ว = ปุ่มคือการแก้ ไม่ใช่การสร้าง
+  const formPeriod = periods.find((p) => p.year === year && p.month === month);
+  const stdChanging = formPeriod != null && formPeriod.workDaysStd !== workDaysStd;
+
+  // 🚨 D151 — ตัวหารเล็กกว่าตัวคูณ = จ่ายเกินเงินเดือน · เตือนเฉพาะงวดที่ยังแก้ได้
+  const overStd = !period || locked ? [] : overStdEmpIds(
+    items.map((it) => ({
+      empId: it.empId,
+      wageType: employees.find((e) => e.empId === it.empId)?.wageType,
+      workDays: days[it.empId] ?? 0,
+    })),
+    period.workDaysStd,
+  );
+  const overStdEdited = overStd.filter((id) => draft[id]?.workDaysOverride != null);
+
+  function backToFormula(ids: string[]) {
+    setDraft((p) => {
+      const next = { ...p };
+      for (const id of ids) next[id] = { ...next[id], workDaysOverride: null };
+      return next;
+    });
+  }
+
+  // บรรทัดเหนือตาราง — บอกว่าวันทำงานมาจากอะไร เฉพาะชนิดค่าจ้างที่มีคนในงวดนี้
+  const inputLabels = Object.fromEntries(config.inputs.map((i) => [i.code, i.label]));
+  const dayCaption = workDayCaption(
+    items.flatMap((it) => employees.find((e) => e.empId === it.empId)?.wageType ?? []),
+    config.workDayRules,
+    inputLabels,
+  );
 
   // ── ตัวเลขคุมกันลงรายจ่ายซ้ำ/ขาด ────────────────────────────────────────────
   //    ขาที่ลูกค้าตั้งเองอาจยอดซ้อนกันได้ และไม่มีอะไรใน DB ฟ้อง → ต้องโชว์ให้เห็น
@@ -281,19 +337,27 @@ export function PeriodTab({
           &ldquo;วันทำงานมาตรฐาน&rdquo; คือตัวหารของพนักงานแบบลดตามวันมาทำงาน — ตกลงกันภายในว่าจะใช้ 30 วัน
           หรือจำนวนวันจริงของเดือนนั้น
         </p>
+        {stdChanging && (
+          <p className="mt-2 text-xs text-warn">
+            งวด {formPeriod.periodId} จะเปลี่ยนวันทำงานมาตรฐานจาก {formPeriod.workDaysStd} เป็น {workDaysStd} วัน ·
+            แถวที่ใช้สูตรจะคิดใหม่ ส่วนแถวที่แก้รายคนไว้คงค่าเดิม
+          </p>
+        )}
         <div className="mt-3">
           <SaveButton
             pending={pending}
             onClick={() =>
               run(() => createPeriodAction({ year, month, workDaysStd, payDate }), "สร้าง/อัปเดตงวดแล้ว", (d) => {
-                const id = (d as { periodId: string }).periodId;
-                setPeriodId(id);
-                load(id);
+                const r = d as { periodId: string; rebased: number; kept: number };
+                setPeriodId(r.periodId);
+                load(r.periodId);
                 router.refresh();
+                const text = rebaseNotice(r.rebased, r.kept, workDaysStd);
+                if (text) setMsg({ ok: true, warn: r.kept > 0, text });
               })
             }
           >
-            สร้างงวด / เติมพนักงานที่ยังไม่มี
+            {formPeriod ? "บันทึกงวด / เติมพนักงานที่ยังไม่มี" : "สร้างงวดใหม่"}
           </SaveButton>
         </div>
       </Card>
@@ -331,13 +395,29 @@ export function PeriodTab({
             </div>
           )}
 
-          <Card title={`ตารางงวด ${period.periodId}`}>
+          {overStd.length > 0 && (
+            <div className="rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">
+              ⚠ มี <b>{overStd.length}</b> คนที่วันทำงานมากกว่าวันมาตรฐาน ({period.workDaysStd} วัน) —
+              คนกลุ่มนี้จะได้เงินเกินเงินเดือนเต็ม
+              {overStdEdited.length > 0 && (
+                <>
+                  <button onClick={() => backToFormula(overStdEdited)} disabled={pending} className="ml-2 font-semibold underline">
+                    กลับไปใช้สูตร
+                  </button>
+                  <span className="ml-1">แล้วกด <b>คำนวณ &amp; บันทึก</b></span>
+                </>
+              )}
+            </div>
+          )}
+
+          <Card title={`ตารางงวด ${period.periodId} · วันทำงานมาตรฐาน ${period.workDaysStd} วัน`}>
             {loading ? (
               <p className="text-sm text-faint">กำลังโหลด…</p>
             ) : items.length === 0 ? (
               <Empty>— ยังไม่มีพนักงานในงวดนี้ (กด &ldquo;สร้างงวด / เติมพนักงาน&rdquo;) —</Empty>
             ) : (
               <div className="overflow-x-auto">
+                {dayCaption && !locked && <p className="mb-2 text-xs text-faint">{dayCaption} (ตั้งที่แท็บตั้งค่าการคำนวณ · ช่องว่างในตารางคิดจากสูตร พิมพ์ทับได้รายคน)</p>}
                 <table className="tbl">
                   <thead>
                     <tr className="text-left text-faint">
@@ -358,6 +438,8 @@ export function PeriodTab({
                       const d = draft[it.empId];
                       const l = shown[it.empId];
                       if (!d) return null;
+                      const wage = employees.find((e) => e.empId === it.empId)?.wageType;
+                      const formula = wage ? formulaWorkDays(ruleOf(config.workDayRules, wage), period.workDaysStd, d.values) : period.workDaysStd;
                       return (
                         <tr key={it.empId}>
                           <td className="whitespace-nowrap">
@@ -371,8 +453,26 @@ export function PeriodTab({
                             )}
                           </td>
                           <td className="num">
-                            <NumBox value={d.workDays} readOnly={locked} className={CELL_W}
-                              onChange={(v) => setRow(it.empId, { workDays: v === "" ? 0 : v })} />
+                            {wage === "monthly" ? (
+                              <span className="text-xs text-faint">เต็มเดือน</span>
+                            ) : locked ? (
+                              <NumBox value={days[it.empId] ?? 0} readOnly className={CELL_W} />
+                            ) : (
+                              <>
+                                {/* ★ ว่าง = ใช้สูตร ตัวเลขจางคือค่าที่คิดได้ · พิมพ์ทับ = แก้รายคน */}
+                                <NumBox
+                                  value={d.workDaysOverride ?? ""}
+                                  placeholder={String(formula)}
+                                  className={CELL_W}
+                                  onChange={(v) => setRow(it.empId, { workDaysOverride: overrideFromInput(v, formula) })}
+                                />
+                                {d.workDaysOverride != null && (
+                                  <button onClick={() => backToFormula([it.empId])} className="mt-0.5 block w-full text-right text-xs text-brand hover:underline">
+                                    ใช้สูตร ({formula})
+                                  </button>
+                                )}
+                              </>
+                            )}
                           </td>
                           {config.inputs.map((i) => (
                             <td key={i.code} className="num">

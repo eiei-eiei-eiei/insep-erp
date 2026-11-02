@@ -12,9 +12,13 @@ import type {
   PayRates,
   PayVariable,
   PayrollSettings,
+  WorkDayWageType,
 } from "@/lib/payroll/types";
 import { getPayrollConfig, getPeriodDetail, getEmployees, type EmployeeRow } from "./data";
-import { employeeForCalc } from "@/lib/payroll/periodView";
+import { carriedValues, employeeForCalc } from "@/lib/payroll/periodView";
+import {
+  WORK_DAY_RULE_CODE, WORK_DAY_RULE_NAME, WORK_DAY_WAGE_TYPES, resolveWorkDays, storedOverride, workDayRuleError,
+} from "@/lib/payroll/workDays";
 import { isEmployedInPeriod } from "@/lib/payroll/employment";
 
 /**
@@ -63,7 +67,7 @@ export async function deletePayGroupAction(value: string): Promise<SaveResult> {
 }
 
 export async function savePayInputAction(input: {
-  code: string; label: string; unit: string; sort: number; active: boolean;
+  code: string; label: string; unit: string; sort: number; active: boolean; carryForward?: boolean;
 }): Promise<SaveResult> {
   const supabase = await createClient();
   if (!input.label.trim()) return fail("กรอกชื่อช่องที่จะให้แสดงบนหน้าจอ");
@@ -71,7 +75,7 @@ export async function savePayInputAction(input: {
   const code = input.code.trim() || (await nextCode(supabase, "pay_inputs", "in"));
   const { error } = await supabase.from("pay_inputs").upsert({
     code, label: input.label.trim(), unit: input.unit.trim() || null,
-    sort: input.sort, active: input.active,
+    sort: input.sort, active: input.active, carry_forward: input.carryForward ?? false,
   });
   if (error) return fail(mapDbError(error));
   revalidatePath("/payroll");
@@ -102,6 +106,7 @@ export async function savePayComponentAction(c: PayComponent): Promise<SaveResul
     tiers: c.tiers ?? [],
     input_keys: c.inputKeys ?? [], input_agg: c.inputAgg ?? "sum",
     group_codes: c.groupCodes ?? [],
+    wage_types: c.wageTypes ?? [],
     taxable: c.taxable ?? true, sso_base: c.ssoBase ?? false,
     ot_base: c.otBase ?? false, prorate_base: c.prorateBase ?? false,
     variable_code: c.variableCode ?? null,
@@ -184,6 +189,37 @@ export async function deletePayVariableAction(code: string): Promise<SaveResult>
     return fail(`ลบไม่ได้ — รายการ "${used[0].name}" ยังใช้ตัวแปรนี้อยู่`);
   }
   const { error } = await supabase.from("pay_variables").delete().eq("code", code);
+  if (error) return fail(mapDbError(error));
+  revalidatePath("/payroll");
+  return { ok: true };
+}
+
+/**
+ * บันทึกสูตรวันทำงานของชนิดค่าจ้างหนึ่ง
+ * 🚨 ด่านจริงของชุดตัวเลือกอยู่ตรงนี้ — สูตรที่อ้างค่าจ้างจะวนกลับมาหาตัวเอง
+ */
+export async function saveWorkDayRuleAction(
+  wage: WorkDayWageType,
+  rule: Pick<PayVariable, "source" | "constValue" | "inputKey" | "steps">,
+): Promise<SaveResult> {
+  if (!WORK_DAY_WAGE_TYPES.includes(wage)) return fail("ชนิดค่าจ้างนี้ไม่ใช้สูตรวันทำงาน");
+  const err = workDayRuleError(rule);
+  if (err) return fail(err);
+  const steps = rule.steps ?? [];
+  for (const st of steps) {
+    if (st.op && !VAR_OPS.includes(st.op)) return fail("ตัวดำเนินการต้องเป็น บวก/ลบ/คูณ/หาร เท่านั้น");
+  }
+  const supabase = await createClient();
+  const { error } = await supabase.from("pay_variables").upsert({
+    code: WORK_DAY_RULE_CODE[wage],
+    name: WORK_DAY_RULE_NAME[wage],
+    source: rule.source,
+    const_value: rule.constValue ?? 0,
+    input_key: rule.inputKey ?? null,
+    steps: steps.map((st) => ({ ...st, op: st.op ?? "div" })),
+    rounding: "none",
+    work_days_for: wage,
+  });
   if (error) return fail(mapDbError(error));
   revalidatePath("/payroll");
   return { ok: true };
@@ -278,8 +314,9 @@ export async function createPeriodAction(input: {
   if (!(input.workDaysStd > 0)) return fail("ใส่จำนวนวันทำงานมาตรฐานของเดือนนี้");
   const periodId = `PR-${input.year}-${String(input.month).padStart(2, "0")}`;
 
-  const { data: exist } = await supabase
-    .from("payroll_periods").select("status").eq("period_id", periodId).maybeSingle();
+  const { data: exist, error: existErr } = await supabase
+    .from("payroll_periods").select("status, work_days_std").eq("period_id", periodId).maybeSingle();
+  if (existErr) return fail(mapDbError(existErr));
 
   if (!exist) {
     const { error } = await supabase.from("payroll_periods").insert({
@@ -299,11 +336,34 @@ export async function createPeriodAction(input: {
   // เติมบรรทัดของคนที่ยังไม่มีในงวดนี้
   // 🚨 กรองด้วย **ช่วงเวลาที่เป็นลูกจ้างจริง** ไม่ใช่ธง active อย่างเดียว —
   //    คนที่ลาออกกลางเดือนยังต้องได้เงินงวดนั้น (ดูเหตุผลเต็มใน lib/payroll/employment)
-  const [{ data: emps }, { data: rows }] = await Promise.all([
-    supabase.from("employees").select("emp_id, name, group_code, start_date, end_date, active"),
-    supabase.from("payroll_items").select("emp_id").eq("period_id", periodId),
+  const [{ data: emps }, { data: rows, error: rowsErr }] = await Promise.all([
+    supabase.from("employees").select("emp_id, name, group_code, wage_type, start_date, end_date, active"),
+    supabase.from("payroll_items").select("emp_id, inputs").eq("period_id", periodId),
   ]);
+  if (rowsErr) return fail(mapDbError(rowsErr));
   const have = new Set((rows ?? []).map((r) => r.emp_id as string));
+
+  // D151/D152 — เปลี่ยนวันมาตรฐานของงวดเดิม: แถวที่ใช้สูตรตามเอง แถวที่แก้รายคนคงไว้
+  //   🪤 แถวก่อน D152 ไม่มี workDaysOverride ต้องตัดสินด้วยวันมาตรฐาน**เดิม** แล้วเขียนกลับ
+  //      ไม่งั้นรอบถัดไปเทียบกับค่าใหม่ แล้วแถวที่ไม่มีใครแตะกลายเป็น "แก้รายคน"
+  let rebased = 0;
+  let kept = 0;
+  const oldStd = Number(exist?.work_days_std ?? input.workDaysStd);
+  if (oldStd !== input.workDaysStd) {
+    const wageOf = new Map((emps ?? []).map((e) => [e.emp_id as string, e.wage_type as string]));
+    for (const r of rows ?? []) {
+      if (wageOf.get(r.emp_id as string) === "monthly") continue;
+      const inputs = (r.inputs ?? {}) as { workDays?: number; workDaysOverride?: number | null };
+      const override = storedOverride(inputs, oldStd);
+      if (override != null) kept++; else rebased++;
+      if ("workDaysOverride" in inputs) continue;
+      const { error } = await supabase.from("payroll_items")
+        .update({ inputs: { ...inputs, workDaysOverride: override } })
+        .eq("period_id", periodId).eq("emp_id", r.emp_id);
+      if (error) return fail(mapDbError(error));
+    }
+  }
+
   const toAdd = (emps ?? []).filter(
     (e) =>
       !have.has(e.emp_id as string) &&
@@ -314,22 +374,63 @@ export async function createPeriodAction(input: {
       ),
   );
   if (toAdd.length > 0) {
+    const carried = await carriedByEmployee(supabase, toAdd.map((e) => e.emp_id as string), periodId);
+    if (!carried.ok) return fail(carried.error);
     const { error } = await supabase.from("payroll_items").insert(
       toAdd.map((e) => ({
         period_id: periodId, emp_id: e.emp_id, emp_name: e.name, group_code: e.group_code,
-        inputs: { workDays: input.workDaysStd, values: {}, manual: {} },
+        inputs: {
+          workDays: input.workDaysStd,
+          workDaysOverride: null,
+          values: carried.byEmp.get(e.emp_id as string) ?? {},
+          manual: {},
+        },
       })),
     );
     if (error) return fail(mapDbError(error));
   }
 
   revalidatePath("/payroll");
-  return { ok: true, data: { periodId } };
+  return { ok: true, data: { periodId, rebased, kept } };
+}
+
+/**
+ * ค่าของช่องที่เปิด "จำค่าจากงวดก่อน" ต่อพนักงาน — จากงวดล่าสุดที่คนนั้นมีแถว
+ * 🚨 อ่านไม่ได้ต้องฟ้อง ไม่งั้นงวดใหม่ขาดค่าตำแหน่งเงียบ ๆ (D89)
+ */
+async function carriedByEmployee(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  empIds: string[],
+  periodId: string,
+): Promise<{ ok: true; byEmp: Map<string, Record<string, number>> } | { ok: false; error: string }> {
+  const byEmp = new Map<string, Record<string, number>>();
+  const { data: flagged, error: fErr } = await supabase
+    .from("pay_inputs").select("code").eq("carry_forward", true);
+  if (fErr) return { ok: false, error: mapDbError(fErr) };
+  const codes = (flagged ?? []).map((r) => r.code as string);
+  if (codes.length === 0) return { ok: true, byEmp };
+
+  // ★ รหัสงวดเป็น PR-YYYY-MM เรียงตามตัวอักษรได้ · ใหม่สุดมาก่อน → แถวแรกของคนนั้นคือแถวล่าสุด
+  const { data: prev, error: pErr } = await supabase
+    .from("payroll_items").select("emp_id, inputs")
+    .in("emp_id", empIds).lt("period_id", periodId)
+    .order("period_id", { ascending: false }).limit(empIds.length * 36);
+  if (pErr) return { ok: false, error: mapDbError(pErr) };
+
+  const seen = new Set<string>();
+  for (const r of prev ?? []) {
+    const id = r.emp_id as string;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    byEmp.set(id, carriedValues(codes, (r.inputs as { values?: Record<string, number> })?.values));
+  }
+  return { ok: true, byEmp };
 }
 
 export type LineInput = {
   empId: string;
-  workDays: number;
+  /** null = ใช้สูตรวันทำงาน */
+  workDaysOverride: number | null;
   values: Record<string, number>;
   manual: Record<string, number>;
   whtOverride: number | null;
@@ -358,9 +459,12 @@ export async function savePeriodLinesAction(periodId: string, lines: LineInput[]
   for (const ln of lines) {
     const r = empById.get(ln.empId);
     if (!r) continue;
-    const result = calcLine(r, ln, cfg.components, cfg.variables, rates, cfg.settings, period.year, period.month, period.workDaysStd);
+    // 🚨 server คิดวันทำงานเอง ไม่เชื่อค่าจากหน้าจอ · รายเดือนเต็มไม่มีค่าแก้รายคน
+    const workDaysOverride = r.wageType === "monthly" ? null : ln.workDaysOverride;
+    const workDays = resolveWorkDays(r.wageType, cfg.workDayRules, period.workDaysStd, ln.values, workDaysOverride);
+    const result = calcLine(r, workDays, ln, cfg.components, cfg.variables, rates, cfg.settings, period.year, period.month, period.workDaysStd);
     const { error } = await supabase.from("payroll_items").update({
-      inputs: { workDays: ln.workDays, values: ln.values, manual: ln.manual, whtOverride: ln.whtOverride },
+      inputs: { workDays, workDaysOverride, values: ln.values, manual: ln.manual, whtOverride: ln.whtOverride },
       computed: result.line as unknown as Record<string, unknown>,
       rates_snapshot: rates as unknown as Record<string, unknown>,
       base_amount: result.line.baseAmount,
@@ -453,6 +557,7 @@ export async function unpostPayrollAction(periodId: string, legCode: string): Pr
 
 function calcLine(
   r: EmployeeRow,
+  workDays: number,
   ln: LineInput,
   components: PayComponent[],
   variables: PayVariable[],
@@ -466,7 +571,7 @@ function calcLine(
   const emp = employeeForCalc(r);
   const line = calcPayrollLine(
     emp,
-    { workDays: ln.workDays, values: ln.values, manual: ln.manual, whtOverride: ln.whtOverride },
+    { workDays, values: ln.values, manual: ln.manual, whtOverride: ln.whtOverride },
     components,
     rates,
     settings,

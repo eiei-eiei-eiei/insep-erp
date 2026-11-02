@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { shownLine, differsFromStored, round2, employeeForCalc, tableCaption } from "./periodView";
+import {
+  shownLine, differsFromStored, round2, employeeForCalc, tableCaption,
+  carriedValues, overStdEmpIds, rebaseNotice,
+} from "./periodView";
 import type { PayrollLine } from "./types";
 
 const L = (net: number, gross = net): PayrollLine =>
@@ -23,6 +26,39 @@ describe("shownLine — จะโชว์เลขเวอร์ชันไ�
 
   it("ลงบัญชีแล้วแต่ไม่มีค่าแช่ไว้ (ไม่ควรเกิด) → ใช้ค่าสด ไม่ปล่อยหน้าว่าง", () => {
     expect(shownLine(true, null, L(9000))?.net).toBe(9000);
+  });
+});
+
+describe("D152 — จำค่าจากงวดก่อน", () => {
+  it("ยกเฉพาะช่องที่เปิดไว้", () => {
+    expect(carriedValues(["pos_allow"], { pos_allow: 500, ot_h: 10 })).toEqual({ pos_allow: 500 });
+  });
+
+  it("คนที่ไม่มีงวดก่อน หรือค่าเป็น 0 ไม่ได้ค่าอะไร", () => {
+    expect(carriedValues(["pos_allow"], undefined)).toEqual({});
+    expect(carriedValues(["pos_allow"], { pos_allow: 0 })).toEqual({});
+  });
+
+  it("ไม่ได้เปิดช่องไหน = ไม่ยกอะไร", () => {
+    expect(carriedValues([], { pos_allow: 500 })).toEqual({});
+  });
+});
+
+describe("D151 — เปลี่ยนวันทำงานมาตรฐานของงวด", () => {
+  it("เตือนเฉพาะ monthly_prorate ที่วันทำงานเกินตัวหาร", () => {
+    expect(overStdEmpIds([
+      { empId: "over", wageType: "monthly_prorate", workDays: 30 },
+      { empId: "equal", wageType: "monthly_prorate", workDays: 23 },
+      { empId: "daily", wageType: "daily", workDays: 30 },
+      { empId: "monthly", wageType: "monthly", workDays: 30 },
+      { empId: "gone", workDays: 30 },
+    ], 23)).toEqual(["over"]);
+  });
+
+  it("ข้อความบอกทั้งจำนวนที่ปรับและที่คงไว้ · ไม่กระทบใคร = ไม่มีข้อความ", () => {
+    expect(rebaseNotice(0, 0, 23)).toBeNull();
+    expect(rebaseNotice(8, 0, 23)).toBe("เปลี่ยนวันทำงานมาตรฐานเป็น 23 วันแล้ว · ปรับวันทำงานตาม 8 คน");
+    expect(rebaseNotice(6, 2, 23)).toContain("คงค่าที่กรอกไว้ 2 คน");
   });
 });
 

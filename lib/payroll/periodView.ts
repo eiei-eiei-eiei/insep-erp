@@ -86,6 +86,43 @@ export function employeeForCalc(e: {
 }
 
 /**
+ * ค่าช่องกรอกที่ยกจากงวดก่อนให้แถวใหม่ (D152)
+ * ★ เฉพาะช่องที่เปิดไว้ · ค่า 0/ว่างไม่ยก (ไม่มีอะไรต้องจำ)
+ */
+export function carriedValues(
+  carryCodes: string[],
+  prev: Record<string, number> | undefined,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const code of carryCodes) {
+    const v = Number(prev?.[code]);
+    if (v) out[code] = v;
+  }
+  return out;
+}
+
+/**
+ * คนที่วันทำงานเกินวันมาตรฐาน — เฉพาะแบบลดตามวันมาทำงาน
+ * ★ `daily` ไม่นับ: ค่าแรงรายวันไม่ได้ใช้วันมาตรฐานเป็นตัวหาร ทำงานเกินวันที่ตั้งไว้ได้ตามจริง
+ * ★ `monthly` ไม่นับ: เงินเดือนเหมาไม่ขึ้นกับวันทำงาน
+ */
+export function overStdEmpIds(
+  rows: { empId: string; wageType?: Employee["wageType"]; workDays: number }[],
+  std: number,
+): string[] {
+  return rows.filter((r) => r.wageType === "monthly_prorate" && Number(r.workDays) > Number(std)).map((r) => r.empId);
+}
+
+/** ข้อความหลังเปลี่ยนวันมาตรฐาน — null = ไม่มีแถวไหนกระทบ */
+export function rebaseNotice(rebased: number, kept: number, std: number): string | null {
+  if (rebased === 0 && kept === 0) return null;
+  const parts = [`เปลี่ยนวันทำงานมาตรฐานเป็น ${std} วันแล้ว`];
+  if (rebased > 0) parts.push(`ปรับวันทำงานตาม ${rebased} คน`);
+  if (kept > 0) parts.push(`คงค่าที่กรอกไว้ ${kept} คน ตรวจแถวเหล่านั้นอีกครั้ง`);
+  return parts.join(" · ");
+}
+
+/**
  * คำกำกับใต้ตารางงวด — บอกว่า **ตัวเลขที่เห็นอยู่คือเวอร์ชันไหน**
  *
  * 🚨 ต้องตัดสินจาก `locked` ตัวเดียวกับที่ `shownLine()` ใช้ — ถ้าประโยคกับตัวเลข

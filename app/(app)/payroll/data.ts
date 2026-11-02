@@ -21,7 +21,7 @@ import type {
  *   ไม่ต้องใส่ .eq("tenant_id", …) เอง — และห้ามใส่ เพราะ my_tenant() เป็นแหล่งความจริงเดียว
  */
 
-export type PayInput = { code: string; label: string; unit: string | null; sort: number; active: boolean };
+export type PayInput = { code: string; label: string; unit: string | null; sort: number; active: boolean; carryForward: boolean };
 
 export type EmployeeRow = Employee & {
   entityId: string;
@@ -49,7 +49,15 @@ export type ItemRow = {
   empId: string;
   empName: string;
   groupCode: string | null;
-  inputs: { workDays?: number; values?: Record<string, number>; manual?: Record<string, number>; whtOverride?: number | null };
+  inputs: {
+    /** ค่าที่ส่งเข้าสูตรตอนบันทึกล่าสุด */
+    workDays?: number;
+    /** ค่าที่แก้รายคน — null = ใช้สูตร · ไม่มีช่องนี้ = แถวก่อน D152 */
+    workDaysOverride?: number | null;
+    values?: Record<string, number>;
+    manual?: Record<string, number>;
+    whtOverride?: number | null;
+  };
   computed: Record<string, unknown>;
   baseAmount: number;
   gross: number;
@@ -77,6 +85,8 @@ export async function getPayrollConfig(): Promise<{
   inputs: PayInput[];
   components: PayComponent[];
   variables: PayVariable[];
+  /** สูตรวันทำงานต่อชนิดค่าจ้าง — แยกจาก variables เพราะรายการไม่ได้เอาไปใช้ */
+  workDayRules: PayVariable[];
   legs: PayPostLeg[];
   rates: PayRates[];
 }> {
@@ -92,7 +102,7 @@ export async function getPayrollConfig(): Promise<{
       //   (หมวดที่ตั้งไว้แต่ยังไม่เคยลงบัญชีจริงจะไม่โผล่ถ้าดูแต่ transactions)
       "expense_cat",
     ]).order("sort"),
-    supabase.from("pay_inputs").select("code, label, unit, sort, active").order("sort"),
+    supabase.from("pay_inputs").select("code, label, unit, sort, active, carry_forward").order("sort"),
     supabase.from("pay_components").select("*").order("sort"),
     supabase.from("pay_variables").select("*").order("sort"),
     supabase.from("pay_post_legs").select("*").order("sort"),
@@ -111,6 +121,7 @@ export async function getPayrollConfig(): Promise<{
   const rows = s.data ?? [];
   const list = (k: string) => rows.filter((r) => r.kind === k).map((r) => r.value as string);
   const one = (k: string) => list(k)[0] ?? "";
+  const varRows = (vars.data ?? []).map(toVariable);
 
   return {
     settings: {
@@ -133,9 +144,10 @@ export async function getPayrollConfig(): Promise<{
       ...(legs.data ?? []).map((r) => (r as { category?: string }).category ?? null),
     ]),
     contactNames: uniqSorted((contacts.data ?? []).map((c) => c.name as string | null)),
-    inputs: (inputs.data ?? []) as PayInput[],
+    inputs: (inputs.data ?? []).map(toInput),
     components: (comps.data ?? []).map(toComponent),
-    variables: (vars.data ?? []).map(toVariable),
+    variables: varRows.filter((v) => !v.workDaysFor),
+    workDayRules: varRows.filter((v) => v.workDaysFor),
     legs: (legs.data ?? []).map(toLeg),
     rates: (rates.data ?? []).map(toRates),
   };
@@ -200,6 +212,17 @@ function uniqSorted(list: (string | null | undefined)[]): string[] {
 // ── mappers (snake_case ของ DB → camelCase ของ lib/payroll) ──────────────────
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+function toInput(r: any): PayInput {
+  return {
+    code: r.code,
+    label: r.label,
+    unit: r.unit,
+    sort: r.sort,
+    active: r.active,
+    carryForward: r.carry_forward === true,
+  };
+}
+
 function toComponent(r: any): PayComponent {
   return {
     code: r.code,
@@ -213,6 +236,7 @@ function toComponent(r: any): PayComponent {
     inputKeys: r.input_keys ?? [],
     inputAgg: r.input_agg,
     groupCodes: r.group_codes ?? [],
+    wageTypes: r.wage_types ?? [],
     taxable: r.taxable,
     ssoBase: r.sso_base,
     otBase: r.ot_base,
@@ -233,6 +257,7 @@ function toVariable(r: any): PayVariable {
     // ★ คอลัมน์ถูกเปลี่ยนชื่อเป็น steps ใน 0044 — อ่าน divisors ต่อไว้กันกรณี DB ยังไม่ได้ลง migration
     steps: r.steps ?? r.divisors ?? [],
     rounding: r.rounding ?? "none",
+    workDaysFor: r.work_days_for ?? undefined,
     sort: r.sort,
     active: r.active,
   };
