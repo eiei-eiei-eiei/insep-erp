@@ -126,6 +126,11 @@ export type OrderUpdate = {
   // D89 — เลขใบเสร็จของกิจการที่ไม่จด VAT
   rcptNo1?: string;
   rcptNo2?: string;
+  /**
+   * D156 — ยอดรับชำระแล้ว ณ วันออกใบแจ้งหนี้/ใบส่งสินค้าของออเดอร์แบ่งงวด → sales_orders.inv_paid_before
+   * ★ ส่งเฉพาะตอนออกเลข inv_no ครั้งแรก · ตัวพิมพ์ใช้ค่านี้แทน deposit ปัจจุบัน (ใบที่ออกแล้วต้องไม่ขยับ)
+   */
+  invPaidBefore?: number;
 };
 
 export type RevenuePayload = {
@@ -349,7 +354,11 @@ export function processOrder(
     update.outstandingBalance = after;
     update.paymentMethod = payload.method;
     if (st.ship) {
-      if (!order.invNo && gen.invNo) update.invNo = gen.invNo;
+      if (!order.invNo && gen.invNo) {
+        update.invNo = gen.invNo;
+        // ★ D156 — ใบแจ้งหนี้ออกพร้อมรับงวดนี้ → หัก "รับชำระแล้ว" รวมงวดนี้ · แช่ไว้ ห้ามอ่าน deposit สดตอนพิมพ์
+        update.invPaidBefore = update.deposit;
+      }
       update.docToPrint = "invoice";
       dateField = "docDate1";
     }
@@ -358,7 +367,10 @@ export function processOrder(
     const st = statusAfterShipNow(outstandingBalance);
     update.status = st.status;
     update.nextStatus = st.nextStatus;
-    if (!order.invNo && gen.invNo) update.invNo = gen.invNo;
+    if (!order.invNo && gen.invNo) {
+      update.invNo = gen.invNo;
+      update.invPaidBefore = round2(Number(order.deposit) || 0); // D156 — ยอดที่รับแล้ว ณ ตอนส่งคลัง
+    }
     update.docToPrint = "invoice";
     dateField = "docDate1";
   } else if (action === "ISSUE_INVOICE_FULL") {

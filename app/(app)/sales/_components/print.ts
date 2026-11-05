@@ -353,6 +353,8 @@ export type OrderLike = {
   rcptNo2?: string;
   /** D147 — แผนงวด (มี = ออเดอร์แบ่งงวด · เอกสารรายงวดอ่านยอดจากที่นี่) */
   installments?: Installment[];
+  /** D156 — ยอดรับชำระแล้ว ณ วันออกใบแจ้งหนี้ (ออเดอร์แบ่งงวด) · null/ไม่ส่ง = ใช้ deposit */
+  invPaidBefore?: number | null;
   /**
    * D143 — การรับเงินทีละครั้ง · ใบเสร็จอ่านวิธีชำระ/เช็คของครั้งนั้นจากที่นี่
    * ไม่ส่ง/ไม่มีแถว (ออเดอร์เก่าที่ไม่มีบิลให้ backfill · ขายหน้าร้านที่เพิ่งขาย) = ใช้ช่องเดิมของออเดอร์
@@ -465,13 +467,18 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
     doc.receiptTitle = "ใบแจ้งหนี้/ใบส่งสินค้า";
     doc.receiptTitleEng = "Invoice / Delivery Order";
     doc.docNo = order.invNo;
-    doc.outstandingBalance = roundTo2(netPayable - (order.deposit || 0));
-    if ((order.deposit || 0) > 0) {
+    // 🔴 D156 — ออเดอร์แบ่งงวด: หักยอดที่รับแล้ว "ณ วันออกใบ" ไม่ใช่ยอดรับรวมถึงวันนี้
+    //    (deposit ของออเดอร์แบ่งงวดโตทุกครั้งที่รับงวด → พิมพ์ซ้ำหลังรับครบเคยขึ้นคงค้าง 0.00)
+    //    ออเดอร์แบบเดิม deposit ตั้งครั้งเดียวไม่ขยับ จึงไม่ใช้ค่านี้ · null = ไม่รู้ → deposit แบบเดิม
+    const paid = (doc.planOrder && order.invPaidBefore != null ? order.invPaidBefore : order.deposit) || 0;
+    doc.deposit = paid;
+    doc.outstandingBalance = roundTo2(netPayable - paid);
+    if (paid > 0) {
       const balVals = reverseCalcPrint(doc.outstandingBalance as number, whtPercent, isVat);
       doc.receiptPreVat = balVals.preVat;
       doc.receiptVat = balVals.vat;
       doc.receiptWht = balVals.wht;
-      doc.depositPreVat = reverseCalcPrint(order.deposit, whtPercent, isVat).preVat;
+      doc.depositPreVat = reverseCalcPrint(paid, whtPercent, isVat).preVat;
     }
   } else if (docType === "invoice-only") {
     doc.receiptTitle = "ใบแจ้งหนี้";
