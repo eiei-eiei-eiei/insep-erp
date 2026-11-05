@@ -17,6 +17,7 @@ import { formatThaiDate } from "@/lib/sales/orders";
 import { branchLabel, type CompanyInfo } from "@/lib/sales/company";
 import { paymentForDoc, type SalesPayment } from "@/lib/sales/payments";
 import { installmentDocFigures, type Installment } from "@/lib/sales/installments";
+import { CANCELLED_STAMP, CANCELLED_STAMP_ENG } from "@/lib/sales/cancelledDocs";
 import type { OrderItem } from "./types";
 import { mountDocViewer, viewerHead } from "@/lib/shared/docViewer";
 
@@ -144,6 +145,13 @@ export type QuotationDoc = {
   saleName: string;
   /** D146 — เงื่อนไขการชำระเป็นงวด (บรรทัดจาก `planTermsLines()`) · ว่าง = ไม่พิมพ์หัวข้อนี้ */
   planTerms?: string[];
+  /**
+   * D153 — ออเดอร์ที่ยกเลิกก่อนออกเอกสารใด ๆ: พิมพ์ใบเสนอราคาพร้อมตรายกเลิก
+   * ให้สำนักงานบัญชีเห็นว่าเลขใบเสนอราคา/เลขออเดอร์ที่ข้ามไปถูกใช้กับออเดอร์ไหน
+   */
+  cancelled?: boolean;
+  /** เลขออเดอร์ (ORD) — ออกพร้อมใบเสนอราคา · พิมพ์เฉพาะใบที่ยกเลิก */
+  orderNo?: string;
 };
 
 function quotationHtml(c: CompanyInfo, d: QuotationDoc): string {
@@ -165,13 +173,16 @@ function quotationHtml(c: CompanyInfo, d: QuotationDoc): string {
   const grandBottom = d.whtPercent
     ? "border-bottom:1px solid #cbd5e1;"
     : "border-bottom:4px double #0f172a;background-color:#f1f5f9;";
-  return `<div class="a4-container" data-doc-title="ใบเสนอราคา" data-doc-no="${escAttr(d.quNo)}" style="font-family:'Kanit',sans-serif;color:#111;line-height:1.5;">
+  const title = d.cancelled ? `ใบเสนอราคา (${CANCELLED_STAMP})` : "ใบเสนอราคา";
+  return `<div class="a4-container" data-doc-title="${escAttr(title)}" data-doc-no="${escAttr(d.quNo)}" style="${d.cancelled ? "position:relative;" : ""}font-family:'Kanit',sans-serif;color:#111;line-height:1.5;">
+    ${d.cancelled ? cancelledStamp() : ""}
     ${companyHeader(c, "ใบเสนอราคา", "Quotation")}
     <div style="display:flex;justify-content:space-between;width:100%;margin-bottom:15px;font-size:14px;box-sizing:border-box;">
       ${customerBox(d.customerName, d.customerAddress, d.customerTaxId, d.customerBranch)}
       <div style="width:41%;border:2px solid #cbd5e1;padding:12px 15px;border-radius:8px;background-color:#f8fafc;box-sizing:border-box;">
         <table style="width:100%;border-collapse:collapse;font-size:14px;">
           <tr><td style="padding:3px 0;font-weight:600;width:60%;">เลขที่ / Quotation No.</td><td style="padding:3px 0;font-weight:500;text-align:right;">${esc(d.quNo)}</td></tr>
+          ${d.cancelled && d.orderNo ? `<tr><td style="padding:3px 0;font-weight:600;">เลขที่ออเดอร์ / Order No.</td><td style="padding:3px 0;font-weight:500;text-align:right;">${esc(d.orderNo)}</td></tr>` : ""}
           <tr><td style="padding:3px 0;font-weight:600;">วันที่ / Date</td><td style="padding:3px 0;text-align:right;">${esc(d.date)}</td></tr>
           <tr><td style="padding:3px 0;font-weight:600;">ยืนราคาถึงวันที่ / Validity</td><td style="padding:3px 0;text-align:right;">${esc(d.quExp)}</td></tr>
           <tr><td style="padding:3px 0;font-weight:600;">เครดิตเทอม / Credit Term</td><td style="padding:3px 0;text-align:right;">${d.creditTerm > 0 ? d.creditTerm + " วัน" : "-"}</td></tr>
@@ -644,9 +655,23 @@ function bankOrPaymentBox(c: CompanyInfo, doc: PreparedDoc): string {
     <div style="color:#475569;font-size:13px;margin-top:4px;">อ้างอิงวิธีชำระ: ${esc(doc.paymentMethod || "ไม่ระบุ")}</div>${cq}</div>`;
 }
 
-function b2bDocHtml(c: CompanyInfo, doc: PreparedDoc, idx: number): string {
+/**
+ * D153 — ตรายกเลิกทับกลางหน้า (ป.86/2542 ข้อ 25: ประทับตราว่ายกเลิก)
+ * 🚨 อยู่ใน .a4-container → ติดไปทั้งตอนพิมพ์และตอนคัดลอกเป็นภาพ · ไม่บังตัวเลข (โปร่ง + pointer-events:none)
+ */
+function cancelledStamp(): string {
+  return `<div style="position:absolute;left:0;right:0;top:38%;display:flex;justify-content:center;pointer-events:none;z-index:5;">
+    <div style="transform:rotate(-18deg);border:6px double #dc2626;color:#dc2626;opacity:0.55;border-radius:10px;padding:6px 36px;text-align:center;font-weight:600;line-height:1.1;background:rgba(255,255,255,0.35);">
+      <div style="font-size:72px;">${esc(CANCELLED_STAMP)}</div>
+      <div style="font-size:26px;letter-spacing:6px;">${esc(CANCELLED_STAMP_ENG)}</div>
+    </div></div>`;
+}
+
+function b2bDocHtml(c: CompanyInfo, doc: PreparedDoc, idx: number, cancelled = false): string {
   const brk = idx > 0 ? "page-break-before:always;break-before:page;margin-top:15px;" : "";
-  return `<div class="a4-container" data-doc-title="${escAttr(doc.receiptTitle)}" data-doc-copy="${escAttr(doc.copyType)}" data-doc-no="${escAttr(doc.docNo)}" style="${brk}font-family:'Kanit',sans-serif;color:#111;line-height:1.5;">
+  const title = cancelled ? `${doc.receiptTitle} (${CANCELLED_STAMP})` : (doc.receiptTitle as string);
+  return `<div class="a4-container" data-doc-title="${escAttr(title)}" data-doc-copy="${escAttr(doc.copyType)}" data-doc-no="${escAttr(doc.docNo)}" style="${brk}${cancelled ? "position:relative;" : ""}font-family:'Kanit',sans-serif;color:#111;line-height:1.5;">
+    ${cancelled ? cancelledStamp() : ""}
     ${companyHeader(c, doc.receiptTitle as string, doc.receiptTitleEng as string, doc.copyType)}
     <div style="display:flex;justify-content:space-between;width:100%;margin-bottom:15px;font-size:14px;box-sizing:border-box;">
       ${customerBox(doc.customerName as string, doc.customerAddress as string, doc.customerTaxId as string, doc.customerBranch as string)}
@@ -670,8 +695,14 @@ function b2bDocHtml(c: CompanyInfo, doc: PreparedDoc, idx: number): string {
   </div>`;
 }
 
-/** พิมพ์เอกสารขาย (ต้นฉบับ + สำเนา ต่อ docType) */
-export function printSalesDocs(company: CompanyInfo, order: OrderLike, items: OrderItem[], docTypes: string[], w?: Window | null) {
+/**
+ * พิมพ์เอกสารขาย (ต้นฉบับ + สำเนา ต่อ docType)
+ * D153 — `cancelled` = ออเดอร์ถูกยกเลิก → ทุกหน้าติดตรายกเลิก (เนื้อเอกสาร/เลข/วันที่ เหมือนใบเดิมทุกอย่าง)
+ */
+export function printSalesDocs(
+  company: CompanyInfo, order: OrderLike, items: OrderItem[], docTypes: string[], w?: Window | null,
+  opts?: { cancelled?: boolean },
+) {
   if (!ensureCompany(company, w)) return;
   const docs: PreparedDoc[] = [];
   for (const dt of docTypes) {
@@ -679,5 +710,5 @@ export function printSalesDocs(company: CompanyInfo, order: OrderLike, items: Or
     docs.push(setupDoc(order, items, dt, "(ต้นฉบับ / Original)", isVat));
     docs.push(setupDoc(order, items, dt, "(สำเนา / Copy)", isVat));
   }
-  openPrint(docs.map((d, i) => b2bDocHtml(company, d, i)).join(""), w);
+  openPrint(docs.map((d, i) => b2bDocHtml(company, d, i, !!opts?.cancelled)).join(""), w);
 }

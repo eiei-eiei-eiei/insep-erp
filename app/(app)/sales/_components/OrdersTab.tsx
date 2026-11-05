@@ -17,6 +17,7 @@ import {
 import { can, toRole } from "@/lib/shared/roles";
 import { actionPostsRevenue, docDateNote, manualNoError, manualNoFields } from "@/lib/sales/backdate";
 import { cancelLockedText } from "@/lib/production/monthClose";
+import { cancelledDocTypes, CANCEL_ORDER_DETAIL } from "@/lib/sales/cancelledDocs";
 import { PAY_METHODS, chequeText, hasReceivedPayment } from "@/lib/sales/payments";
 import { receiveAmountError, type Installment } from "@/lib/sales/installments";
 import { PlanPanel } from "./PlanPanel";
@@ -114,8 +115,22 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
     else docs = ["tax-invoice-receipt"];
     printSalesDocs(boot.company, data.order, data.items, docs, w);
   }
-  async function doReprintQuotation(o: OrderRow) {
+  /**
+   * D153 — ออเดอร์ที่ยกเลิกแล้ว: พิมพ์ทุกใบที่เคยออกจริง (เลข/วันที่/ยอดเดิม) พร้อมตรายกเลิก ไว้เก็บเข้าแฟ้ม
+   * ★ ใบไหนออกแล้วตัดสินจากเลขเอกสารที่มีอยู่ (lib/sales/cancelledDocs) · ไม่มีสักใบ = ใบเสนอราคาพร้อมตรายกเลิก
+   */
+  async function doPrintCancelled(o: OrderRow) {
     const w = openPrintWindow();
+    if (!w) { showToast({ ok: false, text: "เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — โปรดอนุญาต popup แล้วลองใหม่" }); return; }
+    const data = await loadForPrint(o, w);
+    if (!data) return;
+    const docs = cancelledDocTypes({ ...data.order, dueDate: o.dueDate });
+    // ยกเลิกก่อนออกเอกสารใด ๆ → ใบเสนอราคาพร้อมตรายกเลิก (ผู้ใช้สั่ง: ให้สำนักงานบัญชีเห็นว่าเลขที่ข้ามไปเป็นของออเดอร์ไหน)
+    if (!docs.length) return doReprintQuotation(o, w, true);
+    printSalesDocs(boot.company, data.order, data.items, docs, w, { cancelled: true });
+  }
+  async function doReprintQuotation(o: OrderRow, pre?: Window, cancelled = false) {
+    const w = pre ?? openPrintWindow();
     if (!w) { showToast({ ok: false, text: "เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — โปรดอนุญาต popup แล้วลองใหม่" }); return; }
     let items: OrderItem[];
     let plan: Awaited<ReturnType<typeof getOrderPlanAction>>;
@@ -150,6 +165,8 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
       saleName: o.saleName,
       // D146 — เงื่อนไขงวดตามแผนปัจจุบัน (ยอดงวดที่รับแล้วเป็นยอดที่รับจริง)
       planTerms: planTermsLines(plan),
+      cancelled,
+      orderNo: o.orderNo,
     }, w);
   }
 
@@ -173,7 +190,8 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
   async function cancel(o: OrderRow) {
     if (!(await ask({
       title: `ยกเลิกออเดอร์ ${o.quNo}?`,
-      detail: "ระบบจะย้อนรายการบัญชี/สต็อกที่เกิดแล้วให้",
+      // D153 — ใบกำกับที่ออกไปแล้วต้องเรียกคืนมาประทับตรายกเลิกเก็บไว้ (ป.86/2542 ข้อ 25) → บอกว่าพิมพ์เก็บได้ที่ไหน
+      detail: CANCEL_ORDER_DETAIL,
       confirmText: "ยกเลิกออเดอร์",
       cancelText: "กลับ",
       danger: true,
@@ -239,6 +257,9 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
       )}
       {o.status === "ปิดการขาย" && !hasPlan(o) && (
         <ActBtn tone="secondary" icon={<IconPrint size={14} />} onClick={() => doPrintClosed(o)}>พิมพ์ใบกำกับฯ</ActBtn>
+      )}
+      {o.status === "ยกเลิก" && (
+        <ActBtn tone="secondary" icon={<IconPrint size={14} />} onClick={() => doPrintCancelled(o)}>พิมพ์ใบที่ยกเลิก</ActBtn>
       )}
       {/* D144 — แก้วิธีชำระของการรับเงินที่บันทึกไปแล้ว · หัวหน้าฝ่ายขายขึ้นไป (RPC เช็ค sales.config ซ้ำ) */}
       {canWrite && hasReceivedPayment(o) && (
@@ -330,7 +351,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
                     <td className="whitespace-nowrap font-medium text-ink">
                       <div className="flex items-center gap-1">
                         {o.quNo}
-                        <button onClick={() => doReprintQuotation(o)} title="พิมพ์ใบเสนอราคาซ้ำ" className="rounded border border-line p-1 text-faint hover:text-warn"><IconPrint size={16} /></button>
+                        <button onClick={() => doReprintQuotation(o, undefined, o.status === "ยกเลิก")} title="พิมพ์ใบเสนอราคาซ้ำ" className="rounded border border-line p-1 text-faint hover:text-warn"><IconPrint size={16} /></button>
                       </div>
                       <div className="text-[10px] text-faint">{o.orderNo}</div>
                     </td>
@@ -359,7 +380,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
                   <div className="min-w-0">
                     <div className="flex items-center gap-1 font-medium text-ink">
                       {o.quNo}
-                      <button onClick={() => doReprintQuotation(o)} title="พิมพ์ใบเสนอราคาซ้ำ" className="rounded border border-line p-1 text-faint hover:text-warn"><IconPrint size={16} /></button>
+                      <button onClick={() => doReprintQuotation(o, undefined, o.status === "ยกเลิก")} title="พิมพ์ใบเสนอราคาซ้ำ" className="rounded border border-line p-1 text-faint hover:text-warn"><IconPrint size={16} /></button>
                     </div>
                     <div className="text-[10px] text-faint">{o.orderNo} · {o.timestamp}</div>
                     <div className="mt-0.5 truncate text-sm text-muted">{o.customerName}</div>
