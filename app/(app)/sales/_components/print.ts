@@ -18,6 +18,7 @@ import { branchLabel, type CompanyInfo } from "@/lib/sales/company";
 import { paymentForDoc, type SalesPayment } from "@/lib/sales/payments";
 import { installmentDocFigures, type Installment } from "@/lib/sales/installments";
 import { CANCELLED_STAMP, CANCELLED_STAMP_ENG } from "@/lib/sales/cancelledDocs";
+import { amountsVat, docVatAtIssue } from "@/lib/sales/docVat";
 import type { OrderItem } from "./types";
 import { mountDocViewer, viewerHead } from "@/lib/shared/docViewer";
 
@@ -157,7 +158,8 @@ export type QuotationDoc = {
 function quotationHtml(c: CompanyInfo, d: QuotationDoc): string {
   // โมเดล inclusive: line items = ราคารวม VAT → รวมได้ = grandIncl · summary ถอด VAT ออก
   // 4.3 — ผู้ขายไม่จด VAT: ราคาที่เสนอคือราคาที่ลูกค้าจ่าย ไม่มีบรรทัด VAT บนใบเสนอราคา
-  const isVat = c.isVat !== false;
+  // D154 — ใบเสนอราคาที่พิมพ์ซ้ำตามยอดที่ตั้งไว้ (มี VAT ในยอด = แบบจด) ไม่ใช่สถานะวันนี้
+  const isVat = amountsVat({ vatAmount: d.vat, grandTotal: d.grandTotal }, c.isVat !== false);
   const inclLabel = (base: string) => (isVat ? `${base} (รวม VAT)` : base);
   const grandIncl = roundTo2(d.items.reduce((s, it) => s + it.price * it.qty, 0));
   const discountIncl = roundTo2(grandIncl - d.grandTotal);
@@ -361,12 +363,16 @@ export type OrderLike = {
 type PreparedDoc = Record<string, unknown> & { docType: string; copyType: string };
 
 /**
- * 4.3 — `isVat` = ผู้ขายจดทะเบียน VAT ไหม (มาจาก `CompanyInfo` ที่อ่าน `entities.is_vat`)
+ * 4.3 — `currentIsVat` = ผู้ขายจดทะเบียน VAT ไหม **วันนี้** (มาจาก `CompanyInfo` ที่อ่าน `entities.is_vat`)
+ *   D154 — ใช้เป็นแค่ค่าสุดท้ายเมื่อไม่มีหลักฐานกับเอกสาร · ตัวที่ใช้จริงคือ `docVatAtIssue()`
  *
  * 🚨 ไม่จด VAT → หัวเอกสาร **ห้ามมีคำว่า "ใบกำกับภาษี"** (ผิด ประมวลรัษฎากร ม.86/13)
  *    และแถวมูลค่าก่อน VAT / ภาษีมูลค่าเพิ่ม **ไม่ render เลย** (ไม่ใช่โชว์ 0.00)
  */
-function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyType: string, isVat = true): PreparedDoc {
+function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyType: string, currentIsVat = true): PreparedDoc {
+  // 🔴 D154 — หัวเอกสาร/แถว VAT ตามที่ใบนี้ "ออกไปจริง" ไม่ใช่สถานะของกิจการวันนี้ (lib/sales/docVat)
+  const pay = paymentForDoc(docType, order.payments);
+  const isVat = docVatAtIssue(docType, order, pay, currentIsVat);
   const docDate1_th = order.docDate1 ? formatThaiDate(order.docDate1) : new Date().toLocaleDateString("th-TH");
   const docDate2_th = order.docDate2 ? formatThaiDate(order.docDate2) : docDate1_th;
   const whtPercent = order.whtPercent || 0;
@@ -403,7 +409,6 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
 
   // 🔴 D143 — ใบเสร็จต้องบอกวิธีชำระของ "ครั้งนั้น" · ช่องเดิมของออเดอร์ถูกเขียนทับเมื่อรับครั้งถัดไป
   //    (พิมพ์ใบเสร็จมัดจำซ้ำหลังรับยอดค้าง เคยขึ้นวิธีชำระของยอดค้าง)
-  const pay = paymentForDoc(docType, order.payments);
   if (pay) {
     doc.paymentMethod = pay.method || order.paymentMethod;
     doc.chequeDetails = formatChequeDetail(pay.chequeDetail);
@@ -706,9 +711,9 @@ export function printSalesDocs(
   if (!ensureCompany(company, w)) return;
   const docs: PreparedDoc[] = [];
   for (const dt of docTypes) {
-    const isVat = company.isVat !== false;
-    docs.push(setupDoc(order, items, dt, "(ต้นฉบับ / Original)", isVat));
-    docs.push(setupDoc(order, items, dt, "(สำเนา / Copy)", isVat));
+    const currentIsVat = company.isVat !== false; // D154 — ค่าสุดท้ายเมื่อเอกสารไม่มีหลักฐาน (setupDoc ตัดสินเอง)
+    docs.push(setupDoc(order, items, dt, "(ต้นฉบับ / Original)", currentIsVat));
+    docs.push(setupDoc(order, items, dt, "(สำเนา / Copy)", currentIsVat));
   }
   openPrint(docs.map((d, i) => b2bDocHtml(company, d, i, !!opts?.cancelled)).join(""), w);
 }

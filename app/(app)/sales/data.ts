@@ -319,7 +319,19 @@ export async function getOrderPayments(quNo: string): Promise<SalesPayment[]> {
     await supabase.from("sales_payments").select(PAYMENT_COLS).eq("qu_no", quNo).order("seq"),
     "การรับเงินของออเดอร์",
   );
-  return (data ?? []).map((r) => mapPayment(r as Record<string, unknown>));
+  const pays = (data ?? []).map((r) => mapPayment(r as Record<string, unknown>));
+  // D154 — บิลของแต่ละครั้งมี VAT ไหม → ใบเสร็จรายงวดพิมพ์ซ้ำได้หัวตามที่ออกจริง (lib/sales/docVat)
+  //   🚨 อ่านไม่ได้ต้องฟ้อง (D89) — เดาเป็น "ไม่รู้" เงียบ ๆ = หัวเอกสารกลับไปตามสถานะวันนี้
+  const txIds = pays.map((p) => p.txId).filter(Boolean);
+  if (txIds.length) {
+    const tx = mustRead(
+      await supabase.from("transactions").select("tx_id, vat_amount").in("tx_id", txIds),
+      "บิลรายรับของการรับเงิน",
+    );
+    const vat = new Map((tx ?? []).map((t) => [t.tx_id as string, (Number(t.vat_amount) || 0) > 0]));
+    for (const p of pays) p.txVat = vat.get(p.txId) ?? null;
+  }
+  return pays;
 }
 
 /**
