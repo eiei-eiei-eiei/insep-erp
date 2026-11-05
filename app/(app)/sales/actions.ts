@@ -18,7 +18,9 @@ import { revenueAccountFor } from "@/lib/sales/cashAccount";
 import { defaultRevenueCat } from "@/lib/sales/revenueCats";
 import { PAY_METHODS } from "@/lib/sales/payments";
 import { planActionError, planAmounts, planError, receiveAmountError, shipNowError, isSent, type PlanRowInput } from "@/lib/sales/installments";
-import { getSalesBootstrap, getOrders, getOrderItems, getOrderPayments, getOrderPlan, getPendingWarehouse, getWarehouseStock, getSyncHistory, getOrderState, getCustomerId, getSaleMenuFull, getMenuLinkOptions } from "./data";
+import { getSalesBootstrap, getOrders, getOrderItems, getOrderPayments, getOrderPlan, getPendingWarehouse, getWarehouseStock, getSyncHistory, getOrderState, getCustomerId, getSaleMenuFull, getMenuLinkOptions, getCancelPlan, getCreditNote, getCreditNoteNos } from "./data";
+import { cancelMode, cnInputError, cnReasonText, cnTotals, type CnReason } from "@/lib/sales/creditNote";
+import { accountsFor } from "@/lib/accounting/bankAccounts";
 
 export type SaveResult = { ok: boolean; error?: string; data?: unknown };
 function fail(error: string): SaveResult {
@@ -757,16 +759,58 @@ export async function manualStockMoveAction(
   return { ok: true, data: res };
 }
 
+// ── D159 — ใบลดหนี้ตอนยกเลิกออเดอร์ ─────────────────────────────────────────────
+/** ข้อมูลประกอบกล่องยกเลิก: ยกเลิกแบบไหน + ยอดบนใบลดหนี้ + บัญชีที่ใช้คืนเงินได้ */
+export async function getCancelPlanAction(quNo: string) {
+  const plan = await getCancelPlan(quNo);
+  const today = bangkokDateISO();
+  const vatBills = plan.bills.filter((b) => b.vat > 0);
+  return {
+    mode: cancelMode(plan.bills, today.slice(0, 7), new Set(plan.filedVatMonths)),
+    bills: vatBills,
+    totals: cnTotals(vatBills),
+    today,
+    accounts: accountsFor(plan.accounts, plan.entityId).map((a) => a.account_name),
+  };
+}
+export async function getCreditNoteAction(quNo: string) {
+  return getCreditNote(quNo);
+}
+export async function getCreditNoteNosAction() {
+  return getCreditNoteNos();
+}
+
 // ── ยกเลิกออเดอร์ + ย้อน side effect (role main) ─────────────────────────────
-export async function cancelOrderAction(quNo: string): Promise<SaveResult> {
+/**
+ * `credit` = ออกใบลดหนี้แทนการยกเลิกบิลรายรับเดิม (D159) · ไม่ส่ง = ยกเลิกแบบเดิม
+ * 🚨 ใบกำกับอยู่งวดที่ยื่น ภพ.30 แล้ว/เดือนก่อน → RPC ปฏิเสธการยกเลิกแบบเดิมเอง (ยิง API ตรงก็ไม่รอด)
+ */
+export async function cancelOrderAction(
+  quNo: string,
+  credit?: { reason: string; detail: string; date: string; refundAccount: string },
+): Promise<SaveResult> {
   const supabase = await db();
-  const { data, error } = await supabase.rpc("fn_cancel_order", { p_qu_no: quNo });
+  let p_credit: Record<string, string> | null = null;
+  if (credit) {
+    const plan = await getCancelPlan(quNo);
+    const bad = cnInputError({ ...credit, bills: plan.bills, today: bangkokDateISO() });
+    if (bad) return fail(bad);
+    p_credit = {
+      reason: credit.reason,
+      detail: credit.detail.trim(),
+      date: credit.date,
+      refund_account: credit.refundAccount,
+      // ม.86/10(6) — ข้อความเหตุบนใบประกอบที่ lib ที่เดียว (ห้ามประกอบประโยคใน SQL · D94)
+      reason_text: cnReasonText(credit.reason as CnReason, credit.detail),
+    };
+  }
+  const { data, error } = await supabase.rpc("fn_cancel_order", { p_qu_no: quNo, p_credit });
   if (error) return fail(mapDbError(error));
   // D91 — RPC บอกกลับมาด้วยว่าซ่อนคู่ จ่าย/รับ ออกจากฟอร์ม ภส. ให้หรือไม่ และติดเดือนไหนอยู่
   //        (เดือนที่ปิดบัญชีสรรพสามิตไปแล้วต้องไม่ถูกแก้ย้อนหลัง) → หน้าจอเอาไปบอกผู้ใช้ต่อ
   const res = data as {
     ok: boolean; error?: string; reversed_stock?: number;
-    excise_hidden?: boolean; excise_locked_months?: string[];
+    excise_hidden?: boolean; excise_locked_months?: string[]; cn_no?: string | null;
   };
   if (!res.ok) return fail(res.error ?? "ยกเลิกไม่สำเร็จ");
   revalidatePath("/sales");

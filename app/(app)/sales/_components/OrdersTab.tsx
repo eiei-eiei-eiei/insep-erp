@@ -6,22 +6,22 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import type { SalesBoot, OrderRow, OrderItem } from "./types";
 import { Card, StatusBadge, TextInput, useSaver, fmt, LoadError } from "./ui";
 import { todayISO } from "./ui";
-import { getOrdersAction, getOrderItemsAction, getOrderPaymentsAction, getOrderPlanAction, processOrderActionAction, cancelOrderAction, voidDepositInvoiceAction } from "../actions";
+import { getOrdersAction, getOrderItemsAction, getOrderPaymentsAction, getOrderPlanAction, processOrderActionAction, voidDepositInvoiceAction, getCreditNoteAction, getCreditNoteNosAction } from "../actions";
 import { planTermsLines } from "@/lib/sales/installments";
 import type { OrderAction, ActionPayload } from "@/lib/sales/orders";
-import { printSalesDocs, printQuotation, openPrintWindow, type OrderLike } from "./print";
+import { printSalesDocs, printQuotation, printCreditNote, openPrintWindow, type OrderLike } from "./print";
 import { roundTo2 } from "@/lib/sales/calc";
 import {
   IconBox, IconClock, IconDoc, IconEdit, IconMoney, IconPrint, IconRefresh, IconSearch, IconTrash,
 } from "@/lib/shared/icons";
 import { can, toRole } from "@/lib/shared/roles";
 import { actionPostsRevenue, docDateNote, manualNoError, manualNoFields } from "@/lib/sales/backdate";
-import { cancelLockedText } from "@/lib/production/monthClose";
-import { cancelledDocTypes, CANCEL_ORDER_DETAIL } from "@/lib/sales/cancelledDocs";
+import { cancelledDocTypes } from "@/lib/sales/cancelledDocs";
 import { PAY_METHODS, chequeText, hasReceivedPayment } from "@/lib/sales/payments";
 import { receiveAmountError, type Installment } from "@/lib/sales/installments";
 import { PlanPanel } from "./PlanPanel";
 import { EditPaymentDialog } from "./EditPaymentDialog";
+import { CancelOrderDialog } from "./CancelOrderDialog";
 
 const itemsCache = new Map<string, OrderItem[]>();
 async function loadItems(quNo: string): Promise<OrderItem[]> {
@@ -42,6 +42,9 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
   const [search, setSearch] = useState("");
   const [dialog, setDialog] = useState<{ order: OrderRow; action: OrderAction; installment?: Installment } | null>(null);
   const [editPay, setEditPay] = useState<OrderRow | null>(null);
+  const [cancelling, setCancelling] = useState<OrderRow | null>(null);
+  /** D159 — เลขใบลดหนี้ของออเดอร์ที่ยกเลิกแบบออกใบลดหนี้ (qu_no → cn_no) */
+  const [cnNos, setCnNos] = useState<Record<string, string>>({});
   const { setMsg } = useSaver();
   const { confirmNode, ask } = useConfirm();
   const [err, setErr] = useState(false);
@@ -51,9 +54,10 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
     itemsCache.clear(); // ล้าง cache รายการสินค้า → พิมพ์หลังแก้ใบเสนอราคาได้รายการล่าสุด (#9)
     if (firstLoad.current) setLoading(true);
     setErr(false);
-    getOrdersAction()
-      .then((data) => {
+    Promise.all([getOrdersAction(), getCreditNoteNosAction()])
+      .then(([data, cns]) => {
         setOrders(data);
+        setCnNos(cns);
         setLoading(false);
         firstLoad.current = false;
       })
@@ -187,25 +191,28 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
     });
   }
 
-  async function cancel(o: OrderRow) {
-    if (!(await ask({
-      title: `ยกเลิกออเดอร์ ${o.quNo}?`,
-      // D153 — ใบกำกับที่ออกไปแล้วต้องเรียกคืนมาประทับตรายกเลิกเก็บไว้ (ป.86/2542 ข้อ 25) → บอกว่าพิมพ์เก็บได้ที่ไหน
-      detail: CANCEL_ORDER_DETAIL,
-      confirmText: "ยกเลิกออเดอร์",
-      cancelText: "กลับ",
-      danger: true,
-    }))) return;
+  /**
+   * D159 — ยกเลิก = กล่อง CancelOrderDialog: ยกเลิกแบบเดิม หรือออกใบลดหนี้ (ตัดสินจากใบกำกับที่ออกไปแล้ว)
+   * ★ ข้อความ D153 (เรียกใบเดิมคืน · พิมพ์ใบที่ยกเลิก) และ D91 (เดือนที่ปิดสรรพสามิต) ย้ายไปอยู่ในกล่องนั้น
+   */
+  function cancel(o: OrderRow) {
     setMsg(null);
-    cancelOrderAction(o.quNo).then((r) => {
-      if (!r.ok) { setMsg({ ok: false, text: r.error ?? "ยกเลิกไม่สำเร็จ" }); return; }
-      // D91 — ยกเลิกสำเร็จ แต่ถ้าเดือนนั้นปิดบัญชีสรรพสามิตไปแล้ว คู่ จ่าย/รับ จะยังอยู่บนฟอร์ม
-      //        🚨 ต้องบอกตรง ๆ พร้อมบอกว่าใครต้องกดอะไรต่อ — ห้ามขึ้นเขียวเฉย ๆ (D83/D88)
-      const d = r.data as { excise_locked_months?: string[] } | undefined;
-      const locked = cancelLockedText(o.quNo, d?.excise_locked_months ?? []);
-      setMsg(locked ? { ok: true, warn: true, text: locked } : { ok: true, text: `ยกเลิก ${o.quNo} แล้ว` });
-      refresh();
-    });
+    setCancelling(o);
+  }
+
+  /** D159 — พิมพ์ใบลดหนี้ของออเดอร์ที่ยกเลิกแบบออกใบลดหนี้ (ตัวเลขจากแถวที่บันทึกไว้) */
+  async function doPrintCreditNote(o: OrderRow) {
+    const w = openPrintWindow();
+    if (!w) { showToast({ ok: false, text: "เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — โปรดอนุญาต popup แล้วลองใหม่" }); return; }
+    try {
+      const [cn, data] = await Promise.all([getCreditNoteAction(o.quNo), loadForPrint(o, w)]);
+      if (!data) return;
+      if (!cn) { w.close(); showToast({ ok: false, text: `ไม่พบใบลดหนี้ของ ${o.quNo}` }); return; }
+      printCreditNote(boot.company, data.order, data.items, cn, w);
+    } catch {
+      w.close();
+      showToast({ ok: false, text: `โหลดใบลดหนี้ของ ${o.quNo} ไม่สำเร็จ — ลองกดพิมพ์ใหม่อีกครั้ง` });
+    }
   }
 
   // ปุ่มจัดการออเดอร์ (ใช้ร่วมทั้งตาราง desktop และการ์ด mobile)
@@ -258,8 +265,12 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
       {o.status === "ปิดการขาย" && !hasPlan(o) && (
         <ActBtn tone="secondary" icon={<IconPrint size={14} />} onClick={() => doPrintClosed(o)}>พิมพ์ใบกำกับฯ</ActBtn>
       )}
-      {o.status === "ยกเลิก" && (
+      {/* D159 — ยกเลิกแบบออกใบลดหนี้: ใบกำกับเดิมยังใช้ได้ (ไม่ใช่ใบที่ยกเลิก) → พิมพ์ใบลดหนี้แทน */}
+      {o.status === "ยกเลิก" && !cnNos[o.quNo] && (
         <ActBtn tone="secondary" icon={<IconPrint size={14} />} onClick={() => doPrintCancelled(o)}>พิมพ์ใบที่ยกเลิก</ActBtn>
+      )}
+      {o.status === "ยกเลิก" && cnNos[o.quNo] && (
+        <ActBtn tone="secondary" icon={<IconPrint size={14} />} onClick={() => doPrintCreditNote(o)} title={`ใบลดหนี้ ${cnNos[o.quNo]}`}>พิมพ์ใบลดหนี้</ActBtn>
       )}
       {/* D144 — แก้วิธีชำระของการรับเงินที่บันทึกไปแล้ว · หัวหน้าฝ่ายขายขึ้นไป (RPC เช็ค sales.config ซ้ำ) */}
       {canWrite && hasReceivedPayment(o) && (
@@ -416,6 +427,14 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
             setMsg({ ok: true, text });
             refresh();
           }}
+        />
+      )}
+      {cancelling && (
+        <CancelOrderDialog
+          order={cancelling}
+          company={boot.company}
+          onClose={() => setCancelling(null)}
+          onDone={refresh}
         />
       )}
       {editPay && (

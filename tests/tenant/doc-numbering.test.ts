@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   assertTestEnv, cleanupTestTenants, seedTenant, seedUser, signIn, admin, anonClient, type Tenant,
 } from "./harness";
-import { DATE_FMTS, RESETS, allowedResets, type DocNumberCfg } from "../../lib/shared/docNumbering";
+import { DATE_FMTS, DOC_TYPES, RESETS, allowedResets, type DocNumberCfg } from "../../lib/shared/docNumbering";
 // ★ สเปกของรูปแบบเดิม (golden A9 / P12 / D94) — ใช้พิสูจน์ว่าค่าปริยายของ SQL ให้ผลเท่าของเดิม
 import { nextWhtDocNo } from "../../lib/accounting/wht";
 import { nextBatchNumber } from "../../lib/production/calc";
@@ -265,10 +265,9 @@ describe("⑥ กลับไปใช้รูปแบบเดิม", () => 
     const { data, error } = await asA.rpc("fn_doc_numbering_list", { p_entity: A.entityId });
     expect(error, error?.message).toBeNull();
     const rows = data as { doc_type: string; next_no: string }[];
-    expect(rows.map((r) => r.doc_type)).toEqual([
-      "sales_qu", "sales_ord", "sales_inv", "sales_tax", "sales_rcpt", "bar_bill", "bar_rcpt",
-      "acct_wht", "prod_batch", "prod_lot",
-    ]);
+    // ★ เทียบกับ DOC_TYPES (ตัวเดียวกับหน้าจอ) — เดิมฮาร์ดโค้ดรายชื่อ เพิ่มชนิดใหม่ (D159 sales_cn) แล้วแดงทั้งที่ของจริงถูก
+    expect(rows.map((r) => r.doc_type)).toEqual([...DOC_TYPES]);
+    expect(rows.map((r) => r.doc_type)).toContain("sales_cn");
     for (const r of rows) expect(r.next_no, r.doc_type).toBeTruthy();
   });
 });

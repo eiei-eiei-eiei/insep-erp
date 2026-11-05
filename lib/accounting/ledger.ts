@@ -8,6 +8,7 @@
  */
 
 import { num, cashDateOf } from "./calc";
+import { SALES_CREDIT_TYPE } from "./creditNote";
 
 export type LedgerTx = {
   tx_id: string;
@@ -44,7 +45,8 @@ function monthOf(iso: string | null | undefined): string {
  */
 export function cashDirection(type: string): "in" | "out" | "signed" | null {
   if (type === "รายรับ" || type === "รับคืนสำรองจ่าย") return "in";
-  if (type === "รายจ่าย" || type === "สำรองจ่าย") return "out";
+  // D159 — ใบลดหนี้ขาย = คืนเงินให้ลูกค้า (ค้างจ่ายอยู่ = ไม่ขยับจนกดชำระ เหมือนบิลค้างทุกใบ)
+  if (type === "รายจ่าย" || type === "สำรองจ่าย" || type === SALES_CREDIT_TYPE) return "out";
   if (type === "โอนระหว่างบัญชี") return "signed";
   return null;
 }

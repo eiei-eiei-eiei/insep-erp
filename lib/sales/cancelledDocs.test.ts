@@ -94,7 +94,9 @@ describe("S18 หน้าจอ — ปุ่มกับคำอธิบา�
     expect(tab).toMatch(/printSalesDocs\([^)]*\{ cancelled: true \}\)/);
   });
   it("กล่องยืนยันยกเลิกชี้ไปที่แท็บย่อยกับปุ่มที่มีอยู่จริง", () => {
-    expect(tab).toContain("detail: CANCEL_ORDER_DETAIL");
+    // D159 — ข้อความย้ายไปอยู่ในกล่อง CancelOrderDialog (กรณียกเลิกแบบเดิม)
+    const dlg = readFileSync("app/(app)/sales/_components/CancelOrderDialog.tsx", "utf8");
+    expect(dlg).toContain("{CANCEL_ORDER_DETAIL}");
     expect(tab).toMatch(/>\s*ปิด \/ ยกเลิก\s*</);
     expect(CANCEL_ORDER_DETAIL).toContain("ปิด / ยกเลิก → พิมพ์ใบที่ยกเลิก");
   });

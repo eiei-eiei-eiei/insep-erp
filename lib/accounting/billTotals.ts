@@ -11,6 +11,7 @@
 
 import { num, round2 } from "./calc";
 import { ADVANCE_TYPE, ADVANCE_REFUND_TYPE } from "./advance";
+import { SALES_CREDIT_TYPE } from "./creditNote";
 
 export type BillTotalInput = {
   type: string;
@@ -40,7 +41,7 @@ export const PRICE_CHECK_TYPE = "เช็คราคา";
 const TRANSFER_TYPE = "โอนระหว่างบัญชี";
 
 /** ลำดับแสดงผล · ประเภทที่ไม่รู้จักต่อท้ายตามลำดับที่เจอ */
-const ORDER = ["รายรับ", "รายจ่าย", TRANSFER_TYPE, ADVANCE_TYPE, ADVANCE_REFUND_TYPE];
+const ORDER = ["รายรับ", SALES_CREDIT_TYPE, "รายจ่าย", TRANSFER_TYPE, ADVANCE_TYPE, ADVANCE_REFUND_TYPE];
 
 export function billTotals(rows: BillTotalInput[]): BillTotals {
   const map = new Map<string, BillTypeTotal>();
@@ -66,7 +67,9 @@ export function billTotals(rows: BillTotalInput[]): BillTotals {
 
   const inc = map.get("รายรับ");
   const exp = map.get("รายจ่าย");
-  const incomeMinusExpense = inc || exp ? round2((inc?.total ?? 0) - (exp?.total ?? 0)) : null;
+  // D159 — ใบลดหนี้ขาย = รายรับที่คืนลูกค้า ⇒ หักออกจากรายรับ
+  const cn = map.get(SALES_CREDIT_TYPE);
+  const incomeMinusExpense = inc || exp || cn ? round2((inc?.total ?? 0) - (cn?.total ?? 0) - (exp?.total ?? 0)) : null;
 
   return { byType, incomeMinusExpense, voidCount, priceCheckCount };
 }

@@ -21,6 +21,8 @@ export const DOC_TYPES = [
   "sales_inv",
   "sales_tax",
   "sales_rcpt",
+  // D159 — ใบลดหนี้ (0106)
+  "sales_cn",
   "bar_bill",
   "bar_rcpt",
   // เฟส 2 (0077) — เลขที่ "เสนอให้ในฟอร์ม แล้วผู้ใช้แก้ได้" (fn_suggest_doc_no ไม่กินเลข)
@@ -42,6 +44,11 @@ export const DOC_TYPE_INFO: Record<DocType, { label: string; modules: ModuleKey[
     label: "ใบเสร็จรับเงิน (กิจการไม่จด VAT)",
     modules: ["sales"],
     hint: "ใช้แทนใบกำกับภาษีเมื่อกิจการที่ออกเอกสารขายไม่ได้จด VAT",
+  },
+  sales_cn: {
+    label: "ใบลดหนี้",
+    modules: ["sales"],
+    hint: "ออกตอนยกเลิกออเดอร์ที่ออกใบกำกับภาษีไปแล้ว (ใช้เมื่อกิจการจด VAT)",
   },
   bar_bill: { label: "เลขบิลบาร์", modules: ["bar"] },
   bar_rcpt: {
@@ -86,7 +93,7 @@ export const DOC_GROUPS: {
 }[] = [
   {
     title: "เอกสารขาย",
-    types: ["sales_qu", "sales_ord", "sales_inv", "sales_tax", "sales_rcpt"],
+    types: ["sales_qu", "sales_ord", "sales_inv", "sales_tax", "sales_rcpt", "sales_cn"],
     perEntity: false,
     note: "ออกในนามกิจการ {กิจการ} — เปลี่ยนได้ที่ ตั้งค่า → กิจการ",
   },

@@ -18,6 +18,7 @@
  */
 
 import { vatFromGross } from "../shared/vat";
+import { SALES_CREDIT_TYPE } from "./creditNote";
 
 // ── helpers ────────────────────────────────────────────────────────────────
 /** parse ตัวเลข (รองรับ string มีคอมม่า) — เหมือน num() เดิม */
@@ -552,6 +553,11 @@ export function taxReport(
     if (tx.type === "รายรับ") {
       sales.push(rec);
       tSAmt += amt;
+    } else if (tx.type === SALES_CREDIT_TYPE) {
+      // D159 — ใบลดหนี้ขาย: แถวติดลบในรายงานภาษีขายของ "เดือนที่ออกใบลดหนี้" (ม.82/10 · ป.80/2542 ข้อ 5)
+      //   ยอดรวม VAT ยังคิดรอบเดียวจากยอดรวม (กติกาเหล็ก) — แค่ยอดรวมนั้นหักใบลดหนี้แล้ว
+      sales.push({ ...rec, amount: -amt, vat: -rec.vat });
+      tSAmt -= amt;
     } else if (tx.type === "รายจ่าย" || tx.type === "บันทึกภาษี") {
       // 'บันทึกภาษี' = ภาษีซื้อนำเข้า/ศุลกากร → นับเป็นภาษีซื้อเหมือนรายจ่าย (D29)
       // (ไม่กระทบยอดบัญชี — ledger.txEffect คืน 0 ให้ type นี้อยู่แล้ว)
@@ -742,6 +748,12 @@ export function dashboardData(
       income += amount;
       netIncome += net;
       vatOut += vat;
+    } else if (tx.type === SALES_CREDIT_TYPE) {
+      // D159 — ใบลดหนี้ขายหักรายได้/ภาษีขายของเดือนที่ออกใบลดหนี้
+      if (!inDash) continue;
+      income -= amount;
+      netIncome -= net;
+      vatOut -= vat;
     } else if (tx.type === "รายจ่าย") {
       if (inDash) {
         expense += amount;

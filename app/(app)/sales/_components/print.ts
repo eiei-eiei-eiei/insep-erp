@@ -650,6 +650,7 @@ function docSignatures(dt: string): string {
   if (dt === "invoice" || dt === "tax-invoice-receipt-do") cells += sig("ผู้รับสินค้า / Receiver");
   if (dt === "invoice" || dt === "tax-invoice-receipt-do") cells += sig("ผู้ส่งสินค้า / Deliverer");
   if (["tax-invoice-deposit", "tax-invoice-balance", "tax-invoice-receipt", "tax-invoice-receipt-do", "tax-invoice-installment"].includes(dt)) cells += sig("ผู้รับเงิน / Collector");
+  if (dt === "credit-note") cells += sig("ผู้รับใบลดหนี้ / Received By"); // D159
   cells += sig("ผู้มีอำนาจลงนาม / Auth. Signature");
   return `<table style="width:100%;margin-top:40px;text-align:center;font-size:13px;"><tr>${cells}</tr></table>`;
 }
@@ -736,4 +737,94 @@ export function salesDocsHtml(
     docs.push(setupDoc(order, items, dt, "(สำเนา / Copy)", currentIsVat));
   }
   return docs.map((d, i) => b2bDocHtml(company, d, i, !!opts?.cancelled)).join("");
+}
+
+// ── D159 — ใบลดหนี้ (ม.86/10) ─────────────────────────────────────────────────
+/** ข้อมูลใบลดหนี้ที่บันทึกไว้ (ตรงกับ CreditNoteRow ใน data.ts) */
+export type CreditNoteDoc = {
+  cnNo: string;
+  cnDate: string;
+  reasonText: string;
+  refs: { docNo: string; date: string; preVat: number; vat: number }[];
+  original: number;
+  correct: number;
+  diff: number;
+  vat: number;
+  total: number;
+  refund: number;
+  wht: number;
+  refundAccount: string;
+};
+
+/**
+ * ใบลดหนี้ 1 ฉบับ (ต้นฉบับหรือสำเนา) — หน้าตาเดียวกับใบกำกับของแอปขาย
+ * 🚨 รายการตาม ม.86/10: (1) คำว่า "ใบลดหนี้" เด่นชัด (ข้อหารือ 0811/พ.10090 — "ใบหักหนี้" = ผิด)
+ *    (2) ผู้ออก (3) ผู้ซื้อ (4) วันที่ (5) เลขใบกำกับเดิม · มูลค่าเดิม · มูลค่าที่ถูกต้อง · ผลต่าง · ภาษีของผลต่าง
+ *    (6) เหตุที่ออก · ★ ตัวเลขทั้งหมดอ่านจากแถวที่บันทึกไว้ (พิมพ์ซ้ำไม่ขยับ)
+ */
+function creditNoteHtml(c: CompanyInfo, order: OrderLike, items: OrderItem[], cn: CreditNoteDoc, copyType: string, idx: number): string {
+  const brk = idx > 0 ? "page-break-before:always;break-before:page;margin-top:15px;" : "";
+  const cell = "padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;";
+  const row = (label: string, v: string, extra = "") =>
+    `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;${extra}">${label}</td><td style="${cell}${extra}">${v}</td></tr>`;
+  const refs = cn.refs.map((r) => `${esc(r.docNo)} (${esc(formatThaiDate(r.date))})`).join("<br>");
+  const refRows = cn.refs.length > 1
+    ? cn.refs.map((r) => row(`&nbsp;&nbsp;· ${esc(r.docNo)}`, nf(r.preVat), "color:#475569;font-size:12px;")).join("")
+    : "";
+  const whtRows = cn.wht > 0
+    ? row("หัก ภาษีหัก ณ ที่จ่ายที่ลูกค้าหักไว้", `-${nf(cn.wht)}`) +
+      `<tr style="background-color:#f8fafc;"><td style="padding:8px 12px;text-align:left;font-weight:bold;font-size:14px;border-bottom:4px double #0f172a;">ยอดคืนเงิน</td><td style="padding:8px 12px;text-align:right;font-weight:bold;font-size:15px;border:2px solid #cbd5e1;border-bottom:4px double #0f172a;">${nf(cn.refund)}</td></tr>`
+    : "";
+  const refundLine = cn.refundAccount
+    ? `คืนเงินเข้าบัญชีลูกค้าจาก: ${esc(cn.refundAccount)}`
+    : "ยังไม่ได้คืนเงิน (บันทึกเป็นยอดค้างจ่ายลูกค้า)";
+  return `<div class="a4-container" data-doc-title="ใบลดหนี้" data-doc-copy="${escAttr(copyType)}" data-doc-no="${escAttr(cn.cnNo)}" style="${brk}font-family:'Kanit',sans-serif;color:#111;line-height:1.5;">
+    ${companyHeader(c, "ใบลดหนี้", "Credit Note", copyType)}
+    <div style="display:flex;justify-content:space-between;width:100%;margin-bottom:15px;font-size:14px;box-sizing:border-box;">
+      ${customerBox(order.customerName, order.customerAddress, order.customerTaxId, order.customerBranch)}
+      <div style="width:41%;border:2px solid #cbd5e1;padding:12px 15px;border-radius:8px;background-color:#f8fafc;box-sizing:border-box;">
+        <table style="width:100%;border-collapse:collapse;font-size:14px;">
+          <tr><td style="padding:3px 0;font-weight:600;width:45%;">เลขที่ / Doc No.</td><td style="padding:3px 0;font-weight:500;text-align:right;">${esc(cn.cnNo)}</td></tr>
+          <tr><td style="padding:3px 0;font-weight:600;">วันที่ / Date</td><td style="padding:3px 0;text-align:right;">${esc(formatThaiDate(cn.cnDate))}</td></tr>
+          <tr><td style="padding:3px 0;font-weight:600;vertical-align:top;">อ้างอิงใบกำกับภาษีเดิม</td><td style="padding:3px 0;text-align:right;">${refs || "-"}</td></tr>
+          <tr><td style="padding:3px 0;font-weight:600;">อ้างอิง / Ref No.</td><td style="padding:3px 0;text-align:right;">${esc(order.quNo)}</td></tr>
+        </table>
+      </div>
+    </div>
+    ${itemsTable(items, false)}
+    <div style="page-break-inside:avoid;break-inside:avoid;">
+      <table style="width:100%;font-size:14px;"><tr>
+        <td style="width:55%;vertical-align:bottom;padding-right:20px;">
+          <div style="border:2px solid #cbd5e1;padding:12px 15px;border-radius:8px;background-color:#fffbeb;box-sizing:border-box;">
+            <div style="font-weight:600;color:#b45309;font-size:13px;">เหตุที่ออกใบลดหนี้ / Reason:</div>
+            <div style="color:#0f172a;font-size:14px;margin-top:2px;">${esc(cn.reasonText)}</div>
+            <div style="color:#475569;font-size:13px;margin-top:8px;">${refundLine}</div>
+          </div>
+        </td>
+        <td style="width:45%;vertical-align:top;"><table style="width:100%;border-collapse:collapse;">
+          <tr><td style="padding:4px 12px;text-align:left;font-size:13px;">มูลค่าตามใบกำกับภาษีเดิม</td><td style="padding:4px 12px;text-align:right;width:120px;border:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">${nf(cn.original)}</td></tr>
+          ${refRows}
+          ${row("มูลค่าที่ถูกต้อง", nf(cn.correct))}
+          ${row("ผลต่าง (มูลค่าที่ลดลง)", nf(cn.diff), "font-weight:600;")}
+          ${row("ภาษีมูลค่าเพิ่ม 7% ของผลต่าง", nf(cn.vat))}
+          <tr style="background-color:#fff1f2;"><td style="padding:8px 12px;text-align:left;font-weight:bold;font-size:14px;border-bottom:4px double #be123c;color:#be123c;">รวมลดหนี้ทั้งสิ้น</td><td style="padding:8px 12px;text-align:right;font-weight:bold;font-size:15px;border:2px solid #cbd5e1;border-bottom:4px double #be123c;color:#be123c;">${nf(cn.total)}</td></tr>
+          ${whtRows}
+        </table></td>
+      </tr></table>
+      ${docSignatures("credit-note")}
+    </div>
+  </div>`;
+}
+
+/** ใบลดหนี้ต้นฉบับ + สำเนา เป็น HTML (เทสอ่านได้ · ตัวเดียวกับที่พิมพ์) */
+export function creditNoteDocsHtml(company: CompanyInfo, order: OrderLike, items: OrderItem[], cn: CreditNoteDoc): string {
+  return [
+    creditNoteHtml(company, order, items, cn, "(ต้นฉบับ / Original)", 0),
+    creditNoteHtml(company, order, items, cn, "(สำเนา / Copy)", 1),
+  ].join("");
+}
+
+export function printCreditNote(company: CompanyInfo, order: OrderLike, items: OrderItem[], cn: CreditNoteDoc, w?: Window | null) {
+  if (!ensureCompany(company, w)) return;
+  openPrint(creditNoteDocsHtml(company, order, items, cn), w);
 }

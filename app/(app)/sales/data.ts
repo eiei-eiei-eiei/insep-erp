@@ -576,3 +576,107 @@ export async function getMenuLinkOptions() {
     warehouse: mustRead(wh, "รหัสสต็อกคลัง").map((w) => ({ id: w.item_code as string, name: (w.item_name as string) ?? "" })),
   };
 }
+
+// ── D159 — ใบลดหนี้ตอนยกเลิกออเดอร์ ─────────────────────────────────────────────
+
+/** ใบลดหนี้ที่บันทึกไว้ (ข้อมูลพิมพ์ตาม ม.86/10) */
+export type CreditNoteRow = {
+  cnNo: string;
+  quNo: string;
+  cnDate: string;
+  reasonText: string;
+  refs: { docNo: string; date: string; preVat: number; vat: number }[];
+  original: number;
+  correct: number;
+  diff: number;
+  vat: number;
+  total: number;
+  refund: number;
+  wht: number;
+  refundAccount: string;
+};
+
+const CN_COLS = "cn_no, qu_no, cn_date, reason_text, refs, original_value, correct_value, diff_value, vat_amount, total_amount, refund_amount, wht_amount, refund_account";
+function mapCreditNote(r: Record<string, unknown>): CreditNoteRow {
+  const refs = (r.refs as Record<string, unknown>[] | null) ?? [];
+  return {
+    cnNo: r.cn_no as string,
+    quNo: r.qu_no as string,
+    cnDate: (r.cn_date as string) ?? "",
+    reasonText: (r.reason_text as string) ?? "",
+    refs: refs.map((x) => ({ docNo: (x.doc_no as string) ?? "", date: (x.date as string) ?? "", preVat: Number(x.pre_vat) || 0, vat: Number(x.vat) || 0 })),
+    original: Number(r.original_value) || 0,
+    correct: Number(r.correct_value) || 0,
+    diff: Number(r.diff_value) || 0,
+    vat: Number(r.vat_amount) || 0,
+    total: Number(r.total_amount) || 0,
+    refund: Number(r.refund_amount) || 0,
+    wht: Number(r.wht_amount) || 0,
+    refundAccount: (r.refund_account as string) ?? "",
+  };
+}
+
+/** ใบลดหนี้ของออเดอร์ (เฟส 1 = มีได้ใบเดียวต่อออเดอร์) · null = ไม่มี */
+export async function getCreditNote(quNo: string): Promise<CreditNoteRow | null> {
+  const supabase = await db();
+  const data = mustRead(
+    await supabase.from("sales_credit_notes").select(CN_COLS).eq("qu_no", quNo).order("cn_no"),
+    "ใบลดหนี้ของออเดอร์",
+  );
+  return data?.length ? mapCreditNote(data[0] as Record<string, unknown>) : null;
+}
+
+/** เลขใบลดหนี้ของทุกออเดอร์ (ปุ่ม พิมพ์ใบลดหนี้ บนออเดอร์ที่ยกเลิก) */
+export async function getCreditNoteNos(): Promise<Record<string, string>> {
+  const supabase = await db();
+  const data = mustRead(await supabase.from("sales_credit_notes").select("qu_no, cn_no"), "เลขใบลดหนี้");
+  return Object.fromEntries((data ?? []).map((r) => [r.qu_no as string, r.cn_no as string]));
+}
+
+/**
+ * ข้อมูลประกอบการตัดสินตอนกดยกเลิก (D159) — บิลรายรับของออเดอร์ · เดือนที่ยื่น ภพ.30 แล้ว · บัญชีที่ใช้คืนเงินได้
+ * ★ เลือกบิลด้วยเงื่อนไขเดียวกับ fn_cancel_order (idempotency_key ของออเดอร์ + แถวการรับเงิน)
+ * 🚨 อ่านไม่ได้ต้องฟ้อง (D89) — เดาว่า "ไม่มีใบกำกับ" = ยกเลิกแบบเดิมทั้งที่ต้องออกใบลดหนี้
+ */
+export async function getCancelPlan(quNo: string) {
+  const supabase = await db();
+  const order = mustRead<{ order_no: string | null } | null>(
+    await supabase.from("sales_orders").select("order_no").eq("qu_no", quNo).maybeSingle(),
+    "ออเดอร์",
+  );
+  if (!order) throw new Error(`ไม่พบออเดอร์ ${quNo}`);
+  const ref = order.order_no || quNo;
+  const pays = mustRead(
+    await supabase.from("sales_payments").select("tx_id").eq("qu_no", quNo).not("tx_id", "is", null),
+    "การรับเงินของออเดอร์",
+  );
+  const txIds = (pays ?? []).map((p) => p.tx_id as string);
+  const cols = "tx_id, transaction_date, tax_invoice_no, tax_invoice_date, amount_after_discount, vat_amount, net_amount, wht_amount, entity_id, status";
+  const [byKey, byPay, filings, accounts] = await Promise.all([
+    supabase.from("transactions").select(cols).in("idempotency_key", [ref, `${ref}-balance`]),
+    txIds.length ? supabase.from("transactions").select(cols).in("tx_id", txIds) : Promise.resolve({ data: [], error: null }),
+    supabase.from("tax_filings").select("entity_id, period").eq("kind", "vat").is("reopened_at", null),
+    supabase.from("bank_accounts").select("account_name, entity_ids, active").order("account_name"),
+  ]);
+  const seen = new Map<string, Record<string, unknown>>();
+  for (const r of [...(mustRead(byKey, "บิลรายรับของออเดอร์") ?? []), ...(mustRead(byPay, "บิลรายรับของงวด") ?? [])]) {
+    if ((r as Record<string, unknown>).status !== "ยกเลิก") seen.set((r as Record<string, unknown>).tx_id as string, r as Record<string, unknown>);
+  }
+  const rows = [...seen.values()];
+  const bills = rows.map((r) => ({
+    txId: r.tx_id as string,
+    date: (r.transaction_date as string) ?? "",
+    taxInvoiceNo: (r.tax_invoice_no as string) ?? "",
+    taxInvoiceDate: (r.tax_invoice_date as string) ?? "",
+    preVat: Number(r.amount_after_discount) || 0,
+    vat: Number(r.vat_amount) || 0,
+    net: Number(r.net_amount) || 0,
+    wht: Number(r.wht_amount) || 0,
+  })).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.txId < b.txId ? -1 : 1));
+  const entityIds = new Set(rows.map((r) => r.entity_id as string));
+  const filedVatMonths = (mustRead(filings, "การยื่น ภพ.30") ?? [])
+    .filter((f) => entityIds.has(f.entity_id as string))
+    .map((f) => f.period as string);
+  const accs = (mustRead(accounts, "บัญชีเงิน") ?? []) as { account_name: string; entity_ids: string[] | null; active: boolean | null }[];
+  return { bills, filedVatMonths, entityId: [...entityIds][0] ?? "", accounts: accs };
+}
