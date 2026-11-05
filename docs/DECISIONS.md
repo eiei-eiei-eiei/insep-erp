@@ -11265,3 +11265,12 @@ grant-platform-admin · harness เทส) · ผลข้างเคียง�
 - ผลกระทบ: statement/ยอดรายเดือนของ aim พ.ค.–ต.ค. ย้ายไปตามวันชำระจริง · ยอดคงเหลือปัจจุบัน/ภพ.30 ไม่ขยับ · ภงด.3/53 (รายจ่ายที่หัก ณ ที่จ่าย 3 ใบ) วันชำระอยู่เดือนเดิม ยอดต่อเดือนไม่ขยับ แต่**วันที่ในใบแนบเปลี่ยนเป็นวันจ่ายจริง**
 - 🪤 ถ้าวันหนึ่งย้ายลูกค้าจาก GAS อีกราย ต้องเติม `settled_on` ในสคริปต์ย้ายด้วย (ตอนนี้ยังไม่แก้ตามที่ผู้ใช้ตัดสิน)
 - ✅ **ผู้ใช้รัน SQL แล้วทั้ง 2 DB (2026-11-05)** · ตรวจซ้ำแบบอ่านอย่างเดียว: เจ้าของ 1 ใบ · aim 19 ใบ `settled_on = payment_date` ครบ · `edit_log` บันทึก 1 + 19 แถว · **ไม่เหลือบิลที่มีวันชำระแต่ไม่มี `settled_on` แล้ว** ทั้ง 2 ก้อน
+
+### D158 — integration_log อ่านได้เฉพาะโดเมนของรายการ — อุดเงินเดือนรั่ว (0105, 2026-11-05)
+
+- 🔴 **ปัญหา** (เจอตอนทำ D120 · ค้างใน NEXT_STEPS): policy `integration_log_sel` (0051) = `tenant_id = my_tenant()` อย่างเดียว ⇒ ทุกบทบาทอ่านได้ทุกแถว · payload `POST_PAYROLL` มีชื่อ + ยอดเงินเดือนรายคน ⇒ ฝ่ายขาย/บัญชี/viewer/พนักงานบาร์ดึงเงินเดือนได้ทาง API ตรง ๆ (หน้าจอไม่โชว์ แต่ RLS คือตัวกันจริง)
+- แก้: `integration_log_cap(action)` (sql immutable · ไม่แตะตาราง) ผูก action กับ cap ของโดเมน — `POST_PAYROLL*` → pay.read · `RECEIVE_REVENUE`/`SELL_PRODUCT` → sales.read · `RECEIVE_MATERIAL`/`PAY_TAX`/`UNPAY_TAX`/`TAX_REMINDER` → acct.read · `EXCISE_REMINDER` → prod.read · `BAR_POST_REMINDER` → bar.read · **ไม่รู้จัก = admin (main เท่านั้น · fail-closed)** · policy = `tenant_id = my_tenant() and has_cap(integration_log_cap(action))` · ไม่มี policy เขียน (คงเดิม)
+- ★ ไม่กระทบงานเดิม: ผู้อ่านผ่าน session ผู้ใช้มีที่เดียว = หน้าประวัติเชื่อมระบบของฝ่ายขาย (อ่าน 2 action ที่เป็น sales.read) · RPC ที่อ่าน/เขียนเป็น definer ทั้งหมด · cron ใช้ service role
+- `lib/shared/integrationLogCaps.test.ts` อ่าน SQL ตีความ CASE แล้วไล่ action **ทุกตัวที่โค้ดเขียน** (SQL `insert into integration_log` + TS `*_ACTION` / `action:`) ว่ากำหนด cap ไว้ชัด · มีชุด "ต้องหาเจอ" กันเทสผ่านเพราะหาไม่เจอ (D92) · ✅ **พิสูจน์ว่าจับได้**: ลบ `TAX_REMINDER` ออกจาก SQL ชั่วคราว → แดง
+- `tests/tenant/integration-log-caps.test.ts` ยิง DB จริง 7 บทบาท + main · positive control ทุกข้อ (main เห็นครบ 6 แถว · เจ้าของโดเมนเห็นของตัวเอง)
+- ✅ **0105 ลงครบ 2 DB** (สำรอง `D:/insep-erp-backup/2026-11-05-0105`) · audit ผ่าน · `test:tenant` **560** · หน้าประวัติเชื่อมระบบโหลดปกติ · test **2393**
