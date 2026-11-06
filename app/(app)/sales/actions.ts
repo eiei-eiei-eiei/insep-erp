@@ -18,8 +18,8 @@ import { revenueAccountFor } from "@/lib/sales/cashAccount";
 import { defaultRevenueCat } from "@/lib/sales/revenueCats";
 import { PAY_METHODS } from "@/lib/sales/payments";
 import { planActionError, planAmounts, planError, receiveAmountError, shipNowError, isSent, type PlanRowInput } from "@/lib/sales/installments";
-import { getSalesBootstrap, getOrders, getOrderItems, getOrderPayments, getOrderPlan, getPendingWarehouse, getWarehouseStock, getSyncHistory, getOrderState, getCustomerId, getSaleMenuFull, getMenuLinkOptions, getCancelPlan, getCreditNote, getCreditNoteNos } from "./data";
-import { cancelMode, cnInputError, cnReasonText, cnTotals, type CnReason } from "@/lib/sales/creditNote";
+import { getSalesBootstrap, getOrders, getOrderItems, getOrderPayments, getOrderPlan, getPendingWarehouse, getWarehouseStock, getSyncHistory, getOrderState, getCustomerId, getSaleMenuFull, getMenuLinkOptions, getCancelPlan, getCreditNotes, getCreditNoteNos, getPartialCreditPlan } from "./data";
+import { cancelMode, cnInputError, cnReasonText, cnTotals, partialTotals, CANCEL_AFTER_PARTIAL_TEXT, type CnReason } from "@/lib/sales/creditNote";
 import { accountsFor } from "@/lib/accounting/bankAccounts";
 
 export type SaveResult = { ok: boolean; error?: string; data?: unknown };
@@ -762,7 +762,7 @@ export async function manualStockMoveAction(
 // ── D159 — ใบลดหนี้ตอนยกเลิกออเดอร์ ─────────────────────────────────────────────
 /** ข้อมูลประกอบกล่องยกเลิก: ยกเลิกแบบไหน + ยอดบนใบลดหนี้ + บัญชีที่ใช้คืนเงินได้ */
 export async function getCancelPlanAction(quNo: string) {
-  const plan = await getCancelPlan(quNo);
+  const [plan, cns] = await Promise.all([getCancelPlan(quNo), getCreditNotes(quNo)]);
   const today = bangkokDateISO();
   const vatBills = plan.bills.filter((b) => b.vat > 0);
   return {
@@ -771,10 +771,59 @@ export async function getCancelPlanAction(quNo: string) {
     totals: cnTotals(vatBills),
     today,
     accounts: accountsFor(plan.accounts, plan.entityId).map((a) => a.account_name),
+    /** D160 — มีใบลดหนี้บางส่วนแล้ว = ยกเลิกทั้งออเดอร์ไม่ได้ (RPC บังคับซ้ำ) */
+    partialBlocked: cns.some((c) => c.kind !== "cancel") ? CANCEL_AFTER_PARTIAL_TEXT : null,
   };
 }
-export async function getCreditNoteAction(quNo: string) {
-  return getCreditNote(quNo);
+export async function getCreditNotesAction(quNo: string) {
+  return getCreditNotes(quNo);
+}
+
+// ── D160 — ใบลดหนี้บางส่วน (คืนบางรายการ / ลดราคา) ────────────────────────────────
+export async function getPartialCreditPlanAction(quNo: string) {
+  const plan = await getPartialCreditPlan(quNo);
+  return {
+    status: plan.status,
+    bills: plan.bills.filter((b) => b.vat > 0),
+    items: plan.items,
+    prior: plan.prior,
+    grandTotal: plan.grandTotal,
+    whtPercent: plan.whtPercent,
+    today: bangkokDateISO(),
+    accounts: accountsFor(plan.accounts, plan.entityId).map((a) => a.account_name),
+  };
+}
+
+/**
+ * ออกใบลดหนี้บางส่วน — ยอดคิดที่ partialTotals() (lib) ตัวเดียวกับที่จอแสดง แล้วส่งให้ RPC ตรวจขอบเขต
+ * 🚨 ห้ามรับยอดจาก client ตรง ๆ — คิดใหม่ที่ server จากข้อมูลใน DB เสมอ
+ */
+export async function issueCreditNoteAction(
+  quNo: string,
+  input: { mode: "return"; qtys: Record<number, number>; restock: boolean } | { mode: "discount"; gross: number },
+  meta: { reason: string; detail: string; date: string; refundAccount: string },
+): Promise<SaveResult> {
+  const plan = await getPartialCreditPlan(quNo);
+  if (plan.status !== "ปิดการขาย") return fail("ออกใบลดหนี้บางส่วนได้เฉพาะออเดอร์ที่ปิดการขายแล้ว");
+  const bad = cnInputError({ ...meta, bills: plan.bills, today: bangkokDateISO() });
+  if (bad) return fail(bad);
+  const t = partialTotals(input, { bills: plan.bills, prior: plan.prior, items: plan.items, grandTotal: plan.grandTotal, whtPercent: plan.whtPercent });
+  if (typeof t === "string") return fail(t);
+  const supabase = await db();
+  const { data, error } = await supabase.rpc("fn_sales_credit_note", {
+    p_qu_no: quNo,
+    p_cn: {
+      kind: input.mode, reason: meta.reason, detail: meta.detail.trim(), date: meta.date,
+      refund_account: meta.refundAccount, reason_text: cnReasonText(meta.reason as CnReason, meta.detail),
+      restock: input.mode === "return" ? input.restock : false,
+      items: t.lines.map((l) => ({ id: l.id, qty: l.qty })),
+      pre: t.diff, vat: t.vat, total: t.total, wht: t.wht, refund: t.refund,
+    },
+  });
+  if (error) return fail(mapDbError(error));
+  revalidatePath("/sales");
+  revalidatePath("/accounting");
+  return { ok: true, data };
 }
 export async function getCreditNoteNosAction() {
   return getCreditNoteNos();

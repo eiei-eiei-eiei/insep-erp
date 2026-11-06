@@ -207,3 +207,175 @@ describe("S22 เอกสารใบลดหนี้มีรายการ
     expect(w.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ")).toMatch(/ยอดคืนเงิน 2,080\.00/);
   });
 });
+
+// ── golden S23 — ใบลดหนี้บางส่วน (D160) ─────────────────────────────────────────
+import { partialRemaining, partialTotals, type CnOrderItem, type PriorCn } from "./creditNote";
+describe("S23 ใบลดหนี้บางส่วน — คืนบางรายการ / ลดราคา", () => {
+  // ออเดอร์: A 2 ขวด × 535 + B 1 × 1,070 = 2,140 (รวม VAT) · ใบกำกับ 1 ใบ ก่อน VAT 2,000 VAT 140
+  const items: CnOrderItem[] = [{ id: 1, name: "A", qty: 2, price: 535 }, { id: 2, name: "B", qty: 1, price: 1070 }];
+  const bills = [bill({ preVat: 2000, vat: 140, net: 2140 })];
+  const ctx = { bills, prior: [] as PriorCn[], items, grandTotal: 2140, whtPercent: 0 };
+
+  it("คืน A 1 ขวด = 535 → ก่อน VAT 500 · VAT 35 (vatFromGross: base + vat = gross)", () => {
+    const r = partialTotals({ mode: "return", qtys: { 1: 1 } }, ctx);
+    expect(r).toMatchObject({ original: 2000, diff: 500, correct: 1500, vat: 35, total: 535, refund: 535, closing: false });
+    expect(typeof r !== "string" && r.lines).toEqual([{ id: 1, name: "A", qty: 1, price: 535 }]);
+  });
+  it("ลดราคา 100 (รวม VAT) → 93.46 + 6.54", () => {
+    expect(partialTotals({ mode: "discount", gross: 100 }, ctx)).toMatchObject({ diff: 93.46, vat: 6.54, total: 100 });
+  });
+  it("ส่วนลดท้ายบิลของออเดอร์ลดตามสัดส่วน (ขายจริง 1,926 จากราคาเต็ม 2,140)", () => {
+    const r = partialTotals({ mode: "return", qtys: { 2: 1 } }, { ...ctx, grandTotal: 1926, bills: [bill({ preVat: 1800, vat: 126, net: 1926 })] });
+    expect(typeof r !== "string" && r.total).toBe(963); // 1,070 × 1926/2140
+  });
+  it("ใบหลังต่อจากใบก่อน: มูลค่าเดิม = ที่เหลือ · คืนได้เฉพาะจำนวนที่เหลือ", () => {
+    const prior: PriorCn[] = [{ pre: 500, vat: 35, total: 535, wht: 0, items: [{ id: 1, qty: 1 }] }];
+    const rem = partialRemaining({ bills, prior, items });
+    expect(rem).toMatchObject({ pre: 1500, vat: 105, gross: 1605, qty: { 1: 1, 2: 1 } });
+    expect(partialTotals({ mode: "return", qtys: { 1: 2 } }, { ...ctx, prior })).toContain("คืนได้ไม่เกิน 1");
+    expect(partialTotals({ mode: "return", qtys: { 1: 1 } }, { ...ctx, prior })).toMatchObject({ original: 1500, correct: 1000 });
+  });
+  it("🔴 คืนครบทุกชิ้นที่เหลือ = ปิดยอดพอดี (ใช้ยอดคงเหลือ ไม่ถอด VAT ใหม่ — ไม่มีเศษค้าง)", () => {
+    // บิลเดิมถอด VAT แบบ 1,999.99 + 140.01 (ไม่เท่าที่ vatFromGross จะได้)
+    const odd = [bill({ preVat: 1999.99, vat: 140.01, net: 2140 })];
+    const r = partialTotals({ mode: "return", qtys: { 1: 2, 2: 1 } }, { ...ctx, bills: odd });
+    expect(r).toMatchObject({ diff: 1999.99, vat: 140.01, total: 2140, correct: 0, closing: true });
+    // ลดราคาเท่ายอดที่เหลือพอดีก็ปิดเหมือนกัน
+    expect(partialTotals({ mode: "discount", gross: 2140 }, { ...ctx, bills: odd })).toMatchObject({ vat: 140.01, closing: true });
+  });
+  it("ลูกค้าหัก ณ ที่จ่าย 3%: คืนสุทธิ = รวม − หัก ณ ที่จ่ายของฐานที่ลด", () => {
+    const r = partialTotals({ mode: "return", qtys: { 1: 1 } }, { ...ctx, whtPercent: 3, bills: [bill({ preVat: 2000, vat: 140, wht: 60, net: 2080 })] });
+    expect(r).toMatchObject({ diff: 500, wht: 15, refund: 520 });
+  });
+  it("ขอบเขต: ไม่เลือกรายการ / ยอด 0 / เกินยอดที่เหลือ / ครบแล้ว / ไม่มีใบกำกับ", () => {
+    expect(partialTotals({ mode: "return", qtys: {} }, ctx)).toContain("เลือกรายการ");
+    expect(partialTotals({ mode: "discount", gross: 0 }, ctx)).toContain("กรอกยอด");
+    expect(partialTotals({ mode: "discount", gross: 2140.02 }, ctx)).toContain("ไม่เกินยอดที่เหลือ");
+    const full: PriorCn[] = [{ pre: 2000, vat: 140, total: 2140, wht: 0, items: [] }];
+    expect(partialTotals({ mode: "discount", gross: 1 }, { ...ctx, prior: full })).toContain("ครบยอดแล้ว");
+    expect(partialTotals({ mode: "discount", gross: 1 }, { ...ctx, bills: [bill({ vat: 0 })] })).toContain("ไม่มีใบกำกับ");
+  });
+});
+
+// ── ฝาแฝด TS ↔ SQL (0107) — ใบลดหนี้บางส่วน · SQL คือตัวบังคับจริง ─────────────────
+import { CANCEL_AFTER_PARTIAL_TEXT } from "./creditNote";
+describe("S23 SQL ⇄ TS (fn_sales_credit_note · fn_cancel_order 0107)", () => {
+  const dir = "supabase/migrations";
+  const files = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
+  const latest = (name: string) => {
+    const f = [...files].reverse().find((x) => readFileSync(`${dir}/${x}`, "utf8").includes(`function ${name}(p_qu_no text`))!;
+    const src = readFileSync(`${dir}/${f}`, "utf8");
+    const s = src.indexOf(`function ${name}(p_qu_no text`);
+    return src.slice(s, src.indexOf("end $$;", s));
+  };
+  const cn = latest("fn_sales_credit_note");
+  const cancel = latest("fn_cancel_order");
+
+  it("🚨 ยกเลิกทั้งออเดอร์หลังมีใบลดหนี้บางส่วน = ปฏิเสธ (ข้อความเดียวกับที่จอบอก) ก่อนแตะอะไร", () => {
+    expect(cancel).toContain(`raise exception '${CANCEL_AFTER_PARTIAL_TEXT}'`);
+    expect(cancel.indexOf(CANCEL_AFTER_PARTIAL_TEXT)).toBeLessThan(cancel.indexOf("update transactions set status = 'ยกเลิก'"));
+  });
+  it("หัวหน้าฝ่ายขายขึ้นไป · เฉพาะออเดอร์ที่ปิดการขาย", () => {
+    expect(cn).toContain("has_cap('sales.config')");
+    expect(cn).toMatch(/status <> 'ปิดการขาย'/);
+  });
+  it("เหตุในฐานข้อมูล = CN_REASON_KEYS", () => {
+    const rpc = cn.match(/v_reason <> all \(array\[([^\]]*)\]\)/)![1];
+    expect([...rpc.matchAll(/'([a-z_]+)'/g)].map((m) => m[1])).toEqual(CN_REASON_KEYS);
+  });
+  it("ยอดต้องไม่เกินที่เหลือ (บิล − ใบลดหนี้ที่ออกแล้ว) และ ก่อน VAT + VAT = รวม", () => {
+    expect(cn).toContain("ลดได้ไม่เกินยอดที่เหลือ");
+    expect(cn).toContain("ก่อน VAT + VAT ต้องเท่ายอดรวม");
+  });
+  it("จำนวนคืนต้องไม่เกินที่ขาย − ที่คืนไปแล้ว", () => {
+    expect(cn).toMatch(/คืนได้ไม่เกิน/);
+    expect(cn).toContain("รายการที่คืนซ้ำกัน"); // กันส่ง id เดิมซ้ำเพื่อหลบด่านจำนวน
+    expect(cn.indexOf("รายการที่คืนซ้ำกัน")).toBeLessThan(cn.indexOf("คืนได้ไม่เกิน"));
+  });
+  it("บิลใหม่ type ลดหนี้ขาย · กันซ้ำด้วย CN:เลขใบ · ยังไม่คืน = ค้างจ่าย AP · บิลเดิมไม่ถูกแตะ", () => {
+    expect(cn).toContain(`'${SALES_CREDIT_TYPE}'`);
+    expect(cn).toContain("'CN:' || v_cn_no");
+    expect(cn).toContain("case when v_acc is null then 'AP' end");
+    expect(cn).not.toMatch(/update transactions/);
+  });
+  it("🚨 คืนสต็อกเฉพาะเมื่อเลือก · อ้างเลขใบลดหนี้ (ไม่ปนคู่ จ่าย/รับ ของการยกเลิก D90/D91)", () => {
+    expect(cn).toContain("v_restock := v_kind = 'return' and coalesce((p_cn->>'restock')::boolean, false)");
+    expect(cn).toMatch(/insert into log_product[\s\S]*'รับ'[\s\S]*v_cn_no\);/);
+    expect(cn).not.toMatch(/excise_hidden/);
+  });
+});
+
+describe("S23 เอกสารใบลดหนี้บางส่วน", () => {
+  const base = {
+    cnNo: "CN-261106-001", cnDate: "2026-11-06", reasonText: "รับคืนสินค้า",
+    refs: [{ docNo: "TAX-T1", date: "2026-10-10", preVat: 2000, vat: 140 }],
+    original: 2000, correct: 1500, diff: 500, vat: 35, total: 535, refund: 535, wht: 0, refundAccount: "",
+  };
+  const txt = (h: string) => h.split("(สำเนา")[0].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  it("คืนสินค้า: ตารางเป็นรายการที่คืน ไม่ใช่ทั้งออเดอร์ · มูลค่าที่ถูกต้องไม่ใช่ 0", () => {
+    const t = txt(creditNoteDocsHtml(COMPANY, vatOrder(0), ITEMS, { ...base, kind: "return", items: [{ name: "ขวดที่คืน", qty: 1, price: 535 }] }));
+    expect(t).toContain("ขวดที่คืน");
+    for (const it of ITEMS) expect(t).not.toContain(it.name);
+    expect(t).toMatch(/มูลค่าที่ถูกต้อง 1,500\.00/);
+    expect(t).toMatch(/ผลต่าง \(มูลค่าที่ลดลง\) 500\.00/);
+  });
+  it("ลดราคา: บรรทัดเดียวบอกว่าลดราคาตามใบกำกับเดิม", () => {
+    const t = txt(creditNoteDocsHtml(COMPANY, vatOrder(0), ITEMS, { ...base, kind: "discount" }));
+    expect(t).toContain("ลดราคาสินค้า/บริการตามใบกำกับภาษีเดิม");
+  });
+  it("หลายใบในหน้าต่างเดียว = ต้นฉบับ+สำเนาของทุกใบ", () => {
+    const h = creditNoteDocsHtml(COMPANY, vatOrder(0), ITEMS, [{ ...base, kind: "discount" }, { ...base, cnNo: "CN-261106-002", kind: "discount" }]);
+    expect((h.match(/data-doc-title="ใบลดหนี้"/g) ?? []).length).toBe(4);
+    expect(h).toContain('data-doc-no="CN-261106-002"');
+  });
+});
+
+import { cnInvoiceLines } from "./creditNote";
+describe("S23 ใบลดหนี้ใบที่ 2+ — มูลค่าตามใบกำกับเดิมต้องเป็นยอดบนใบกำกับจริง (ม.86/10(5))", () => {
+  const refs = [{ preVat: 1308.41 }];
+  it("ใบแรก: ไม่มีบรรทัดหัก (หน้าตาเดิม)", () => {
+    expect(cnInvoiceLines(refs, 1308.41)).toEqual({ invoice: 1308.41, prior: 0 });
+  });
+  it("ใบที่ 2: ยอดใบกำกับจริง + หักครั้งก่อน · เดิม − ก่อนหน้า − ผลต่าง = ที่ถูกต้อง", () => {
+    const r = cnInvoiceLines(refs, 981.31);
+    expect(r).toEqual({ invoice: 1308.41, prior: 327.1 });
+    expect(Math.round((r.invoice - r.prior - 327.1) * 100) / 100).toBe(654.21);
+  });
+  it("refs ว่าง (ข้อมูลไม่ครบ) → ไม่เดา ใช้ยอดที่บันทึกไว้", () => {
+    expect(cnInvoiceLines([], 981.31)).toEqual({ invoice: 981.31, prior: 0 });
+  });
+  it("บนกระดาษ: ใบที่ 2 มีบรรทัด หัก ลดหนี้ครั้งก่อน · ใบแรกไม่มี", () => {
+    const base = { cnNo: "CN-2", cnDate: "2026-11-06", reasonText: "x", refs: [{ docNo: "T1", date: "2026-11-06", preVat: 1308.41, vat: 91.59 }],
+      correct: 654.21, diff: 327.1, vat: 22.9, total: 350, refund: 350, wht: 0, refundAccount: "", kind: "discount" as const };
+    const t = (o: number) => creditNoteDocsHtml(COMPANY, vatOrder(0), ITEMS, { ...base, original: o }).split("(สำเนา")[0].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    expect(t(981.31)).toMatch(/มูลค่าตามใบกำกับภาษีเดิม 1,308\.41 หัก ลดหนี้ครั้งก่อน -327\.10 มูลค่าที่ถูกต้อง 654\.21/);
+    expect(t(1308.41)).not.toContain("หัก ลดหนี้ครั้งก่อน");
+  });
+});
+
+describe("S23 ลดราคาไปแล้ว แล้วลูกค้าคืนของ", () => {
+  const items: CnOrderItem[] = [{ id: 1, name: "A", qty: 4, price: 350 }];
+  const bills: CnBill[] = [bill({ preVat: 1308.41, vat: 91.59, net: 1400 })];
+  const prior: PriorCn[] = [
+    { pre: 327.1, vat: 22.9, total: 350, wht: 0, items: [{ id: 1, qty: 1 }] },
+    { pre: 186.92, vat: 13.08, total: 200, wht: 0, items: [] },
+  ];
+  const ctx = { bills, prior, items, grandTotal: 1400, whtPercent: 0 };
+  it("คืนครบ 3 ขวดที่เหลือ (มูลค่า 1,050) = ปิดยอดที่เหลือ 850 พอดี · ไม่ถอด VAT ใหม่", () => {
+    const r = partialTotals({ mode: "return", qtys: { 1: 3 } }, ctx);
+    expect(r).toMatchObject({ diff: 794.39, vat: 55.61, total: 850, correct: 0, closing: true });
+  });
+  it("คืนบางส่วนที่มูลค่าเกินยอดที่ยังลดได้ → บอกเหตุผลและทางออก (ไม่ใช่ข้อความยอดเกินเฉย ๆ)", () => {
+    const r = partialTotals({ mode: "return", qtys: { 1: 3 } }, { ...ctx, items: [{ id: 1, name: "A", qty: 5, price: 350 }], grandTotal: 1750 });
+    expect(r).toMatch(/เกินยอดที่ยังลดได้ 850\.00.*ใส่ครบทุกรายการ/);
+  });
+  it("บนกระดาษ: ตารางรายการบวกได้เท่ายอดบนใบ (บรรทัดหักส่วนต่าง)", () => {
+    const html = creditNoteDocsHtml(COMPANY, vatOrder(0), ITEMS, {
+      cnNo: "CN-3", cnDate: "2026-11-06", reasonText: "x", refs: [{ docNo: "T1", date: "2026-11-06", preVat: 1308.41, vat: 91.59 }],
+      original: 794.39, correct: 0, diff: 794.39, vat: 55.61, total: 850, refund: 850, wht: 0, refundAccount: "",
+      kind: "return", items: [{ name: "A", qty: 3, price: 350 }],
+    });
+    const t = html.split("(สำเนา")[0].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    expect(t).toMatch(/หัก ส่วนลดตามใบกำกับเดิม \/ ยอดที่ลดหนี้ไปแล้ว 1 -200\.00 -200\.00/);
+  });
+});

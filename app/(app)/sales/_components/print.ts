@@ -19,6 +19,7 @@ import { paymentForDoc, type SalesPayment } from "@/lib/sales/payments";
 import { installmentDocFigures, type Installment } from "@/lib/sales/installments";
 import { CANCELLED_STAMP, CANCELLED_STAMP_ENG } from "@/lib/sales/cancelledDocs";
 import { amountsVat, docVatAtIssue } from "@/lib/sales/docVat";
+import { cnInvoiceLines } from "@/lib/sales/creditNote";
 import type { OrderItem } from "./types";
 import { mountDocViewer, viewerHead } from "@/lib/shared/docViewer";
 
@@ -754,7 +755,23 @@ export type CreditNoteDoc = {
   refund: number;
   wht: number;
   refundAccount: string;
+  /** D160 — cancel = ทั้งออเดอร์ (ตารางใช้รายการของออเดอร์) · return = รายการที่คืน · discount = บรรทัดลดราคา */
+  kind?: "cancel" | "return" | "discount";
+  items?: { name: string; qty: number; price: number }[];
 };
+
+/** รายการในตารางของใบลดหนี้ (D160) — ไม่ได้ใช้คิดยอด ยอดอ่านจากแถวที่บันทึกไว้เสมอ */
+function creditNoteLines(cn: CreditNoteDoc, orderItems: OrderItem[]): OrderItem[] {
+  if (cn.kind === "return") {
+    const lines: OrderItem[] = (cn.items ?? []).map((i) => ({ name: i.name, qty: i.qty, price: i.price }));
+    // ส่วนลดท้ายบิลของออเดอร์ / ลดหนี้ครั้งก่อน → บรรทัดหักให้ตารางรวมได้เท่ายอดบนใบ (ไม่ปล่อยให้ตัวเลขขัดกัน)
+    const gap = roundTo2(lines.reduce((s, l) => s + l.qty * l.price, 0) - cn.total);
+    if (gap > 0.004) lines.push({ name: "หัก ส่วนลดตามใบกำกับเดิม / ยอดที่ลดหนี้ไปแล้ว", qty: 1, price: -gap });
+    return lines;
+  }
+  if (cn.kind === "discount") return [{ name: "ลดราคาสินค้า/บริการตามใบกำกับภาษีเดิม", qty: 1, price: cn.total }];
+  return orderItems;
+}
 
 /**
  * ใบลดหนี้ 1 ฉบับ (ต้นฉบับหรือสำเนา) — หน้าตาเดียวกับใบกำกับของแอปขาย
@@ -768,6 +785,7 @@ function creditNoteHtml(c: CompanyInfo, order: OrderLike, items: OrderItem[], cn
   const row = (label: string, v: string, extra = "") =>
     `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;${extra}">${label}</td><td style="${cell}${extra}">${v}</td></tr>`;
   const refs = cn.refs.map((r) => `${esc(r.docNo)} (${esc(formatThaiDate(r.date))})`).join("<br>");
+  const inv = cnInvoiceLines(cn.refs, cn.original);
   const refRows = cn.refs.length > 1
     ? cn.refs.map((r) => row(`&nbsp;&nbsp;· ${esc(r.docNo)}`, nf(r.preVat), "color:#475569;font-size:12px;")).join("")
     : "";
@@ -791,7 +809,7 @@ function creditNoteHtml(c: CompanyInfo, order: OrderLike, items: OrderItem[], cn
         </table>
       </div>
     </div>
-    ${itemsTable(items, false)}
+    ${itemsTable(creditNoteLines(cn, items), false)}
     <div style="page-break-inside:avoid;break-inside:avoid;">
       <table style="width:100%;font-size:14px;"><tr>
         <td style="width:55%;vertical-align:bottom;padding-right:20px;">
@@ -802,8 +820,9 @@ function creditNoteHtml(c: CompanyInfo, order: OrderLike, items: OrderItem[], cn
           </div>
         </td>
         <td style="width:45%;vertical-align:top;"><table style="width:100%;border-collapse:collapse;">
-          <tr><td style="padding:4px 12px;text-align:left;font-size:13px;">มูลค่าตามใบกำกับภาษีเดิม</td><td style="padding:4px 12px;text-align:right;width:120px;border:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">${nf(cn.original)}</td></tr>
+          <tr><td style="padding:4px 12px;text-align:left;font-size:13px;">มูลค่าตามใบกำกับภาษีเดิม</td><td style="padding:4px 12px;text-align:right;width:120px;border:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">${nf(inv.invoice)}</td></tr>
           ${refRows}
+          ${inv.prior > 0 ? row("หัก ลดหนี้ครั้งก่อน", `-${nf(inv.prior)}`) : ""}
           ${row("มูลค่าที่ถูกต้อง", nf(cn.correct))}
           ${row("ผลต่าง (มูลค่าที่ลดลง)", nf(cn.diff), "font-weight:600;")}
           ${row("ภาษีมูลค่าเพิ่ม 7% ของผลต่าง", nf(cn.vat))}
@@ -816,15 +835,16 @@ function creditNoteHtml(c: CompanyInfo, order: OrderLike, items: OrderItem[], cn
   </div>`;
 }
 
-/** ใบลดหนี้ต้นฉบับ + สำเนา เป็น HTML (เทสอ่านได้ · ตัวเดียวกับที่พิมพ์) */
-export function creditNoteDocsHtml(company: CompanyInfo, order: OrderLike, items: OrderItem[], cn: CreditNoteDoc): string {
-  return [
-    creditNoteHtml(company, order, items, cn, "(ต้นฉบับ / Original)", 0),
-    creditNoteHtml(company, order, items, cn, "(สำเนา / Copy)", 1),
-  ].join("");
+/** ใบลดหนี้ต้นฉบับ + สำเนา เป็น HTML (เทสอ่านได้ · ตัวเดียวกับที่พิมพ์) · D160 หลายใบต่อกันได้ */
+export function creditNoteDocsHtml(company: CompanyInfo, order: OrderLike, items: OrderItem[], cn: CreditNoteDoc | CreditNoteDoc[]): string {
+  const list = Array.isArray(cn) ? cn : [cn];
+  return list.flatMap((c, i) => [
+    creditNoteHtml(company, order, items, c, "(ต้นฉบับ / Original)", i * 2),
+    creditNoteHtml(company, order, items, c, "(สำเนา / Copy)", i * 2 + 1),
+  ]).join("");
 }
 
-export function printCreditNote(company: CompanyInfo, order: OrderLike, items: OrderItem[], cn: CreditNoteDoc, w?: Window | null) {
+export function printCreditNote(company: CompanyInfo, order: OrderLike, items: OrderItem[], cn: CreditNoteDoc | CreditNoteDoc[], w?: Window | null) {
   if (!ensureCompany(company, w)) return;
   openPrint(creditNoteDocsHtml(company, order, items, cn), w);
 }

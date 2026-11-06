@@ -10,7 +10,7 @@ import { formatThaiDate } from "@/lib/sales/orders";
 import { CN_REASONS, CN_REASON_KEYS, cnInputError, cnWhtNote, type CnReason } from "@/lib/sales/creditNote";
 import { CANCEL_ORDER_DETAIL } from "@/lib/sales/cancelledDocs";
 import { cancelLockedText } from "@/lib/production/monthClose";
-import { cancelOrderAction, getCancelPlanAction, getCreditNoteAction, getOrderItemsAction, getOrderPaymentsAction } from "../actions";
+import { cancelOrderAction, getCancelPlanAction, getCreditNotesAction, getOrderItemsAction, getOrderPaymentsAction } from "../actions";
 import { openPrintWindow, printCreditNote, type OrderLike } from "./print";
 
 type Plan = Awaited<ReturnType<typeof getCancelPlanAction>>;
@@ -69,7 +69,8 @@ export function CancelOrderDialog({
     onDone();
     if (d?.cn_no && w) {
       try {
-        const [cn, items, payments] = await Promise.all([getCreditNoteAction(order.quNo), getOrderItemsAction(order.quNo), getOrderPaymentsAction(order.quNo)]);
+        const [cns, items, payments] = await Promise.all([getCreditNotesAction(order.quNo), getOrderItemsAction(order.quNo), getOrderPaymentsAction(order.quNo)]);
+        const cn = cns.find((x) => x.cnNo === d.cn_no);
         if (cn) printCreditNote(company, { ...(order as OrderLike), payments }, items, cn, w);
         else w.close();
       } catch {
@@ -95,6 +96,12 @@ export function CancelOrderDialog({
           <LoadError err onRetry={load} what="ข้อมูลใบกำกับของออเดอร์" />
         ) : !plan ? (
           <div className="py-6 text-center text-faint">กำลังโหลด…</div>
+        ) : plan.partialBlocked ? (
+          // D160 — มีใบลดหนี้บางส่วนแล้ว: ยกเลิกทั้งออเดอร์ไม่ได้ (RPC บังคับซ้ำ) · บอกว่าต้องกดอะไรแทน
+          <div className="space-y-3 text-sm">
+            <div className="rounded border border-warn-line bg-warn-bg p-2 text-warn">{plan.partialBlocked}</div>
+            <div className="flex justify-end"><button onClick={onClose} className="rounded border border-line px-3 py-2 text-sm text-ink hover:bg-raised">กลับ</button></div>
+          </div>
         ) : (
           <div className="space-y-3 text-sm">
             <div className="rounded bg-raised p-2 text-muted">

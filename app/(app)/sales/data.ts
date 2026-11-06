@@ -594,9 +594,14 @@ export type CreditNoteRow = {
   refund: number;
   wht: number;
   refundAccount: string;
+  /** D160 — cancel = ยกเลิกทั้งออเดอร์ · return = คืนบางรายการ · discount = ลดราคา */
+  kind: "cancel" | "return" | "discount";
+  /** รายการที่คืน (kind = return) */
+  items: { id: number; name: string; qty: number; price: number }[];
+  restocked: boolean;
 };
 
-const CN_COLS = "cn_no, qu_no, cn_date, reason_text, refs, original_value, correct_value, diff_value, vat_amount, total_amount, refund_amount, wht_amount, refund_account";
+const CN_COLS = "cn_no, qu_no, cn_date, reason_text, refs, original_value, correct_value, diff_value, vat_amount, total_amount, refund_amount, wht_amount, refund_account, kind, items, restocked";
 function mapCreditNote(r: Record<string, unknown>): CreditNoteRow {
   const refs = (r.refs as Record<string, unknown>[] | null) ?? [];
   return {
@@ -613,24 +618,59 @@ function mapCreditNote(r: Record<string, unknown>): CreditNoteRow {
     refund: Number(r.refund_amount) || 0,
     wht: Number(r.wht_amount) || 0,
     refundAccount: (r.refund_account as string) ?? "",
+    kind: ((r.kind as string) ?? "cancel") as CreditNoteRow["kind"],
+    items: ((r.items as Record<string, unknown>[] | null) ?? []).map((x) => ({
+      id: Number(x.id) || 0, name: (x.name as string) ?? "", qty: Number(x.qty) || 0, price: Number(x.price) || 0,
+    })),
+    restocked: Boolean(r.restocked),
   };
 }
 
-/** ใบลดหนี้ของออเดอร์ (เฟส 1 = มีได้ใบเดียวต่อออเดอร์) · null = ไม่มี */
-export async function getCreditNote(quNo: string): Promise<CreditNoteRow | null> {
+/** ใบลดหนี้ทุกใบของออเดอร์ เรียงตามที่ออก (D160 — หลายใบต่อออเดอร์ได้) */
+export async function getCreditNotes(quNo: string): Promise<CreditNoteRow[]> {
   const supabase = await db();
   const data = mustRead(
-    await supabase.from("sales_credit_notes").select(CN_COLS).eq("qu_no", quNo).order("cn_no"),
+    await supabase.from("sales_credit_notes").select(CN_COLS).eq("qu_no", quNo).order("created_at").order("cn_no"),
     "ใบลดหนี้ของออเดอร์",
   );
-  return data?.length ? mapCreditNote(data[0] as Record<string, unknown>) : null;
+  return (data ?? []).map((r) => mapCreditNote(r as Record<string, unknown>));
 }
 
-/** เลขใบลดหนี้ของทุกออเดอร์ (ปุ่ม พิมพ์ใบลดหนี้ บนออเดอร์ที่ยกเลิก) */
-export async function getCreditNoteNos(): Promise<Record<string, string>> {
+/** เลขใบลดหนี้ของทุกออเดอร์ (qu_no → เลขทุกใบ) — ปุ่ม พิมพ์ใบลดหนี้ */
+export async function getCreditNoteNos(): Promise<Record<string, string[]>> {
   const supabase = await db();
-  const data = mustRead(await supabase.from("sales_credit_notes").select("qu_no, cn_no"), "เลขใบลดหนี้");
-  return Object.fromEntries((data ?? []).map((r) => [r.qu_no as string, r.cn_no as string]));
+  const data = mustRead(await supabase.from("sales_credit_notes").select("qu_no, cn_no").order("cn_no"), "เลขใบลดหนี้");
+  const out: Record<string, string[]> = {};
+  for (const r of data ?? []) (out[r.qu_no as string] ??= []).push(r.cn_no as string);
+  return out;
+}
+
+/**
+ * D160 — ข้อมูลประกอบกล่องใบลดหนี้บางส่วน: บิลที่มี VAT · รายการขาย (id) · ใบลดหนี้ที่ออกไปแล้ว · ยอด/หัก ณ ที่จ่ายของออเดอร์
+ * ★ ตัวเลขบนจอกับตอนบันทึกคิดจาก partialTotals() ตัวเดียว (lib/sales/creditNote.ts)
+ */
+export async function getPartialCreditPlan(quNo: string) {
+  const supabase = await db();
+  const base = await getCancelPlan(quNo);
+  const [items, prior, order] = await Promise.all([
+    supabase.from("sales_order_items").select("id, item_name, qty, price").eq("qu_no", quNo).order("id"),
+    supabase.from("sales_credit_notes").select("diff_value, vat_amount, total_amount, wht_amount, items").eq("qu_no", quNo),
+    supabase.from("sales_orders").select("status, grand_total, wht_percent").eq("qu_no", quNo).maybeSingle(),
+  ]);
+  const o = mustRead<{ status: string; grand_total: number; wht_percent: number } | null>(order, "ออเดอร์");
+  return {
+    ...base,
+    status: o?.status ?? "",
+    grandTotal: Number(o?.grand_total) || 0,
+    whtPercent: Number(o?.wht_percent) || 0,
+    items: (mustRead(items, "รายการในออเดอร์") ?? []).map((r) => ({
+      id: Number(r.id), name: r.item_name as string, qty: Number(r.qty) || 0, price: Number(r.price) || 0,
+    })),
+    prior: (mustRead(prior, "ใบลดหนี้ที่ออกแล้ว") ?? []).map((r) => ({
+      pre: Number(r.diff_value) || 0, vat: Number(r.vat_amount) || 0, total: Number(r.total_amount) || 0, wht: Number(r.wht_amount) || 0,
+      items: ((r.items as Record<string, unknown>[] | null) ?? []).map((x) => ({ id: Number(x.id) || 0, qty: Number(x.qty) || 0 })),
+    })),
+  };
 }
 
 /**

@@ -10,6 +10,8 @@
  *    (creditNote.test.ts อ่าน SQL มาเทียบ · test:tenant ยิงจริง)
  */
 
+import { vatFromGross } from "../shared/vat";
+
 /** บิลรายรับของออเดอร์ที่ยังไม่ถูกยกเลิก (= ใบกำกับ/ใบเสร็จที่ออกไปแล้ว) */
 export type CnBill = {
   txId: string;
@@ -89,4 +91,101 @@ export function cnTotals(bills: CnBill[]): CnTotals {
 export function cnWhtNote(t: CnTotals): string | null {
   if (t.wht <= 0) return null;
   return `ลูกค้าหัก ณ ที่จ่ายไว้ ${t.wht.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท — คืนเงินเฉพาะยอดที่รับจริง · หนังสือรับรอง 50ทวิ ที่ลูกค้าออกให้ ต้องคุยกับลูกค้าเอง`;
+}
+
+// ── D160 — เฟส 2: ใบลดหนี้บางส่วน (คืนบางรายการ / ลดราคา) โดยไม่ยกเลิกออเดอร์ ─────────────
+/**
+ * ★ ออกได้เฉพาะออเดอร์ "ปิดการขาย" (ผู้ใช้ตัดสิน) · หลายใบต่อออเดอร์ได้จนยอดที่ลดได้เหลือ 0
+ * ★ สูตรอยู่ที่นี่ที่เดียว — RPC ตรวจแค่ขอบเขต (ไม่เกินยอดที่เหลือ · pre+vat = total) ไม่คิดซ้ำ (D86)
+ * 🚨 ถอด VAT ด้วย `vatFromGross` ตัวเดียวกับบาร์/บัญชี (golden B11) — ไม่มีสูตรชุดที่สอง
+ * 🚨 ใบที่ปิดยอดที่เหลือพอดี ใช้ยอดคงเหลือ (pre/vat) ตรง ๆ ไม่ถอดใหม่ — ไม่งั้นเศษสตางค์ค้าง
+ *    (บิลเดิมถอด VAT จากยอดสุทธิทั้งก้อน · ถอดใหม่จากยอดย่อยแล้วรวมกันได้คลาด 0.01)
+ */
+/** รายการในออเดอร์ (ราคารวม VAT ต่อหน่วย · id = sales_order_items.id) */
+export type CnOrderItem = { id: number; name: string; qty: number; price: number };
+/** ใบลดหนี้ที่ออกไปแล้วของออเดอร์นี้ */
+export type PriorCn = { pre: number; vat: number; total: number; wht: number; items: { id: number; qty: number }[] };
+export type PartialInput =
+  | { mode: "return"; qtys: Record<number, number> }
+  | { mode: "discount"; gross: number };
+export type PartialCtx = { bills: CnBill[]; prior: PriorCn[]; items: CnOrderItem[]; grandTotal: number; whtPercent: number };
+export type PartialLine = { id: number; name: string; qty: number; price: number };
+export type PartialResult = CnTotals & { lines: PartialLine[]; closing: boolean };
+
+const vatBillsOf = (bills: CnBill[]) => bills.filter((b) => b.vat > 0);
+
+/** ยอดที่ยังลดได้ (ใบกำกับทุกใบ − ใบลดหนี้ที่ออกไปแล้ว) + จำนวนที่ยังคืนได้ต่อรายการ */
+export function partialRemaining(ctx: Pick<PartialCtx, "bills" | "prior" | "items">) {
+  const vb = vatBillsOf(ctx.bills);
+  const pre = r2(vb.reduce((s, b) => s + b.preVat, 0) - ctx.prior.reduce((s, c) => s + c.pre, 0));
+  const vat = r2(vb.reduce((s, b) => s + b.vat, 0) - ctx.prior.reduce((s, c) => s + c.vat, 0));
+  const wht = r2(vb.reduce((s, b) => s + b.wht, 0) - ctx.prior.reduce((s, c) => s + c.wht, 0));
+  const returned = new Map<number, number>();
+  for (const c of ctx.prior) for (const it of c.items) returned.set(it.id, (returned.get(it.id) ?? 0) + it.qty);
+  const qty: Record<number, number> = {};
+  for (const it of ctx.items) qty[it.id] = Math.max(0, it.qty - (returned.get(it.id) ?? 0));
+  return { pre, vat, wht, gross: r2(pre + vat), qty };
+}
+
+/** ยอดบนใบลดหนี้บางส่วน · string = เหตุที่ออกไม่ได้ (ข้อความไทยพร้อมแสดง) */
+export function partialTotals(input: PartialInput, ctx: PartialCtx): PartialResult | string {
+  if (!vatBillsOf(ctx.bills).length) return "ออเดอร์นี้ไม่มีใบกำกับภาษีให้ลดหนี้";
+  const rem = partialRemaining(ctx);
+  if (rem.gross <= 0) return "ออเดอร์นี้ลดหนี้ครบยอดแล้ว";
+  let gross: number;
+  const lines: PartialLine[] = [];
+  let allReturned = false;
+  if (input.mode === "return") {
+    for (const it of ctx.items) {
+      const q = Number(input.qtys[it.id]) || 0;
+      if (q < 0) return `${it.name}: จำนวนคืนติดลบไม่ได้`;
+      if (q > rem.qty[it.id] + 1e-9) return `${it.name}: คืนได้ไม่เกิน ${rem.qty[it.id]} (ขาย ${it.qty})`;
+      if (q > 0) lines.push({ id: it.id, name: it.name, qty: q, price: it.price });
+    }
+    if (!lines.length) return "เลือกรายการและจำนวนที่ลูกค้าคืน";
+    // ส่วนลดท้ายบิลของออเดอร์ → ลดตามสัดส่วนเดียวกัน (ยอดคืน = มูลค่ารายการ × ยอดจริง/ยอดก่อนลด)
+    const listTotal = ctx.items.reduce((s, it) => s + it.qty * it.price, 0);
+    const factor = listTotal > 0 ? ctx.grandTotal / listTotal : 1;
+    gross = r2(lines.reduce((s, l) => s + l.qty * l.price, 0) * factor);
+    allReturned = ctx.items.every((it) => rem.qty[it.id] - (Number(input.qtys[it.id]) || 0) <= 1e-9);
+  } else {
+    gross = r2(Number(input.gross) || 0);
+    if (gross <= 0) return "กรอกยอดที่ลด (รวม VAT)";
+  }
+  // ★ คืนครบทุกรายการที่เหลือ = ปิดยอดที่เหลือพอดี แม้มูลค่าตามราคาจะเกิน (เคยลดราคาไปแล้ว — ลดซ้ำไม่ได้)
+  const fmtB = (n: number) => n.toLocaleString("th-TH", { minimumFractionDigits: 2 });
+  if (!allReturned && gross > rem.gross + 0.005) {
+    return input.mode === "return"
+      ? `มูลค่าสินค้าที่คืน ${fmtB(gross)} บาท เกินยอดที่ยังลดได้ ${fmtB(rem.gross)} บาท (เคยลดหนี้ไปแล้ว) — ถ้าลูกค้าคืนของที่เหลือทั้งหมด ให้ใส่ครบทุกรายการ ระบบจะลดเท่ายอดที่เหลือ`
+      : `ลดได้ไม่เกินยอดที่เหลือ ${fmtB(rem.gross)} บาท`;
+  }
+
+  const closing = allReturned || Math.abs(gross - rem.gross) < 0.005;
+  const split = closing ? { base: rem.pre, vat: rem.vat } : vatFromGross(gross);
+  const pre = r2(split.base);
+  const vat = r2(split.vat);
+  const wht = closing ? rem.wht : r2((pre * (Number(ctx.whtPercent) || 0)) / 100);
+  const total = r2(pre + vat);
+  return {
+    original: rem.pre, correct: r2(rem.pre - pre), diff: pre, vat, total,
+    refund: r2(total - wht), wht, lines, closing,
+  };
+}
+
+/** ยกเลิกทั้งออเดอร์ไม่ได้เมื่อมีใบลดหนี้บางส่วนแล้ว (คืนสต็อก/ภาษีซ้ำ) — ฝาแฝดด่านใน fn_cancel_order (0107) */
+export const CANCEL_AFTER_PARTIAL_TEXT =
+  "ออเดอร์นี้มีใบลดหนี้บางส่วนแล้ว — ยกเลิกทั้งออเดอร์ไม่ได้ (สต็อกและภาษีจะคืนซ้ำ) ให้กด ออกใบลดหนี้ สำหรับส่วนที่เหลือแทน";
+
+/**
+ * D160 — บรรทัด "มูลค่าตามใบกำกับภาษีเดิม" บนใบลดหนี้ใบที่ 2 เป็นต้นไป
+ * ม.86/10(5) ถามมูลค่า **ตามใบกำกับเดิม** — ไม่ใช่ยอดที่เหลือหลังลดหนี้ครั้งก่อน
+ * ⇒ แสดงยอดใบกำกับจริง (Σ ก่อน VAT ของใบที่อ้าง · แช่ไว้ใน refs) แล้วหักใบลดหนี้ก่อนหน้าเป็นอีกบรรทัด
+ *    ให้ เดิม − ก่อนหน้า − ผลต่าง = ที่ถูกต้อง บวกลบลงตัวบนกระดาษ
+ * ★ อ่านจากแถวที่บันทึกไว้ทั้งหมด → พิมพ์ซ้ำไม่ขยับ · ใบแรก/ยกเลิกทั้งออเดอร์ prior = 0 (หน้าตาเดิมเป๊ะ)
+ */
+export function cnInvoiceLines(refs: { preVat: number }[], original: number): { invoice: number; prior: number } {
+  const invoice = Math.round(refs.reduce((s, r) => s + (Number(r.preVat) || 0), 0) * 100) / 100;
+  const prior = Math.round((invoice - original) * 100) / 100;
+  // refs ว่าง/ข้อมูลเก่าไม่ครบ = ไม่เดา ใช้ยอดที่บันทึกไว้ตามเดิม
+  return prior > 0.004 ? { invoice, prior } : { invoice: original, prior: 0 };
 }
