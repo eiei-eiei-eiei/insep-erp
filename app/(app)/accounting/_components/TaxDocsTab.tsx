@@ -322,7 +322,7 @@ export function TaxDocsTab({
 // ── แถวออกหนังสือ (ฟอร์มกรอกก่อนออก) ─────────────────────────────────────────
 function IssueRow({ p, entityId, onIssued, onBuild, setMsg }: {
   p: Pending; entityId: string; onIssued: () => void; onBuild: (d: Wht50Doc, w?: Window | null) => Promise<void>;
-  setMsg: (m: { ok: boolean; text: string } | null) => void;
+  setMsg: (m: { ok: boolean; text: string; warn?: boolean } | null) => void;
 }) {
   const { pending, run } = useSaver();
   const [open, setOpen] = useState(false);
@@ -334,22 +334,41 @@ function IssueRow({ p, entityId, onIssued, onBuild, setMsg }: {
   const [issueDate, setIssueDate] = useState(todayISO());
   const [paymentDate, setPaymentDate] = useState(p.transactionDateISO || todayISO());
 
-  async function openForm() {
+  // 🪤 D162 — ปุ่มเดียวทำ 2 หน้าที่ (ออกหนังสือ / ซ่อน) แต่เดิมสั่งเปิดอย่างเดียว ⇒ ป้าย "ซ่อน" กดแล้วไม่มีอะไรเกิดขึ้น
+  async function toggleForm() {
+    if (open) { setOpen(false); return; }
     setOpen(true);
     if (!docNo) setDocNo(await nextWhtDocNoAction(entityId));
   }
   function issue() {
     if (!docNo.trim()) { setMsg({ ok: false, text: "กรอกเลขที่หนังสือ" }); return; }
-    const w = window.open("", "_blank"); // เปิดก่อน await กัน popup blocker (ถ้าบันทึกไม่ผ่าน = แท็บว่าง ปิดเองได้)
+    const no = docNo.trim();
+    const w = window.open("", "_blank"); // เปิดก่อน await กัน popup blocker
     run(
-      () => issueWhtAction({ docNo: docNo.trim(), txIds: [p.transactionId], contactName: p.contactName, contactId: p.contactId, whtAmount: p.whtAmount, pndType, incomeType: otherDesc, incomeSeq: seq, baseAmount: p.amount, issueDate, paymentDate, entityId }),
-      "ออกหนังสือแล้ว",
       async () => {
-        const ctx = await getWht50ContextAction(entityId, p.contactName, p.contactId || undefined);
-        const print = buildWht50PrintData({ docNo: docNo.trim(), whtAmount: p.whtAmount, transactionDate: issueDate, paymentDate });
-        await onBuild({ docNo: docNo.trim(), entInfo: ctx.entInfo, payeeName: ctx.payee.name, payeeAddress: ctx.payee.address, payeeTaxId: ctx.payee.taxId, pndType, seq, otherDesc, amount: p.amount, whtAmount: p.whtAmount, dateText: print.dateText, bahtText: print.bahtText, issueDateISO: issueDate }, w);
-        setMsg({ ok: true, text: `ออก 50ทวิ เลขที่ ${docNo.trim()} แล้ว` });
+        const r = await issueWhtAction({ docNo: no, txIds: [p.transactionId], contactName: p.contactName, contactId: p.contactId, whtAmount: p.whtAmount, pndType, incomeType: otherDesc, incomeSeq: seq, baseAmount: p.amount, issueDate, paymentDate, entityId });
+        if (!r.ok) w?.close(); // บันทึกไม่ผ่าน = ไม่มีอะไรให้พิมพ์ ห้ามทิ้งแท็บเปล่าค้าง
+        return r;
+      },
+      `บันทึก 50ทวิ เลขที่ ${no} แล้ว`,
+      () => {
+        // 🚨 D162 — ใบถูกบันทึกแล้วตั้งแต่ตรงนี้ ⇒ โหลดรายการใหม่ก่อนสร้าง PDF เสมอ
+        //    เดิมโหลดใหม่หลังสร้าง PDF สำเร็จเท่านั้น: PDF ล้ม = รายการค้างที่ "ยังไม่ออกใบ" ทั้งที่ออกแล้ว
+        //    แล้วผู้ใช้กดออกซ้ำ
         onIssued();
+        void (async () => {
+          try {
+            const ctx = await getWht50ContextAction(entityId, p.contactName, p.contactId || undefined);
+            const print = buildWht50PrintData({ docNo: no, whtAmount: p.whtAmount, transactionDate: issueDate, paymentDate });
+            await onBuild({ docNo: no, entInfo: ctx.entInfo, payeeName: ctx.payee.name, payeeAddress: ctx.payee.address, payeeTaxId: ctx.payee.taxId, pndType, seq, otherDesc, amount: p.amount, whtAmount: p.whtAmount, dateText: print.dateText, bahtText: print.bahtText, issueDateISO: issueDate }, w);
+          } catch (e) {
+            // 🚨 D162 — เดิม error ตรงนี้ถูกทิ้งเงียบ ๆ (onOk แบบ async ไม่มีใครรอ) = แท็บเปล่าค้าง ไม่มีอะไรบอก
+            //    บันทึกได้ แต่พิมพ์ไม่ได้ = สำเร็จบางส่วน → เหลือง ไม่ใช่เขียว (D79)
+            w?.close();
+            const why = e instanceof Error ? e.message : "ผิดพลาด";
+            setMsg({ ok: false, warn: true, text: `บันทึก 50ทวิ เลขที่ ${no} แล้ว แต่สร้าง PDF ไม่ได้ (${why}) — กด พิมพ์ซ้ำ ที่รายการ "ออกแล้วเดือนนี้" (อย่ากดออกใหม่)` });
+          }
+        })();
       },
     );
   }
@@ -358,7 +377,7 @@ function IssueRow({ p, entityId, onIssued, onBuild, setMsg }: {
     <div className="mb-2 rounded-lg border border-line-soft p-2">
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
         <span>{d.date(p.pendDateISO)} · <b>{p.contactName}</b> · {p.category} · ยอด {fmt(p.amount)} · ภาษี {fmt(p.whtAmount)}</span>
-        <button onClick={openForm} className="rounded bg-brand px-3 py-1 text-xs text-on-brand">{open ? "ซ่อน" : "ออกหนังสือ"}</button>
+        <button onClick={toggleForm} className="rounded bg-brand px-3 py-1 text-xs text-on-brand">{open ? "ซ่อน" : "ออกหนังสือ"}</button>
       </div>
       {open && (
         <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-3">
@@ -368,7 +387,7 @@ function IssueRow({ p, entityId, onIssued, onBuild, setMsg }: {
           <Field label="ระบุประเภทเงินได้ (ถ้าอื่นๆ)"><TextInput value={otherDesc} onChange={(e) => setOtherDesc(e.target.value)} /></Field>
           <Field label="วันที่จ่าย"><TextInput type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} /></Field>
           <Field label="วันที่ออกหนังสือ"><TextInput type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} /></Field>
-          <div className="col-span-2 md:col-span-3"><button onClick={issue} disabled={pending} className="rounded-lg bg-ok-bg px-4 py-2 text-sm text-white disabled:opacity-50">ออก + พิมพ์</button></div>
+          <div className="col-span-2 md:col-span-3"><button onClick={issue} disabled={pending} className="rounded-lg bg-brand px-4 py-2 text-sm text-on-brand disabled:opacity-50">ออก + พิมพ์</button></div>
         </div>
       )}
     </div>
