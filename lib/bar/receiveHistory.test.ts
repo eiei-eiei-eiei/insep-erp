@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { receiveHistory, changeText, receiveDateText, type ReceiveRecord } from "./receiveHistory";
+import { receiveHistory, changeText, type ReceiveRecord } from "./receiveHistory";
 
 /** golden **B22** — ประวัติราคารับของบาร์ (D126) */
 
@@ -86,17 +86,11 @@ describe("receiveHistory — ลำดับ + ราคาขึ้นลง", 
   });
 });
 
-describe("changeText / receiveDateText", () => {
+describe("changeText", () => {
   it("ปัดทศนิยม 1 ตำแหน่ง · ค่าแปลกคืน null", () => {
     expect(changeText(0.12345)).toBe("▲ 12.3%");
     expect(changeText(-0.0004)).toBe("เท่าเดิม");
     expect(changeText(null)).toBeNull();
     expect(changeText(Infinity)).toBeNull();
-  });
-
-  it("วันที่เป็น พ.ศ. 2 หลัก · ค่าที่ไม่ใช่วันที่คืนตามเดิม", () => {
-    expect(receiveDateText("2026-10-20")).toBe("20/10/69");
-    expect(receiveDateText("2027-01-05")).toBe("05/01/70");
-    expect(receiveDateText("ไม่รู้")).toBe("ไม่รู้");
   });
 });

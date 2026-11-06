@@ -3,11 +3,11 @@ import {
   isRealISODate, docDateError, shipDateError, saleDateError, docDateNote, shipDateNote, saleDateNote,
   manualNoFields, manualNoError, actionPostsRevenue,
 } from "./backdate";
-import { neededSerials, formatThaiDate, type OrderAction, type OrderState } from "./orders";
+import { neededSerials, type OrderAction, type OrderState } from "./orders";
 import { formatDate } from "../shared/dateFormat";
 
 /** D161: รูปแบบเดิมของคำเตือน (dd/MM/yyyy พ.ศ.) — ผู้เรียกจริงส่ง useDateFmt().date */
-const F = formatThaiDate;
+const F = (x: string) => formatDate(x, "dd_mm_yyyy_be");
 
 const TODAY = "2026-09-28";
 const order = (o: Partial<OrderState> = {}): OrderState => ({

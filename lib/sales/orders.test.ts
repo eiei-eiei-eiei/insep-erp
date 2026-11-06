@@ -3,7 +3,6 @@ import {
   processOrder,
   neededSerials,
   dueDateISO,
-  formatThaiDate,
   STATUS_AWAIT_DEPOSIT,
   type OrderState,
   type ContactInfo,
@@ -33,15 +32,12 @@ function baseOrder(over: Partial<OrderState> = {}): OrderState {
   };
 }
 
-describe("dueDateISO + formatThaiDate", () => {
+describe("dueDateISO", () => {
   it("บวก credit days → ISO", () => {
     expect(dueDateISO("2026-07-21", 30)).toBe("2026-08-20");
   });
   it("0 วัน = วันเดิม", () => {
     expect(dueDateISO("2026-07-21", 0)).toBe("2026-07-21");
-  });
-  it("format ISO → พ.ศ. dd/MM/yyyy", () => {
-    expect(formatThaiDate("2026-08-20")).toBe("20/08/2569");
   });
 });
 

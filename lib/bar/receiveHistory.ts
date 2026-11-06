@@ -82,10 +82,4 @@ export function changeText(change: number | null): string | null {
   return `${pct > 0 ? "▲" : "▼"} ${Math.abs(pct).toLocaleString("en-US", { maximumFractionDigits: 1 })}%`;
 }
 
-/** วันที่ `2026-10-20` → `20/10/69` (พ.ศ. 2 หลัก) · ค่าแปลกคืนตามเดิม ไม่เดา */
-export function receiveDateText(iso: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
-  if (!m) return iso;
-  const yy = String((Number(m[1]) + 543) % 100).padStart(2, "0");
-  return `${m[3]}/${m[2]}/${yy}`;
-}
+// D161 เฟส 4 — `receiveDateText` ถูกลบ: ป๊อปอัพประวัติใช้ `useDateFmt().date` (ตามค่าตั้งของลูกค้า)

@@ -16,8 +16,20 @@ import {
 } from "./dateFormat";
 import { formatDateThai, formatMonthThai } from "./format";
 import { thaiDay } from "./period";
-import { formatThaiDate } from "../sales/orders";
-import { receiveDateText } from "../bar/receiveHistory";
+
+/**
+ * D161 เฟส 4 — สำเนา**แช่แข็ง**ของตัวจัดรูปเดิมที่ถูกลบออกจากโค้ดจริงแล้ว
+ * ★ เก็บไว้เพื่อให้ golden ยังพิสูจน์ได้ว่า "ค่าเริ่มต้น = ของเดิมเป๊ะ" · ห้าม import ไปใช้ที่อื่น
+ */
+function formatThaiDate(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? `${m[3]}/${m[2]}/${Number(m[1]) + 543}` : iso;
+}
+function receiveDateText(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return iso;
+  return `${m[3]}/${m[2]}/${String((Number(m[1]) + 543) % 100).padStart(2, "0")}`;
+}
 import { fmtIsoDMY } from "../production/reports";
 
 /** ทุกวันในช่วง (UTC ล้วน — ไม่ขึ้นกับโซนเวลาของเครื่องที่รันเทส) */

@@ -74,14 +74,8 @@ export function unpostedText(
   return `ยังไม่ได้ลงบัญชี ${days.length} วัน (${names.join(", ")}${more})`;
 }
 
-const THAI_MONTH = [
-  "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.",
-  "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค.",
-];
-
-/** `2026-09-12` → `12 ก.ย.` — ★ ไม่ใส่ปีเพราะแถบนี้พูดถึงของค้างไม่กี่วัน */
-export function thaiDay(iso: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  if (!m) return iso;
-  return `${Number(m[3])} ${THAI_MONTH[Number(m[2]) - 1] ?? m[2]}`;
-}
+/**
+ * `2026-09-12` → `12 ก.ย.` — ข้อความ LINE ของบาร์ (`reminder.ts`)
+ * D161 เฟส 4 — เคยเป็นสำเนาซ้ำของ `lib/shared/period` → re-export ตัวเดียว (ผลเท่ากันทุกวัน · golden ใน dateFormat.test)
+ */
+export { thaiDay } from "../shared/period";

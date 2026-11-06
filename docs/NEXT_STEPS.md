@@ -22,7 +22,7 @@
   - จุดที่สำรวจไว้: JSX โชว์ฟิลด์วันที่ดิบ ~57 จุด (หนักสุด บัญชี AccountsTab/BillsTab/ApArTab/TaxDocsTab/AdvanceCard · บาร์ DashboardTab/PrepTab · ผลิต BoardTab + `String(x_date).slice(0,10)` ~20 จุดใน Material/Product/Dilute/Draw/Ferment/Redistill) · `toLocaleString("th-TH")` กับวันที่ ~10 จุด (bar HistoryTab/PosTab/ItemHistoryModal · StockTab · HistoryCard · QuotationTab · print.ts)
   - 🚨 ห้ามแตะ: `formatDateBE` ใน `taxReport`/`whtReport` (ภพ.30/ภงด.) · `lib/production/reports.ts` · `lib/pdf/wht50.ts` · `lib/payroll/filingHtml.ts` · `lib/accounting/reportHtml.ts`
 - ✅ ~~**เฟส 3 — เอกสารการค้า**~~ (`docFmt`): print.ts (ขาย · ใบลดหนี้) · บิลบาร์ (`receipt.ts`/`print80.ts` — ตอนนี้ตัดจาก toLocaleString) · สลิป (`lib/payroll/slip.ts` วันจ่ายโชว์ ISO ดิบ) · ค่าเริ่มต้นต้อง HTML เท่าเดิมทุกตัวอักษร (เทคนิค D155 `salesDocsHtml()`)
-- ⏳ **เฟส 4** — เทสอ่านซอร์สกันถอยหลัง + ลบตัวจัดรูปเก่า + TESTING 116.x ครบ
+- ✅ **เฟส 4 เสร็จ (2026-11-06) = จบ D161** — ลบ `formatThaiDate`/`receiveDateText` (golden แช่สำเนาไว้ในเทส) · รวม `thaiDay` ตัวซ้ำของบาร์ · `lib/shared/legacyDateFormatters.test.ts` ล็อกว่าตัวจัดรูปตายตัว (ราชการ/LINE/ข้อความที่เก็บ) ใช้ได้เฉพาะไฟล์ในลิสต์ · test 2506 · ⏳ ยังไม่ push · ⏳ ผู้ใช้ลองพิมพ์เอกสารจริงตาม TESTING 116.10
 
 ## 0.-28 🆕 D153-D158 (2026-11-05) · migration 0104 + 0105 ลงครบ 2 DB · D153-D157 push แล้ว
 

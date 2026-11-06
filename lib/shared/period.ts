@@ -78,8 +78,12 @@ export function stageOnDate(todayISO: string, dueISO: string, leadDays = 3): Due
 }
 
 /** "15 ก.ย." — วันที่แบบสั้นสำหรับข้อความเตือน (ไม่ใส่ปี เพราะเป็นวันในอนาคตอันใกล้เสมอ) */
+//  D161 เฟส 4 — ตัวเดียวทั้งระบบ (บาร์เคยมีของตัวเองซ้ำ → re-export จากที่นี่)
+//  🚨 ใช้กับ**ข้อความ LINE** เท่านั้น (รูปแบบตายตัว ไม่ตามค่าตั้ง) — หน้าจอใช้ `useDateFmt().day`
+//  ★ ค่าที่ไม่ใช่วันที่ → คืนตามเดิม (เดิม parseInt ได้ `NaN `)
 export function thaiDay(iso: string): string {
   const TH = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
-  const mo = TH[parseInt(iso.slice(5, 7), 10) - 1] ?? "";
-  return `${parseInt(iso.slice(8, 10), 10)} ${mo}`;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return iso;
+  return `${Number(m[3])} ${TH[Number(m[2]) - 1] ?? m[2]}`;
 }
