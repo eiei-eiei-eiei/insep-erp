@@ -30,7 +30,8 @@ export async function getExciseReportRunsAction(month: string, entityId: string)
   const out: Record<string, string> = {};
   for (const r of data ?? []) {
     const k = r.report_key as string;
-    if (!out[k]) out[k] = String(r.created_at).slice(0, 10);
+    // 🪤 D161: timestamp เต็ม — ตัด 10 ตัวบน server (UTC) = สร้างตอนตี 1 ขึ้นเป็นเมื่อวาน · จอแปลงเป็นเวลาไทยเอง
+    if (!out[k]) out[k] = String(r.created_at);
   }
   return out;
 }

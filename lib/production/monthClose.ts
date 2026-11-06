@@ -155,10 +155,15 @@ export function recomputeResultText(p: RecomputePreview): { text: string; warn: 
  * 🚨 ต้องบอกให้ครบว่า **ใครต้องเป็นคนกด** — ฝ่ายขายยกเลิกได้ แต่ถอนปิดเดือนไม่ได้
  *    (ทุกครั้งที่ปฏิเสธ ต้องตอบให้ได้ว่าต้องทำอะไรแทน — D83/D88)
  */
-export function cancelLockedText(quNo: string, months: readonly string[]): string | null {
+export function cancelLockedText(
+  quNo: string,
+  months: readonly string[],
+  /** D161: ตัวจัดรูปเดือนตามค่าตั้งของลูกค้า (`useDateFmt().month`) — บังคับส่ง ลืม = build ไม่ผ่าน */
+  month: (period: string) => string,
+): string | null {
   if (months.length === 0) return null;
   return (
-    `ยกเลิก ${quNo} แล้ว — แต่เดือน ${months.join(", ")} ปิดบัญชีสรรพสามิตไปแล้ว ` +
+    `ยกเลิก ${quNo} แล้ว — แต่เดือน ${months.map(month).join(", ")} ปิดบัญชีสรรพสามิตไปแล้ว ` +
     `คู่ จ่าย/รับ จะยังแสดงบนฟอร์ม ภส. ตามเดิม (ฟอร์มที่ยื่นไปแล้วต้องไม่เปลี่ยน) · ` +
     `ถ้ายังไม่ได้ยื่นจริง ให้เจ้าของกิจการถอนปิดเดือนที่ ผลิต → รายงานสรรพสามิต`
   );

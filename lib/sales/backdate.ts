@@ -10,7 +10,7 @@
  *
  * ★ ทุกประโยคที่ขึ้นจอตัดสินที่นี่ (มีเทสคุม) ไม่ใช่ในคอมโพเนนต์ (D84/D91)
  */
-import { neededSerials, formatThaiDate, type OrderAction, type OrderState } from "./orders";
+import { neededSerials, type OrderAction, type OrderState } from "./orders";
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -69,9 +69,15 @@ export function actionPostsRevenue(action: OrderAction): boolean {
  * 🪤 เทสเบราว์เซอร์เจอ: เดิมบอก "บัญชี และ ภพ.30 จะเป็นของวันนั้น" ทุก action รวมขั้นออกใบแจ้งหนี้
  *    ที่ยังไม่ลงบัญชีเลย — ประโยคบอกเกินสิ่งที่ปุ่มทำ (ตระกูล D91/0059)
  */
-export function docDateNote(docDate: string, today: string, postsRevenue = true): string | null {
+export function docDateNote(
+  docDate: string,
+  today: string,
+  /** D161: ตัวจัดรูปวันที่ตามค่าตั้งของลูกค้า (`useDateFmt().date`) — บังคับส่ง ข้อความนี้ขึ้นจออย่างเดียว */
+  fmtDate: (iso: string) => string,
+  postsRevenue = true,
+): string | null {
   if (!docDate || docDate === today || !isRealISODate(docDate)) return null;
-  const d = formatThaiDate(docDate);
+  const d = fmtDate(docDate);
   if (docDate > today) {
     return postsRevenue
       ? `ลงวันที่ล่วงหน้า (${d}) — เลขเอกสารและบัญชีจะเป็นของวันนั้น`
@@ -85,19 +91,19 @@ export function docDateNote(docDate: string, today: string, postsRevenue = true)
 }
 
 /** คำอธิบายใต้ช่องวันที่ส่งของ */
-export function shipDateNote(shipDate: string, today: string): string | null {
+export function shipDateNote(shipDate: string, today: string, fmtDate: (iso: string) => string): string | null {
   if (!shipDate || shipDate === today || !isRealISODate(shipDate) || shipDate > today) return null;
   return (
-    `ส่งของย้อนหลังเป็นวันที่ ${formatThaiDate(shipDate)} — ฟอร์ม ภส. จะบันทึกการจ่ายสุราวันนั้น ` +
+    `ส่งของย้อนหลังเป็นวันที่ ${fmtDate(shipDate)} — ฟอร์ม ภส. จะบันทึกการจ่ายสุราวันนั้น ` +
     `· ถ้าปิดเดือนสรรพสามิตเดือนนั้นไปแล้ว ต้องกลับไปตรวจและยื่นใหม่`
   );
 }
 
 /** คำอธิบายใต้ช่องวันที่ขายหน้าร้าน — ใบเดียวครบ 3 อย่าง (ใบเสร็จ · บัญชี · ภส.) */
-export function saleDateNote(saleDate: string, today: string): string | null {
+export function saleDateNote(saleDate: string, today: string, fmtDate: (iso: string) => string): string | null {
   if (!saleDate || saleDate === today || !isRealISODate(saleDate) || saleDate > today) return null;
   return (
-    `ขายย้อนหลังเป็นวันที่ ${formatThaiDate(saleDate)} — เลขใบเสร็จ บัญชี/ภพ.30 และฟอร์ม ภส. จะเป็นของวันนั้น ` +
+    `ขายย้อนหลังเป็นวันที่ ${fmtDate(saleDate)} — เลขใบเสร็จ บัญชี/ภพ.30 และฟอร์ม ภส. จะเป็นของวันนั้น ` +
     `· ถ้าเดือนนั้นยื่นแบบหรือปิดเดือนสรรพสามิตไปแล้ว ต้องกลับไปตรวจและยื่นเพิ่มเติม`
   );
 }

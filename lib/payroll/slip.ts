@@ -25,7 +25,9 @@ export type SlipData = {
   companyAddress?: string;
   /** "เลขประจำตัวผู้เสียภาษี 0105…" */
   companyTaxLine?: string;
-  periodLabel: string;   // "05/2026"
+  /** งวดที่จัดรูปแล้วตามรูปแบบเอกสาร (D161 · ค่าเริ่มต้น `05/2569`) — เป็นทั้งหัวสลิปและชื่อไฟล์ภาพ */
+  periodLabel: string;
+  /** วันจ่ายที่จัดรูปแล้วตามรูปแบบเอกสาร (D161 · เดิมพิมพ์ ISO ดิบ) */
   payDate?: string;
   empName: string;
   empId: string;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useConfirm } from "@/lib/shared/ui";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { showToast } from "@/lib/shared/toast";
 import { useEffect, useRef, useState } from "react";
 import { taxReportHtml, whtReportHtml } from "@/lib/accounting/reportHtml";
@@ -75,6 +76,7 @@ export function TaxDocsTab({
   canConfig: boolean;
   canWrite: boolean;
 }) {
+  const d = useDateFmt();
   const [busy, setBusy] = useState(false);
   // 🚨 ต้องมีระดับ "warn" — สร้างแบบสำเร็จแต่ติ๊กเช็กลิสต์ไม่ผ่าน = **สำเร็จบางส่วน**
   //    ขึ้นเขียวเฉย ๆ = โกหก · ขึ้นแดงเฉย ๆ = ผู้ใช้นึกว่าไม่ได้อะไรเลย (บทเรียน D79)
@@ -267,7 +269,7 @@ export function TaxDocsTab({
               <tbody>
                 {summaries.map((s) => (
                   <tr key={s.id as number}>
-                    <td>{s.report_month as string}</td>
+                    <td className="whitespace-nowrap">{d.month(s.report_month as string)}</td>
                     <td className="num">{fmt(s.total_sales_vat as number)}</td>
                     <td className="num">{fmt(s.total_purchase_vat as number)}</td>
                     <td className="num">{fmt(s.forwarded_vat_in as number)}</td>
@@ -328,6 +330,7 @@ function IssueRow({ p, entityId, onIssued, onBuild, setMsg }: {
   const [pndType, setPndType] = useState(isCorporate(p.contactName) ? "ภ.ง.ด.53" : "ภ.ง.ด.3");
   const [seq, setSeq] = useState(6);
   const [otherDesc, setOtherDesc] = useState(p.category);
+  const d = useDateFmt();
   const [issueDate, setIssueDate] = useState(todayISO());
   const [paymentDate, setPaymentDate] = useState(p.transactionDateISO || todayISO());
 
@@ -354,7 +357,7 @@ function IssueRow({ p, entityId, onIssued, onBuild, setMsg }: {
   return (
     <div className="mb-2 rounded-lg border border-line-soft p-2">
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-        <span>{p.displayDate} · <b>{p.contactName}</b> · {p.category} · ยอด {fmt(p.amount)} · ภาษี {fmt(p.whtAmount)}</span>
+        <span>{d.date(p.pendDateISO)} · <b>{p.contactName}</b> · {p.category} · ยอด {fmt(p.amount)} · ภาษี {fmt(p.whtAmount)}</span>
         <button onClick={openForm} className="rounded bg-brand px-3 py-1 text-xs text-on-brand">{open ? "ซ่อน" : "ออกหนังสือ"}</button>
       </div>
       {open && (
@@ -379,6 +382,7 @@ function EditRow({ h, entityId, onSaved, onReprint, busy }: {
   const { pending, run } = useSaver();
   const [edit, setEdit] = useState(false);
   const [docNo, setDocNo] = useState(h.docNo);
+  const d = useDateFmt();
   const [issueDate, setIssueDate] = useState(h.issueDate);
   const [pndType, setPndType] = useState(h.pndType);
   const [seq, setSeq] = useState(h.incomeSeq);
@@ -391,7 +395,7 @@ function EditRow({ h, entityId, onSaved, onReprint, busy }: {
   return (
     <>
       <tr>
-        <td>{h.docNo}</td><td>{h.issueDate}</td><td>{h.contactName}</td><td>{h.pndType}</td><td className="num">{fmt(h.whtAmount)}</td>
+        <td>{h.docNo}</td><td className="whitespace-nowrap">{d.date(h.issueDate)}</td><td>{h.contactName}</td><td>{h.pndType}</td><td className="num">{fmt(h.whtAmount)}</td>
         <td className="whitespace-nowrap"><button onClick={onReprint} disabled={busy} className="text-muted hover:underline">พิมพ์ซ้ำ</button><button onClick={() => setEdit((v) => !v)} className="ml-2 text-muted hover:underline">แก้</button></td>
       </tr>
       {edit && (
@@ -415,6 +419,7 @@ function EditRow({ h, entityId, onSaved, onReprint, busy }: {
  * ★ หัวข้อ/วิธีแก้ตัดสินใน lib (`missingInvoiceListText`) · ไม่มีบิล = ไม่ render อะไร
  */
 function MissingInvoiceList({ rows }: { rows: { txId: string; date: string; contactName: string; description: string; amount: number; vat: number }[] }) {
+  const d = useDateFmt();
   const t = missingInvoiceListText(rows.length, rows.reduce((s, r) => s + r.vat, 0));
   if (!t) return null;
   return (
@@ -427,7 +432,7 @@ function MissingInvoiceList({ rows }: { rows: { txId: string; date: string; cont
           <tbody>
             {rows.map((r) => (
               <tr key={r.txId} title={r.txId}>
-                <td className="whitespace-nowrap">{r.date}</td>
+                <td className="whitespace-nowrap">{d.date(r.date)}</td>
                 <td>{r.contactName || "-"}</td>
                 <td>{r.description || "-"}</td>
                 <td className="num">{fmt(r.amount)}</td>

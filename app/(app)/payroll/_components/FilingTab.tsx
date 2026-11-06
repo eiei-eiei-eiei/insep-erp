@@ -17,6 +17,8 @@ import {
 import { getFilingPeriodAction, getFilingYearAction } from "../read-actions";
 import { issueEmp50TawiAction, nextEmpWhtDocNoAction } from "../actions";
 import type { PeriodRow, EmpCertRow } from "../data";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
+import { bangkokDateISO } from "@/lib/shared/datetime";
 
 /**
  * แท็บ "เอกสารยื่น" — ภงด.1 · สปส.1-10 · ภงด.1ก · 50ทวิ
@@ -429,11 +431,12 @@ function Wht50View({
   certs: EmpCertRow[];
   onIssued: () => void;
 }) {
+  const df = useDateFmt();
   const router = useRouter();
   const { pending, run } = useSaver();
   const [target, setTarget] = useState<{ empId: string; name: string } | null>(null);
   const [docNo, setDocNo] = useState("");
-  const [issueDate, setIssueDate] = useState(new Date().toISOString().slice(0, 10));
+  const [issueDate, setIssueDate] = useState(bangkokDateISO()); // D161: เดิมวันที่ UTC
 
   // รายชื่อที่มีงวดในปีนั้น (เรียงตามรหัส) — ออกใบให้ได้ทุกคนแม้ภาษี 0
   const empIds = [...new Set(items.map((i) => i.empId))].sort();
@@ -486,7 +489,7 @@ function Wht50View({
                   <td className="num">{fmt(t.wht)}</td>
                   <td className="num">{fmt(t.sso)}</td>
                   <td className="text-xs">
-                    {cert ? `${cert.docNo} (${cert.issueDate})` : <span className="text-faint">—</span>}
+                    {cert ? `${cert.docNo} (${df.date(cert.issueDate)})` : <span className="text-faint">—</span>}
                   </td>
                   <td className="whitespace-nowrap">
                     {cert ? (

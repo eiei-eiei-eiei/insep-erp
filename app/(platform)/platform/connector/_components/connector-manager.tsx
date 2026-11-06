@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Badge, Card, Empty, RowBtn, Select, TableWrap, useConfirm, useSaver } from "@/lib/shared/ui";
 import { ROLE_LABEL, toRole } from "@/lib/shared/roles";
-import { formatDateThai } from "@/lib/shared/format";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { grantBlock, grantWarn, REVOKE_DONE_TEXT } from "@/lib/connector/grant";
 import { MCP_PATH } from "@/lib/connector/guard";
 import type { ConnectorTenantRow, ConnectorUserRow } from "@/lib/platform/connector-db";
@@ -14,6 +14,7 @@ import { grantConnectorAction, revokeConnectorAction } from "../actions";
  * ★ ปุ่มที่กดไม่ได้ต้องบอกเหตุผล (D83/D86) — grantBlock() ตัดสินใน lib
  */
 export function ConnectorManager({ tenants, envOn }: { tenants: ConnectorTenantRow[]; envOn: boolean }) {
+  const df = useDateFmt();
   // เริ่มที่ลูกค้าที่มีคนได้สิทธิ์อยู่แล้ว (มักเป็นตัวที่ต้องดู) · ไม่มี = ตัวแรก
   const first = tenants.find((t) => t.users.some((u) => u.allowed)) ?? tenants[0];
   const [slug, setSlug] = useState(first?.slug ?? "");
@@ -96,7 +97,7 @@ export function ConnectorManager({ tenants, envOn }: { tenants: ConnectorTenantR
                         <td>{ROLE_LABEL[toRole(u.role)]}</td>
                         <td>
                           {u.allowed ? (
-                            <Badge tone="ok">อนุญาต{u.allowedAt ? ` · ${formatDateThai(u.allowedAt.slice(0, 10))}` : ""}</Badge>
+                            <Badge tone="ok">อนุญาต{u.allowedAt ? ` · ${df.date(u.allowedAt)}` : ""}</Badge>
                           ) : (
                             <Badge>ไม่อนุญาต</Badge>
                           )}

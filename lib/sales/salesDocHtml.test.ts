@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { salesDocsHtml } from "@/app/(app)/sales/_components/print";
+import { salesDocsHtml, quotationHtml, creditNoteDocsHtml, type CreditNoteDoc, type QuotationDoc } from "@/app/(app)/sales/_components/print";
 import { COMPANY, ITEMS, vatOrder, nonVatOrder, DOC_TYPES, planned } from "./salesDocHtml.fixtures";
 
 /**
@@ -77,5 +77,59 @@ describe("S20 ต่อสาย — ทุกจุดที่ถอด VAT �
     const calls = pr.match(/reverseCalcPrint\([^)]*\)/g) ?? [];
     expect(calls.length).toBeGreaterThan(0);
     for (const c of calls) expect(c, c).toMatch(/, isVat\)$/);
+  });
+});
+
+/**
+ * D161 เฟส 3 — วันที่บนเอกสารการค้าตามค่าตั้ง `doc_date_format` (มากับ CompanyInfo.dateFormat)
+ * ★ พิสูจน์ตอนแก้: เรนเดอร์ 59 แบบ (ทุกชนิด × จด/ไม่จด VAT × มี/ไม่มี WHT × ยกเลิก × รายงวด + ใบลดหนี้ + ใบเสนอราคา)
+ *   ก่อน/หลังแก้ = HTML เหมือนกันทุกตัวอักษร 58 แบบ · ต่าง 1 แบบคือทางที่เอกสารไม่มีวันที่ (ใช้วันนี้)
+ *   ซึ่งเดิม `toLocaleDateString` = `6/11/2569` ไม่เติมศูนย์ — ตอนนี้ `06/11/2569` เท่าวันที่อื่นบนใบเดียวกัน
+ */
+describe("D161 — วันที่บนเอกสารขายตามรูปแบบที่ลูกค้าเลือก", () => {
+  it("ไม่ตั้ง = 06/11/2569 เท่าเดิม (HTML เท่ากับตั้งเป็น dd_mm_yyyy_be ทุกชนิด)", () => {
+    for (const dt of DOC_TYPES) {
+      expect(salesDocsHtml(COMPANY, vatOrder(3), ITEMS, [dt]), dt)
+        .toBe(salesDocsHtml({ ...COMPANY, dateFormat: "dd_mm_yyyy_be" }, vatOrder(3), ITEMS, [dt]));
+    }
+    expect(salesDocsHtml(COMPANY, vatOrder(0), ITEMS, ["tax-invoice-receipt"])).toContain("05/11/2569"); // docDate2 ของ fixture
+  });
+
+  it("เลือกรูปแบบอื่น → ทุกวันที่บนใบเปลี่ยน ไม่เหลือรูปแบบเดิม", () => {
+    const C = { ...COMPANY, dateFormat: "d_mon_yyyy" as const };
+    for (const dt of DOC_TYPES) {
+      const html = salesDocsHtml(C, vatOrder(3), ITEMS, [dt]);
+      expect(html, dt).not.toMatch(/\d{2}\/\d{2}\/25\d\d/);
+    }
+    expect(salesDocsHtml(C, vatOrder(0), ITEMS, ["tax-invoice-receipt"])).toContain("5 พ.ย. 2569");
+    const plan = salesDocsHtml(C, planned(vatOrder(3), true), ITEMS, ["invoice-installment:1"]);
+    expect(plan).toContain("1 พ.ย. 2569");
+    expect(plan).not.toMatch(/\d{2}\/\d{2}\/25\d\d/);
+  });
+});
+
+describe("D161 — ใบเสนอราคา + ใบลดหนี้", () => {
+  const Q: QuotationDoc = {
+    quNo: "QU1", dateISO: "2026-11-06", quExp: "30", customerName: "ลูกค้า", customerAddress: "", customerTaxId: "", customerBranch: "",
+    creditTerm: 30, items: ITEMS, subTotal: 2140, discount: 0, subDiscount: 2140, vat: 149.8, grandTotal: 2289.8,
+    whtPercent: 0, whtAmount: 0, netPayable: 2289.8, remarks: "", saleName: "",
+  };
+  const CN: CreditNoteDoc = {
+    cnNo: "CN-1", cnDate: "2026-11-06", reasonText: "คืนสินค้า", refs: [{ docNo: "TAX-1", date: "2026-10-28", preVat: 1000, vat: 70 }],
+    original: 1000, correct: 500, diff: 500, vat: 35, total: 535, refund: 535, wht: 0, refundAccount: "",
+  };
+  it("ไม่ตั้ง = 06/11/2569 (เท่า formatThaiDate เดิม)", () => {
+    expect(quotationHtml(COMPANY, Q)).toContain("06/11/2569");
+    const cn = creditNoteDocsHtml(COMPANY, vatOrder(0), ITEMS, CN);
+    expect(cn).toContain("06/11/2569");
+    expect(cn).toContain("TAX-1 (28/10/2569)");
+  });
+  it("ตั้งเป็น ISO → วันที่ใบ + วันที่ใบกำกับที่อ้างอิงเปลี่ยนตาม", () => {
+    const C = { ...COMPANY, dateFormat: "iso" as const };
+    expect(quotationHtml(C, Q)).toContain("2026-11-06");
+    expect(quotationHtml(C, Q)).not.toContain("06/11/2569");
+    const cn = creditNoteDocsHtml(C, vatOrder(0), ITEMS, CN);
+    expect(cn).toContain("TAX-1 (2026-10-28)");
+    expect(cn).not.toMatch(/\d{2}\/\d{2}\/25\d\d/);
   });
 });

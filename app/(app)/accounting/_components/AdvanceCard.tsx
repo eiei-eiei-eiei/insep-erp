@@ -5,6 +5,7 @@ import { getAdvancesAction, clearAdvancesAction, unclearAdvancesAction, advanceT
 import type { Bootstrap } from "./types";
 import { Card, Field, Select, TextInput, fmt, todayISO, useSaver, useRead, LoadError } from "./ui";
 import { useConfirm } from "@/lib/shared/ui";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { can, toRole } from "@/lib/shared/roles";
 import {
   groupPendingAdvances,
@@ -25,6 +26,7 @@ type Data = Awaited<ReturnType<typeof getAdvancesAction>>;
 export function AdvanceCard({ boot, entityId, active }: { boot: Bootstrap; entityId: string; active: boolean }) {
   const { pending, run } = useSaver();
   const { confirmNode, ask } = useConfirm();
+  const d = useDateFmt();
   const role = toRole(boot.role);
   const canWrite = can(role, "acct.write");
   const canUnclear = can(role, "acct.config");
@@ -63,7 +65,7 @@ export function AdvanceCard({ boot, entityId, active }: { boot: Bootstrap; entit
       detail:
         `บิลรายจ่ายของ ${entLabel(b.target)} ${b.billIds.length} ใบ และรายการรับคืน ${fmt(b.total)} บาทเข้า ${b.refundAccount} จะถูกยกเลิก` +
         `\nบิลสำรองจ่าย ${b.advanceIds.length} ใบกลับไปเป็น "รอเบิกคืน"` +
-        `\n\nถ้ายื่น ภพ.30 เดือนที่เคลีย (${b.date.substring(0, 7)}) ไปแล้ว ยอดภาษีซื้อจะต่างจากที่ยื่น`,
+        `\n\nถ้ายื่น ภพ.30 เดือนที่เคลีย (${d.month(b.date)}) ไปแล้ว ยอดภาษีซื้อจะต่างจากที่ยื่น`,
       confirmText: "ถอนการเคลีย",
     });
     if (!ok) return;
@@ -95,7 +97,7 @@ export function AdvanceCard({ boot, entityId, active }: { boot: Bootstrap; entit
                     title: `เคลียสำรองจ่าย ${rows.length} ใบ?`,
                     detail:
                       `${entLabel(g.target)} จ่ายคืน ${fmt(sum)} บาท จาก ${payAccount} เข้า ${refundAccount || "บัญชีที่จ่ายออกไป"}` +
-                      `\nระบบจะสร้างบิลรายจ่ายของ ${entName(g.target) || g.target} ${rows.length} ใบ ลงวันที่ ${date} (ภาษีซื้อเข้า ภพ.30 เดือนนั้น)`,
+                      `\nระบบจะสร้างบิลรายจ่ายของ ${entName(g.target) || g.target} ${rows.length} ใบ ลงวันที่ ${d.date(date)} (ภาษีซื้อเข้า ภพ.30 เดือนนั้น)`,
                     confirmText: "เคลีย",
                   });
                   if (!ok) return false;
@@ -125,7 +127,7 @@ export function AdvanceCard({ boot, entityId, active }: { boot: Bootstrap; entit
               <tbody>
                 {cleared.map((b) => (
                   <tr key={b.clearId}>
-                    <td className="whitespace-nowrap">{b.date}</td>
+                    <td className="whitespace-nowrap">{d.date(b.date)}</td>
                     <td className="whitespace-nowrap">{b.clearId}</td>
                     <td>{entLabel(b.target)}</td>
                     <td>{b.payAccount}</td>
@@ -175,6 +177,7 @@ function AdvanceGroupBlock({
   const [sel, setSel] = useState<string[]>([]);
   const [payAccount, setPayAccount] = useState("");
   const [refundAccount, setRefundAccount] = useState("");
+  const d = useDateFmt();
   const [date, setDate] = useState(todayISO());
 
   const chosen = g.rows.filter((r) => sel.includes(r.txId));
@@ -209,7 +212,7 @@ function AdvanceGroupBlock({
                 {canWrite && (
                   <td><input type="checkbox" checked={sel.includes(r.txId)} onChange={(e) => setSel((p) => (e.target.checked ? [...p, r.txId] : p.filter((x) => x !== r.txId)))} /></td>
                 )}
-                <td className="whitespace-nowrap">{r.date}</td>
+                <td className="whitespace-nowrap">{d.date(r.date)}</td>
                 <td>{r.contactName}</td>
                 <td>{r.description}</td>
                 <td className="whitespace-nowrap">{r.taxInvoiceNo || "-"}</td>

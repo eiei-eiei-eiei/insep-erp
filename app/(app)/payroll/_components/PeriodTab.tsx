@@ -24,6 +24,7 @@ import {
 import { getPeriodDetailAction } from "../read-actions";
 import type { EmployeeRow, ItemRow, PeriodRow } from "../data";
 import type { PayrollConfig } from "./PayrollApp";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
 /**
  * แท็บงวดจ่าย
@@ -54,6 +55,7 @@ export function PeriodTab({
   periods: PeriodRow[];
   active: boolean;
 }) {
+  const df = useDateFmt();
   const router = useRouter();
   const { pending, run, setMsg } = useSaver();
   const { confirmNode, ask } = useConfirm();
@@ -238,8 +240,9 @@ export function PeriodTab({
         : `${emp?.wageType === "daily" ? "ค่าแรง" : "เงินเดือน"} (${days[it.empId] ?? 0} วัน)`;
     return {
       ...company,
-      periodLabel: `${String(period!.month).padStart(2, "0")}/${period!.year}`,
-      payDate: period!.payDate ?? undefined,
+      // D161 เฟส 3 — รูปแบบเอกสารของกิจการ · เดิม `11/2026` (ค.ศ.) + วันจ่ายเป็น ISO ดิบ `2026-11-25`
+      periodLabel: df.docMonth(`${period!.year}-${String(period!.month).padStart(2, "0")}`),
+      payDate: period!.payDate ? df.docDate(period!.payDate) : undefined,
       empName: nameOf(it, employees),
       empId: it.empId,
       groupLabel: it.groupCode ?? undefined,
@@ -446,9 +449,9 @@ export function PeriodTab({
                             {nameOf(it, employees)}
                             {/* ★ แถวที่ถูกเติมไปก่อนหน้าแล้วตอนนี้ไม่เข้าเงื่อนไขแล้ว — ต้องเห็นว่าทำไม
                                 ไม่ใช่หายไปเองเงียบ ๆ (ผู้ใช้ต้องตัดสินใจลบเอง) */}
-                            {outOfPeriod(it, employees, period) && (
+                            {outOfPeriod(it, employees, period, df.date) && (
                               <div className="text-xs font-normal text-warn">
-                                ⚠ {outOfPeriod(it, employees, period)}
+                                ⚠ {outOfPeriod(it, employees, period, df.date)}
                               </div>
                             )}
                           </td>
@@ -586,7 +589,7 @@ export function PeriodTab({
                             <span className="ml-1 text-xs text-faint">{l.splitByEmployee ? "(แยกรายคน)" : ""}</span>
                           </td>
                           <td className="num">{fmt(amount)}</td>
-                          <td className="text-xs">{on ? (period.postState[l.code]?.date ?? "") : date}</td>
+                          <td className="text-xs">{df.date(on ? (period.postState[l.code]?.date ?? "") : date)}</td>
                           <td>{on ? <span className="text-ok">ลงแล้ว</span> : <span className="text-faint">ยังไม่ลง</span>}</td>
                           <td className="whitespace-nowrap">
                             {on ? (
@@ -639,7 +642,7 @@ function empOf(it: ItemRow, employees: EmployeeRow[]) {
 }
 
 /** เหตุผลว่าแถวนี้ไม่เข้าเงื่อนไขของงวดแล้ว (null = ปกติ) */
-function outOfPeriod(it: ItemRow, employees: EmployeeRow[], period: PeriodRow | null): string | null {
+function outOfPeriod(it: ItemRow, employees: EmployeeRow[], period: PeriodRow | null, date: (iso: string) => string): string | null {
   if (!period) return null;
   const e = employees.find((x) => x.empId === it.empId);
   if (!e) return "ไม่พบในทะเบียนพนักงานแล้ว";
@@ -647,6 +650,7 @@ function outOfPeriod(it: ItemRow, employees: EmployeeRow[], period: PeriodRow | 
     { startDate: e.startDate, endDate: e.endDate, active: e.active },
     period.year,
     period.month,
+    date,
   );
 }
 

@@ -3,9 +3,10 @@
 import { useState } from "react";
 import type { BarItem } from "@/lib/bar/types";
 import { stockText, numText } from "@/lib/bar/units";
-import { receiveHistory, changeText, receiveDateText, type ReceiveRecord } from "@/lib/bar/receiveHistory";
+import { receiveHistory, changeText, type ReceiveRecord } from "@/lib/bar/receiveHistory";
 import { Empty, EscToClose, LoadError, fmt, useRead } from "@/lib/shared/ui";
 import { itemMovesAction, itemReceivesAction } from "../actions";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
 type MoveRow = {
   id: number;
@@ -41,6 +42,7 @@ export function ItemHistoryModal({
   canSeeCost: boolean;
   onClose: () => void;
 }) {
+  const df = useDateFmt();
   const [view, setView] = useState<HistoryView>(canSeeCost ? "price" : "moves");
   const itemId = item?.itemId ?? "";
   const receives = useRead(
@@ -117,7 +119,7 @@ export function ItemHistoryModal({
                           r.change === null || ch === "เท่าเดิม" ? "text-faint" : r.change > 0 ? "text-crit" : "text-ok";
                         return (
                           <tr key={r.id}>
-                            <td className="text-sm">{receiveDateText(r.docDate)}</td>
+                            <td className="text-sm">{df.date(r.docDate)}</td>
                             <td className="text-right text-sm">
                               {hasPack ? (
                                 <>
@@ -178,7 +180,7 @@ export function ItemHistoryModal({
                   <tbody>
                     {moveRows.map((m) => (
                       <tr key={m.id}>
-                        <td className="text-sm">{new Date(m.moved_at).toLocaleString("th-TH")}</td>
+                        <td className="text-sm">{df.dateTime(m.moved_at)}</td>
                         <td className="text-sm">{m.reason}</td>
                         <td className={`text-right ${Number(m.delta) < 0 ? "text-crit" : "text-ok"}`}>
                           {Number(m.delta) > 0 ? "+" : ""}

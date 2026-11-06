@@ -10,6 +10,9 @@ import {
   type MonthCloseRow,
   type ExciseTotals,
 } from "./monthClose";
+import { formatMonth } from "../shared/dateFormat";
+
+const raw = (p: string) => p;
 
 const row = (o: Partial<MonthCloseRow> = {}): MonthCloseRow => ({
   id: 1,
@@ -161,11 +164,11 @@ describe("D91 — ผลของการคำนวณใหม่ (บัน
 
 describe("D91 — ข้อความตอนยกเลิกบิลของเดือนที่ปิดแล้ว", () => {
   it("ไม่มีเดือนที่ถูกล็อก = ไม่ขึ้นข้อความ", () => {
-    expect(cancelLockedText("QU260901-001", [])).toBeNull();
+    expect(cancelLockedText("QU260901-001", [], raw)).toBeNull();
   });
 
   it("🚨 ต้องบอกทั้งเดือนที่ล็อก · ผลที่เกิด · และใครต้องเป็นคนกดต่อ", () => {
-    const t = cancelLockedText("QU260901-001", ["2026-09"])!;
+    const t = cancelLockedText("QU260901-001", ["2026-09"], raw)!;
     expect(t).toContain("2026-09");
     expect(t).toContain("ยังแสดงบนฟอร์ม");
     expect(t).toContain("เจ้าของกิจการ");
@@ -173,6 +176,11 @@ describe("D91 — ข้อความตอนยกเลิกบิลข�
   });
 
   it("คู่ข้ามเดือน ต้องบอกครบทุกเดือนที่ปิด", () => {
-    expect(cancelLockedText("QU-1", ["2026-09", "2026-10"])!).toContain("2026-09, 2026-10");
+    expect(cancelLockedText("QU-1", ["2026-09", "2026-10"], raw)!).toContain("2026-09, 2026-10");
+  });
+
+  it("D161 — เดือนในข้อความตามรูปแบบที่ลูกค้าเลือก", () => {
+    const th = (p: string) => formatMonth(p, "d_mon_yy");
+    expect(cancelLockedText("QU-1", ["2026-09", "2026-10"], th)!).toContain("เดือน ก.ย. 69, ต.ค. 69 ปิด");
   });
 });

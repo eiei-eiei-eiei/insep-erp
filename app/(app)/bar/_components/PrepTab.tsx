@@ -29,6 +29,7 @@ import {
   prepDataAction, prepSaveAction, prepDeleteAction, prepStartAction, prepFinishAction, prepCancelAction,
 } from "../actions";
 import { RecipeEditor } from "./RecipeEditor";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
 type PrepData = { canSeeCost: boolean; preps: PrepDef[]; batches: PrepBatch[] };
 type Res = { ok: boolean; error?: string; data?: unknown };
@@ -48,6 +49,7 @@ const UNITS = ["ml", "g", "ชิ้น"];
 const perUnitText = (v: number) => numText(v, 4);
 
 export function PrepView({ boot, onReload }: { boot: BarBoot; onReload: () => Promise<void> }) {
+  const df = useDateFmt();
   const prep = useRead(loadPrep, [boot.entityId], { skip: !boot.entityId });
   const { setMsg } = useSaver();
   const { confirmNode, ask } = useConfirm();
@@ -116,7 +118,7 @@ export function PrepView({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
               <div key={b.batchId} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line-soft py-2 text-sm last:border-0">
                 <b className="text-ink">{it?.name ?? b.itemId}</b>
                 <span className="text-xs text-muted">
-                  {b.batchId} · {numText(b.multiplier)} ล็อต · เริ่ม {b.startDate} · แช่มาแล้ว {soakDays(b.startedAt, now)} วัน
+                  {b.batchId} · {numText(b.multiplier)} ล็อต · เริ่ม {df.date(b.startDate)} · แช่มาแล้ว {soakDays(b.startedAt, now)} วัน
                   {data.canSeeCost && ` · ทุน ${fmt(b.costTotal)}`}
                 </span>
                 <span className="ml-auto flex gap-3">
@@ -289,6 +291,7 @@ function BatchHistory({
   canWrite: boolean;
   onCancel: (b: PrepBatch) => void;
 }) {
+  const df = useDateFmt();
   if (batches.length === 0) return <p className="mt-2 text-xs text-faint">— ยังไม่เคยทำล็อต —</p>;
   const finished = batches.filter((b) => b.status === "เสร็จแล้ว");
   return (
@@ -316,8 +319,8 @@ function BatchHistory({
               <tr key={b.batchId} className={b.status === "ยกเลิก" ? "opacity-50" : ""}>
                 <td className="text-xs">{b.batchId}</td>
                 <td className="text-xs">
-                  {b.startDate}
-                  {b.finishDate && b.finishDate !== b.startDate && ` → ${b.finishDate}`}
+                  {df.date(b.startDate)}
+                  {b.finishDate && b.finishDate !== b.startDate && ` → ${df.date(b.finishDate)}`}
                 </td>
                 <td>
                   <Badge tone={b.status === "เสร็จแล้ว" ? "ok" : b.status === "กำลังแช่" ? "warn" : "neutral"}>{b.status}</Badge>
@@ -591,6 +594,7 @@ function FinishModal({
   onClose: () => void;
   onSubmit: (yieldQty: number) => void;
 }) {
+  const df = useDateFmt();
   const [yieldQty, setYieldQty] = useState<number | "">(def ? scaledYield(def, batch.multiplier) : "");
   const unit = item?.unit ?? "";
   const pu = yieldQty !== "" && yieldQty > 0 ? Math.round((batch.costTotal / yieldQty) * 10000) / 10000 : null;
@@ -604,7 +608,7 @@ function FinishModal({
       <div className="w-full max-w-sm rounded-lg bg-card p-5">
         <h3 className="mb-1 text-lg font-bold text-ink">แช่เสร็จแล้ว — {item?.name ?? batch.itemId}</h3>
         <p className="mb-3 text-xs text-muted">
-          {batch.batchId} · เริ่ม {batch.startDate} · {numText(batch.multiplier)} ล็อต
+          {batch.batchId} · เริ่ม {df.date(batch.startDate)} · {numText(batch.multiplier)} ล็อต
         </p>
         <Field label={`ได้จริง (${unit})`}>
           <NumBox value={yieldQty} onChange={setYieldQty} blankZero />

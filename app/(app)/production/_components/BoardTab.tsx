@@ -5,6 +5,7 @@ import { getBatchBoardAction } from "../actions";
 import type { BatchCard } from "../data";
 import { Card, TextInput } from "./ui";
 import { IconCheck, IconFlame, IconFlask, IconRefresh } from "@/lib/shared/icons";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
 const STAGE_STYLE: Record<BatchCard["stage"], string> = {
   "ลงหมัก": "bg-raised text-muted",
@@ -31,6 +32,7 @@ export function BoardTab({
   active: boolean;
   onOpen: (batch: string, tab: string) => void;
 }) {
+  const d = useDateFmt();
   const [rows, setRows] = useState<BatchCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [showClosed, setShowClosed] = useState(false);
@@ -71,7 +73,7 @@ export function BoardTab({
                   <div className="min-w-0">
                     <div className="font-bold text-ink">Batch {b.batch}</div>
                     <div className="truncate text-sm text-muted">{b.productName}</div>
-                    <div className="text-xs text-faint">ลงหมัก {b.fermentDate}{b.tanks > 0 ? ` · ${b.tanks} ถัง` : ""}{b.fermVol > 0 ? ` · ${b.fermVol} (วัตถุดิบหลัก)` : ""}</div>
+                    <div className="text-xs text-faint">ลงหมัก {d.date(b.fermentDate)}{b.tanks > 0 ? ` · ${b.tanks} ถัง` : ""}{b.fermVol > 0 ? ` · ${b.fermVol} (วัตถุดิบหลัก)` : ""}</div>
                   </div>
                   <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${STAGE_STYLE[b.stage]}`}>{b.stage}</span>
                 </div>
@@ -81,7 +83,7 @@ export function BoardTab({
                     <IconFlask size={13} className="mr-1 inline align-[-2px]" />ค่าวัดหมัก {b.monitorCount} ครั้ง
                     {b.lastMeasure && (
                       <span className="text-faint">
-                        {" "}· ล่าสุด {b.lastMeasure.date}
+                        {" "}· ล่าสุด {d.date(b.lastMeasure.date)}{b.lastMeasure.time && ` ${b.lastMeasure.time}`}
                         {b.lastMeasure.brix !== null && ` · Brix ${b.lastMeasure.brix}`}
                         {b.lastMeasure.ph !== null && ` · pH ${b.lastMeasure.ph}`}
                       </span>
@@ -98,8 +100,8 @@ export function BoardTab({
                       {b.activePot !== null && <span className="font-medium text-warn"> · หม้อที่ {b.activePot} ยังไม่จบ</span>}
                     </div>
                   )}
-                  {b.closed && <div className="text-ok"><IconCheck size={13} className="mr-1 inline align-[-2px]" />ปิด batch {b.closed.date} · {b.closed.vol} ล. @ {b.closed.abv}°</div>}
-                  {b.drawn && <div className="text-ok"><IconCheck size={13} className="mr-1 inline align-[-2px]" />รินน้ำสุรา {b.drawn.date} · {b.drawn.vol} ล. @ {b.drawn.abv}°</div>}
+                  {b.closed && <div className="text-ok"><IconCheck size={13} className="mr-1 inline align-[-2px]" />ปิด batch {d.date(b.closed.date)} · {b.closed.vol} ล. @ {b.closed.abv}°</div>}
+                  {b.drawn && <div className="text-ok"><IconCheck size={13} className="mr-1 inline align-[-2px]" />รินน้ำสุรา {d.date(b.drawn.date)} · {b.drawn.vol} ล. @ {b.drawn.abv}°</div>}
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-1.5">

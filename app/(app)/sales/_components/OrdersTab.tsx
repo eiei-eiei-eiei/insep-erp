@@ -6,9 +6,10 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import type { SalesBoot, OrderRow, OrderItem } from "./types";
 import { Card, StatusBadge, TextInput, useSaver, fmt, LoadError } from "./ui";
 import { todayISO } from "./ui";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { getOrdersAction, getOrderItemsAction, getOrderPaymentsAction, getOrderPlanAction, processOrderActionAction, voidDepositInvoiceAction, getCreditNotesAction, getCreditNoteNosAction } from "../actions";
 import { planTermsLines } from "@/lib/sales/installments";
-import type { OrderAction, ActionPayload } from "@/lib/sales/orders";
+import { type OrderAction, type ActionPayload } from "@/lib/sales/orders";
 import { printSalesDocs, printQuotation, printCreditNote, openPrintWindow, type OrderLike } from "./print";
 import { roundTo2 } from "@/lib/sales/calc";
 import {
@@ -36,6 +37,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
   // 🚨 ยกเลิกออเดอร์ / ยกเลิกใบแจ้งหนี้มัดจำ = **void ใบกำกับภาษีที่ออกไปแล้ว + คืนสต็อก**
   //    จึงเป็นระดับหัวหน้า ไม่ใช่ทุกคนที่ทำงานขายได้ (ผู้ใช้ตัดสิน D85)
   //    ★ แยกจาก canWrite โดยตั้งใจ — RPC ฝั่ง DB ก็เช็ค sales.config ซ้ำอีกชั้น
+  const d = useDateFmt();
   const canCancel = can(toRole(boot.role), "sales.config");
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -151,7 +153,8 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
     if (Math.abs(estDiscount) < 0.1) estDiscount = 0;
     printQuotation(boot.company, {
       quNo: o.quNo,
-      date: o.timestamp,
+      // ⏳ D161 เฟส 3: วันที่บนใบเสนอราคาจะตาม "รูปแบบบนเอกสาร" — ตอนนี้คงรูปเดิม (dd/MM/yyyy พ.ศ.)
+      dateISO: o.createdOn, // D161 เฟส 3 — print.ts จัดรูปตามค่าตั้งของเอกสาร
       quExp: "-",
       customerName: o.customerName,
       customerAddress: o.customerAddress,
@@ -368,7 +371,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
                 {filtered.map((o) => (
                   <Fragment key={o.quNo}>
                   <tr className={hasPlan(o) && o.status !== "ยกเลิก" ? "hover:bg-raised" : "border-b hover:bg-raised"}>
-                    <td className="whitespace-nowrap text-muted">{o.timestamp}</td>
+                    <td className="whitespace-nowrap text-muted">{d.date(o.createdOn)}</td>
                     <td className="whitespace-nowrap font-medium text-ink">
                       <div className="flex items-center gap-1">
                         {o.quNo}
@@ -403,7 +406,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
                       {o.quNo}
                       <button onClick={() => doReprintQuotation(o, undefined, o.status === "ยกเลิก")} title="พิมพ์ใบเสนอราคาซ้ำ" className="rounded border border-line p-1 text-faint hover:text-warn"><IconPrint size={16} /></button>
                     </div>
-                    <div className="text-[10px] text-faint">{o.orderNo} · {o.timestamp}</div>
+                    <div className="text-[10px] text-faint">{o.orderNo} · {d.date(o.createdOn)}</div>
                     <div className="mt-0.5 truncate text-sm text-muted">{o.customerName}</div>
                   </div>
                   <StatusBadge status={o.status} />
@@ -535,6 +538,7 @@ function PaymentDialog({
   onClose: () => void;
   onDone: (text: string) => void;
 }) {
+  const d = useDateFmt();
   const isDepositInvoice = action === "ISSUE_INVOICE_DEPOSIT"; // D45 — วางบิลมัดจำ (ยังไม่รับเงิน)
   const isInstallment = action === "RECEIVE_INSTALLMENT"; // D147
   const needsAmount = action === "DEPOSIT_AND_SEND" || isDepositInvoice || isInstallment;
@@ -560,7 +564,7 @@ function PaymentDialog({
     ? [manualFields.inv && manualInv.trim() ? manualNoError(manualInv) : null,
        manualFields.pay && manualPay.trim() ? manualNoError(manualPay) : null].find(Boolean) ?? null
     : null;
-  const dateNote = docDateNote(docDate, todayISO(), actionPostsRevenue(action));
+  const dateNote = docDateNote(docDate, todayISO(), d.date, actionPostsRevenue(action));
   const [chequeBank, setChequeBank] = useState("");
   const [chequeNo, setChequeNo] = useState("");
   const [chequeDate, setChequeDate] = useState("");

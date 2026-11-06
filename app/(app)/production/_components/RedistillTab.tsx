@@ -21,6 +21,7 @@ import {
 import { DISTILL_PHASES, type Material, type Product } from "./types";
 import { IconTrash } from "@/lib/shared/icons";
 import { isFermented } from "@/lib/production/calc";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
 type RunRow = {
   id: number; run_id: string; pot_no: number; phase: string | null; minute: number | null;
@@ -44,6 +45,7 @@ const f2 = (v: number) => v.toFixed(2);
  *    ไฟล์นี้แค่รับค่าและแสดงผล — ห้ามคำนวณหรือแต่งประโยคเองที่นี่ (D84/D88)
  */
 export function RedistillTab({ products, materials }: { products: Product[]; materials: Material[] }) {
+  const d = useDateFmt();
   const { pending, run, setMsg } = useSaver();
   const { confirmNode, ask } = useConfirm();
 
@@ -360,7 +362,7 @@ export function RedistillTab({ products, materials }: { products: Product[]; mat
                     <tr key={l.lot_no} className={l.lot_no === lotNo ? "bg-raised" : ""}>
                       <td className="font-medium">{l.lot_no}</td>
                       <td>{l.product_name}</td>
-                      <td>{String(l.draw_date).slice(0, 10)}</td>
+                      <td>{d.date(String(l.draw_date))}</td>
                       <td className="text-right">{f2(s.drawVol)}</td>
                       <td className="text-right">{s.drawAbv}</td>
                       <td className="text-right">{s.roundsDone}/{s.roundsTotal}</td>
@@ -416,8 +418,8 @@ export function RedistillTab({ products, materials }: { products: Product[]; mat
                       return (
                         <tr key={r.round_no}>
                           <td>{r.round_no}</td>
-                          <td>{r.soak_date ? String(r.soak_date).slice(0, 10) : "—"}</td>
-                          <td>{r.distill_date ? String(r.distill_date).slice(0, 10) : "—"}</td>
+                          <td>{r.soak_date ? d.date(String(r.soak_date)) : "—"}</td>
+                          <td>{r.distill_date ? d.date(String(r.distill_date)) : "—"}</td>
                           <td className="text-right">{r.start_vol == null ? "—" : `${r.start_vol} ล. ${r.start_abv ?? ""}°`}</td>
                           <td className="text-right">{r.end_vol == null ? "—" : `${r.end_vol} ล. ${r.end_abv ?? ""}°`}</td>
                           <td>{m.length ? `${m.length} รายการ` : "—"}</td>
@@ -605,7 +607,7 @@ export function RedistillTab({ products, materials }: { products: Product[]; mat
           <Card title={`ปิดล็อต ${lot.lot_no} — ปรับดีกรีให้พร้อมบรรจุ`}>
             {closed ? (
               <p className="text-sm text-ok">
-                ปิดแล้วเมื่อ {String(lot.dilute_date).slice(0, 10)} — ได้ {f2(summary.finalVol)} ล. {summary.finalAbv}°
+                ปิดแล้วเมื่อ {d.date(String(lot.dilute_date))} — ได้ {f2(summary.finalVol)} ล. {summary.finalAbv}°
                 <span className="block text-faint">
                   แถวปรุงทั้ง 2 ท่อนถูกเขียนลงฟอร์ม ภส. แล้ว (ยกไปปรุง {f2(summary.drawVol)} ล. วันที่ยกออก ·
                   ได้สุราปรุง {f2(summary.finalVol)} ล. วันที่ปรับดีกรี)

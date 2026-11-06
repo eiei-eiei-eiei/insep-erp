@@ -9,6 +9,8 @@
  * รูปแบบข้อความทุกบรรทัดต้องเหมือนของเดิมเป๊ะ — ผู้ใช้พิมพ์เอกสารนี้ทุกวัน
  */
 
+import type { DateFormat } from "../shared/dateFormat";
+
 /** แถวจาก `entities` (ชื่อคอลัมน์ตาม DB เพื่อไม่ต้อง map ไป-กลับให้พลาด) */
 export type EntityDocRow = {
   entity_id?: string | null;
@@ -39,6 +41,12 @@ export type CompanyInfo = {
    *   ไม่จด VAT → หัวเอกสารห้ามมีคำว่า "ใบกำกับภาษี" (ผิด ประมวลรัษฎากร ม.86/13)
    */
   isVat?: boolean;
+  /**
+   * D161 เฟส 3 — รูปแบบวันที่บนเอกสารการค้า (`app_settings.doc_date_format`)
+   * ★ เกาะไปกับ CompanyInfo ด้วยเหตุผลเดียวกับ `isVat` — ถูกส่งเข้าทุกฟังก์ชันพิมพ์อยู่แล้ว
+   * ไม่ระบุ = `DEFAULT_DOC_FORMAT` (`06/11/2569` = เท่ากับ `formatThaiDate` เดิมทุกวัน · golden ใน dateFormat.test)
+   */
+  dateFormat?: DateFormat;
 };
 
 export const EMPTY_COMPANY: CompanyInfo = { name: "", nameEng: "", address: "", taxLine: "", bank: "", isVat: true };

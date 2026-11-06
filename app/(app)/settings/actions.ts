@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { mapDbError } from "@/lib/shared/dbError";
 import { toFilingMethod } from "@/lib/accounting/taxFiling";
 import type { DocNumberCfg, DocNumberPreview, DocType } from "@/lib/shared/docNumbering";
+import { DATE_FORMATS, DATE_FORMAT_KIND, DOC_DATE_FORMAT_KIND } from "@/lib/shared/dateFormat";
 
 /**
  * server action ของหน้าตั้งค่ากลาง — ย้ายมาจาก accounting/actions.ts (D63)
@@ -38,6 +39,30 @@ export async function saveBrandingAction(input: {
     if (error) return fail(mapDbError(error));
   }
   revalidatePath("/", "layout"); // แถบเมนูอยู่ใน layout — ต้อง revalidate ทั้ง layout
+  return { ok: true };
+}
+
+/**
+ * รูปแบบวันที่ (D161) — หน้าจอ + เอกสารการค้า แยกกัน
+ * ★ ตรวจกับชุดปิดก่อนเขียน (ค่าแปลกจะถูกอ่านเป็นค่าเริ่มต้นอยู่แล้ว แต่ไม่ควรเก็บของเสียลง DB)
+ * ★ สิทธิ์: RLS `app_settings_w` + `app_setting_cap()` = admin (เจ้าของ) — ไม่ต้องเช็คซ้ำ
+ */
+export async function saveDateFormatsAction(input: { screen: string; doc: string }): Promise<SaveResult> {
+  const known = DATE_FORMATS as readonly string[];
+  if (!known.includes(input.screen) || !known.includes(input.doc)) return fail("รูปแบบวันที่ไม่ถูกต้อง — รีเฟรชหน้าแล้วลองใหม่");
+  const supabase = await createClient();
+  // 🪤 ลบ 2 kind ในคำสั่งเดียว แล้ว insert 2 แถวในคำสั่งเดียว (ไม่วนทีละ kind แบบ saveBrandingAction)
+  //    เจอตอนเทสบนจอ: คำขอถูกตัดกลางทาง → ค่าหน้าจอเป็นของใหม่ แต่ค่าเอกสารยังเป็นของเก่า
+  //    ทำแบบนี้ ถ้าขาดกลางทางจะได้ "ค่าเริ่มต้นทั้งคู่" ซึ่งการ์ดอ่านจาก DB แล้วโชว์ตามจริง
+  //    (unique คือ (tenant, kind, value) — upsert แทนค่าเดิมของ kind ไม่ได้)
+  const del = await supabase.from("app_settings").delete().in("kind", [DATE_FORMAT_KIND, DOC_DATE_FORMAT_KIND]);
+  if (del.error) return fail(mapDbError(del.error));
+  const { error } = await supabase.from("app_settings").insert([
+    { kind: DATE_FORMAT_KIND, value: input.screen },
+    { kind: DOC_DATE_FORMAT_KIND, value: input.doc },
+  ]);
+  if (error) return fail(mapDbError(error));
+  revalidatePath("/", "layout"); // ทุกหน้าอ่านรูปแบบจาก layout
   return { ok: true };
 }
 

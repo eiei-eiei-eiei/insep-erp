@@ -62,9 +62,14 @@ export function unpostedTotal(days: readonly UnpostedDay[]): number {
  * 🚨 ตัดสินข้อความที่นี่ ไม่ใช่ในคอมโพเนนต์ (D84/D88) — จำนวนวันกับรายชื่อวัน
  *    ต้องมาจากชุดข้อมูลเดียวกับปุ่มที่ผู้ใช้จะกด ไม่งั้นประโยคกับปุ่มจะไม่ตรงกัน (D91/0059)
  */
-export function unpostedText(days: readonly UnpostedDay[], maxNames = 5): string | null {
+export function unpostedText(
+  days: readonly UnpostedDay[],
+  /** D161: ตัวจัดรูปวันสั้นตามค่าตั้งของลูกค้า (`useDateFmt().day`) — บังคับส่ง · ข้อความ LINE (`reminder.ts`) ยังใช้ `thaiDay` */
+  day: (iso: string) => string,
+  maxNames = 5,
+): string | null {
   if (days.length === 0) return null;
-  const names = days.slice(0, maxNames).map((d) => thaiDay(d.date));
+  const names = days.slice(0, maxNames).map((d) => day(d.date));
   const more = days.length > maxNames ? ` และอีก ${days.length - maxNames} วัน` : "";
   return `ยังไม่ได้ลงบัญชี ${days.length} วัน (${names.join(", ")}${more})`;
 }

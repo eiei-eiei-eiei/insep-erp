@@ -18,6 +18,7 @@ import { LineChart } from "./LineChart";
 import { chartColor } from "@/lib/shared/chart";
 import { DISTILL_PHASES, type PendingBatch } from "./types";
 import { IconTrash } from "@/lib/shared/icons";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
 type RunRow = {
   id: number;
@@ -411,6 +412,7 @@ export function DistillTab({
  *    (ซึ่งมีปุ่มลบรายแถวอยู่แล้ว) ก็หายตามไปด้วย = แก้อะไรไม่ได้เลยสักทาง
  */
 function ReopenCard({ onDone }: { onDone: (batch: string) => void }) {
+  const d = useDateFmt();
   const { pending, run } = useSaver();
   const { confirmNode, ask } = useConfirm();
   const [rows, setRows] = useState<ClosedBatch[]>([]);
@@ -483,7 +485,7 @@ function ReopenCard({ onDone }: { onDone: (batch: string) => void }) {
                 <tbody>
                   {rows.map((r) => (
                     <tr key={r.batch}>
-                      <td>{r.distillDate}</td>
+                      <td>{d.date(r.distillDate)}</td>
                       <td className="font-medium text-ink">{r.batch}</td>
                       <td>{r.productName}</td>
                       <td className="num">{r.vol.toLocaleString()}</td>

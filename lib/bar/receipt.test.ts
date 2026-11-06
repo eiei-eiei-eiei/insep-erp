@@ -24,6 +24,7 @@ const base = (over: Partial<ReceiptInput> = {}): ReceiptInput => ({
   totals: barTotals(LINES),
   seller: { name: "ศิวกร (บาร์)", taxId: "1234567890123" },
   printedAt: "2026-09-11T23:41:00+07:00",
+  dateFormat: "dd_mm_yyyy_be",
   qrPayload: "00020101021229...6304ABCD",
   ...over,
 });
@@ -90,12 +91,12 @@ describe("ตราบนกระดาษ", () => {
   });
 
   it("🚫 ปิดบิลแล้วต้อง **ไม่มี** ตราชำระแล้ว", () => {
-    const doc = buildReceipt(base({ status: "ปกติ", closedAt: "11/09/2569 23:41" }));
+    const doc = buildReceipt(base({ status: "ปกติ", closedAt: "2026-09-11T23:41:00+07:00" }));
     expect(doc.voidStamp).toBeNull();
   });
 
   it("🚫 ใบเสร็จก็ต้องไม่มีตราชำระแล้วเช่นกัน", () => {
-    const doc = buildReceipt(base({ status: "ปกติ", wantReceipt: true, closedAt: "11/09/2569 23:41" }));
+    const doc = buildReceipt(base({ status: "ปกติ", wantReceipt: true, closedAt: "2026-09-11T23:41:00+07:00" }));
     expect(doc.voidStamp).toBeNull();
   });
 
@@ -216,7 +217,8 @@ describe("ป้ายส่วนลด % บนสลิป (D96)", () => {
     saleNo: "B260913-001",
     lines: [{ menuId: "BM1", menuName: "Negroni", qty: 2, price: 260 }],
     seller: { name: "บาร์ทดสอบ" },
-    printedAt: "13/09/2569 20:00",
+    printedAt: "2026-09-13T20:00:00+07:00",
+    dateFormat: "dd_mm_yyyy_be" as const,
   });
 
   it("มีส่วนลด + กรอกเป็น % → ป้ายติดมาด้วย", () => {
@@ -264,7 +266,8 @@ describe("ใบกำกับภาษีอย่างย่อ เมื่
     lines,
     totals: barTotals(lines, {}),
     seller: { name: "บาร์ทดสอบ", taxId: "0105558123456", isVat },
-    printedAt: "13/09/2569 23:00",
+    printedAt: "2026-09-13T23:00:00+07:00",
+    dateFormat: "dd_mm_yyyy_be" as const,
   });
 
   it("จด VAT → หัวกระดาษเป็น ใบเสร็จรับเงิน/ใบกำกับภาษีอย่างย่อ", () => {
@@ -305,5 +308,27 @@ describe("ใบกำกับภาษีอย่างย่อ เมื่
     const doc = buildReceipt({ ...base(true), totals: t });
     expect(doc.totals.grandTotal).toBe(200);
     expect(doc.vat).toEqual({ base: 186.92, vat: 13.08, gross: 200 });
+  });
+});
+
+/**
+ * D161 เฟส 3 — วันที่บนบิลตามรูปแบบเอกสารของกิจการ
+ * 🪤 เดิมผู้เรียกส่ง `toLocaleString("th-TH")` (`6/11/2569 16:57:03`) และ `{วันที่}` = ตัดที่ช่องว่างแรก
+ *    ⇒ รูปแบบที่มีช่องว่าง (`11 ก.ย. 69`) จะเหลือแค่ `11`
+ */
+describe("D161 — วันที่บนบิลตามค่าตั้งของเอกสาร", () => {
+  const CLOSED = "2026-09-11T23:41:00+07:00";
+  it("ค่าเริ่มต้นของเอกสาร (06/11/2569) — เวลาที่พิมพ์ HH:mm ไม่มีวินาที", () => {
+    expect(buildReceipt(base()).printedAt).toBe("11/09/2569 23:41");
+  });
+  it("รูปแบบที่มีช่องว่าง — {วันที่} ต้องได้วันที่ครบ ไม่ใช่แค่ตัวแรก", () => {
+    const doc = buildReceipt(base({ status: "ปกติ", closedAt: CLOSED, dateFormat: "d_mon_yy", layout: { headText: "วันที่ {วันที่}" } }));
+    expect(doc.headText).toBe("วันที่ 11 ก.ย. 69");
+    expect(doc.printedAt).toBe("11 ก.ย. 69 23:41");
+  });
+  it("timestamp UTC ข้ามเที่ยงคืนไทย → วันที่ไทย (ไม่ใช่วันของ UTC)", () => {
+    const doc = buildReceipt(base({ printedAt: "2026-09-11T17:30:00Z", dateFormat: "iso", layout: { headText: "{วันที่}" } }));
+    expect(doc.printedAt).toBe("2026-09-12 00:30");
+    expect(doc.headText).toBe("2026-09-12");
   });
 });

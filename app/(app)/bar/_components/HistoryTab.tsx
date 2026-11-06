@@ -8,6 +8,7 @@ import { buildReceipt } from "@/lib/bar/receipt";
 import { customerLabel } from "@/lib/bar/customerName";
 import { Card, TextInput, Field, Badge, Empty, fmt, useSaver, useConfirm, todayISO } from "@/lib/shared/ui";
 import { searchSalesAction, issueReceiptAction, voidSaleAction, voidLineAction } from "../actions";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
 type SaleRow = {
   sale_no: string;
@@ -54,6 +55,7 @@ const daysAgo = (n: number) => {
  *   หน้าจอขึ้นปุ่มเทาพร้อมบอกว่าต้องกดอะไรแทน (ซ่อนปุ่มแย่กว่าปุ่มเทา · D86)
  */
 export function HistoryTab({ boot, onReload }: { boot: BarBoot; onReload: () => Promise<void> }) {
+  const df = useDateFmt();
   const { setMsg } = useSaver();
   const { confirmNode, ask } = useConfirm();
   const [busy, setBusy] = useState(false);
@@ -133,8 +135,9 @@ export function HistoryTab({ boot, onReload }: { boot: BarBoot; onReload: () => 
       totals: t,
       seller: boot.seller,
       buyer: cust ? { name: cust.name, address: cust.address, taxId: cust.taxId, branch: cust.branch } : null,
-      closedAt: s.closed_at ? new Date(s.closed_at).toLocaleString("th-TH") : null,
-      printedAt: new Date().toLocaleString("th-TH"),
+      closedAt: s.closed_at ?? null,
+      printedAt: new Date().toISOString(),
+      dateFormat: df.docFmt, // D161 เฟส 3
       footer: boot.settings.footer,
       // 🚨 บิลที่ปิดแล้วจะไม่มี QR อยู่แล้วเพราะ `receipt.ts` ตัดสินจาก status
       //    ส่ง payload มาก็ถูกทิ้ง — เขียนแบบนี้เพื่อให้กติกาอยู่ที่เดียวจริง ๆ
@@ -215,7 +218,7 @@ export function HistoryTab({ boot, onReload }: { boot: BarBoot; onReload: () => 
                   <Fragment key={s.sale_no}>
                     <tr>
                       <td className="font-medium text-ink">{s.sale_no}</td>
-                      <td className="text-sm">{s.business_date ?? "—"}</td>
+                      <td className="text-sm">{s.business_date ? df.date(s.business_date) : "—"}</td>
                       <td className="text-sm">
                         {s.tab_name || "—"}
                         <div className="text-xs text-faint">{s.channel}</div>

@@ -634,7 +634,10 @@ export async function getReportRuns(month: string, entityId: string): Promise<Re
   const out: Record<string, string> = {};
   for (const r of data ?? []) {
     const k = r.report_key as string;
-    if (!out[k]) out[k] = String(r.created_at).slice(0, 10); // แถวแรก = ล่าสุด (order desc)
+    // แถวแรก = ล่าสุด (order desc)
+    // 🪤 D161: ส่ง timestamp เต็ม — เดิมตัด 10 ตัวแรกบน server (UTC) ⇒ สร้างแบบตอนตี 1 ขึ้นเป็นเมื่อวาน
+    //    หน้าจอแปลงเป็นวันที่ไทยเองด้วย useDateFmt().date (ผู้ใช้อื่นของค่านี้ดูแค่ว่ามี/ไม่มี)
+    if (!out[k]) out[k] = String(r.created_at);
   }
   return out;
 }

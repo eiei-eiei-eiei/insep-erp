@@ -1,6 +1,7 @@
 "use client";
 
 import { useConfirm } from "@/lib/shared/ui";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { searchBillsAction, getBillDetailAction, voidTransactionAction, updateTransactionAction, getItemHistoryAction } from "../actions";
 import { entryCalc, itemTotal, detectVatMode, unitPriceOf, unitPriceHeader, lineTotalHeader, itemsHintText, missingInvoiceWarn } from "@/lib/accounting/calc";
@@ -44,6 +45,7 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
   const [text, setText] = useState("");
   const [type, setType] = useState("");
   const [contact, setContact] = useState("");
+  const d = useDateFmt();
   const [useMonth, setUseMonth] = useState(true);
   const [includeVoid, setIncludeVoid] = useState(false);
   const [detail, setDetail] = useState<Detail | null>(null);
@@ -110,7 +112,7 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
           </Field>
           <Field label="ประเภท"><Select value={type} onChange={(e) => setType(e.target.value)}><option value="">ทั้งหมด</option><option>รายรับ</option><option>รายจ่าย</option><option>โอนระหว่างบัญชี</option><option>เช็คราคา</option><option>{ADVANCE_TYPE}</option><option>{ADVANCE_REFUND_TYPE}</option></Select></Field>
           <div className="flex flex-col justify-end gap-1 text-sm">
-            <label className="flex items-center gap-1"><input type="checkbox" checked={useMonth} onChange={(e) => setUseMonth(e.target.checked)} /> เฉพาะเดือน {period}</label>
+            <label className="flex items-center gap-1"><input type="checkbox" checked={useMonth} onChange={(e) => setUseMonth(e.target.checked)} /> เฉพาะเดือน {d.month(period)}</label>
             <label className="flex items-center gap-1"><input type="checkbox" checked={includeVoid} onChange={(e) => setIncludeVoid(e.target.checked)} /> รวมที่ยกเลิก</label>
           </div>
         </div>
@@ -152,7 +154,7 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
                 <tbody>
                   {shown.map((r) => (
                     <tr key={r.tx_id}>
-                      <td className="whitespace-nowrap">{r.transaction_date}</td><td>{r.tx_id}</td><td>{r.type}</td>
+                      <td className="whitespace-nowrap">{d.date(r.transaction_date)}</td><td>{r.tx_id}</td><td>{r.type}</td>
                       <td>{r.contact_name}</td><td>{r.description}</td><td className="num">{fmt(r.net_amount as number)}</td>
                       <td>{r.status}{r.ap_ar_status ? ` (${r.ap_ar_status})` : ""}{statusExtra(r as BillRow)}</td>
                       <td className="whitespace-nowrap"><div className="flex gap-1">{billActions(r)}</div></td>
@@ -168,7 +170,7 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
                 <div key={r.tx_id} className="rounded-lg border border-line p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="text-xs text-faint">{r.transaction_date} · {r.tx_id}</div>
+                      <div className="text-xs text-faint">{d.date(r.transaction_date)} · {r.tx_id}</div>
                       <div className="truncate text-sm font-medium text-ink">{r.contact_name || "—"}</div>
                       <div className="truncate text-xs text-faint">{r.type} · {r.description}</div>
                     </div>
@@ -189,7 +191,7 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
         <Card title={`รายละเอียดบิล ${detail.tx.tx_id}`}>
           <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm md:grid-cols-3">
             <Info k="ประเภท" v={detail.tx.type} /><Info k="หมวดหมู่" v={detail.tx.category ?? "-"} /><Info k="บัญชี" v={detail.tx.account_name ?? "-"} />
-            <Info k="คู่ค้า" v={detail.tx.contact_name ?? "-"} />{(detail.tx as BillRow).advance_for_entity ? <Info k="สำรองจ่ายให้" v={`${(detail.tx as BillRow).advance_for_entity} · ${advanceStatusLabel(detail.tx.type, (detail.tx as BillRow).advance_status) || "-"}`} /> : null}<Info k="ใบกำกับ" v={detail.tx.tax_invoice_no ?? "-"} /><Info k="วันที่ใบกำกับ" v={detail.tx.tax_invoice_date ?? "-"} />
+            <Info k="คู่ค้า" v={detail.tx.contact_name ?? "-"} />{(detail.tx as BillRow).advance_for_entity ? <Info k="สำรองจ่ายให้" v={`${(detail.tx as BillRow).advance_for_entity} · ${advanceStatusLabel(detail.tx.type, (detail.tx as BillRow).advance_status) || "-"}`} /> : null}<Info k="ใบกำกับ" v={detail.tx.tax_invoice_no ?? "-"} /><Info k="วันที่ใบกำกับ" v={d.date(detail.tx.tax_invoice_date as string | null) || "-"} />
             <Info k="ยอดก่อนหัก" v={fmt(detail.tx.amount_after_discount as number)} /><Info k="VAT" v={fmt(detail.tx.vat_amount as number)} /><Info k="สุทธิ" v={fmt(detail.tx.net_amount as number)} />
           </div>
           {detail.items.length > 0 && (

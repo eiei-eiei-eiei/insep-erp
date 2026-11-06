@@ -6,7 +6,7 @@ import { showToast } from "@/lib/shared/toast";
 import { fmt, Field, Select, TextInput, LoadError } from "./ui";
 import type { OrderRow } from "./types";
 import type { CompanyInfo } from "@/lib/sales/company";
-import { formatThaiDate } from "@/lib/sales/orders";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { CN_REASONS, CN_REASON_KEYS, cnInputError, cnInvoiceLines, cnWhtNote, partialRemaining, partialTotals, type CnReason } from "@/lib/sales/creditNote";
 import { getCreditNotesAction, getOrderItemsAction, getOrderPaymentsAction, getPartialCreditPlanAction, issueCreditNoteAction } from "../actions";
 import { openPrintWindow, printCreditNote, type OrderLike } from "./print";
@@ -27,6 +27,7 @@ export function CreditNoteDialog({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const d = useDateFmt();
   const [plan, setPlan] = useState<Plan | null>(null);
   const [err, setErr] = useState(false);
   const [mode, setMode] = useState<"return" | "discount">("return");
@@ -119,7 +120,7 @@ export function CreditNoteDialog({
         ) : (
           <div className="space-y-3 text-sm">
             <div className="rounded bg-raised p-2 text-muted">
-              {order.customerName} · ใบกำกับ: {plan.bills.map((b) => `${b.taxInvoiceNo || "-"} (${formatThaiDate(b.taxInvoiceDate || b.date)})`).join(", ") || "-"}
+              {order.customerName} · ใบกำกับ: {plan.bills.map((b) => `${b.taxInvoiceNo || "-"} (${d.date(b.taxInvoiceDate || b.date)})`).join(", ") || "-"}
               <br />
               <span className="text-xs">ยังลดหนี้ได้อีก <b>{fmt(rem.gross)}</b> บาท (รวม VAT){plan.prior.length > 0 && ` · ออกใบลดหนี้ไปแล้ว ${plan.prior.length} ใบ`}</span>
             </div>

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { unpostedDays, unpostedTotal, unpostedText, thaiDay, type ClosedSale } from "./posting";
 import { businessDate } from "./businessDate";
+import { formatDayShort } from "../shared/dateFormat";
 
 /** golden **B12** — ตามเก็บวันที่ยังไม่ได้ลงบัญชี (D96 ภาค 2 เฟส E) */
 
@@ -56,12 +57,14 @@ describe("unpostedDays — วันที่ขายแล้วแต่ย�
 
 describe("unpostedText — ประโยคต้องตรงกับสิ่งที่ปุ่มจะทำ (D91/0059)", () => {
   it("ไม่มีอะไรค้าง → null (ห้าม render แถบเปล่า)", () => {
-    expect(unpostedText([])).toBeNull();
+    expect(unpostedText([], thaiDay)).toBeNull();
   });
 
   it("บอกจำนวนวันและชื่อวันจากชุดเดียวกับที่ปุ่มจะลง", () => {
     const days = unpostedDays([sale("2026-09-10", 100), sale("2026-09-12", 380)], [], "2026-09-13");
-    expect(unpostedText(days)).toBe("ยังไม่ได้ลงบัญชี 2 วัน (10 ก.ย., 12 ก.ย.)");
+    expect(unpostedText(days, thaiDay)).toBe("ยังไม่ได้ลงบัญชี 2 วัน (10 ก.ย., 12 ก.ย.)");
+    // D161 — วันที่ตามรูปแบบที่ลูกค้าเลือก
+    expect(unpostedText(days, (x) => formatDayShort(x, "dd_mm_yyyy_ce"))).toBe("ยังไม่ได้ลงบัญชี 2 วัน (10/09, 12/09)");
   });
 
   it("ค้างเยอะ → ตัดรายชื่อแล้วบอกว่าเหลืออีกกี่วัน (ไม่ให้แถบยาวจนอ่านไม่ไหว)", () => {
@@ -70,7 +73,7 @@ describe("unpostedText — ประโยคต้องตรงกับส�
       [],
       "2026-09-13",
     );
-    expect(unpostedText(days, 3)).toBe("ยังไม่ได้ลงบัญชี 7 วัน (1 ก.ย., 2 ก.ย., 3 ก.ย. และอีก 4 วัน)");
+    expect(unpostedText(days, thaiDay, 3)).toBe("ยังไม่ได้ลงบัญชี 7 วัน (1 ก.ย., 2 ก.ย., 3 ก.ย. และอีก 4 วัน)");
   });
 });
 

@@ -5,7 +5,7 @@ import { EscToClose } from "@/lib/shared/ui";
 import { showToast } from "@/lib/shared/toast";
 import { fmt, todayISO, useSaver } from "./ui";
 import type { OrderRow } from "./types";
-import { formatThaiDate } from "@/lib/sales/orders";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import {
   isLocked, isSent, nextUnpaid, planError, type Installment, type PlanRowInput,
 } from "@/lib/sales/installments";
@@ -39,6 +39,7 @@ export function PlanPanel({
   onPrint: (docType: string) => void;
   onChanged: () => void;
 }) {
+  const d = useDateFmt();
   const plan = [...(order.installments ?? [])].sort((a, b) => a.seq - b.seq);
   const pays = order.instPayments ?? [];
   const net = order.netPayable || order.grandTotal;
@@ -87,11 +88,11 @@ export function PlanPanel({
                   <td className="py-1 pl-3 text-muted">
                     {i.paid ? (
                       <span className="text-ok">
-                        รับแล้ว{pay?.docDate ? ` ${formatThaiDate(pay.docDate)}` : ""}{pay?.method ? ` · ${pay.method}` : ""}
+                        รับแล้ว{pay?.docDate ? ` ${d.date(pay.docDate)}` : ""}{pay?.method ? ` · ${pay.method}` : ""}
                         {pay?.docNo && <span className="block text-faint">{pay.docNo}</span>}
                       </span>
                     ) : i.invNo ? (
-                      <span>ใบแจ้งหนี้ {i.invNo}{i.dueDate ? ` · ครบ ${formatThaiDate(i.dueDate)}` : ""}</span>
+                      <span>ใบแจ้งหนี้ {i.invNo}{i.dueDate ? ` · ครบ ${d.date(i.dueDate)}` : ""}</span>
                     ) : isNext ? (
                       <span>งวดถัดไป</span>
                     ) : (

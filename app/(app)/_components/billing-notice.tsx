@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { noticeLevel } from "@/lib/platform/billing";
-import { formatDateThai } from "@/lib/shared/format";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { IconAlert, IconClose } from "@/lib/shared/icons";
 
 /**
@@ -18,6 +18,7 @@ import { IconAlert, IconClose } from "@/lib/shared/icons";
  *   และเป็นเรื่องน่าอายของเจ้าของกิจการ
  */
 export function BillingNotice({ dueOn, todayISO }: { dueOn: string | null; todayISO: string }) {
+  const df = useDateFmt();
   const level = noticeLevel(dueOn, todayISO);
 
   // เริ่มที่ "ไม่แสดง" เสมอ แล้วค่อยเปิดใน effect — ฝั่ง server ไม่รู้จัก localStorage
@@ -45,7 +46,7 @@ export function BillingNotice({ dueOn, todayISO }: { dueOn: string | null; today
 
   if (!show || level === "none" || !dueOn) return null;
 
-  const dateText = formatDateThai(dueOn);
+  const dateText = df.date(dueOn);
 
   // ── เลยกำหนด: ป๊อปอัพ ──
   if (level === "overdue") {

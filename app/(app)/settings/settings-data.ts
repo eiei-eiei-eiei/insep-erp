@@ -6,6 +6,7 @@ import { mustRead } from "@/lib/shared/dbError";
 import { getTenantPlan } from "@/lib/shared/tenant-plan";
 import { activeAccountNames } from "@/lib/accounting/bankAccounts";
 import { DOC_GROUPS, type DocEntityParam, type DocNumberingRow } from "@/lib/shared/docNumbering";
+import { DATE_FORMAT_KIND, DOC_DATE_FORMAT_KIND, dateFormatsFromSettings, type DateFormats } from "@/lib/shared/dateFormat";
 
 /**
  * ตั้งค่า → เลขเอกสาร (D100)
@@ -127,6 +128,20 @@ export async function getBrandingSettings(): Promise<Branding> {
     .select("kind, value")
     .in("kind", ["brand_name", "brand_color", "logo_url", "default_mode"]);
   return brandingFromSettings(data as { kind: string; value: string }[]);
+}
+
+/**
+ * รูปแบบวันที่ (D161)
+ * 🚨 อ่านไม่ได้ = throw (D89) — ถ้าคืนค่าเริ่มต้นเงียบ ๆ การ์ดจะโชว์ค่าที่ไม่ได้ตั้งไว้จริง
+ *    แล้วผู้ใช้กดบันทึกทับค่าที่เลือกไว้โดยไม่รู้ตัว
+ */
+export async function getDateFormatSettings(): Promise<DateFormats> {
+  const supabase = await createClient();
+  const rows = mustRead(
+    await supabase.from("app_settings").select("kind, value").in("kind", [DATE_FORMAT_KIND, DOC_DATE_FORMAT_KIND]),
+    "รูปแบบวันที่",
+  );
+  return dateFormatsFromSettings(rows as { kind: string; value: string }[]);
 }
 
 /**

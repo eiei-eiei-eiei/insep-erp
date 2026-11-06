@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { getItemHistoryAction, searchPriceHistoryAction } from "../actions";
 import type { Bootstrap } from "./types";
 import { Card, Combobox, Field, TextInput, fmt, useRead, LoadError } from "./ui";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import type { StatementRange } from "@/lib/accounting/ledger";
 import { STATEMENT_PRESETS, presetRange, rangeTitle, rangeError, type StatementPreset } from "@/lib/accounting/statementView";
 import { billTotalLabel, billTotalsNote, PRICE_CHECK_TYPE } from "@/lib/accounting/billTotals";
@@ -18,6 +19,7 @@ function withAll(values: string[]) {
 }
 
 export function HistoryTab({ boot, period, entityId, active }: { boot: Bootstrap; period: string; entityId: string; active: boolean }) {
+  const d = useDateFmt();
   const [itemName, setItemName] = useState("");
   const [contact, setContact] = useState("");
   const [job, setJob] = useState("");
@@ -90,8 +92,8 @@ export function HistoryTab({ boot, period, entityId, active }: { boot: Bootstrap
           <label className="ml-auto flex items-center gap-2"><input type="checkbox" checked={includePriceCheck} onChange={(e) => setIncludePriceCheck(e.target.checked)} /> รวมใบเช็คราคา</label>
         </div>
         <p className="mt-1 text-xs text-faint">
-          กรองตามกิจการที่เลือกด้านบน ({entityId === "ALL" ? "ทุกกิจการ" : entityId}) · ช่วงเวลา: {rangeTitle(range)}
-          {preset !== "custom" && preset !== "all" ? ` (นับถอยจากเดือน ${period} ที่เลือกไว้ด้านบน)` : ""}
+          กรองตามกิจการที่เลือกด้านบน ({entityId === "ALL" ? "ทุกกิจการ" : entityId}) · ช่วงเวลา: {rangeTitle(range, d.month)}
+          {preset !== "custom" && preset !== "all" ? ` (นับถอยจากเดือน ${d.month(period)} ที่เลือกไว้ด้านบน)` : ""}
           {preset === "custom" ? " · เว้นช่องไหนว่าง = ไม่จำกัดด้านนั้น" : ""}
         </p>
         {rangeErr && <p className="mt-1 text-sm text-warn">{rangeErr}</p>}
@@ -136,7 +138,7 @@ export function HistoryTab({ boot, period, entityId, active }: { boot: Bootstrap
                 <tbody>
                   {shown.map((r, i) => (
                     <tr key={r.txId + i} className={r.type === PRICE_CHECK_TYPE ? "text-faint" : undefined}>
-                      <td className="whitespace-nowrap">{r.date}</td><td>{r.itemName}</td><td>{r.contactName}</td><td>{r.type}</td>
+                      <td className="whitespace-nowrap">{d.date(r.date)}</td><td>{r.itemName}</td><td>{r.contactName}</td><td>{r.type}</td>
                       <td>{r.category}</td><td>{r.job}</td>
                       <td className="num">{fmt(r.quantity)}</td><td className="num">{fmt(r.exVat)}</td><td className="num">{fmt(r.totalPrice)}</td>
                     </tr>

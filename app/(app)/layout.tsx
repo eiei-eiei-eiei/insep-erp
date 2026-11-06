@@ -6,6 +6,8 @@ import { can, toRole } from "@/lib/shared/roles";
 import { brandingFromSettings } from "@/lib/shared/branding";
 import { bangkokDateISO } from "@/lib/shared/datetime";
 import { processesOf } from "@/lib/production/calc";
+import { DATE_FORMAT_KIND, DOC_DATE_FORMAT_KIND, dateFormatsFromSettings } from "@/lib/shared/dateFormat";
+import { DateFormatProvider } from "@/lib/shared/dateFormatContext";
 import { Nav } from "./_components/nav";
 import { BillingNotice } from "./_components/billing-notice";
 
@@ -34,7 +36,11 @@ export default async function AppLayout({
       .select("display_name, username, role, must_change_password")
       .eq("id", user.id)
       .single(),
-    supabase.from("app_settings").select("kind, value").in("kind", ["brand_name", "brand_color", "logo_url", "default_mode"]),
+    // ★ D161: รูปแบบวันที่มาในคิวรีเดียวกัน (ทุกบทบาทอ่านได้ — policy ปิดเฉพาะโทเคน LINE)
+    supabase
+      .from("app_settings")
+      .select("kind, value")
+      .in("kind", ["brand_name", "brand_color", "logo_url", "default_mode", DATE_FORMAT_KIND, DOC_DATE_FORMAT_KIND]),
     // โมดูลที่ลูกค้าซื้อ (4.5) + สถานะการใช้งาน/ค่างวด (0037)
     // RLS กรองเหลือแถวของ tenant ตัวเองอยู่แล้ว — ต่อคอลัมน์ในคิวรีเดิม ไม่เพิ่ม query ใหม่
     supabase
@@ -72,6 +78,7 @@ export default async function AppLayout({
   const role = toRole(profile?.role as string | null);
   const displayName = profile?.display_name ?? profile?.username ?? user.email ?? "ผู้ใช้";
   const branding = brandingFromSettings(settings);
+  const dateFormats = dateFormatsFromSettings(settings);
 
   // แจ้งเตือนค่าบริการ — เฉพาะเจ้าของกิจการ และเฉพาะรายที่ยังเปิดการเตือนไว้
   // (พนักงานขาย/คลังเห็นแล้วทำอะไรไม่ได้ · เป็นเรื่องน่าอายของเจ้าของด้วย)
@@ -81,19 +88,21 @@ export default async function AppLayout({
       : null;
 
   return (
-    <div data-brand={branding.color} className="min-h-screen bg-page text-ink">
-      <BillingNotice dueOn={billingDueOn} todayISO={bangkokDateISO()} />
-      <Nav
-        workspaces={workspacesFor(role, tenant?.modules_enabled as string[] | null)}
-        displayName={displayName}
-        role={role}
-        branding={branding}
-        processes={processesOf((prodTypes ?? []).map((p) => p.liquor_type as string | null))}
-      />
-      {/* pb ล่างบนมือถือ กันเนื้อหาโดน bottom-tab บัง */}
-      <main className="mx-auto max-w-6xl px-4 py-6 pb-24 md:pb-6">{children}</main>
-      {/* D134 — ป้ายแจ้งผลลอยบนกลางจอ (ทุกหน้าที่ใช้ useSaver/showToast) */}
-      <ToastHost />
-    </div>
+    <DateFormatProvider value={dateFormats}>
+      <div data-brand={branding.color} className="min-h-screen bg-page text-ink">
+        <BillingNotice dueOn={billingDueOn} todayISO={bangkokDateISO()} />
+        <Nav
+          workspaces={workspacesFor(role, tenant?.modules_enabled as string[] | null)}
+          displayName={displayName}
+          role={role}
+          branding={branding}
+          processes={processesOf((prodTypes ?? []).map((p) => p.liquor_type as string | null))}
+        />
+        {/* pb ล่างบนมือถือ กันเนื้อหาโดน bottom-tab บัง */}
+        <main className="mx-auto max-w-6xl px-4 py-6 pb-24 md:pb-6">{children}</main>
+        {/* D134 — ป้ายแจ้งผลลอยบนกลางจอ (ทุกหน้าที่ใช้ useSaver/showToast) */}
+        <ToastHost />
+      </div>
+    </DateFormatProvider>
   );
 }

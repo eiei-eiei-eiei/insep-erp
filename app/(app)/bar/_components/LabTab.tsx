@@ -36,6 +36,7 @@ import {
 } from "../actions";
 import { RecipeEditor } from "./RecipeEditor";
 import { MenuModal } from "./MenuTab";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
 export type LabData = {
   me: string | null;
@@ -420,6 +421,7 @@ function RoundRow({
   onPromote: () => void;
   onDelete: () => void;
 }) {
+  const df = useDateFmt();
   const [note, setNote] = useState(use.note ?? "");
   const dirty = note.trim() !== (use.note ?? "");
   const delBlock = deleteBlock(use, data.me, now, boot.canConfig);
@@ -429,7 +431,7 @@ function RoundRow({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <b className="text-ink">รอบ {use.roundNo}</b>
         <span className="text-xs text-muted">
-          {use.businessDate} · {use.glasses} แก้ว
+          {df.date(use.businessDate)} · {use.glasses} แก้ว
           {data.canSeeCost && ` · ทุน ${fmt(use.costTotal)}`}
         </span>
         <span className="ml-auto flex gap-3">
@@ -760,13 +762,14 @@ function UseRow({
   now: number;
   onDelete: () => void;
 }) {
+  const df = useDateFmt();
   const block = deleteBlock(use, data.me, now, boot.canConfig);
   const what = use.roundNo
     ? `${recipeName ?? "สูตรที่ถูกลบ"} รอบ ${use.roundNo} (${use.glasses} แก้ว)`
     : use.lines.map((l) => `${l.label} ${l.qty}${l.kind === "วัตถุดิบ" ? (l.unit ? ` ${l.unit}` : "") : " แก้ว"}`).join(" · ");
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line-soft py-2 text-sm last:border-0">
-      <span className="text-xs text-faint">{use.businessDate}</span>
+      <span className="text-xs text-faint">{df.date(use.businessDate)}</span>
       <Badge tone="neutral">{catName}</Badge>
       {use.eventName && <span className="text-xs text-muted">{use.eventName}</span>}
       <span className="min-w-40 flex-1 text-ink">{what}</span>

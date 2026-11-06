@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
+import { thaiDay } from "../shared/period";
+import { formatDayShort } from "../shared/dateFormat";
 import path from "node:path";
 import {
   DEFAULT_FILING_METHOD,
@@ -92,8 +94,10 @@ describe("3 จังหวะเตือน", () => {
   });
 
   it("คำอธิบายบนจอบอกครบทุกวันที่จะถูกเตือน (หน้าจอต้องตรงกับสิ่งที่ระบบทำ)", () => {
-    expect(stagesDescText("vat", "2026-08", null)).toBe("12 ก.ย. · 15 ก.ย. · 16 ก.ย.");
-    expect(stagesDescText("vat", "2026-08", "efiling")).toBe("20 ก.ย. · 23 ก.ย. · 24 ก.ย.");
+    expect(stagesDescText("vat", "2026-08", null, thaiDay)).toBe("12 ก.ย. · 15 ก.ย. · 16 ก.ย.");
+    // D161 — รูปแบบตามค่าตั้งของลูกค้า
+    expect(stagesDescText("vat", "2026-08", null, (x) => formatDayShort(x, "dd_mm_yy_be"))).toBe("12/09 · 15/09 · 16/09");
+    expect(stagesDescText("vat", "2026-08", "efiling", thaiDay)).toBe("20 ก.ย. · 23 ก.ย. · 24 ก.ย.");
   });
 });
 

@@ -21,8 +21,8 @@ import { lotsPendingAtMonthEnd, type RedistillLot, type RedistillRound } from "@
 import { getRedistillLotsAction } from "../actions";
 import { reminderHintText } from "@/lib/production/exciseReminder";
 import { can, capHolderText, type Role } from "@/lib/shared/roles";
-import { formatDateThai } from "@/lib/shared/format";
 import { visibleExciseForms } from "@/lib/production/calc";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
 // report_key ของ report_runs ↔ ฟอร์ม ภส. (FLOW sec 6 — "เดือนนี้สร้างครบยัง")
 // 🚨 `needs` ต้องตรงกับเงื่อนไขที่ซ่อนกล่องเลือกรายการด้านล่าง (จำนวนสินค้าต่อประเภท)
@@ -89,6 +89,7 @@ const EMPTY_OPT: Opt = {
  *   คนส่วนใหญ่เข้าแอปผลิตมาลงหมัก/กลั่น ไม่ได้มาออกฟอร์มราชการทุกครั้ง
  */
 export function ExciseTab({ active, role }: { active: boolean; role: Role }) {
+  const df = useDateFmt();
   const [options, setOptions] = useState<Opt>(EMPTY_OPT);
   const [loaded, setLoaded] = useState(false);
   const [entityId, setEntityId] = useState("");
@@ -178,7 +179,7 @@ export function ExciseTab({ active, role }: { active: boolean; role: Role }) {
   const pendingN = (mc?.pending.toHide ?? 0) + (mc?.pending.toShow ?? 0);
   const pending = mc ? pendingRecomputeText(mc.pending) : null;
   // D92 — บอกให้รู้ว่ามีการเตือนเข้า LINE อยู่ และรู้เมื่อการเตือนถูกปิดเพราะยังไม่กรอกเลขสรรพสามิต
-  const hint = reminderHintText({ hasExciseId: !!selectedExcise, closed: st.closed, period: month });
+  const hint = reminderHintText({ hasExciseId: !!selectedExcise, closed: st.closed, period: month, day: df.day });
 
   async function runClose(
     fn: () => Promise<{ ok: boolean; error?: string; changed?: number; toHide?: number; toShow?: number }>,
@@ -376,7 +377,7 @@ export function ExciseTab({ active, role }: { active: boolean; role: Role }) {
             >
               {badge.text}
             </span>
-            <span className="text-xs text-faint">เดือน {month}</span>
+            <span className="text-xs text-faint">เดือน {df.month(month)}</span>
           </div>
 
           {mcErr && <div className="mb-2 rounded-lg border border-crit-line bg-crit-bg px-3 py-2 text-sm text-crit">{mcErr}</div>}
@@ -417,7 +418,7 @@ export function ExciseTab({ active, role }: { active: boolean; role: Role }) {
           {st.closed && st.active ? (
             <>
               <p className="mb-2 text-sm text-muted">
-                ปิดเมื่อ {formatDateThai(st.active.closedAt.slice(0, 10))}
+                ปิดเมื่อ {df.date(st.active.closedAt)}
                 {st.active.closedBy ? ` โดย ${st.active.closedBy}` : ""}
                 {st.active.note ? ` — ${st.active.note}` : ""}
               </p>

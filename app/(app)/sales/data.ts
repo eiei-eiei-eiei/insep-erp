@@ -2,12 +2,14 @@ import "server-only";
 import { getTenantPlan } from "@/lib/shared/tenant-plan";
 import { hasModule } from "@/lib/shared/workspaces";
 import { createClient } from "@/lib/supabase/server";
-import { formatThaiDate, type OrderState } from "@/lib/sales/orders";
+import type { OrderState } from "@/lib/sales/orders";
 import type { SalesPayment } from "@/lib/sales/payments";
 import type { Installment } from "@/lib/sales/installments";
 import { companyFromEntity, pickDocEntity, type EntityDocRow } from "@/lib/sales/company";
+import { DEFAULT_DOC_FORMAT, DOC_DATE_FORMAT_KIND, toDateFormat } from "@/lib/shared/dateFormat";
 import { fetchAllRows } from "@/lib/shared/paginate";
 import { mustRead } from "@/lib/shared/dbError";
+import { bangkokDateISO } from "@/lib/shared/datetime";
 
 async function db() {
   return createClient();
@@ -54,7 +56,7 @@ export async function getSalesBootstrap() {
       .from("app_settings")
       .select("kind, value, sort")
       // D148 — income_cat = ลิสต์ "ประเภทรายได้" (หมวดหมู่รายรับของบัญชี · เรียงตาม sort เหมือนหน้าบัญชี)
-      .in("kind", ["sales_doc_entity", "sales_revenue_entity", "pos_walkin_contact", "income_cat"])
+      .in("kind", ["sales_doc_entity", "sales_revenue_entity", "pos_walkin_contact", "income_cat", DOC_DATE_FORMAT_KIND])
       .order("sort"),
   ]);
 
@@ -115,7 +117,11 @@ export async function getSalesBootstrap() {
   // 🚨 D89 — ว่าง = หัวเอกสารการค้าไม่มีชื่อ/เลขภาษีผู้ขาย และ isVat เด้งเป็น true
   //    → กิจการที่ไม่จด VAT จะโชว์บรรทัด VAT บนใบเสนอราคา
   const docEntity = pickDocEntity(mustRead(entities, "ข้อมูลกิจการ") as EntityDocRow[], wantedEntity);
-  const company = companyFromEntity(docEntity);
+  // D161 เฟส 3 — รูปแบบวันที่บนเอกสาร (ไม่ตั้ง = 06/11/2569 เท่าเดิม)
+  const company = {
+    ...companyFromEntity(docEntity),
+    dateFormat: toDateFormat(st.find((r) => r.kind === DOC_DATE_FORMAT_KIND)?.value, DEFAULT_DOC_FORMAT),
+  };
 
   // 4.3 — กิจการที่ออกเอกสารจด VAT ไหม · ใช้ซ่อนบรรทัด VAT ในตะกร้าและเปลี่ยนชื่อเอกสาร
   // ★ ค่านี้ส่งไปหน้าจอเพื่อ "แสดงผล" เท่านั้น — ตอนบันทึกจริง server อ่านใหม่เองเสมอ
@@ -141,7 +147,8 @@ export async function getSalesBootstrap() {
 export type OrderRow = {
   quNo: string;
   orderNo: string;
-  timestamp: string;
+  /** วันที่สร้างใบเสนอราคา (yyyy-MM-dd ตามเวลาไทย) — D161: จอจัดรูปเองตามค่าตั้ง */
+  createdOn: string;
   customerId: string;
   customerName: string;
   customerAddress: string;
@@ -199,7 +206,10 @@ function mapOrder(r: SoRow, contactMap: Map<string, { address: string; taxId: st
   return {
     quNo: (r.qu_no as string) ?? "",
     orderNo: (r.order_no as string) ?? "",
-    timestamp: r.created_at ? formatThaiDate(String(r.created_at).substring(0, 10)) : "",
+    // 🪤 D161 เฟส 0: created_at เป็น timestamptz (UTC) — ตัด 10 ตัวแรกตรง ๆ ได้วันที่ UTC
+    //    ⇒ ออเดอร์ที่สร้างเที่ยงคืน–7 โมงเช้าขึ้นเป็นวันก่อนหน้า (ไฟล์นี้รันบน server = UTC)
+    // ★ เฟส 2: ส่ง ISO ไม่จัดรูปบน server แล้ว (จอใช้ useDateFmt · ใบเสนอราคาที่พิมพ์ซ้ำจัดรูปเอง)
+    createdOn: r.created_at ? bangkokDateISO(new Date(String(r.created_at))) : "",
     customerId: (r.customer_id as string) ?? "",
     customerName: (r.customer_name as string) ?? "",
     customerAddress: c.address,
@@ -213,7 +223,8 @@ function mapOrder(r: SoRow, contactMap: Map<string, { address: string; taxId: st
     status: (r.status as string) ?? "รอคอนเฟิร์ม",
     deposit: Number(r.deposit) || 0,
     outstandingBalance: Number(r.outstanding_balance) || 0,
-    dueDate: r.due_date ? formatThaiDate(String(r.due_date)) : "",
+    // ★ D161: ISO — ผู้ใช้ค่านี้ดูแค่ว่าว่างหรือไม่ (เลือกชนิดเอกสาร) ไม่มีที่ไหนแสดงผล
+    dueDate: r.due_date ? String(r.due_date).substring(0, 10) : "",
     paymentMethod: (r.payment_method as string) ?? "",
     invNo: (r.inv_no as string) ?? "",
     taxNo1: (r.tax_no1 as string) ?? "",
@@ -488,7 +499,8 @@ export async function getSyncHistory() {
     key: (r.idempotency_key as string) ?? "",
     status: r.status as string,
     message: (r.message as string) ?? "",
-    createdAt: r.created_at ? new Date(r.created_at as string).toLocaleString("th-TH") : "",
+    // 🪤 D161: timestamp ดิบ — จอจัดรูปเป็นเวลาไทยเอง (เดิม toLocaleString บน server = UTC ช้าไป 7 ชม.)
+    createdAt: r.created_at ? String(r.created_at) : "",
   }));
 }
 

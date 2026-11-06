@@ -8,6 +8,7 @@ import { getPendingWarehouseAction, getWarehouseStockAction, confirmFulfillmentA
 import { printSalesDocs, type CompanyInfo, type OrderLike } from "./print";
 import { can, toRole } from "@/lib/shared/roles";
 import { EscToClose, todayISO } from "@/lib/shared/ui";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { shipDateError, shipDateNote } from "@/lib/sales/backdate";
 
 export function WarehouseTab({ role, company, active, hasProduction }: { role: string; company: CompanyInfo; active: boolean; hasProduction: boolean }) {
@@ -32,6 +33,7 @@ export function WarehouseTab({ role, company, active, hasProduction }: { role: s
 }
 
 function PendingOrders({ canWrite, company, active, txt }: { canWrite: boolean; company: CompanyInfo; active: boolean; txt: SalesProductionText }) {
+  const d = useDateFmt();
   const [orders, setOrders] = useState<WarehouseOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const { setMsg } = useSaver();
@@ -66,7 +68,7 @@ function PendingOrders({ canWrite, company, active, txt }: { canWrite: boolean; 
   const [ask, setAsk] = useState<WarehouseOrder | null>(null);
   const [shipDate, setShipDate] = useState(todayISO());
   const shipErr = shipDateError(shipDate, todayISO());
-  const shipNote = shipDateNote(shipDate, todayISO());
+  const shipNote = shipDateNote(shipDate, todayISO(), d.date);
 
   function openConfirm(o: WarehouseOrder) {
     setShipDate(todayISO());

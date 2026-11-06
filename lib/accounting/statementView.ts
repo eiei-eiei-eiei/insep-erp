@@ -29,12 +29,16 @@ export function presetRange(preset: Exclude<StatementPreset, "custom">, period: 
   }
 }
 
-/** ป้ายหัวการ์ด */
-export function rangeTitle(r: StatementRange): string {
+/**
+ * ป้ายหัวการ์ด
+ * ★ D161: `month` = ตัวจัดรูปเดือนตามค่าตั้งของลูกค้า (`useDateFmt().month`) — **บังคับส่ง**
+ *   (มีค่าปริยายเมื่อไหร่ ผู้เรียกที่ลืมจะได้ `2026-07` ดิบกลับมาโดยไม่มีอะไรฟ้อง)
+ */
+export function rangeTitle(r: StatementRange, month: (period: string) => string): string {
   if (!r.from && !r.to) return "ทั้งหมด";
-  if (r.from && r.to) return r.from === r.to ? `เดือน ${r.from}` : `${r.from} ถึง ${r.to}`;
-  if (r.from) return `ตั้งแต่ ${r.from}`;
-  return `จนถึง ${r.to}`;
+  if (r.from && r.to) return r.from === r.to ? `เดือน ${month(r.from)}` : `${month(r.from)} ถึง ${month(r.to)}`;
+  if (r.from) return `ตั้งแต่ ${month(r.from)}`;
+  return `จนถึง ${month(r.to!)}`;
 }
 
 /** ข้อความผิดพลาดของช่วงที่กรอกเอง · ว่าง = ใช้ได้ */

@@ -11,6 +11,7 @@ import { printSalesDocs, openPrintWindow } from "./print";
 import { IconCart, IconPlus } from "@/lib/shared/icons";
 import { can, toRole } from "@/lib/shared/roles";
 import { todayISO } from "@/lib/shared/ui";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { manualNoError, saleDateError, saleDateNote } from "@/lib/sales/backdate";
 
 const METHODS = ["เงินสด", "โอนเงิน", "บัตรเครดิต"];
@@ -22,6 +23,8 @@ const METHODS = ["เงินสด", "โอนเงิน", "บัตรเ
  *   แค่รวบให้เป็นปุ่มเดียว — ออเดอร์ที่ได้จึงแก้/ยกเลิก/พิมพ์ซ้ำได้จากแท็บจัดการออเดอร์เหมือนกันหมด
  */
 export function PosTab({ boot, canWrite }: { boot: SalesBoot; canWrite: boolean }) {
+  // ★ ชื่อ df ไม่ใช่ d — ในไฟล์นี้มี `const d = r.data` ในฟังก์ชันขายอยู่แล้ว (กันชื่อบังกัน)
+  const df = useDateFmt();
   const canConfig = can(toRole(boot.role), "sales.config");
   const [menu, setMenu] = useState<MenuRow[]>(boot.menu);
   const [customers, setCustomers] = useState<CustomerRow[]>(boot.customers);
@@ -37,7 +40,7 @@ export function PosTab({ boot, canWrite }: { boot: SalesBoot; canWrite: boolean 
   const [paperNo, setPaperNo] = useState("");
   const dateErr = backOpen ? saleDateError(saleDate, todayISO()) : null;
   const paperErr = backOpen && paperNo.trim() ? manualNoError(paperNo) : null;
-  const dateNote = backOpen ? saleDateNote(saleDate, todayISO()) : null;
+  const dateNote = backOpen ? saleDateNote(saleDate, todayISO(), df.date) : null;
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [pickCustomer, setPickCustomer] = useState(false);

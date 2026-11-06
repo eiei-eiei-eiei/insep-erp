@@ -2,12 +2,14 @@
 
 import { getDashboardAction } from "../actions";
 import { Card, Stat, fmt, useRead, LoadError } from "./ui";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
 type Dash = Awaited<ReturnType<typeof getDashboardAction>>;
 
 export function DashboardTab({ period, entityId, active }: { period: string; entityId: string; active: boolean }) {
   // โหลดเมื่อแท็บถูกเปิด (active) + refetch ทุกครั้งที่กลับมา — โชว์ข้อมูลเดิมค้างไว้ระหว่างโหลด (ไม่กระพริบ)
   // 🚨 D89 — useRead รับ throw จากชั้นอ่าน · ไม่งั้นแดชบอร์ดค้างที่ "กำลังโหลด…" ตลอดกาล
+  const d = useDateFmt();
   const { data, loading, err, reload } = useRead<Dash>(
     () => getDashboardAction(period, entityId),
     [period, entityId],
@@ -43,7 +45,7 @@ export function DashboardTab({ period, entityId, active }: { period: string; ent
               <tbody>
                 {data.whtPending.map((p) => (
                   <tr key={p.transactionId}>
-                    <td>{p.displayDate}</td>
+                    <td className="whitespace-nowrap">{d.date(p.pendDateISO)}</td>
                     <td>{p.contactName}</td>
                     <td>{p.category}</td>
                     <td className="num">{fmt(p.amount)}</td>

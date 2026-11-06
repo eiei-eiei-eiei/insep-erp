@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { SyncRow } from "./types";
 import { Card, LoadError } from "./ui";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { getSyncHistoryAction } from "../actions";
 import { IconRefresh } from "@/lib/shared/icons";
 
@@ -12,6 +13,7 @@ const ACTION_LABEL: Record<string, string> = {
 };
 
 export function SyncHistoryTab({ active }: { active: boolean }) {
+  const d = useDateFmt();
   const [rows, setRows] = useState<SyncRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(false);
@@ -65,7 +67,7 @@ export function SyncHistoryTab({ active }: { active: boolean }) {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className="border-b">
-                  <td className="whitespace-nowrap text-faint">{r.createdAt}</td>
+                  <td className="whitespace-nowrap text-faint">{d.dateTime(r.createdAt)}</td>
                   <td>{ACTION_LABEL[r.action] ?? r.action}</td>
                   <td className="whitespace-nowrap font-mono text-xs text-muted">{r.key}</td>
                   <td className="text-center">

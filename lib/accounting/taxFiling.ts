@@ -275,9 +275,11 @@ export function stagesDescText(
   kind: TaxKind,
   period: string,
   m: FilingMethod | null,
+  /** D161: ตัวจัดรูปวันสั้นตามค่าตั้งของลูกค้า (`useDateFmt().day`) — บังคับส่ง ข้อความนี้ขึ้นจออย่างเดียว */
+  day: (iso: string) => string,
   leadDays = 3,
 ): string {
   return stageDates(kind, period, m, leadDays)
-    .map((s) => thaiDay(s.date))
+    .map((s) => day(s.date))
     .join(" · ");
 }

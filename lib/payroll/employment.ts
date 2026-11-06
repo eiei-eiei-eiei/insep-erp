@@ -46,12 +46,14 @@ export function notInPeriodReason(
   e: { startDate?: string | null; endDate?: string | null; active?: boolean },
   year: number,
   month: number,
+  /** D161: ตัวจัดรูปวันที่ตามค่าตั้งของลูกค้า (`useDateFmt().date`) — บังคับส่ง ลืม = build ไม่ผ่าน */
+  date: (iso: string) => string,
 ): string | null {
   if (isEmployedInPeriod(e, year, month)) return null;
   const { start, end } = periodRange(year, month);
   const s = (e.startDate ?? "").trim();
   const x = (e.endDate ?? "").trim();
-  if (s && s > end) return `เริ่มงาน ${s} (หลังงวดนี้)`;
-  if (x && x < start) return `พ้นสภาพ ${x} (ก่อนงวดนี้)`;
+  if (s && s > end) return `เริ่มงาน ${date(s)} (หลังงวดนี้)`;
+  if (x && x < start) return `พ้นสภาพ ${date(x)} (ก่อนงวดนี้)`;
   return "ไม่ได้ทำงานแล้ว (ไม่ได้ระบุวันพ้นสภาพ)";
 }

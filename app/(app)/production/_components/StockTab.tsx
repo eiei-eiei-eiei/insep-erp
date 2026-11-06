@@ -4,8 +4,10 @@ import { can, capHolderText, type Role } from "@/lib/shared/roles";
 import { recomputeStockAction } from "../actions";
 import { Card, useSaver } from "./ui";
 import type { StockRow } from "./types";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
 export function StockTab({ stock, role }: { stock: StockRow[]; role: Role }) {
+  const d = useDateFmt();
   const { pending, run } = useSaver();
   // ด่านจริงอยู่ใน recompute_stock_product (0074 · D99) — ตรงนี้แค่ไม่ปล่อยให้กดแล้วค่อยเจอ error
   const mayRepair = can(role, "prod.write");
@@ -49,7 +51,7 @@ export function StockTab({ stock, role }: { stock: StockRow[]; role: Role }) {
                   <td className="px-3">{s.products?.name ?? "—"}</td>
                   <td className="px-3 font-semibold num">{Number(s.balance).toLocaleString()}</td>
                   <td className="px-3 text-faint">
-                    {s.last_updated ? new Date(s.last_updated).toLocaleString("th-TH") : "—"}
+                    {s.last_updated ? d.dateTime(s.last_updated) : "—"}
                   </td>
                 </tr>
               ))}

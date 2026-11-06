@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { isEmployedInPeriod, notInPeriodReason, periodRange } from "./employment";
+import { formatDate } from "../shared/dateFormat";
+
+const raw = (s: string) => s;
 
 /** งวดที่ใช้ทดสอบ = มกราคม 2026 (1–31 ม.ค.) */
 const Y = 2026;
@@ -65,15 +68,20 @@ describe("isEmployedInPeriod", () => {
 
 describe("notInPeriodReason — ป้ายบอกเหตุผลบนหน้าจอ", () => {
   it("อยู่ในงวดปกติ = ไม่มีป้าย", () => {
-    expect(notInPeriodReason({ active: true }, Y, M)).toBeNull();
+    expect(notInPeriodReason({ active: true }, Y, M, raw)).toBeNull();
   });
   it("พ้นสภาพก่อนงวด", () => {
-    expect(notInPeriodReason({ endDate: "2025-12-31" }, Y, M)).toContain("พ้นสภาพ 2025-12-31");
+    expect(notInPeriodReason({ endDate: "2025-12-31" }, Y, M, raw)).toContain("พ้นสภาพ 2025-12-31");
   });
   it("เริ่มงานหลังงวด", () => {
-    expect(notInPeriodReason({ startDate: "2026-03-01" }, Y, M)).toContain("เริ่มงาน 2026-03-01");
+    expect(notInPeriodReason({ startDate: "2026-03-01" }, Y, M, raw)).toContain("เริ่มงาน 2026-03-01");
   });
   it("ไม่ได้ทำงานแล้วแต่ไม่ระบุวัน", () => {
-    expect(notInPeriodReason({ active: false }, Y, M)).toContain("ไม่ได้ระบุวันพ้นสภาพ");
+    expect(notInPeriodReason({ active: false }, Y, M, raw)).toContain("ไม่ได้ระบุวันพ้นสภาพ");
+  });
+  it("D161 — วันที่บนป้ายตามรูปแบบที่ลูกค้าเลือก", () => {
+    const th = (s: string) => formatDate(s, "d_mon_yy");
+    expect(notInPeriodReason({ endDate: "2025-12-31" }, Y, M, th)).toBe("พ้นสภาพ 31 ธ.ค. 68 (ก่อนงวดนี้)");
+    expect(notInPeriodReason({ startDate: "2026-03-01" }, Y, M, th)).toBe("เริ่มงาน 1 มี.ค. 69 (หลังงวดนี้)");
   });
 });

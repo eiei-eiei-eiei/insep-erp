@@ -7,6 +7,7 @@ import type { Bootstrap } from "./types";
 import { AdvanceCard } from "./AdvanceCard";
 import { accountsFor } from "@/lib/accounting/bankAccounts";
 import { Card, Field, Select, TextInput, fmt, todayISO, useSaver, useRead, LoadError } from "./ui";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
 type ApAr = Awaited<ReturnType<typeof getApArAction>>;
 
@@ -14,6 +15,7 @@ export function ApArTab({ boot, entityId, active }: { boot: Bootstrap; entityId:
 
   const { pending, run, setMsg } = useSaver();
   const { confirmNode, ask } = useConfirm();
+  const d = useDateFmt();
   const [settleId, setSettleId] = useState<string | null>(null);
   const [acc, setAcc] = useState("");
   const [payDate, setPayDate] = useState(todayISO());
@@ -61,10 +63,10 @@ export function ApArTab({ boot, entityId, active }: { boot: Bootstrap; entityId:
               {rows.map((r) => (
                 <Fragment key={r.transactionId}>
                   <tr>
-                    <td>{r.date}</td>
+                    <td className="whitespace-nowrap">{d.date(r.date)}</td>
                     <td>{r.contactName}</td>
                     <td>{r.description}{r.installment ? ` [งวด ${r.installment}]` : ""}</td>
-                    <td>{r.dueDate}</td>
+                    <td className="whitespace-nowrap">{d.date(r.dueDate)}</td>
                     <td className={`p-1 text-right font-medium ${tone}`}>{fmt(r.amount)}</td>
                     <td className="whitespace-nowrap">
                       <button onClick={() => toggleSettle(r.transactionId)} className="text-sm text-muted hover:underline">ชำระ</button>
@@ -80,7 +82,7 @@ export function ApArTab({ boot, entityId, active }: { boot: Bootstrap; entityId:
                           <button onClick={() => doSettle(r.transactionId)} disabled={pending} className="rounded-lg bg-brand px-4 py-2 text-sm text-on-brand disabled:opacity-50">ยืนยันชำระ</button>
                         </div>
                         <p className="mt-1 text-xs text-faint">
-                          ยอดเงินในบัญชีจะขยับในวันที่ชำระ · บิลยังอยู่ในรายงานภาษีเดือนเดิม ({r.date.slice(0, 7)}) ไม่ย้ายตามวันที่ชำระ
+                          ยอดเงินในบัญชีจะขยับในวันที่ชำระ · บิลยังอยู่ในรายงานภาษีเดือนเดิม ({d.month(r.date)}) ไม่ย้ายตามวันที่ชำระ
                         </p>
                       </td>
                     </tr>

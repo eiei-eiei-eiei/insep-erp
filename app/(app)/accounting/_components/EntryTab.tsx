@@ -1,6 +1,7 @@
 "use client";
 
 import { useConfirm } from "@/lib/shared/ui";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   itemTotal,
@@ -57,6 +58,7 @@ type Draft = {
 export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entityId: string; ambiguous: boolean }) {
   const { pending, run, setMsg } = useSaver();
   const { confirmNode, ask } = useConfirm();
+  const d = useDateFmt();
   // เมื่อ header เลือก "ทุกกิจการ" → กิจการปลายทางกำกวม ให้ผู้ใช้เลือกชัดเจนในฟอร์ม (กันบันทึกเข้ากิจการผิดเงียบ ๆ)
   const [pickedEntity, setPickedEntity] = useState(entityId);
   const effEntity = ambiguous ? (pickedEntity || entityId) : entityId;
@@ -413,7 +415,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
             <div className="divide-y divide-line-soft">
               {recentBills.map((b) => (
                 <button key={b.txId} type="button" onClick={() => applyRecentBill(b)} className="flex w-full items-center gap-2 px-1 py-1.5 text-left text-xs hover:bg-brand-soft/60">
-                  <span className="flex-shrink-0 text-faint">{b.date}</span>
+                  <span className="flex-shrink-0 text-faint">{d.date(b.date)}</span>
                   <span className="flex-1 truncate font-medium text-muted">{b.description || "-"}</span>
                   <span className="flex-shrink-0 text-faint">{b.category}</span>
                   <span className="flex-shrink-0 font-semibold text-brand">฿{fmt(b.netAmount)}</span>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useConfirm } from "@/lib/shared/ui";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { useEffect, useState } from "react";
 import { getInstallmentGroupAction, listInstallmentGroupsAction, voidTransactionAction } from "../actions";
 import { Card, Field, Select, fmt, useSaver } from "./ui";
@@ -10,6 +11,7 @@ type Group = Awaited<ReturnType<typeof getInstallmentGroupAction>>;
 type GroupList = Awaited<ReturnType<typeof listInstallmentGroupsAction>>;
 
 export function InstallmentsTab() {
+  const d = useDateFmt();
   const [poId, setPoId] = useState("");
   const [list, setList] = useState<GroupList>([]);
   const [group, setGroup] = useState<Group>(null);
@@ -43,7 +45,7 @@ export function InstallmentsTab() {
                 <option value="">— เลือกกลุ่มงวด ({list.length}) —</option>
                 {list.map((g) => (
                   <option key={g.poGroupId} value={g.poGroupId}>
-                    {g.date} · {g.contactName || "ไม่ระบุ"} · {g.count} งวด · {fmt(g.total)} {g.description ? `· ${g.description}` : ""}
+                    {d.date(g.date)} · {g.contactName || "ไม่ระบุ"} · {g.count} งวด · {fmt(g.total)} {g.description ? `· ${g.description}` : ""}
                   </option>
                 ))}
               </Select>
@@ -69,7 +71,7 @@ export function InstallmentsTab() {
             <tbody>
               {group.installments.map((it) => (
                 <tr key={it.txId}>
-                  <td>{it.installmentNo}</td><td>{it.dueDate}</td>
+                  <td>{it.installmentNo}</td><td className="whitespace-nowrap">{d.date(it.dueDate)}</td>
                   <td className="num">{fmt(it.base)}</td><td className="num">{fmt(it.net)}</td>
                   <td>{it.paid ? <span className="text-ok">จ่ายแล้ว</span> : <span className="text-warn">ค้าง</span>}</td>
                   <td>{it.accountType || "-"}</td>

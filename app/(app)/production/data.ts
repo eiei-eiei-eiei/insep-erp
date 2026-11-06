@@ -239,7 +239,8 @@ export type BatchCard = {
   tanks: number;
   fermVol: number;               // วัตถุดิบหลักรวม (ฐานคิดส่า P4) — แสดงเฉย ๆ
   monitorCount: number;
-  lastMeasure: { date: string; ph: number | null; brix: number | null; temp: number | null } | null;
+  /** D161: `date` เป็น ISO · `time` = HH:mm หรือ "" — จอจัดรูปเอง */
+  lastMeasure: { date: string; time: string; ph: number | null; brix: number | null; temp: number | null } | null;
   pots: number;                  // จำนวนหม้อที่เริ่มกลั่นแล้ว
   activePot: number | null;      // หม้อที่ยังไม่ "จบหม้อ" (ค้างอยู่)
   closed: { date: string; vol: number; abv: number } | null; // ปิด batch แล้ว (log_distill)
@@ -309,7 +310,8 @@ export async function getBatchBoard(): Promise<BatchCard[]> {
     if (!c.lastMeasure || key >= (lastKey.get(c.batch) ?? "")) {
       lastKey.set(c.batch, key);
       c.lastMeasure = {
-        date: `${String(m.measure_date).slice(0, 10)}${m.measure_time ? " " + String(m.measure_time).slice(0, 5) : ""}`,
+        date: String(m.measure_date).slice(0, 10),
+        time: m.measure_time ? String(m.measure_time).slice(0, 5) : "",
         ph: m.ph === null ? null : Number(m.ph),
         brix: m.brix === null ? null : Number(m.brix),
         temp: m.temp === null ? null : Number(m.temp),

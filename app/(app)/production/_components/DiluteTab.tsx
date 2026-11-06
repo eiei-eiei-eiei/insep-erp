@@ -8,11 +8,13 @@ import { Card, Field, MissingHint, NumInput, RowBtn, SaveButton, Select, TextInp
 import type { Product } from "./types";
 import { AbvCalcCard } from "./AbvCalcCard";
 import { IconEdit, IconTrash } from "@/lib/shared/icons";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
 type RecentDilute = Awaited<ReturnType<typeof getRecentDilutesAction>>[number];
 type EditFields = { date: string; productName: string; bottleSize: string; startVol: string; startAbv: string; water: string; finalVol: string; finalAbv: string; note: string };
 
 export function DiluteTab({ products }: { products: Product[] }) {
+  const d = useDateFmt();
   const { pending, run } = useSaver();
   const { confirmNode, ask } = useConfirm();
   const [date, setDate] = useState(todayISO());
@@ -40,7 +42,7 @@ export function DiluteTab({ products }: { products: Product[] }) {
   function refreshRemaining() { if (productName) getRemainingDistillVolAction(productName).then(setRemaining); }
   useEffect(() => { loadRecent(); }, []);
   async function del(r: RecentDilute) {
-    if (!(await ask({ title: `ลบรายการปรุง ${r.product_name} (${String(r.dilute_date).slice(0, 10)})?`, confirmText: "ลบ", danger: true }))) return;
+    if (!(await ask({ title: `ลบรายการปรุง ${r.product_name} (${d.date(String(r.dilute_date))})?`, confirmText: "ลบ", danger: true }))) return;
     run(() => deleteDiluteLogAction(r.id as number), "ลบรายการเรียบร้อย", () => { loadRecent(); refreshRemaining(); });
   }
   function startEdit(r: RecentDilute) {
@@ -219,7 +221,7 @@ export function DiluteTab({ products }: { products: Product[] }) {
                   </tr>
                 ) : (
                   <tr key={r.id as number}>
-                    <td className="whitespace-nowrap">{String(r.dilute_date).slice(0, 10)}</td>
+                    <td className="whitespace-nowrap">{d.date(String(r.dilute_date))}</td>
                     <td>
                       {r.product_name as string}
                       {r.redistill_lot ? (

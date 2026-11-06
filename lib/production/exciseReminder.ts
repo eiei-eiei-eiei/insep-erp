@@ -149,6 +149,11 @@ export function reminderHintText(o: {
   closed: boolean;
   period: string;
   leadDays?: number;
+  /**
+   * D161: ตัวจัดรูปวันสั้นตามค่าตั้งของลูกค้า (`useDateFmt().day`) — บังคับส่ง ลืม = build ไม่ผ่าน
+   * 🚨 ข้อความ LINE (`exciseLine`) ยังใช้ `thaiDay` ตายตัว — ไม่ตามค่าตั้ง
+   */
+  day: (iso: string) => string;
 }): { text: string; warn: boolean } | null {
   if (!o.hasExciseId) {
     return {
@@ -160,10 +165,10 @@ export function reminderHintText(o: {
   // ★ D95 — บอกให้ครบทุกจังหวะ ผู้ใช้จะได้รู้ล่วงหน้าว่าจะได้ข้อความวันไหนบ้าง
   //   (บอกวันเดียวทั้งที่ระบบยิง 3 วัน = ข้อความบนจอไม่ตรงกับสิ่งที่ระบบทำ)
   const days = stageDatesFromDue(exciseDueDate(o.period), o.leadDays ?? 3)
-    .map((s) => thaiDay(s.date))
+    .map((s) => o.day(s.date))
     .join(" · ");
   return {
-    text: `ถ้ายังไม่ปิดเดือน ระบบจะเตือนเข้ากลุ่ม LINE วันที่ ${days} (ครบกำหนดยื่น ${thaiDay(exciseDueDate(o.period))})`,
+    text: `ถ้ายังไม่ปิดเดือน ระบบจะเตือนเข้ากลุ่ม LINE วันที่ ${days} (ครบกำหนดยื่น ${o.day(exciseDueDate(o.period))})`,
     warn: false,
   };
 }

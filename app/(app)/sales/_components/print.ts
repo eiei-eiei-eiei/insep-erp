@@ -13,7 +13,8 @@
  */
 import { showToast } from "@/lib/shared/toast";
 import { reverseCalcPrint, roundTo2 } from "@/lib/sales/calc";
-import { formatThaiDate } from "@/lib/sales/orders";
+import { DEFAULT_DOC_FORMAT, formatDate } from "@/lib/shared/dateFormat";
+import { bangkokDateISO } from "@/lib/shared/datetime";
 import { branchLabel, type CompanyInfo } from "@/lib/sales/company";
 import { paymentForDoc, type SalesPayment } from "@/lib/sales/payments";
 import { installmentDocFigures, type Installment } from "@/lib/sales/installments";
@@ -32,18 +33,26 @@ const esc = (s: unknown) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&a
 const escAttr = (s: unknown) => esc(s).replace(/"/g, "&quot;");
 const escMultiline = (s: string) => esc(s).replace(/\r?\n/g, "<br>");
 
+/**
+ * D161 เฟส 3 — วันที่บนเอกสารการค้าตามค่าตั้ง `doc_date_format` ของกิจการ (มากับ CompanyInfo)
+ * ★ ไม่ตั้ง = `06/11/2569` เท่ากับ `formatThaiDate` เดิมทุกวัน ⇒ กระดาษไม่ขยับจนกว่าลูกค้าจะเลือกเอง
+ * 🚨 ฟอร์มราชการไม่ได้อยู่ในไฟล์นี้ และห้ามเรียกตัวนี้
+ */
+const docDate = (c: CompanyInfo) => (iso: string) => formatDate(iso, c.dateFormat ?? DEFAULT_DOC_FORMAT);
+
 function formatChequeDetail(text: string): string {
   if (!text) return "";
   if (text.includes("เลขที่เช็ค") || text.includes("ยอด")) return text;
   const parts = text.split(" ");
   if (parts.length >= 4) {
     const amount = parseFloat(parts.pop()!);
-    const date = parts.pop();
+    // D161 — ข้อความเช็ครูปแบบเก่าที่**เก็บไว้ใน DB** (ผู้ใช้พิมพ์เอง) ไม่ใช่วันที่ที่ระบบจัดรูป ⇒ พิมพ์ตามที่เก็บ
+    const chequeDateText = parts.pop();
     const cqNo = parts.pop();
     let bank = parts.join(" ");
     if (!bank.includes("ธนาคาร") && bank !== "-") bank = "ธนาคาร" + bank;
     const amt = isNaN(amount) ? String(amount) : amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    return `${bank} เลขที่เช็ค : ${cqNo} ลงวันที่ ${date} ยอด ${amt} บาท`;
+    return `${bank} เลขที่เช็ค : ${cqNo} ลงวันที่ ${chequeDateText} ยอด ${amt} บาท`;
   }
   return text;
 }
@@ -127,7 +136,8 @@ function itemsTable(items: OrderItem[], padRows: boolean): string {
 // ── ใบเสนอราคา (A4) ──────────────────────────────────────────────────────────
 export type QuotationDoc = {
   quNo: string;
-  date: string;
+  /** วันที่ออกใบ (ISO) — จัดรูปตามค่าตั้งของเอกสารในนี้ (D161 · เดิมผู้เรียกส่งข้อความที่จัดรูปแล้ว) */
+  dateISO: string;
   quExp: string;
   customerName: string;
   customerAddress: string;
@@ -156,7 +166,7 @@ export type QuotationDoc = {
   orderNo?: string;
 };
 
-function quotationHtml(c: CompanyInfo, d: QuotationDoc): string {
+export function quotationHtml(c: CompanyInfo, d: QuotationDoc): string {
   // โมเดล inclusive: line items = ราคารวม VAT → รวมได้ = grandIncl · summary ถอด VAT ออก
   // 4.3 — ผู้ขายไม่จด VAT: ราคาที่เสนอคือราคาที่ลูกค้าจ่าย ไม่มีบรรทัด VAT บนใบเสนอราคา
   // D154 — ใบเสนอราคาที่พิมพ์ซ้ำตามยอดที่ตั้งไว้ (มี VAT ในยอด = แบบจด) ไม่ใช่สถานะวันนี้
@@ -186,7 +196,7 @@ function quotationHtml(c: CompanyInfo, d: QuotationDoc): string {
         <table style="width:100%;border-collapse:collapse;font-size:14px;">
           <tr><td style="padding:3px 0;font-weight:600;width:60%;">เลขที่ / Quotation No.</td><td style="padding:3px 0;font-weight:500;text-align:right;">${esc(d.quNo)}</td></tr>
           ${d.cancelled && d.orderNo ? `<tr><td style="padding:3px 0;font-weight:600;">เลขที่ออเดอร์ / Order No.</td><td style="padding:3px 0;font-weight:500;text-align:right;">${esc(d.orderNo)}</td></tr>` : ""}
-          <tr><td style="padding:3px 0;font-weight:600;">วันที่ / Date</td><td style="padding:3px 0;text-align:right;">${esc(d.date)}</td></tr>
+          <tr><td style="padding:3px 0;font-weight:600;">วันที่ / Date</td><td style="padding:3px 0;text-align:right;">${esc(docDate(c)(d.dateISO))}</td></tr>
           <tr><td style="padding:3px 0;font-weight:600;">ยืนราคาถึงวันที่ / Validity</td><td style="padding:3px 0;text-align:right;">${esc(d.quExp)}</td></tr>
           <tr><td style="padding:3px 0;font-weight:600;">เครดิตเทอม / Credit Term</td><td style="padding:3px 0;text-align:right;">${d.creditTerm > 0 ? d.creditTerm + " วัน" : "-"}</td></tr>
         </table>
@@ -372,12 +382,13 @@ type PreparedDoc = Record<string, unknown> & { docType: string; copyType: string
  * 🚨 ไม่จด VAT → หัวเอกสาร **ห้ามมีคำว่า "ใบกำกับภาษี"** (ผิด ประมวลรัษฎากร ม.86/13)
  *    และแถวมูลค่าก่อน VAT / ภาษีมูลค่าเพิ่ม **ไม่ render เลย** (ไม่ใช่โชว์ 0.00)
  */
-function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyType: string, currentIsVat = true): PreparedDoc {
+function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyType: string, fmt: (iso: string) => string, currentIsVat = true): PreparedDoc {
   // 🔴 D154 — หัวเอกสาร/แถว VAT ตามที่ใบนี้ "ออกไปจริง" ไม่ใช่สถานะของกิจการวันนี้ (lib/sales/docVat)
   const pay = paymentForDoc(docType, order.payments);
   const isVat = docVatAtIssue(docType, order, pay, currentIsVat);
-  const docDate1_th = order.docDate1 ? formatThaiDate(order.docDate1) : new Date().toLocaleDateString("th-TH");
-  const docDate2_th = order.docDate2 ? formatThaiDate(order.docDate2) : docDate1_th;
+  // D161 — ว่าง = วันนี้ (เดิม `toLocaleDateString("th-TH")` = `6/11/2569` ไม่เติมศูนย์ ต่างจากวันที่อื่นบนกระดาษใบเดียวกัน)
+  const docDate1_th = order.docDate1 ? fmt(order.docDate1) : fmt(bangkokDateISO());
+  const docDate2_th = order.docDate2 ? fmt(order.docDate2) : docDate1_th;
   const whtPercent = order.whtPercent || 0;
   const subDiscount = roundTo2((order.subTotal || 0) - (order.discount || 0));
   const netPayable = order.netPayable || order.grandTotal;
@@ -443,8 +454,8 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
       doc.receiptTitle = `ใบแจ้งหนี้ (${tag})`;
       doc.receiptTitleEng = `Invoice (Installment ${f.k}/${f.n})`;
       doc.docNo = inst?.invNo || "";
-      doc.documentDate = inst?.invDate ? formatThaiDate(inst.invDate) : docDate1_th;
-      doc.dueDate = inst?.dueDate ? formatThaiDate(inst.dueDate) : "";
+      doc.documentDate = inst?.invDate ? fmt(inst.invDate) : docDate1_th;
+      doc.dueDate = inst?.dueDate ? fmt(inst.dueDate) : "";
       doc.instDue = f.amount;
       doc.outstandingBalance = f.amount; // > 0 → กล่องเลขบัญชีธนาคาร (เหมือนใบแจ้งหนี้อื่น)
     } else {
@@ -452,7 +463,7 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
       doc.receiptTitle = isVat ? `ใบกำกับภาษี/ใบเสร็จรับเงิน (${tag})` : `ใบเสร็จรับเงิน (${tag})`;
       doc.receiptTitleEng = isVat ? `Tax Invoice / Receipt (Installment ${f.k}/${f.n})` : `Receipt (Installment ${f.k}/${f.n})`;
       doc.docNo = pay?.docNo || "";
-      doc.documentDate = pay?.docDate ? formatThaiDate(pay.docDate) : docDate1_th;
+      doc.documentDate = pay?.docDate ? fmt(pay.docDate) : docDate1_th;
       const amount = pay ? roundTo2(pay.amount) : f.amount;
       const v = reverseCalcPrint(amount, whtPercent, isVat);
       doc.receiptAmount = amount;
@@ -491,8 +502,8 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
     doc.receiptTitle = "ใบแจ้งหนี้";
     doc.receiptTitleEng = "Invoice";
     doc.docNo = order.depInvNo || "";
-    doc.documentDate = order.depInvDate ? formatThaiDate(order.depInvDate) : docDate1_th;
-    doc.dueDate = order.depDueDate ? formatThaiDate(order.depDueDate) : "";
+    doc.documentDate = order.depInvDate ? fmt(order.depInvDate) : docDate1_th;
+    doc.dueDate = order.depDueDate ? fmt(order.depDueDate) : "";
     doc.depositPercent = order.depositPercent || 0;
     const depAmt = roundTo2(order.depInvAmount || 0);
     doc.depositDue = depAmt; // ยอดที่ต้องชำระตอนนี้ (รวม VAT, หัก WHT แล้ว)
@@ -734,8 +745,8 @@ export function salesDocsHtml(
   const docs: PreparedDoc[] = [];
   for (const dt of docTypes) {
     const currentIsVat = company.isVat !== false; // D154 — ค่าสุดท้ายเมื่อเอกสารไม่มีหลักฐาน (setupDoc ตัดสินเอง)
-    docs.push(setupDoc(order, items, dt, "(ต้นฉบับ / Original)", currentIsVat));
-    docs.push(setupDoc(order, items, dt, "(สำเนา / Copy)", currentIsVat));
+    docs.push(setupDoc(order, items, dt, "(ต้นฉบับ / Original)", docDate(company), currentIsVat));
+    docs.push(setupDoc(order, items, dt, "(สำเนา / Copy)", docDate(company), currentIsVat));
   }
   return docs.map((d, i) => b2bDocHtml(company, d, i, !!opts?.cancelled)).join("");
 }
@@ -784,7 +795,7 @@ function creditNoteHtml(c: CompanyInfo, order: OrderLike, items: OrderItem[], cn
   const cell = "padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;";
   const row = (label: string, v: string, extra = "") =>
     `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;${extra}">${label}</td><td style="${cell}${extra}">${v}</td></tr>`;
-  const refs = cn.refs.map((r) => `${esc(r.docNo)} (${esc(formatThaiDate(r.date))})`).join("<br>");
+  const refs = cn.refs.map((r) => `${esc(r.docNo)} (${esc(docDate(c)(r.date))})`).join("<br>");
   const inv = cnInvoiceLines(cn.refs, cn.original);
   const refRows = cn.refs.length > 1
     ? cn.refs.map((r) => row(`&nbsp;&nbsp;· ${esc(r.docNo)}`, nf(r.preVat), "color:#475569;font-size:12px;")).join("")
@@ -803,7 +814,7 @@ function creditNoteHtml(c: CompanyInfo, order: OrderLike, items: OrderItem[], cn
       <div style="width:41%;border:2px solid #cbd5e1;padding:12px 15px;border-radius:8px;background-color:#f8fafc;box-sizing:border-box;">
         <table style="width:100%;border-collapse:collapse;font-size:14px;">
           <tr><td style="padding:3px 0;font-weight:600;width:45%;">เลขที่ / Doc No.</td><td style="padding:3px 0;font-weight:500;text-align:right;">${esc(cn.cnNo)}</td></tr>
-          <tr><td style="padding:3px 0;font-weight:600;">วันที่ / Date</td><td style="padding:3px 0;text-align:right;">${esc(formatThaiDate(cn.cnDate))}</td></tr>
+          <tr><td style="padding:3px 0;font-weight:600;">วันที่ / Date</td><td style="padding:3px 0;text-align:right;">${esc(docDate(c)(cn.cnDate))}</td></tr>
           <tr><td style="padding:3px 0;font-weight:600;vertical-align:top;">อ้างอิงใบกำกับภาษีเดิม</td><td style="padding:3px 0;text-align:right;">${refs || "-"}</td></tr>
           <tr><td style="padding:3px 0;font-weight:600;">อ้างอิง / Ref No.</td><td style="padding:3px 0;text-align:right;">${esc(order.quNo)}</td></tr>
         </table>

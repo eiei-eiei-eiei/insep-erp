@@ -58,6 +58,8 @@ import {
 } from "../actions";
 import type { EmployeeRow } from "../data";
 import type { PayrollConfig } from "./PayrollApp";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
+import { bangkokDateISO } from "@/lib/shared/datetime";
 
 /**
  * ถามยืนยันก่อนลบ — ใช้ตัวเดียวกันทุกจุดในหน้านี้ ข้อความจะได้สม่ำเสมอ
@@ -1160,6 +1162,7 @@ function PostLegs({ config }: { config: PayrollConfig }) {
 
 // ── ชุดอัตราตามกฎหมาย ───────────────────────────────────────────────────────
 function Rates({ config }: { config: PayrollConfig }) {
+  const df = useDateFmt();
   const router = useRouter();
   const { pending, run } = useSaver();
   const { confirmNode, askDelete } = useAskDelete();
@@ -1172,7 +1175,7 @@ function Rates({ config }: { config: PayrollConfig }) {
   // ★ วันที่ของชุดที่กำลังแก้อยู่ — null = กำลังเพิ่มชุดใหม่
   //   (คีย์ของตารางคือ effective_from → แก้วันที่ = สร้างชุดใหม่ ไม่ใช่แก้ชุดเดิม)
   const [editing, setEditing] = useState<string | null>(null);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = bangkokDateISO(); // D161: เดิม toISOString = วันที่ UTC (ตี 0-7 ได้เมื่อวาน)
 
   function startEdit(r: PayRates) {
     setForm(r);
@@ -1200,7 +1203,7 @@ function Rates({ config }: { config: PayrollConfig }) {
             <tbody>
               {config.rates.map((r) => (
                 <tr key={r.effectiveFrom} className={editing === r.effectiveFrom ? "bg-brand-soft" : undefined}>
-                  <td>{r.effectiveFrom}</td>
+                  <td>{df.date(r.effectiveFrom)}</td>
                   <td className="num">{r.ssoRate}%</td>
                   <td className="num">{r.ssoWageMax.toLocaleString()}</td>
                   <td className="num">{r.personalAllowance.toLocaleString()}</td>
@@ -1210,7 +1213,7 @@ function Rates({ config }: { config: PayrollConfig }) {
                     <button
                       disabled={pending}
                       onClick={() => askDelete(
-                        `ชุดอัตราที่เริ่มมีผล ${r.effectiveFrom}`,
+                        `ชุดอัตราที่เริ่มมีผล ${df.date(r.effectiveFrom)}`,
                         () => run(() => deletePayRatesAction(r.effectiveFrom), "ลบแล้ว", () => { startNew(); router.refresh(); }),
                       )}
                       className="ml-2 text-crit hover:underline"

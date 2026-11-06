@@ -6,6 +6,7 @@ import { getNextBatchNumberAction, saveFermentAction, getRecentFermentsAction, d
 import { Card, Field, MissingHint, NumInput, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import type { Container, Material, Product } from "./types";
 import { IconTrash } from "@/lib/shared/icons";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
 type MatRow = { material_id: string; amount: string };
 type RecentFerment = Awaited<ReturnType<typeof getRecentFermentsAction>>[number];
@@ -19,6 +20,7 @@ export function FermentTab({
   containers: Container[];
   products: Product[];
 }) {
+  const d = useDateFmt();
   const { pending, run } = useSaver();
   const { confirmNode, ask } = useConfirm();
   const [date, setDate] = useState(todayISO());
@@ -229,7 +231,7 @@ export function FermentTab({
             <tbody>
               {recent.map((r) => (
                 <tr key={r.batch}>
-                  <td className="whitespace-nowrap">{String(r.fermentDate).slice(0, 10)}</td>
+                  <td className="whitespace-nowrap">{d.date(String(r.fermentDate))}</td>
                   <td className="font-medium text-ink">{r.batch}</td>
                   <td>{r.productName}</td>
                   <td className="num">{r.tanks || "—"}</td>

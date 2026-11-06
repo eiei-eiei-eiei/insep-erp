@@ -16,6 +16,7 @@
 import type { CartLine } from "./types";
 import { lineAmount, type BarTotals } from "./totals";
 import { vatFromGross, vatLabel, type VatSplit } from "./vat";
+import { formatDate, formatDateTime, type DateFormat } from "../shared/dateFormat";
 import {
   fillTokens,
   legalNameLine,
@@ -79,7 +80,14 @@ export type ReceiptInput = {
    *    (ปล่อยช่องที่ไม่มีใครอ่านไว้ = ช่องหลอกแบบ `employees.end_date` ของ D76)
    */
   closedAt?: string | null;
+  /**
+   * D161 เฟส 3 — **timestamp ดิบ** (ISO) ไม่ใช่ข้อความที่จัดรูปแล้ว · `closedAt` ก็เช่นกัน
+   * 🪤 เดิมผู้เรียกส่ง `toLocaleString("th-TH")` = `6/11/2569 16:57:03` (ไม่เติมศูนย์ + มีวินาที)
+   *    และ `{วันที่}` ได้มาจากการตัดที่ช่องว่างแรก ⇒ ถ้ารูปแบบมีช่องว่าง (`6 พ.ย. 69`) จะเหลือแค่ `6`
+   */
   printedAt: string;
+  /** รูปแบบวันที่บนเอกสาร (`useDateFmt().docFmt`) — บังคับส่ง ลืม = build ไม่ผ่าน */
+  dateFormat: DateFormat;
   footer?: string | null;
   /** payload จาก `promptPayPayload()` — `null` = ตั้งค่าไม่ครบ */
   qrPayload?: string | null;
@@ -201,7 +209,7 @@ export function buildReceipt(input: ReceiptInput): ReceiptDoc {
     ยอด: input.totals.grandTotal.toLocaleString("en-US", {
       minimumFractionDigits: 2, maximumFractionDigits: 2,
     }),
-    วันที่: (input.closedAt ?? input.printedAt).split(" ")[0] ?? "",
+    วันที่: formatDate(input.closedAt ?? input.printedAt, input.dateFormat),
     ชื่อลูกค้า: input.buyer?.name ?? "",
   };
 
@@ -233,7 +241,7 @@ export function buildReceipt(input: ReceiptInput): ReceiptDoc {
     vat,
     vatLabel: vat ? vatLabel() : null,
     voidStamp,
-    printedAt: input.printedAt,
+    printedAt: formatDateTime(input.printedAt, input.dateFormat),
     // ★ ข้อความท้ายบิลมาจาก 2 ทาง — ผังใหม่ (แทนค่าตัวแปรได้) หรือค่าเดิมที่ส่งมาตรง ๆ
     //   ผังชนะเมื่อมีค่า เพื่อให้ที่ตั้งค่าใหม่เป็นแหล่งความจริงเดียว
     footer: fillTokens(layout.footer, tokens).trim() || input.footer?.trim() || null,

@@ -17,6 +17,7 @@ import { printQuotation, openPrintWindow } from "./print";
 import { IconCart, IconPlus } from "@/lib/shared/icons";
 import { AddCustomerModal } from "./CustomerFields";
 import { defaultRevenueCat, revenueCatHint, revenueCatOptions } from "@/lib/sales/revenueCats";
+import { bangkokDateISO } from "@/lib/shared/datetime";
 
 export function QuotationTab({
   boot,
@@ -156,7 +157,7 @@ export function QuotationTab({
         const res = data as { qu_no: string; qu_expire: string };
         printQuotation(boot.company, {
           quNo: res.qu_no,
-          date: new Date().toLocaleDateString("th-TH"),
+          dateISO: bangkokDateISO(), // D161 เฟส 3 — เดิม toLocaleDateString = `6/11/2569` (ไม่เติมศูนย์ ต่างจากใบพิมพ์ซ้ำ)
           quExp: res.qu_expire,
           customerName: customer.name,
           customerAddress: customer.address,

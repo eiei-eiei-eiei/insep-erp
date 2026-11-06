@@ -10,6 +10,8 @@ import {
   exciseReminderMessage,
   reminderHintText,
 } from "./exciseReminder";
+import { thaiDay } from "../shared/period";
+import { formatDayShort } from "../shared/dateFormat";
 
 const NEVER_CLOSED = () => false;
 
@@ -162,21 +164,29 @@ describe("D92 — ข้อความ", () => {
 
 describe("D92 — บรรทัดบอกสถานะการเตือนบนการ์ดในแอป", () => {
   it("🚨 ไม่กรอกเลขสรรพสามิต = เหลือง พร้อมบอกว่าต้องไปกรอกที่ไหน", () => {
-    const h = reminderHintText({ hasExciseId: false, closed: false, period: "2026-09" })!;
+    const h = reminderHintText({ hasExciseId: false, closed: false, period: "2026-09", day: thaiDay })!;
     expect(h.warn).toBe(true);
     expect(h.text).toContain("ไม่เตือน");
     expect(h.text).toContain("ตั้งค่า → กิจการ");
   });
 
   it("ปิดเดือนแล้ว = ไม่ต้องขึ้นอะไร", () => {
-    expect(reminderHintText({ hasExciseId: true, closed: true, period: "2026-09" })).toBeNull();
+    expect(reminderHintText({ hasExciseId: true, closed: true, period: "2026-09", day: thaiDay })).toBeNull();
   });
 
   it("ยังไม่ปิด = บอกวันที่จะเตือนและวันครบกำหนด", () => {
-    const h = reminderHintText({ hasExciseId: true, closed: false, period: "2026-08" })!;
+    const h = reminderHintText({ hasExciseId: true, closed: false, period: "2026-08", day: thaiDay })!;
     expect(h.warn).toBe(false);
     expect(h.text).toContain("12 ก.ย.");
     expect(h.text).toContain("15 ก.ย.");
+  });
+
+  it("D161 — วันที่บนจอตามรูปแบบที่ลูกค้าเลือก", () => {
+    const day = (iso: string) => formatDayShort(iso, "dd_mm_yyyy_ce");
+    const h = reminderHintText({ hasExciseId: true, closed: false, period: "2026-08", day })!;
+    expect(h.text).toContain("12/09");
+    expect(h.text).toContain("(ครบกำหนดยื่น 15/09)");
+    expect(h.text).not.toContain("ก.ย.");
   });
 });
 

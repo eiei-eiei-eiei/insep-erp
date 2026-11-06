@@ -32,7 +32,7 @@ import {
   stagesDescText,
   type FilingMethod,
 } from "@/lib/accounting/taxFiling";
-import { formatDateThai } from "@/lib/shared/format";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import {
   payTaxAction,
   unpayTaxAction,
@@ -84,6 +84,7 @@ export function TaxPayCard({
   const [open, setOpen] = useState<TaxDueRow | null>(null);
   const { pending, run, setMsg } = useSaver();
   const { confirmNode, ask } = useConfirm();
+  const d = useDateFmt();
 
   // 🚨🚨 D89 — ถ้าอ่าน tax_payments ไม่ได้แล้วปล่อยผ่าน กระดานจะบอกว่า "ยังไม่เคยจ่าย"
   //    ทั้งที่จ่ายไปแล้ว → ผู้ใช้กดจ่ายซ้ำ · ต้องขึ้นแถบแดงและอย่าให้ตัดสินใจจากจอนี้
@@ -110,7 +111,7 @@ export function TaxPayCard({
     const warn = fileWithoutFormWarn(r.formCreated);
     if (
       !(await ask({
-        title: `บันทึกว่ายื่น ${r.label} งวด ${r.period} แล้ว?`,
+        title: `บันทึกว่ายื่น ${r.label} งวด ${d.month(r.period)} แล้ว?`,
         detail: `ระบบจะหยุดเตือนงวดนี้เข้ากลุ่ม LINE (ไม่เกี่ยวกับการจ่ายเงิน)` + (warn ? `\n\n⚠ ${warn}` : ""),
         confirmText: "บันทึกว่ายื่นแล้ว",
       }))
@@ -123,7 +124,7 @@ export function TaxPayCard({
   }
   async function doUnfile(r: TaxDueRow) {
     if (!(await ask({
-      title: `ถอนการบันทึกยื่น ${r.label} งวด ${r.period}?`,
+      title: `ถอนการบันทึกยื่น ${r.label} งวด ${d.month(r.period)}?`,
       detail: "ระบบจะกลับมาเตือนงวดนี้เข้ากลุ่ม LINE อีกครั้ง",
       confirmText: "ถอนการบันทึกยื่น",
       cancelText: "กลับ",
@@ -193,9 +194,9 @@ export function TaxPayCard({
               <tbody>
                 {board.history.map((h, i) => (
                   <tr key={`${h.kind}-${h.period}-${i}`}>
-                    <td>{h.period}</td>
+                    <td className="whitespace-nowrap">{d.month(h.period)}</td>
                     <td>{h.kind === "vat" ? "ภพ.30" : h.kind === "pnd3" ? "ภงด.3" : "ภงด.53"}</td>
-                    <td>{formatDateThai(h.pay_date)}</td>
+                    <td className="whitespace-nowrap">{d.date(h.pay_date)}</td>
                     <td className="num">{fmt(h.amount)}</td>
                     <td className="num">{h.surcharge ? fmt(h.surcharge) : "—"}</td>
                     <td>{h.account_name ?? "—"}</td>
@@ -236,13 +237,14 @@ function TaxRow({
   method: FilingMethod | null;
   onPay: () => void; onUnpay: () => void; onFile: () => void; onUnfile: () => void;
 }) {
+  const d = useDateFmt();
   const p = row.payment;
   const done = row.badge === "paid";
   // ★ ป้าย/ข้อความของการยื่นตัดสินใน lib ที่มีเทสคุม — ที่นี่แค่วาด (D84/D88)
   const fBadge = filingBadge(row.submitted);
   const fHint = filingHintText(
     { submitted: row.submitted, bySystem: row.submittedBySystem },
-    stagesDescText(row.kind, row.period, method),
+    stagesDescText(row.kind, row.period, method, d.day),
   );
   // ★ ป้ายสถานะตัดสินใน lib (มีเทสคุม) — ที่นี่แค่แปลงเป็นสีกับคำ
   const BADGE = {
@@ -264,10 +266,10 @@ function TaxRow({
         <Badge tone={tone}>{badgeText}</Badge>
         <span className="text-xs text-faint">
           {method === "efiling"
-            ? `กำหนดยื่นออนไลน์ ${formatDateThai(row.due.efiling)}`
+            ? `กำหนดยื่นออนไลน์ ${d.date(row.due.efiling)}`
             : method === "paper"
-              ? `กำหนดยื่นกระดาษ ${formatDateThai(row.due.paper)}`
-              : `กำหนดยื่น ${formatDateThai(row.due.paper)} · ยื่นออนไลน์ถึง ${formatDateThai(row.due.efiling)}`}
+              ? `กำหนดยื่นกระดาษ ${d.date(row.due.paper)}`
+              : `กำหนดยื่น ${d.date(row.due.paper)} · ยื่นออนไลน์ถึง ${d.date(row.due.efiling)}`}
         </span>
       </div>
 
@@ -293,7 +295,7 @@ function TaxRow({
         )}
         {done && p && (
           <span className="text-muted">
-            จ่าย {formatDateThai(p.pay_date)} · บิล {p.tx_id}
+            จ่าย {d.date(p.pay_date)} · บิล {p.tx_id}
             {p.surcharge > 0 ? ` · เบี้ยปรับ ${fmt(p.surcharge)}` : ""}
           </span>
         )}
@@ -366,6 +368,7 @@ function PayModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const d = useDateFmt();
   const pref = prefs[row.kind] ?? {};
   const visibleAccounts = accountsFor(accounts, entityId);
   const [payDate, setPayDate] = useState(todayISO());
@@ -422,7 +425,7 @@ function PayModal({
       <div className="min-h-dvh w-full bg-card p-5 sm:my-8 sm:min-h-0 sm:max-w-2xl sm:rounded-lg" onClick={(e) => e.stopPropagation()}>
         <h3 className="font-semibold text-ink">บันทึกจ่าย {TAX_KIND_FULL[row.kind]}</h3>
         <p className="mb-3 text-xs text-faint">
-          {taxTxDescription(row.kind, row.period)} · กำหนดยื่น {formatDateThai(row.due.paper)} (ออนไลน์ถึง {formatDateThai(row.due.efiling)})
+          {taxTxDescription(row.kind, row.period)} · กำหนดยื่น {d.date(row.due.paper)} (ออนไลน์ถึง {d.date(row.due.efiling)})
         </p>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

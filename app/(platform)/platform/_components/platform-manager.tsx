@@ -13,7 +13,7 @@ import {
   Badge,
   useSaver, useConfirm } from "@/lib/shared/ui";
 import { IconAlert, IconCheck, IconPlus } from "@/lib/shared/icons";
-import { formatDateThai } from "@/lib/shared/format";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { BRAND_COLORS } from "@/lib/shared/branding";
 import { MODULES, MODULE_LABEL, ROLE_LABEL, toRole, type ModuleKey } from "@/lib/shared/workspaces";
 import type { TenantRow } from "@/lib/platform/provision";
@@ -41,9 +41,6 @@ function moduleLabel(m: string, withNote = false): string {
   const base = MODULE_LABEL[m as ModuleKey] ?? m;
   return withNote ? base + (MODULE_NOTE[m] ?? "") : base;
 }
-
-/** วันที่ไทยย่อ — ใช้ตัวเดียวกับทั้งระบบ (`lib/shared/format`) ไม่เขียนของตัวเอง */
-const dateTH = (iso: string) => formatDateThai(iso);
 
 /**
  * แผงแสดง "รหัสชั่วคราว" — ★ หัวใจของเฟส 1
@@ -289,6 +286,7 @@ function TenantPanel({
   onSetVat: (entityId: string, isVat: boolean) => void;
   onReset: (userId: string, username: string) => void;
 }) {
+  const df = useDateFmt();
   const [modules, setModules] = useState<string[]>(t.modules.length ? t.modules : [...MODULES]);
   const [quota, setQuota] = useState(t.maxEntities);
   const [entityId, setEntityId] = useState("");
@@ -309,7 +307,7 @@ function TenantPanel({
         <div>
           <h2 className="text-base font-bold text-ink">{t.name}</h2>
           <div className="text-xs text-faint">
-            {t.slug} · เปิดใช้เมื่อ {dateTH(t.createdAt)}
+            {t.slug} · เปิดใช้เมื่อ {df.date(t.createdAt)}
           </div>
         </div>
         {!t.isActive && <Badge tone="crit">ปิดใช้งาน</Badge>}
@@ -546,6 +544,7 @@ function TenantPanel({
 // ── หน้าหลัก ─────────────────────────────────────────────────────────────────
 
 export function PlatformManager({ tenants }: { tenants: TenantRow[] }) {
+  const df = useDateFmt();
   const { pending, run, setMsg } = useSaver();
   const { confirmNode, ask } = useConfirm();
   const [showNew, setShowNew] = useState(false);
@@ -628,7 +627,7 @@ export function PlatformManager({ tenants }: { tenants: TenantRow[] }) {
                     {t.entities.length}/{t.maxEntities}
                   </td>
                   <td className="num">{t.users.length}</td>
-                  <td>{dateTH(t.createdAt)}</td>
+                  <td>{df.date(t.createdAt)}</td>
                   <td className="act">
                     <RowBtn type="button" onClick={() => setOpenId(t.id === openId ? null : t.id)}>
                       {t.id === openId ? "ปิด" : "จัดการ"}

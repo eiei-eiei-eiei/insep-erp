@@ -19,6 +19,7 @@ import {
 } from "@/lib/bar/layout";
 import { buildReceipt } from "@/lib/bar/receipt";
 import { barTotals } from "@/lib/bar/totals";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { Card, Field, TextInput, Select, useConfirm } from "@/lib/shared/ui";
 
 /** ตัวอย่างที่ใช้พรีวิว — ★ ตั้งใจให้มีครบทุกอย่างที่บล็อกต่าง ๆ ต้องใช้ */
@@ -54,6 +55,7 @@ export function ReceiptLayoutCard({
   value: ReceiptLayout;
   onChange: (v: ReceiptLayout) => void;
 }) {
+  const df = useDateFmt();
   const { confirmNode, ask } = useConfirm();
   const [kind, setKind] = useState<PreviewKind>("receipt");
   const [html, setHtml] = useState("");
@@ -133,8 +135,10 @@ export function ReceiptLayoutCard({
         totals,
         seller: boot.seller ?? { name: "ชื่อร้านของคุณ" },
         buyer: { name: "คุณลูกค้า (ตัวอย่าง)", taxId: "0105558123456" },
-        closedAt: kind === "unpaid" ? null : "13/09/2569 23:50",
-        printedAt: "13/09/2569 23:51",
+        closedAt: kind === "unpaid" ? null : "2026-09-13T23:50:00+07:00",
+        printedAt: "2026-09-13T23:51:00+07:00",
+        // D161 เฟส 3 — พรีวิวใช้รูปแบบเอกสารของกิจการจริง (ตัวเดียวกับกระดาษ)
+        dateFormat: df.docFmt,
         // 🚨 QR ยังตัดสินที่ `receipt.ts` จุดเดียว — พรีวิวส่ง payload ปลอมมาก็ถูกทิ้ง
         //    ถ้าเอกสารนั้นไม่ควรมี QR (ใบที่จ่ายแล้ว)
         qrPayload: "00020101021129370016A000000677010111011300660000000005802TH530376463047A9E",
@@ -150,7 +154,7 @@ export function ReceiptLayoutCard({
     return () => {
       alive = false;
     };
-  }, [value, kind, boot.seller, L.paper, L.fontLarge]);
+  }, [value, kind, boot.seller, L.paper, L.fontLarge, df.docFmt]);
 
   return (
     <Card title="รูปแบบบิล" className="lg:col-span-2">

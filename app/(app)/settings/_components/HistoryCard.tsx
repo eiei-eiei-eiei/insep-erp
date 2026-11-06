@@ -4,6 +4,7 @@ import { Fragment, useState } from "react";
 import { Card, Empty, Badge, RowBtn } from "@/lib/shared/ui";
 import { tableLabel, type TenantTable } from "@/lib/shared/tenantTables";
 import { changedFields, rawBefore, rowPkLabel, ACTION_LABEL_TH, type EditLogRow } from "@/lib/shared/editLog";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
 /**
  * ประวัติการแก้ไข — ดูอย่างเดียว + คัดลอกค่าเก่า (D80)
@@ -14,11 +15,6 @@ import { changedFields, rawBefore, rowPkLabel, ACTION_LABEL_TH, type EditLogRow 
  */
 
 const ACTION_TONE = { insert: "ok", update: "brand", delete: "crit" } as const;
-
-function fmtWhen(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" });
-}
 
 export function HistoryCard({
   rows,
@@ -34,6 +30,7 @@ export function HistoryCard({
   limit: number;
   filter: { table: string; action: string; q: string; days: number };
 }) {
+  const df = useDateFmt();
   const [open, setOpen] = useState<number | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
@@ -153,7 +150,7 @@ export function HistoryCard({
                           onClick={() => setOpen(isOpen ? null : r.id)}
                           className="cursor-pointer"
                         >
-                          <td className="whitespace-nowrap text-muted">{fmtWhen(r.createdAt)}</td>
+                          <td className="whitespace-nowrap text-muted">{df.dateTime(r.createdAt)}</td>
                           <td className="text-muted">{r.userName}</td>
                           <td className="text-muted">{tableLabel(r.tableName)}</td>
                           <td className="font-medium text-ink">{r.rowPk ? rowPkLabel(r.tableName, r.rowPk) : "—"}</td>

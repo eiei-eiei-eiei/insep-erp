@@ -6,7 +6,7 @@ import { showToast } from "@/lib/shared/toast";
 import { fmt, Field, Select, TextInput, LoadError } from "./ui";
 import type { OrderRow } from "./types";
 import type { CompanyInfo } from "@/lib/sales/company";
-import { formatThaiDate } from "@/lib/sales/orders";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { CN_REASONS, CN_REASON_KEYS, cnInputError, cnWhtNote, type CnReason } from "@/lib/sales/creditNote";
 import { CANCEL_ORDER_DETAIL } from "@/lib/sales/cancelledDocs";
 import { cancelLockedText } from "@/lib/production/monthClose";
@@ -31,6 +31,7 @@ export function CancelOrderDialog({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const d = useDateFmt();
   const [plan, setPlan] = useState<Plan | null>(null);
   const [err, setErr] = useState(false);
   const [useCredit, setUseCredit] = useState(true);
@@ -61,21 +62,21 @@ export function CancelOrderDialog({
     const r = await cancelOrderAction(order.quNo, credit ? { reason, detail, date, refundAccount: account } : undefined);
     setBusy(false);
     if (!r.ok) { w?.close(); setError(r.error ?? "ยกเลิกไม่สำเร็จ"); return; }
-    const d = r.data as { cn_no?: string | null; excise_locked_months?: string[] } | undefined;
-    const locked = cancelLockedText(order.quNo, d?.excise_locked_months ?? []);
+    const res = r.data as { cn_no?: string | null; excise_locked_months?: string[] } | undefined;
+    const locked = cancelLockedText(order.quNo, res?.excise_locked_months ?? [], d.month);
     showToast(locked
       ? { ok: true, warn: true, text: locked }
-      : { ok: true, text: d?.cn_no ? `ยกเลิก ${order.quNo} แล้ว · ออกใบลดหนี้ ${d.cn_no}` : `ยกเลิก ${order.quNo} แล้ว` });
+      : { ok: true, text: res?.cn_no ? `ยกเลิก ${order.quNo} แล้ว · ออกใบลดหนี้ ${res.cn_no}` : `ยกเลิก ${order.quNo} แล้ว` });
     onDone();
-    if (d?.cn_no && w) {
+    if (res?.cn_no && w) {
       try {
         const [cns, items, payments] = await Promise.all([getCreditNotesAction(order.quNo), getOrderItemsAction(order.quNo), getOrderPaymentsAction(order.quNo)]);
-        const cn = cns.find((x) => x.cnNo === d.cn_no);
+        const cn = cns.find((x) => x.cnNo === res.cn_no);
         if (cn) printCreditNote(company, { ...(order as OrderLike), payments }, items, cn, w);
         else w.close();
       } catch {
         w.close();
-        showToast({ ok: false, text: `ออกใบลดหนี้ ${d.cn_no} แล้ว แต่โหลดมาพิมพ์ไม่สำเร็จ — กด พิมพ์ใบลดหนี้ ที่แท็บ ปิด / ยกเลิก` });
+        showToast({ ok: false, text: `ออกใบลดหนี้ ${res.cn_no} แล้ว แต่โหลดมาพิมพ์ไม่สำเร็จ — กด พิมพ์ใบลดหนี้ ที่แท็บ ปิด / ยกเลิก` });
       }
     }
     onClose();
@@ -106,7 +107,7 @@ export function CancelOrderDialog({
           <div className="space-y-3 text-sm">
             <div className="rounded bg-raised p-2 text-muted">
               {order.customerName}
-              {plan.bills.length > 0 && <> · ใบกำกับภาษีที่ออกไปแล้ว: {plan.bills.map((b) => `${b.taxInvoiceNo || "-"} (${formatThaiDate(b.taxInvoiceDate || b.date)})`).join(", ")}</>}
+              {plan.bills.length > 0 && <> · ใบกำกับภาษีที่ออกไปแล้ว: {plan.bills.map((b) => `${b.taxInvoiceNo || "-"} (${d.date(b.taxInvoiceDate || b.date)})`).join(", ")}</>}
             </div>
 
             {plan.mode === "void" ? null : plan.mode === "credit_note" ? (

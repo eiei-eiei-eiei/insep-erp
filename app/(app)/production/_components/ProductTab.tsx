@@ -6,11 +6,13 @@ import { saveProductAction, getRecentProductsAction, deleteProductLogAction, upd
 import { Card, Field, MissingHint, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import { PRODUCT_TYPES, type Product } from "./types";
 import { IconEdit, IconTrash } from "@/lib/shared/icons";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
 type RecentProduct = Awaited<ReturnType<typeof getRecentProductsAction>>[number];
 type EditFields = { date: string; transType: string; productId: string; amount: string; note: string };
 
 export function ProductTab({ products }: { products: Product[] }) {
+  const d = useDateFmt();
   const { pending, run } = useSaver();
   const { confirmNode, ask } = useConfirm();
   const [date, setDate] = useState(todayISO());
@@ -135,7 +137,7 @@ export function ProductTab({ products }: { products: Product[] }) {
                   </tr>
                 ) : (
                   <tr key={r.id as number}>
-                    <td className="whitespace-nowrap">{String(r.doc_date).slice(0, 10)}</td>
+                    <td className="whitespace-nowrap">{d.date(String(r.doc_date))}</td>
                     <td>{r.trans_type as string}</td>
                     <td>{prodName(r.product_id as string)}</td>
                     <td className="num">{r.amount as number}</td>

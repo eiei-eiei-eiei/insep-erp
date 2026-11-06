@@ -1,6 +1,6 @@
 "use client";
 import { IconCheck, IconSquare } from "@/lib/shared/icons";
-import { formatDateThai } from "@/lib/shared/format";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
 /**
  * FLOW sec 6 — "เดือนนี้สร้างรายงานครบยัง"
@@ -24,11 +24,12 @@ export function ReportChecklist({
   title?: string;
   month: string;
   items: ChecklistItem[];
-  runs: Record<string, string>; // report_key → วันที่สร้างล่าสุด (yyyy-MM-dd)
+  runs: Record<string, string>; // report_key → เวลาที่สร้างล่าสุด (timestamp เต็ม — D161 แปลงเป็นวันที่ไทยตอนแสดง)
   note?: string;
   /** วันนี้ (ISO) — ส่งมาจากผู้เรียกเพื่อให้เทียบกำหนดยื่นได้ */
   today?: string;
 }) {
+  const d = useDateFmt();
   const doneCount = items.filter((i) => runs[i.key]).length;
   const allDone = doneCount === items.length && items.length > 0;
 
@@ -39,7 +40,7 @@ export function ReportChecklist({
         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${allDone ? "bg-ok-bg text-ok" : "bg-warn-bg text-warn"}`}>
           {doneCount}/{items.length} {allDone ? "ครบแล้ว" : "ยังไม่ครบ"}
         </span>
-        <span className="text-xs text-faint">เดือน {month}</span>
+        <span className="text-xs text-faint">เดือน {d.month(month)}</span>
       </div>
       <ul className="space-y-1 text-sm">
         {items.map((i) => {
@@ -49,14 +50,14 @@ export function ReportChecklist({
               <span className={at ? "text-ok" : "text-faint"}>{at ? <IconCheck size={15} /> : <IconSquare size={15} />}</span>
               <span className={at ? "text-muted" : "text-faint"}>{i.label}</span>
               {at ? (
-                <span className="text-xs text-faint">— สร้างล่าสุด {at}</span>
+                <span className="text-xs text-faint">— สร้างล่าสุด {d.date(at)}</span>
               ) : (
                 <span className="text-xs text-warn">— ยังไม่ได้สร้าง</span>
               )}
               {/* กำหนดยื่นตามกฎหมาย — เลยกำหนดแล้วยังไม่สร้าง = แดง (D88) */}
               {i.due && (
                 <span className={!at && today && today > i.due ? "text-xs font-medium text-crit" : "text-xs text-faint"}>
-                  {!at && today && today > i.due ? "⚠ เลยกำหนดยื่นแล้ว" : "ครบกำหนดยื่น"} {formatDateThai(i.due)}
+                  {!at && today && today > i.due ? "⚠ เลยกำหนดยื่นแล้ว" : "ครบกำหนดยื่น"} {d.date(i.due)}
                 </span>
               )}
             </li>

@@ -695,7 +695,11 @@ export function whtReport(
 // ── A11: Dashboard + WHT pending ─────────────────────────────────────────────
 export type DashPending = {
   transactionId: string;
-  displayDate: string; // dd/mm/yy (พ.ศ.)
+  /**
+   * วันที่ของแถวนี้ (yyyy-MM-dd) — วันที่ชำระ ถ้าเคลียแล้ว ไม่งั้นวันที่ใบกำกับ/วันที่รายการ
+   * ★ D161: เดิมเป็นข้อความ dd/mm/yy ที่จัดรูปไว้ที่นี่ → ส่ง ISO แล้วให้หน้าจอจัดรูปตามค่าตั้งของลูกค้า
+   */
+  pendDateISO: string;
   transactionDateISO: string; // yyyy-MM-dd (วันออกหนังสือ 50ทวิ)
   contactName: string;
   contactId: string; // สาขาที่แน่นอน (multi-branch D30) — "" = ข้อมูลเก่า fallback ชื่อ
@@ -763,7 +767,7 @@ export function dashboardData(
       if (inPend && whtAmount > 0 && !issuedTxIds.has(tx.tx_id)) {
         whtPending.push({
           transactionId: tx.tx_id,
-          displayDate: formatDateBE(pendDate, "/"),
+          pendDateISO: String(pendDate ?? "").substring(0, 10),
           // ★ ค่าตั้งต้นของ "วันที่จ่าย" บนฟอร์ม 50ทวิ — บิลที่เคลียแล้วใช้วันที่จ่ายจริง
           transactionDateISO: String(tx.settled_on || tx.transaction_date || "").substring(0, 10),
           contactName: tx.contact_name ?? "",

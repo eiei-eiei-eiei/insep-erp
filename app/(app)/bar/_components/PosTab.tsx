@@ -39,6 +39,7 @@ import {
 import { CustomerModal } from "./CustomerModal";
 import { RecipeEditor } from "./RecipeEditor";
 import { BilledLineRow, EditBillCustomer } from "./BilledLines";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
 // D116 — เหลือ เงินสด · โอน/QR (ไม่รับบัตร · โอนกับ QR เคยทำงานเหมือนกันทุกอย่าง)
 const METHODS: readonly string[] = PAY_METHODS;
@@ -77,6 +78,7 @@ type Discounts = Record<string, DiscountInput>;
  *    PromptPay ไม่มี callback — **ระบบไม่มีทางรู้ว่าจ่ายแล้วจริง** ห้ามทำท่าว่ารู้
  */
 export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Promise<void> }) {
+  const df = useDateFmt();
   const data = boot;
   const { setMsg } = useSaver();
   const { confirmNode, ask } = useConfirm();
@@ -345,8 +347,9 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
       totals: t,
       seller: data.seller,
       buyer: cust ? { name: cust.name, address: cust.address, taxId: cust.taxId, branch: cust.branch } : null,
-      closedAt: opts.paid ? new Date().toLocaleString("th-TH") : null,
-      printedAt: new Date().toLocaleString("th-TH"),
+      closedAt: opts.paid ? new Date().toISOString() : null,
+      printedAt: new Date().toISOString(),
+      dateFormat: df.docFmt, // D161 เฟส 3
       footer: data.settings.footer,
       qrPayload: promptPayPayload({ target: ppTarget, amount: t.grandTotal }),
       discountLabel: discountLabel(d),

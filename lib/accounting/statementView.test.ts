@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { presetRange, rangeTitle, rangeError, isMultiMonth } from "./statementView";
+import { formatMonth } from "../shared/dateFormat";
 
 describe("A27 — ปุ่มลัดช่วงเวลา statement (D139)", () => {
   it("เดือนนี้ / 3 เดือน / ต้นปี / ทั้งหมด", () => {
@@ -12,9 +13,17 @@ describe("A27 — ปุ่มลัดช่วงเวลา statement (D139)
     expect(presetRange("3m", "2026-02")).toEqual({ from: "2025-12", to: "2026-02" });
   });
   it("ป้ายหัวการ์ด", () => {
-    expect(rangeTitle({ from: "2026-07", to: "2026-07" })).toBe("เดือน 2026-07");
-    expect(rangeTitle({ from: "2026-05", to: "2026-07" })).toBe("2026-05 ถึง 2026-07");
-    expect(rangeTitle({ from: null, to: null })).toBe("ทั้งหมด");
+    const iso = (p: string) => p;
+    expect(rangeTitle({ from: "2026-07", to: "2026-07" }, iso)).toBe("เดือน 2026-07");
+    expect(rangeTitle({ from: "2026-05", to: "2026-07" }, iso)).toBe("2026-05 ถึง 2026-07");
+    expect(rangeTitle({ from: null, to: null }, iso)).toBe("ทั้งหมด");
+  });
+  it("D161 — เดือนบนป้ายใช้รูปแบบวันที่ที่ลูกค้าเลือก", () => {
+    const th = (p: string) => formatMonth(p, "d_mon_yy");
+    expect(rangeTitle({ from: "2026-07", to: "2026-07" }, th)).toBe("เดือน ก.ค. 69");
+    expect(rangeTitle({ from: "2026-05", to: "2026-07" }, th)).toBe("พ.ค. 69 ถึง ก.ค. 69");
+    expect(rangeTitle({ from: "2026-05", to: null }, th)).toBe("ตั้งแต่ พ.ค. 69");
+    expect(rangeTitle({ from: null, to: "2026-07" }, th)).toBe("จนถึง ก.ค. 69");
   });
   it("เดือนเริ่มหลังเดือนสุดท้าย = ผิด", () => {
     expect(rangeError({ from: "2026-08", to: "2026-07" })).not.toBe("");

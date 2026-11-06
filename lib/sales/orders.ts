@@ -185,6 +185,10 @@ export function dueDateISO(docDate: string, creditDays: number): string {
 /** format ISO date → 'dd/MM/yyyy' พ.ศ. (สำหรับแสดงผล/พิมพ์เอกสาร) */
 export function formatThaiDate(iso: string): string {
   if (!iso) return "";
+  // 🪤 D161 เฟส 0: 'yyyy-MM-dd' แกะสตริงตรง ๆ — `new Date('2026-11-06')` = เที่ยงคืน UTC
+  //    แล้ว getDate() ตามเวลาเครื่อง ⇒ เครื่องที่ offset ติดลบได้วันก่อนหน้า (เหตุผลเดียวกับ formatDateThai)
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (m) return `${m[3]}/${m[2]}/${Number(m[1]) + 543}`;
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
   const dd = String(d.getDate()).padStart(2, "0");

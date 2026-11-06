@@ -3,7 +3,11 @@ import {
   isRealISODate, docDateError, shipDateError, saleDateError, docDateNote, shipDateNote, saleDateNote,
   manualNoFields, manualNoError, actionPostsRevenue,
 } from "./backdate";
-import { neededSerials, type OrderAction, type OrderState } from "./orders";
+import { neededSerials, formatThaiDate, type OrderAction, type OrderState } from "./orders";
+import { formatDate } from "../shared/dateFormat";
+
+/** D161: รูปแบบเดิมของคำเตือน (dd/MM/yyyy พ.ศ.) — ผู้เรียกจริงส่ง useDateFmt().date */
+const F = formatThaiDate;
 
 const TODAY = "2026-09-28";
 const order = (o: Partial<OrderState> = {}): OrderState => ({
@@ -41,15 +45,22 @@ describe("วันที่ (D100 เฟส 3)", () => {
   });
 
   it("วันนี้ = ไม่มีคำเตือน · ย้อนหลังบอกว่าอะไรจะเป็นของวันนั้น + เรื่องยื่นแบบเพิ่มเติม", () => {
-    expect(docDateNote(TODAY, TODAY)).toBeNull();
-    expect(docDateNote("2026-09-25", TODAY)).toMatch(/ย้อนหลัง.*25\/09\/2569.*ยื่นเพิ่มเติม/);
-    expect(docDateNote("2026-10-05", TODAY)).toMatch(/ล่วงหน้า/);
-    expect(shipDateNote(TODAY, TODAY)).toBeNull();
-    expect(shipDateNote("2026-09-25", TODAY)).toMatch(/ภส\..*ปิดเดือน/);
-    expect(shipDateNote("2026-09-29", TODAY)).toBeNull(); // ล่วงหน้าเป็น error ไม่ใช่คำเตือน
+    expect(docDateNote(TODAY, TODAY, F)).toBeNull();
+    expect(docDateNote("2026-09-25", TODAY, F)).toMatch(/ย้อนหลัง.*25\/09\/2569.*ยื่นเพิ่มเติม/);
+    expect(docDateNote("2026-10-05", TODAY, F)).toMatch(/ล่วงหน้า/);
+    expect(shipDateNote(TODAY, TODAY, F)).toBeNull();
+    expect(shipDateNote("2026-09-25", TODAY, F)).toMatch(/ภส\..*ปิดเดือน/);
+    expect(shipDateNote("2026-09-29", TODAY, F)).toBeNull(); // ล่วงหน้าเป็น error ไม่ใช่คำเตือน
     // ขายหน้าร้าน = ใบเดียวครบ 3 อย่าง ต้องบอกครบทั้ง 3
-    expect(saleDateNote("2026-09-25", TODAY)).toMatch(/ใบเสร็จ.*ภพ\.30.*ภส\./);
-    expect(saleDateNote(TODAY, TODAY)).toBeNull();
+    expect(saleDateNote("2026-09-25", TODAY, F)).toMatch(/ใบเสร็จ.*ภพ\.30.*ภส\./);
+    expect(saleDateNote(TODAY, TODAY, F)).toBeNull();
+  });
+
+  it("D161 — วันที่ในคำเตือนตามรูปแบบที่ลูกค้าเลือก", () => {
+    const th = (x: string) => formatDate(x, "d_mon_yy");
+    expect(docDateNote("2026-09-25", TODAY, th)).toContain("ย้อนหลังเป็นวันที่ 25 ก.ย. 69");
+    expect(shipDateNote("2026-09-25", TODAY, th)).toContain("วันที่ 25 ก.ย. 69");
+    expect(saleDateNote("2026-09-25", TODAY, (x) => formatDate(x, "iso"))).toContain("วันที่ 2026-09-25");
   });
 });
 
@@ -94,14 +105,14 @@ describe("ประโยคลงย้อนหลังต้องตรง�
   });
 
   it("🚨 ขั้นที่ไม่ลงบัญชี ห้ามบอกว่าบัญชี/ภพ.30 จะเป็นของวันนั้น", () => {
-    const n = docDateNote("2026-09-25", TODAY, false)!;
+    const n = docDateNote("2026-09-25", TODAY, F, false)!;
     expect(n).not.toMatch(/ภพ\.30/);
     expect(n).toMatch(/ยังไม่ลงบัญชี/);
-    expect(docDateNote("2026-10-05", TODAY, false)).toMatch(/ยังไม่ลงบัญชี/);
+    expect(docDateNote("2026-10-05", TODAY, F, false)).toMatch(/ยังไม่ลงบัญชี/);
   });
 
   it("ขั้นที่ลงบัญชี ยังบอกครบเหมือนเดิม (ค่าปริยาย = ลงบัญชี)", () => {
-    expect(docDateNote("2026-09-25", TODAY, true)).toMatch(/บัญชี และ ภพ\.30/);
-    expect(docDateNote("2026-09-25", TODAY)).toBe(docDateNote("2026-09-25", TODAY, true));
+    expect(docDateNote("2026-09-25", TODAY, F, true)).toMatch(/บัญชี และ ภพ\.30/);
+    expect(docDateNote("2026-09-25", TODAY, F)).toBe(docDateNote("2026-09-25", TODAY, F, true));
   });
 });

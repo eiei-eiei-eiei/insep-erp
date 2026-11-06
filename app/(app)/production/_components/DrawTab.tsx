@@ -13,6 +13,7 @@ import {
 import { Card, Field, MissingHint, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import type { PendingBatch, Product } from "./types";
 import { IconEdit, IconTrash } from "@/lib/shared/icons";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
 type RecentDraw = Awaited<ReturnType<typeof getRecentDrawsAction>>[number];
 type EditFields = {
@@ -40,6 +41,7 @@ export function DrawTab({
   batch: string;
   onBatchChange: (b: string) => void;
 }) {
+  const d = useDateFmt();
   const { pending: busy, run } = useSaver();
   const { confirmNode, ask } = useConfirm();
   const [date, setDate] = useState(todayISO());
@@ -133,7 +135,7 @@ export function DrawTab({
   }
 
   async function del(r: RecentDraw) {
-    if (!(await ask({ title: `ลบรายการรินน้ำสุราแช่ ครั้งที่หมัก ${r.batch} (${String(r.draw_date).slice(0, 10)})?`, detail: `น้ำหมักของ batch นี้จะกลับมาเป็นยอดคงเหลือ`, confirmText: "ลบ", danger: true }))) return;
+    if (!(await ask({ title: `ลบรายการรินน้ำสุราแช่ ครั้งที่หมัก ${r.batch} (${d.date(String(r.draw_date))})?`, detail: `น้ำหมักของ batch นี้จะกลับมาเป็นยอดคงเหลือ`, confirmText: "ลบ", danger: true }))) return;
     run(() => deleteDrawLogAction(r.id as number), "ลบรายการเรียบร้อย", () => { loadRecent(); refreshRemaining(); });
   }
   function startEdit(r: RecentDraw) {
@@ -304,8 +306,8 @@ export function DrawTab({
                   ) : (
                     <tr key={r.id as number}>
                       <td className="whitespace-nowrap">
-                        {String(r.draw_date).slice(0, 10)}
-                        {r.adjust_date && <span className="block text-xs text-faint">ปรุง {String(r.adjust_date).slice(0, 10)}</span>}
+                        {d.date(String(r.draw_date))}
+                        {r.adjust_date && <span className="block text-xs text-faint">ปรุง {d.date(String(r.adjust_date))}</span>}
                       </td>
                       <td>{r.product_name as string}</td>
                       <td className="whitespace-nowrap">{r.batch as string}</td>

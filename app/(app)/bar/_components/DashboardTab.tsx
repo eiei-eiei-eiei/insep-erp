@@ -17,6 +17,8 @@ import { labSummary, labDashboardText, labCategories, type LabUse } from "@/lib/
 import { unpostedText, unpostedTotal } from "@/lib/bar/posting";
 import { CASH_METHOD, accountForMethod } from "@/lib/bar/payMethods";
 import { customerLabel } from "@/lib/bar/customerName";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
+import { weekdayShort } from "@/lib/shared/dateFormat";
 
 type PostRow = { post_date: string; status: string; tx_ids: string[]; totals: Record<string, unknown>; posted_at: string };
 type CustRow = { customer_id: string; name: string; last_seen: string | null; visits: number; spend_total: number };
@@ -31,10 +33,6 @@ const toSale = (s: Record<string, unknown>): SaleRow => ({
   costTotal: Number(s.cost_total),
 });
 
-/** วันที่ในตาราง — ใส่วันในสัปดาห์ให้อ่านง่าย (โหลดฝั่ง client เท่านั้น ไม่มีปัญหา hydration) */
-const dayLabel = (d: string) =>
-  new Date(d + "T00:00:00").toLocaleDateString("th-TH", { weekday: "short", day: "numeric", month: "short" });
-
 /**
  * แดชบอร์ดบาร์ + ลงบัญชีรายวัน (D96 · รื้อหน้าตาใน D115)
  *
@@ -46,6 +44,7 @@ const dayLabel = (d: string) =>
  *   → แถบวันค้างย้ายขึ้นบนสุด · ช่วงสำเร็จรูป + โหลดเองเมื่อเปลี่ยนช่วง · เทียบช่วงก่อน
  */
 export function DashboardTab({ boot, onReload }: { boot: BarBoot; onReload: () => Promise<void> }) {
+  const df = useDateFmt();
   const { setMsg } = useSaver();
   const { confirmNode, ask } = useConfirm();
   const [busy, setBusy] = useState(false);
@@ -165,7 +164,7 @@ export function DashboardTab({ boot, onReload }: { boot: BarBoot; onReload: () =
       for (const d of boot.unposted) {
         const r = await postDayAction(d.date);
         if (r.ok) done += 1;
-        else failed.push(`${d.date} (${r.error ?? "ไม่สำเร็จ"})`);
+        else failed.push(`${df.date(d.date)} (${r.error ?? "ไม่สำเร็จ"})`);
       }
       await Promise.all([load(), onReload()]);
       // 🚨 สำเร็จบางส่วน ≠ สำเร็จ (บทเรียน D79/D86)
@@ -179,20 +178,20 @@ export function DashboardTab({ boot, onReload }: { boot: BarBoot; onReload: () =
   async function postDay(day: DayRow) {
     const warn = postConfirmText(day.state, openBills);
     if (warn) {
-      const ok = await ask({ title: `ลงบัญชีวันขาย ${day.date} ตอนนี้เลย?`, detail: warn, confirmText: "ลงบัญชี" });
+      const ok = await ask({ title: `ลงบัญชีวันขาย ${df.date(day.date)} ตอนนี้เลย?`, detail: warn, confirmText: "ลงบัญชี" });
       if (!ok) return;
     }
-    void run(() => postDayAction(day.date), `ลงบัญชีวันที่ ${day.date} แล้ว`);
+    void run(() => postDayAction(day.date), `ลงบัญชีวันที่ ${df.date(day.date)} แล้ว`);
   }
 
   async function unpostDay(date: string) {
     const ok = await ask({
-      title: `ถอนการลงบัญชีของวัน ${date}?`,
+      title: `ถอนการลงบัญชีของวัน ${df.date(date)}?`,
       detail: "บิลบัญชีของวันนั้นจะถูกยกเลิก (ไม่ลบทิ้ง) แล้วลงบัญชีใหม่ได้",
       confirmText: "ถอนการลงบัญชี",
       danger: true,
     });
-    if (ok) void run(() => unpostDayAction(date), `ถอนการลงบัญชีวันที่ ${date} แล้ว`);
+    if (ok) void run(() => unpostDayAction(date), `ถอนการลงบัญชีวันที่ ${df.date(date)} แล้ว`);
   }
 
   const ranged = inRange(sales, range.from, range.to);
@@ -221,7 +220,7 @@ export function DashboardTab({ boot, onReload }: { boot: BarBoot; onReload: () =
         <div className="rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">
           <div className="flex flex-wrap items-center gap-2">
             <span className="flex-1">
-              <b>{unpostedText(boot.unposted)}</b> · รวม {fmt(unpostedTotal(boot.unposted))} บาท
+              <b>{unpostedText(boot.unposted, df.day)}</b> · รวม {fmt(unpostedTotal(boot.unposted))} บาท
             </span>
             <button
               type="button"
@@ -289,7 +288,7 @@ export function DashboardTab({ boot, onReload }: { boot: BarBoot; onReload: () =
           </div>
           <p className="-mt-2 text-xs text-faint">
             ต้นทุน {fmt(s.cost)} · เฉลี่ยต่อบิล {s.avgPerBill === null ? "—" : fmt(s.avgPerBill)} ·
-            ▲▼ เทียบกับ {prevNote(range.from, range.to, p)}
+            ▲▼ เทียบกับ {prevNote(range.from, range.to, p, df.date)}
           </p>
           {/* D129 — ทุนห้องทดลอง แยกบรรทัด (ไม่ได้หักจากกำไรขั้นต้นข้างบน · ประโยคตัดสินใน lib) */}
           {labText && <p className="-mt-2 text-xs text-muted">{labText}</p>}
@@ -333,8 +332,8 @@ export function DashboardTab({ boot, onReload }: { boot: BarBoot; onReload: () =
                       return (
                         <tr key={d.date}>
                           <td className="whitespace-nowrap text-ink">
-                            {dayLabel(d.date)}
-                            <div className="text-xs text-faint">{d.date}</div>
+                            {weekdayShort(d.date)} {df.day(d.date)}
+                            <div className="text-xs text-faint">{df.date(d.date)}</div>
                           </td>
                           <td className="text-right">{d.bills}</td>
                           <td className="text-right font-medium text-ink">{fmt(d.revenue)}</td>
@@ -492,9 +491,9 @@ export function DashboardTab({ boot, onReload }: { boot: BarBoot; onReload: () =
 }
 
 /** ช่วงที่ใช้เทียบ — บอกให้ชัดว่าเทียบกับอะไร ไม่งั้น ▲▼ อ่านไม่ออก */
-function prevNote(from: string, to: string, prev: Summary): string {
+function prevNote(from: string, to: string, prev: Summary, date: (iso: string) => string): string {
   const r = previousRange(from, to);
-  const span = r.from === r.to ? r.from : `${r.from} – ${r.to}`;
+  const span = r.from === r.to ? date(r.from) : `${date(r.from)} – ${date(r.to)}`;
   return prev.bills === 0 ? `${span} (ช่วงนั้นไม่มียอด)` : span;
 }
 

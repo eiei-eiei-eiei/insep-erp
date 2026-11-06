@@ -8,6 +8,7 @@ import { LineChart } from "./LineChart";
 import { chartColor } from "@/lib/shared/chart";
 import type { PendingBatch } from "./types";
 import { IconEdit, IconTrash } from "@/lib/shared/icons";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
 type MonitorRow = {
   id: number;
@@ -29,6 +30,7 @@ export function MonitorTab({
   batch: string;              // batch ร่วมของ workspace (เลือกครั้งเดียวใช้ทุกแท็บ)
   onBatchChange: (b: string) => void;
 }) {
+  const d = useDateFmt();
   const { pending, run } = useSaver();
   const { confirmNode, ask } = useConfirm();
   const setBatch = onBatchChange;
@@ -92,7 +94,7 @@ export function MonitorTab({
     run(() => deleteFermentMonitorAction(r.id), "ลบค่าวัดเรียบร้อย", () => load(batch));
   }
 
-  const labels = history.map((r) => `${String(r.measure_date).slice(5)}${r.measure_time ? " " + r.measure_time.slice(0, 5) : ""}`);
+  const labels = history.map((r) => `${d.day(String(r.measure_date))}${r.measure_time ? " " + r.measure_time.slice(0, 5) : ""}`);
 
   return (
     <div className="space-y-5">
@@ -156,7 +158,7 @@ export function MonitorTab({
                         </tr>
                       ) : (
                         <tr key={r.id}>
-                          <td>{String(r.measure_date).slice(5)} {r.measure_time?.slice(0, 5) ?? ""}</td>
+                          <td>{d.day(String(r.measure_date))} {r.measure_time?.slice(0, 5) ?? ""}</td>
                           <td>{r.ph ?? "—"}</td>
                           <td>{r.brix ?? "—"}</td>
                           <td>{r.temp ?? "—"}</td>

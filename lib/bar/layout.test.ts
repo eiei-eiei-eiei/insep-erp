@@ -359,7 +359,8 @@ describe("🚩 ผังมีผลกับกระดาษจริง (เ
       lines,
       totals: barTotals(lines, {}),
       seller: { name: "บาร์ทดสอบ", address: "123 ถนนทดสอบ", taxId: "0105558123456", isVat },
-      printedAt: "13/09/2569 23:00",
+      printedAt: "2026-09-13T23:00:00+07:00",
+      dateFormat: "dd_mm_yyyy_be",
       channel: "บูธ Craft Fest",
       layout,
     });
@@ -436,7 +437,8 @@ describe("🚩 โลโก้เป็นของบาร์เอง", () =>
       lines,
       totals: barTotals(lines, {}),
       seller: { name: "บาร์ทดสอบ" },
-      printedAt: "14/09/2569 00:30",
+      printedAt: "2026-09-14T00:30:00+07:00",
+      dateFormat: "dd_mm_yyyy_be",
       layout,
     });
 

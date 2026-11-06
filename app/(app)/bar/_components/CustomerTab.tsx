@@ -10,6 +10,8 @@ import {
 import { CustomerModal } from "./CustomerModal";
 import { customerNameParts } from "@/lib/bar/customerName";
 import { recipeText, refsOf } from "@/lib/bar/houseSlot";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
+import { bangkokDateISO } from "@/lib/shared/datetime";
 
 type CardData = {
   favMenuIds: string[];
@@ -99,7 +101,7 @@ export function CustomerTab({ boot, onReload }: { boot: BarBoot; onReload: () =>
     });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `ลูกค้าที่ยินยอม-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `ลูกค้าที่ยินยอม-${bangkokDateISO()}.csv`; // ชื่อไฟล์ใช้ ISO เสมอ (D161 ไม่ตามค่าตั้ง) · วันที่ไทย ไม่ใช่ UTC
     a.click();
     URL.revokeObjectURL(a.href);
     setMsg({ ok: true, text: `ส่งออก ${rows.length} รายชื่อแล้ว` });
@@ -206,6 +208,7 @@ function CustomerCard({
   onRun: (fn: () => Promise<{ ok: boolean; error?: string }>, okText: string) => Promise<boolean>;
   onReload: () => void;
 }) {
+  const df = useDateFmt();
   if (!card) return <div className="mt-3 text-sm text-muted">กำลังโหลด…</div>;
 
   const live = card.lines.filter((l) => !l.voided_at);
@@ -234,7 +237,7 @@ function CustomerCard({
         </span>
         {card.sales[0]?.business_date && (
           <span className="text-muted">
-            ล่าสุด <b className="text-ink">{card.sales[0].business_date}</b>
+            ล่าสุด <b className="text-ink">{df.date(card.sales[0].business_date)}</b>
           </span>
         )}
         {customer.phone && <span className="text-muted">โทร {customer.phone}</span>}

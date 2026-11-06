@@ -7,11 +7,13 @@ import { accountsFor } from "@/lib/accounting/bankAccounts";
 import type { StatementRange } from "@/lib/accounting/ledger";
 import { STATEMENT_PRESETS, presetRange, rangeTitle, rangeError, isMultiMonth, type StatementPreset } from "@/lib/accounting/statementView";
 import { Badge, Card, Field, NumBox, SaveButton, Select, TextInput, fmt, todayISO, useSaver, useRead, LoadError } from "./ui";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
 type Balances = Awaited<ReturnType<typeof getBalancesAction>>;
 type Statement = Awaited<ReturnType<typeof getStatementAction>>;
 
 export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstrap; period: string; entityId: string; active: boolean }) {
+  const d = useDateFmt();
   const [openAcc, setOpenAcc] = useState<string | null>(null);
   // D139 — ช่วงเวลาของ statement (ปุ่มลัดนับถอยจากเดือนที่เลือกด้านบน · กำหนดเอง = จาก/ถึง)
   const [preset, setPreset] = useState<StatementPreset>("month");
@@ -67,7 +69,7 @@ export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstra
 
   return (
     <div className="space-y-4">
-      <Card title={`ยอดคงเหลือทุกบัญชี ณ สิ้นเดือน ${period}`}>
+      <Card title={`ยอดคงเหลือทุกบัญชี ณ สิ้นเดือน ${d.month(period)}`}>
         <LoadError err={err} onRetry={reload} what="ยอดคงเหลือ" />
         {!bal ? <p className="text-faint">{err ? "— โหลดไม่สำเร็จ —" : "กำลังโหลด…"}</p> : (
           <div className="overflow-x-auto">
@@ -93,7 +95,7 @@ export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstra
       </Card>
 
       {openAcc && (
-        <Card title={`Statement: ${openAcc} — ${rangeTitle(range)}`}>
+        <Card title={`Statement: ${openAcc} — ${rangeTitle(range, d.month)}`}>
           <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
             {STATEMENT_PRESETS.map((p) => (
               <button key={p.key} type="button" onClick={() => setPreset(p.key)} aria-pressed={preset === p.key}
@@ -108,7 +110,7 @@ export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstra
               </span>
             )}
           </div>
-          {preset !== "custom" && preset !== "all" && <p className="mb-2 text-xs text-faint">นับถอยจากเดือน {period} ที่เลือกไว้ด้านบน</p>}
+          {preset !== "custom" && preset !== "all" && <p className="mb-2 text-xs text-faint">นับถอยจากเดือน {d.month(period)} ที่เลือกไว้ด้านบน</p>}
           {preset === "custom" && <p className="mb-2 text-xs text-faint">เว้นช่องไหนว่าง = ไม่จำกัดด้านนั้น</p>}
           {rangeErr ? <p className="text-sm text-warn">{rangeErr}</p> : (
             <>
@@ -130,14 +132,14 @@ export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstra
                           return (
                             <Fragment key={r.txId}>
                               <tr>
-                                <td>{r.date}</td><td>{r.type}</td><td>{r.description || r.contactName}</td>
+                                <td className="whitespace-nowrap">{d.date(r.date)}</td><td>{r.type}</td><td>{r.description || r.contactName}</td>
                                 <td className="text-crit num">{r.debit ? fmt(r.debit) : ""}</td>
                                 <td className="text-ok num">{r.credit ? fmt(r.credit) : ""}</td>
                                 <td className="num">{fmt(r.runningBalance)}</td>
                               </tr>
                               {m && (
                                 <tr className="border-b-2 border-line bg-raised font-semibold">
-                                  <td colSpan={3}>สรุปเดือน {m.month} · {m.count} รายการ</td>
+                                  <td colSpan={3}>สรุปเดือน {d.month(m.month)} · {m.count} รายการ</td>
                                   <td className="text-crit num">{fmt(m.totalOut)}</td>
                                   <td className="text-ok num">{fmt(m.totalIn)}</td>
                                   <td className="num">{fmt(m.closingBalance)}</td>

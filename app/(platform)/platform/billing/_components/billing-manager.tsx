@@ -16,7 +16,7 @@ import {
   fmt,
   useSaver, useConfirm } from "@/lib/shared/ui";
 import { IconAlert } from "@/lib/shared/icons";
-import { formatDateThai } from "@/lib/shared/format";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import {
   BILLING_STATE_LABEL,
   billingState,
@@ -84,6 +84,7 @@ function BillingPanel({
   onVoid: () => void;
   onActive: (active: boolean) => void;
 }) {
+  const df = useDateFmt();
   const sub = row.subscription;
   const suggested = (c: Cycle) => suggestPrice(row.modules, row.entityCount, c);
 
@@ -266,9 +267,9 @@ function BillingPanel({
                   <tbody>
                     {row.payments.map((p) => (
                       <tr key={p.id}>
-                        <td>{formatDateThai(p.paidOn)}</td>
+                        <td>{df.date(p.paidOn)}</td>
                         <td className="num">{fmt(p.amount)}</td>
-                        <td>{formatDateThai(p.periodEndAfter)}</td>
+                        <td>{df.date(p.periodEndAfter)}</td>
                         <td>{p.note ?? ""}</td>
                       </tr>
                     ))}
@@ -312,6 +313,7 @@ function BillingPanel({
 // ── หน้าหลัก ─────────────────────────────────────────────────────────────────
 
 export function BillingManager({ rows, todayISO }: { rows: BillingRow[]; todayISO: string }) {
+  const df = useDateFmt();
   const { pending, run, setMsg } = useSaver();
   const { confirmNode, ask } = useConfirm();
   const [openId, setOpenId] = useState<string | null>(null);
@@ -392,7 +394,7 @@ export function BillingManager({ rows, todayISO }: { rows: BillingRow[]; todayIS
                     <td className="whitespace-nowrap">
                       {sub ? (
                         <>
-                          {formatDateThai(sub.currentPeriodEnd)}
+                          {df.date(sub.currentPeriodEnd)}
                           <div className="text-xs text-faint">{dueText(sub.currentPeriodEnd, todayISO)}</div>
                         </>
                       ) : (

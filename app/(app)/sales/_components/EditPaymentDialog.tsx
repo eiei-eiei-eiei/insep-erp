@@ -10,7 +10,7 @@ import {
   PAY_METHODS, chequeText, editPaymentDoneText, parseCheque, receiptDocFor,
   type EditPaymentResult, type SalesPayment,
 } from "@/lib/sales/payments";
-import { formatThaiDate } from "@/lib/sales/orders";
+import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { editPaymentMethodAction, getOrderItemsAction, getOrderPaymentsAction } from "../actions";
 import { openPrintWindow, printSalesDocs, type OrderLike } from "./print";
 
@@ -33,6 +33,7 @@ export function EditPaymentDialog({
   /** แก้สำเร็จ → ให้หน้าจัดการออเดอร์โหลดใหม่ (ช่องวิธีชำระของออเดอร์เปลี่ยนด้วย) */
   onChanged: () => void;
 }) {
+  const d = useDateFmt();
   const [payments, setPayments] = useState<SalesPayment[] | null>(null);
   const [err, setErr] = useState(false);
   const [editing, setEditing] = useState<number | null>(null);
@@ -129,7 +130,7 @@ export function EditPaymentDialog({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <div className="font-semibold text-ink">ครั้งที่ {p.seq} · {p.label} · ฿{fmt(p.amount)}</div>
-                    <div className="text-xs text-faint">{p.docNo || "ไม่มีเลขเอกสาร"}{p.docDate ? ` · ${formatThaiDate(p.docDate)}` : ""}</div>
+                    <div className="text-xs text-faint">{p.docNo || "ไม่มีเลขเอกสาร"}{p.docDate ? ` · ${d.date(p.docDate)}` : ""}</div>
                     <div className="mt-0.5 text-muted">วิธีชำระ: <b>{p.method || "ไม่ระบุ"}</b></div>
                     {p.chequeDetail && <div className="text-xs text-faint">{p.chequeDetail}</div>}
                   </div>
