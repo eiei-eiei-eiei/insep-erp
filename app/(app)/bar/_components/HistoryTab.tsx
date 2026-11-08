@@ -7,7 +7,10 @@ import { barTotals } from "@/lib/bar/totals";
 import { buildReceipt } from "@/lib/bar/receipt";
 import { customerLabel } from "@/lib/bar/customerName";
 import { Card, TextInput, Field, Badge, Empty, fmt, useSaver, useConfirm, todayISO } from "@/lib/shared/ui";
-import { searchSalesAction, issueReceiptAction, voidSaleAction, voidLineAction } from "../actions";
+import { searchSalesAction, issueReceiptAction, voidSaleAction, voidLineAction, editSaleAction } from "../actions";
+import { businessDate } from "@/lib/bar/businessDate";
+import { EditSaleModal } from "./EditSaleModal";
+import { useReloadWhenShown } from "./useReloadWhenShown";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
 type SaleRow = {
@@ -54,7 +57,14 @@ const daysAgo = (n: number) => {
  * · 🚨 ออกใบเสร็จแล้ว **หรือ** ลงบัญชีแล้ว → DB บล็อก · ต้องยกเลิกทั้งบิลแล้วออกใหม่
  *   หน้าจอขึ้นปุ่มเทาพร้อมบอกว่าต้องกดอะไรแทน (ซ่อนปุ่มแย่กว่าปุ่มเทา · D86)
  */
-export function HistoryTab({ boot, onReload }: { boot: BarBoot; onReload: () => Promise<void> }) {
+export function HistoryTab({
+  boot, onReload, active = true,
+}: {
+  boot: BarBoot;
+  onReload: () => Promise<void>;
+  /** แท็บนี้กำลังแสดงอยู่ไหม — ใช้ตัดสินจังหวะค้นใหม่ (D163) */
+  active?: boolean;
+}) {
   const df = useDateFmt();
   const { setMsg } = useSaver();
   const { confirmNode, ask } = useConfirm();
@@ -66,6 +76,9 @@ export function HistoryTab({ boot, onReload }: { boot: BarBoot; onReload: () => 
   const [lines, setLines] = useState<LineRow[]>([]);
   const [open, setOpen] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  // D163 — แก้วันขาย/วิธีรับเงิน · วันที่ลงบัญชีแล้วมากับผลค้น
+  const [posted, setPosted] = useState<Set<string>>(new Set());
+  const [editing, setEditing] = useState<SaleRow | null>(null);
 
   async function search() {
     setBusy(true);
@@ -76,14 +89,18 @@ export function HistoryTab({ boot, onReload }: { boot: BarBoot; onReload: () => 
         setMsg({ ok: false, text: r.error ?? "ค้นไม่สำเร็จ" });
         return;
       }
-      const d = r.data as { sales: SaleRow[]; lines: LineRow[] };
+      const d = r.data as { sales: SaleRow[]; lines: LineRow[]; postedDates?: string[] };
       setSales(d.sales);
       setLines(d.lines);
+      setPosted(new Set(d.postedDates ?? []));
       setLoaded(true);
     } finally {
       setBusy(false);
     }
   }
+
+  // D163 — บิลที่ปิดจากแท็บขายต้องโผล่เมื่อกลับมาหน้านี้ (เดิมค้นครั้งเดียวตอนเปิด)
+  useReloadWhenShown(active, boot, () => void search());
 
   useEffect(() => {
     void search();
@@ -161,6 +178,22 @@ export function HistoryTab({ boot, onReload }: { boot: BarBoot; onReload: () => 
   return (
     <div className="space-y-4">
       {confirmNode}
+      {editing && (
+        <EditSaleModal
+          sale={editing}
+          today={businessDate(new Date(), boot.settings.window)}
+          posted={posted}
+          busy={busy}
+          onClose={() => setEditing(null)}
+          onSave={async (v) => {
+            const r = await run(
+              () => editSaleAction({ saleNo: editing.sale_no, businessDate: v.businessDate, method: v.method }),
+              "แก้บิลแล้ว",
+            );
+            if (r) setEditing(null);
+          }}
+        />
+      )}
 
       <Card title="ค้นบิล">
         <div className="flex flex-wrap items-end gap-2">
@@ -318,11 +351,22 @@ export function HistoryTab({ boot, onReload }: { boot: BarBoot; onReload: () => 
                                   {s.rcpt_no ? "พิมพ์ใบเสร็จซ้ำ" : "ออกใบเสร็จรับเงิน"}
                                 </button>
                               )}
+                              {s.status === "ปกติ" && (
+                                <button
+                                  type="button"
+                                  disabled={busy || !boot.canConfig}
+                                  title={boot.canConfig ? "แก้วันขาย / วิธีรับเงิน" : "แก้บิลเป็นสิทธิ์ของหัวหน้าบาร์ขึ้นไป"}
+                                  onClick={() => setEditing(s)}
+                                  className="rounded-lg bg-card px-3 py-1.5 text-sm text-ink disabled:opacity-40"
+                                >
+                                  แก้ไขบิล
+                                </button>
+                              )}
                               {s.status !== "ยกเลิก" && (
                                 <button
                                   type="button"
                                   disabled={busy || !boot.canConfig}
-                                  title={boot.canConfig ? undefined : "ยกเลิกทั้งบิลเป็นสิทธิ์ระดับเจ้าของ"}
+                                  title={boot.canConfig ? undefined : "ยกเลิกทั้งบิลเป็นสิทธิ์ของหัวหน้าบาร์ขึ้นไป"}
                                   onClick={async () => {
                                     const ok = await ask({
                                       title: `ยกเลิกบิล ${s.sale_no} ทั้งใบ?`,

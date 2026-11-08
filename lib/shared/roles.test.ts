@@ -22,6 +22,7 @@ const EXPECTED: Record<Role, Cap[]> = {
   payroll_manager: ["pay.read", "pay.write", "pay.config"],
   payroll: ["pay.read", "pay.write"],
   bar: ["bar.read", "bar.write"],
+  bar_manager: ["bar.read", "bar.write", "bar.config"],
 };
 
 const sorted = (a: readonly string[]) => [...a].sort();
@@ -116,6 +117,13 @@ describe("เส้นแบ่งที่ห้ามหลุด", () => {
 
   it("🔴 พนักงานบาร์ไม่มี bar.config — แดชบอร์ดต้นทุน/กำไร · ยกเลิกทั้งบิล · ลงบัญชี เป็นของเจ้าของ", () => {
     expect(can("bar", "bar.config")).toBe(false);
+  });
+
+  it("D163 หัวหน้าบาร์ได้ bar.config แต่ไม่ได้อะไรนอกบาร์เลย", () => {
+    expect(can("bar_manager", "bar.config")).toBe(true);
+    for (const c of ["prod.read", "acct.read", "sales.read", "pay.read", "admin"] as Cap[]) {
+      expect(can("bar_manager", c), `หัวหน้าบาร์ไม่ควรมี ${c}`).toBe(false);
+    }
   });
 
   it("viewer ดูบาร์ได้แต่แตะอะไรไม่ได้ (รวมแดชบอร์ดกำไรที่อยู่หลัง bar.config)", () => {

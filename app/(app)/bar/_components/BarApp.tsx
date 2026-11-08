@@ -131,7 +131,7 @@ export function BarApp({ boot }: { boot: BarBoot }) {
       )}
       {allowed.includes("history") && visited.has("history") && (
         <div className={show("history")}>
-          <HistoryTab boot={data} onReload={reload} />
+          <HistoryTab boot={data} onReload={reload} active={tab === "history"} />
         </div>
       )}
       {allowed.includes("customer") && visited.has("customer") && (
@@ -141,7 +141,7 @@ export function BarApp({ boot }: { boot: BarBoot }) {
       )}
       {allowed.includes("dashboard") && visited.has("dashboard") && (
         <div className={show("dashboard")}>
-          <DashboardTab boot={data} onReload={reload} />
+          <DashboardTab boot={data} onReload={reload} active={tab === "dashboard"} />
         </div>
       )}
       {allowed.includes("settings") && visited.has("settings") && (

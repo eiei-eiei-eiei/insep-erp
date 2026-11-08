@@ -1,6 +1,7 @@
 "use client";
 
-import { PAY_METHODS, wantsQr } from "@/lib/bar/payMethods";
+import { PAY_METHODS, DEFAULT_PAY_METHOD, wantsQr } from "@/lib/bar/payMethods";
+import { crossDayChoice, openBillsNotice } from "@/lib/bar/billDay";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { BarBoot, BarOpenSale } from "../data";
 import type { CartLine, BarMenu } from "@/lib/bar/types";
@@ -83,6 +84,16 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
   const { setMsg } = useSaver();
   const { confirmNode, ask } = useConfirm();
   const [busy, setBusy] = useState(false);
+
+  // D163 — นาฬิกาของแถบเตือนบิลค้าง/ใกล้ตัดรอบ · null ตอน render แรก (server กับเบราว์เซอร์
+  //   เวลาไม่ตรงกัน = hydration mismatch) แล้วเดินทุกนาที
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => {
+    setNow(new Date());
+    const t = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+  const dayNotice = now ? openBillsNotice(data.openSales, now, data.settings.window) : null;
 
   const [booth, setBooth] = useState(false);
   const [saleNo, setSaleNo] = useState<string | null>(null);
@@ -431,6 +442,23 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
               </>
             )}
           </div>
+
+          {!booth && dayNotice && (
+            <div className="rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">
+              {dayNotice.stale.length > 0 && (
+                <p>
+                  บิลค้างจากวันขายก่อน {dayNotice.stale.length} ใบ:{" "}
+                  {dayNotice.stale.map((s) => `${s.label} (${df.date(s.openDate)})`).join(" · ")} — ตอนรับเงินจะถามว่าลงยอดวันไหน
+                </p>
+              )}
+              {dayNotice.soon && (
+                <p>
+                  อีก {dayNotice.soon.minutesLeft} นาที (เวลา {dayNotice.soon.at}) จะตัดรอบเป็นวันขายถัดไป — บิลที่เปิดอยู่{" "}
+                  {dayNotice.soon.count} ใบ ถ้ารับเงินหลังจากนั้นยอดจะไปลงวันถัดไป
+                </p>
+              )}
+            </div>
+          )}
 
           {!booth && (
             <Card title="บิลที่เปิดอยู่">
@@ -869,7 +897,8 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
           busy={busy}
           onPrintBill={(method) => sale && printDoc(sale, { method })}
           onClose={() => setPaying(false)}
-          onConfirm={async (method) => {
+          dayChoice={!booth && sale ? crossDayChoice(sale.openedAt, new Date(), data.settings.window) : null}
+          onConfirm={async (method, pickedDate) => {
             if (booth) {
               const r = await run(
                 () =>
@@ -927,6 +956,7 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
                   discountPct: disc.mode === "pct" ? disc.value : null,
                   rounding: totals.rounding,
                   window: data.settings.window,
+                  businessDate: pickedDate,
                 }),
               "ปิดบิลแล้ว",
             );
@@ -1125,7 +1155,7 @@ function TrayRow({
  */
 function PayScreen({
   boot, booth, sale, tray, totals, disc, discountBahtValue, onDiscount, ppError, ppPayload,
-  busy, onPrintBill, onClose, onConfirm,
+  busy, onPrintBill, onClose, onConfirm, dayChoice,
 }: {
   boot: BarBoot;
   booth: boolean;
@@ -1142,9 +1172,15 @@ function PayScreen({
   busy: boolean;
   onPrintBill: (method: string) => void;
   onClose: () => void;
-  onConfirm: (method: string) => void;
+  /** `businessDate` = วันขายที่ผู้ใช้เลือก (เฉพาะบิลข้ามวัน) · null = ให้ server คิดเป็นวันนี้ */
+  onConfirm: (method: string, businessDate: string | null) => void;
+  /** D163 — บิลเปิดตั้งแต่วันขายก่อน ต้องเลือกว่าลงยอดวันไหน · null = ไม่ต้องถาม */
+  dayChoice: { openDate: string; nowDate: string } | null;
 }) {
-  const [method, setMethod] = useState(METHODS[0]);
+  const df = useDateFmt();
+  const [method, setMethod] = useState<string>(DEFAULT_PAY_METHOD);
+  // 🚨 ไม่เลือกให้ก่อน — ต้องตัดสินใจเองทุกครั้ง (เหตุผลอยู่ที่ crossDayChoice)
+  const [pickDay, setPickDay] = useState<string | null>(null);
   const [svg, setSvg] = useState<string | null>(null);
   const wantQr = wantsQr(method);
 
@@ -1273,14 +1309,42 @@ function PayScreen({
           </button>
         )}
 
+        {dayChoice && (
+          <div className="mb-3 rounded-lg bg-warn-bg p-3 text-sm">
+            <p className="mb-2 text-warn">
+              บิลนี้เปิดตั้งแต่วันขาย <b>{df.date(dayChoice.openDate)}</b> แต่ตอนนี้เป็นวันขาย{" "}
+              <b>{df.date(dayChoice.nowDate)}</b> แล้ว — ยอดของบิลนี้เป็นของวันไหน?
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { d: dayChoice.openDate, hint: "วันที่เปิดบิล" },
+                { d: dayChoice.nowDate, hint: "วันนี้" },
+              ].map((o) => (
+                <button
+                  key={o.d}
+                  type="button"
+                  onClick={() => setPickDay(o.d)}
+                  className={`rounded-lg px-3 py-2 text-sm ${
+                    pickDay === o.d ? "bg-brand text-on-brand" : "border border-line bg-card text-ink"
+                  }`}
+                >
+                  {df.date(o.d)}
+                  <span className="block text-xs opacity-80">{o.hint}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <button
           type="button"
-          disabled={busy || stuck}
-          onClick={() => onConfirm(method)}
+          disabled={busy || stuck || Boolean(dayChoice && !pickDay)}
+          onClick={() => onConfirm(method, dayChoice ? pickDay : null)}
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-3 py-2.5 text-sm font-medium text-on-brand disabled:opacity-50"
         >
           <IconCheck size={17} /> ยืนยันรับเงินแล้ว → {booth ? "ขายเลย" : "ปิดบิล"}
         </button>
+        {dayChoice && <MissingHint checks={[{ ok: Boolean(pickDay), label: "ลงยอดเข้าวันไหน" }]} />}
 
         {/* 🚨 ระบบไม่ได้ตรวจการชำระเงินให้ — PromptPay ไม่มี callback */}
         <p className="mt-2 text-xs text-faint">

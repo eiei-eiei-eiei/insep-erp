@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { mapDbError } from "@/lib/shared/dbError";
 import { barTotals } from "@/lib/bar/totals";
 import { businessDate } from "@/lib/bar/businessDate";
+import { allowedCloseDates } from "@/lib/bar/billDay";
 import { lineAmount } from "@/lib/bar/totals";
 import { resolveLine } from "@/lib/bar/discount";
 import { nextCategorySort, sortUpdates, categoryEditsError, categoryNameUpdates } from "@/lib/bar/categoryOrder";
@@ -182,10 +183,31 @@ export async function closeSaleAction(input: {
   discountPct?: number | null;
   rounding?: number;
   window?: SaleWindow | null;
+  /**
+   * D163 — วันขายที่ผู้ใช้เลือกเอง (บิลเปิดตั้งแต่วันขายก่อน · `crossDayChoice`)
+   * 🚨 รับได้แค่ "วันนี้" หรือ "วันที่เปิดบิล" — ส่งวันอื่นมา = ปฏิเสธ ไม่ใช่ลงตามที่ส่ง
+   */
+  businessDate?: string | null;
 }): Promise<Res> {
   const entity = await barEntity();
   if (!entity) return { ok: false, error: NO_ENTITY };
   if (!input.method?.trim()) return { ok: false, error: "เลือกวิธีรับเงินก่อน" };
+  let bdate = businessDate(new Date(), input.window ?? null);
+  if (input.businessDate && input.businessDate !== bdate) {
+    const supabase = await createClient();
+    const s = await supabase
+      .from("bar_sale")
+      .select("opened_at")
+      .eq("entity_id", entity)
+      .eq("sale_no", input.saleNo)
+      .maybeSingle();
+    if (s.error) return { ok: false, error: mapDbError(s.error) };
+    const ok = allowedCloseDates((s.data?.opened_at as string | undefined) ?? null, new Date(), input.window ?? null);
+    if (!ok.includes(input.businessDate)) {
+      return { ok: false, error: "วันขายที่เลือกไม่ตรงกับวันที่เปิดบิลหรือวันนี้ — ปิดหน้าเก็บเงินแล้วเปิดใหม่" };
+    }
+    bdate = input.businessDate;
+  }
   return rpc("fn_bar_close_sale", {
     p_entity: entity,
     p_sale_no: input.saleNo,
@@ -193,7 +215,26 @@ export async function closeSaleAction(input: {
     p_discount: Math.max(0, input.discount ?? 0),
     p_discount_pct: input.discountPct ?? null,
     p_rounding: input.rounding ?? 0,
-    p_business_date: businessDate(new Date(), input.window ?? null),
+    p_business_date: bdate,
+  });
+}
+
+/**
+ * D163 — แก้วันขาย/วิธีรับเงินของบิลที่ปิดแล้ว (หัวหน้าบาร์ขึ้นไป · `bar.config`)
+ * ★ ด่านจริงอยู่ใน `fn_bar_edit_sale` (0109) · หน้าจอเช็คซ้ำด้วย `editSaleProblem`
+ */
+export async function editSaleAction(input: {
+  saleNo: string;
+  businessDate: string;
+  method: string;
+}): Promise<Res> {
+  const entity = await barEntity();
+  if (!entity) return { ok: false, error: NO_ENTITY };
+  return rpc("fn_bar_edit_sale", {
+    p_entity: entity,
+    p_sale_no: input.saleNo,
+    p_business_date: input.businessDate,
+    p_method: input.method,
   });
 }
 
@@ -733,7 +774,18 @@ export async function searchSalesAction(input: {
       )
     : rows;
 
-  if (!filtered.length) return okOf({ sales: [], lines: [] });
+  // D163 — วันที่ลงบัญชีแล้วในช่วงนี้ (ปุ่มแก้บิลต้องบอกได้ว่าทำไมแก้ไม่ได้)
+  const posts = await supabase
+    .from("bar_post")
+    .select("post_date")
+    .eq("entity_id", entity)
+    .eq("status", "ปกติ")
+    .gte("post_date", input.from)
+    .lte("post_date", input.to);
+  if (posts.error) return { ok: false, error: mapDbError(posts.error) };
+  const postedDates = (posts.data ?? []).map((p) => p.post_date as string);
+
+  if (!filtered.length) return okOf({ sales: [], lines: [], postedDates });
 
   const lines = await supabase
     .from("bar_sale_item")
@@ -743,7 +795,7 @@ export async function searchSalesAction(input: {
     .order("line_no");
   if (lines.error) return { ok: false, error: mapDbError(lines.error) };
 
-  return okOf({ sales: filtered, lines: lines.data ?? [] });
+  return okOf({ sales: filtered, lines: lines.data ?? [], postedDates });
 }
 
 /**

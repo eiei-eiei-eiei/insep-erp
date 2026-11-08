@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useReloadWhenShown } from "./useReloadWhenShown";
 import type { BarBoot } from "../data";
 import {
   summarize, byChannel, topMenus, inRange, lapsedCustomers,
@@ -43,7 +44,14 @@ const toSale = (s: Record<string, unknown>): SaleRow => ({
  *   → **ตารางรายวัน**: 1 แถวต่อ 1 วันขาย ปุ่มลง/ถอนอยู่ติดกับตัวเลขของวันนั้นเอง
  *   → แถบวันค้างย้ายขึ้นบนสุด · ช่วงสำเร็จรูป + โหลดเองเมื่อเปลี่ยนช่วง · เทียบช่วงก่อน
  */
-export function DashboardTab({ boot, onReload }: { boot: BarBoot; onReload: () => Promise<void> }) {
+export function DashboardTab({
+  boot, onReload, active = true,
+}: {
+  boot: BarBoot;
+  onReload: () => Promise<void>;
+  /** แท็บนี้กำลังแสดงอยู่ไหม — ใช้ตัดสินจังหวะโหลดใหม่ (D163) */
+  active?: boolean;
+}) {
   const df = useDateFmt();
   const { setMsg } = useSaver();
   const { confirmNode, ask } = useConfirm();
@@ -128,6 +136,11 @@ export function DashboardTab({ boot, onReload }: { boot: BarBoot; onReload: () =
       setBusy(false);
     }
   }
+
+  // D163 — ขาย/รับเงินจากแท็บอื่นแล้วกลับมา ต้องเห็นยอดใหม่โดยไม่ต้องรีเฟรชทั้งหน้า
+  useReloadWhenShown(active, boot, () => {
+    if (range.from && range.to && range.from <= range.to) void load(range);
+  });
 
   // โหลดเองทุกครั้งที่ช่วงเปลี่ยน (เลิกใช้ปุ่ม "ดูยอด")
   useEffect(() => {

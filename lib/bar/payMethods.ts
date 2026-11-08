@@ -17,6 +17,12 @@ export const CASH_METHOD = "เงินสด";
 export const TRANSFER_METHOD = "โอน/QR";
 export const PAY_METHODS = [CASH_METHOD, TRANSFER_METHOD] as const;
 
+/**
+ * D163 — ปุ่มที่ถูกเลือกไว้ตอนเปิดจอเก็บเงิน = **โอน/QR** (ผู้ใช้สั่ง · ลูกค้าส่วนใหญ่โอน)
+ * ★ QR พร้อมเพย์ขึ้นทันทีที่เปิดจอ ไม่ต้องกดอีกครั้ง · จ่ายเงินสดกดสลับเอง
+ */
+export const DEFAULT_PAY_METHOD: (typeof PAY_METHODS)[number] = TRANSFER_METHOD;
+
 /** วิธีที่ต้องโชว์ QR พร้อมเพย์ (รวมป้ายเก่า เผื่อมีที่ไหนส่งมา) */
 export function wantsQr(method: string): boolean {
   return method === TRANSFER_METHOD || method === "QR" || method === "โอนเงิน";
