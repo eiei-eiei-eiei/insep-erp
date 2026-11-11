@@ -10,8 +10,10 @@
  *   · งวดที่ยังไม่รับต้องรวมได้เท่ายอดค้างพอดี — **งวดสุดท้ายรับส่วนที่เหลือเสมอ** (ไม่มีเศษสตางค์ตกหล่น)
  *   · ลูกค้าจ่ายไม่เท่ายอดงวด → รับตามจริง ส่วนต่างไปลงงวดสุดท้าย · แต่ **งวดสุดท้ายต้องรับเต็มยอดค้าง**
  *   · % คิดจากยอดสุทธิหลังหัก ณ ที่จ่าย (เหมือนมัดจำเดิม D45)
- * 🚨 ไม่มีสูตรภาษีในไฟล์นี้ — ถอด VAT/WHT ต่องวดใช้ `reverseVatWht` ตัวเดิมใน processOrder
+ *   · D164 — กรอกงวดเป็นจำนวนเงินได้ (ก่อน/รวม VAT) → ยอดชำระสุทธิตรึงไว้ที่ `amount` · % คิดกลับให้ไว้แสดง
+ * 🚨 ไม่มีสูตรภาษีชุดใหม่ในไฟล์นี้ — ถอด VAT/WHT ใช้ `reverseVatWht` ตัวเดิม (processOrder · และตัวแปลงยอดที่กรอกด้านล่าง)
  */
+import { reverseVatWht } from "./calc";
 
 /** สถานะใหม่ — รับเงินแล้วบางงวด แต่ยังไม่ส่งของ (เช่น รับ 50% แล้วกำลังผลิต) */
 export const STATUS_INSTALLMENT = "กำลังผ่อนชำระ";
@@ -38,6 +40,8 @@ export type Installment = {
 };
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
+const r4 = (n: number) => Math.round(n * 10000) / 10000;
+const money = (n: number) => n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /**
  * ป้ายของงวดบนแถวการรับเงิน/ข้อความ LINE — "งวดที่ 2 (เริ่มบรรจุ)"
@@ -69,27 +73,167 @@ export function planAmounts(net: number, percents: number[], remain: number): nu
   return out;
 }
 
-export type PlanRowInput = { label: string; percent: number; shipPoint: boolean; dueDate?: string };
+export type PlanRowInput = {
+  label: string;
+  percent: number;
+  shipPoint: boolean;
+  dueDate?: string;
+  /**
+   * D164 — ผู้ใช้กรอกงวดนี้เป็นจำนวนเงิน: **ยอดก่อน VAT ที่ตรึงไว้** (ไม่จด VAT = ยอดก่อนหัก ณ ที่จ่าย) · ไม่ปัด
+   * ไม่มีค่า = งวดที่กรอกเป็น % (แบบเดิม)
+   * ★ เก็บเป็นยอดก่อน VAT ไม่ใช่ยอดชำระ — ติ๊ก/แก้ % หัก ณ ที่จ่ายทีหลัง ยอดบนใบแจ้งหนี้ที่ตกลงกับลูกค้าต้องไม่ขยับ
+   *   (ยอดชำระสุทธิคิดใหม่จาก VAT/WHT ปัจจุบันทุกครั้ง)
+   * 🪤 ห้ามแปลงเป็น % แล้วคิดกลับ — % เก็บได้ 4 ตำแหน่ง: 30,000 จากยอด 107,000 = 28.0374% → 30,000.02
+   */
+  exVat?: number;
+};
+
+/**
+ * ฐานของจำนวนเงินที่ผู้ใช้กรอกในงวด (D164)
+ *   incl = รวม VAT ก่อนหัก ณ ที่จ่าย (ยอดบนใบแจ้งหนี้) · ex = ก่อน VAT
+ *   ไม่จด VAT → สองแบบเท่ากัน (ยอดก่อนหัก ณ ที่จ่าย)
+ */
+export type AmountBasis = "incl" | "ex";
+/** VAT/หัก ณ ที่จ่ายของออเดอร์ — แปลงยอดก่อน VAT ↔ ยอดชำระสุทธิ */
+export type VatCtx = { isVat: boolean; whtPct: number };
+
+const isFixed = (r: PlanRowInput) => r.exVat != null;
+const vatOf = (ctx: VatCtx) => (ctx.isVat ? 0.07 : 0);
+
+/**
+ * ยอดก่อน VAT → ยอดชำระสุทธิ (หลังหัก ณ ที่จ่าย) — ทิศกลับของ `reverseVatWht`
+ *   ยอดชำระ = ก่อน VAT × (1 + VAT − WHT)
+ */
+export function netFromExVat(exVat: number, ctx: VatCtx): number {
+  return r2(exVat * (1 + vatOf(ctx) - (ctx.whtPct || 0) / 100));
+}
+
+/** ยอดชำระสุทธิ → ยอดก่อน VAT (ไม่ปัด) — `reverseVatWht` ตัวเดียวกับตอนออกเอกสารงวด */
+export function exVatFromNet(net: number, ctx: VatCtx): number {
+  return reverseVatWht(net, ctx.whtPct || 0, false, ctx.isVat).preVat;
+}
+
+/** ตัวเลขที่ผู้ใช้พิมพ์ในฐานที่เลือก → ยอดก่อน VAT (ไม่ปัด · ปัดครั้งเดียวตอนคิดยอดชำระ) */
+export function exVatFromInput(value: number, basis: AmountBasis, ctx: VatCtx): number {
+  return basis === "incl" ? value / (1 + vatOf(ctx)) : value;
+}
+
+/** ยอดก่อน VAT → ตัวเลขที่แสดงในฐานที่เลือก */
+export function inputFromExVat(exVat: number, basis: AmountBasis, ctx: VatCtx): number {
+  return r2(basis === "incl" ? exVat * (1 + vatOf(ctx)) : exVat);
+}
+
+/** ยอดชำระที่ผู้ใช้ตั้งใจของงวด (ก่อนให้งวดสุดท้ายรับเศษ) */
+export function intendedNet(r: PlanRowInput, net: number, ctx: VatCtx): number {
+  return isFixed(r) ? netFromExVat(Number(r.exVat), ctx) : r2((net * (r.percent || 0)) / 100);
+}
+
+/**
+ * ยอดชำระสุทธิของแต่ละงวด (D164) — งวดที่กรอกเป็นเงินคิดจากยอดก่อน VAT · งวดที่กรอก % คิดแบบ `planAmounts`
+ * **งวดสุดท้ายรับส่วนที่เหลือเสมอ**
+ * ★ server ใช้ตัวนี้ส่งยอดเข้า RPC · จอใช้ตัวนี้แสดง — เห็นอย่างไร บันทึกอย่างนั้น
+ * ★ ไม่มีงวดกรอกเป็นเงิน = ผลเท่า `planAmounts` เป๊ะ
+ */
+export function planRowAmounts(net: number, rows: PlanRowInput[], remain: number, ctx: VatCtx): number[] {
+  if (!rows.length) return [];
+  const out = rows.map((r) => intendedNet(r, net, ctx));
+  out[out.length - 1] = r2(remain - out.slice(0, -1).reduce((s, a) => s + a, 0));
+  return out;
+}
+
+/** % ของงวดไว้แสดง — งวดที่กรอกเป็นเงินคิดกลับจากยอดชำระ (2 ตำแหน่ง) */
+export function rowPercent(r: PlanRowInput, net: number, ctx: VatCtx): number {
+  if (!isFixed(r)) return r.percent || 0;
+  return net > 0 ? r2((intendedNet(r, net, ctx) / net) * 100) : 0;
+}
+
+/** % ที่เก็บลง `sales_installments.percent` (numeric 7,4 · ไว้แสดงเท่านั้น) — งวดที่กรอกเป็นเงินคิดกลับ 4 ตำแหน่ง */
+export function percentToStore(r: PlanRowInput, net: number, ctx: VatCtx): number {
+  if (!isFixed(r)) return r.percent;
+  return net > 0 ? r4((intendedNet(r, net, ctx) / net) * 100) : 0;
+}
+
+/**
+ * ผลรวมของแผนเทียบกับยอดที่ต้องได้ (D164)
+ *   · ไม่มีงวดกรอกเป็นเงิน → เทียบ % แบบเดิม (คลาดได้ 0.01%)
+ *   · มีงวดกรอกเป็นเงิน → เทียบเป็นบาท (ยอดชำระ) · คลาดได้งวดละ 1 สตางค์ (แปลงเป็นยอดชำระแล้วปัดทีละงวด)
+ *     + 0.01% ของยอดสุทธิถ้ายังมีงวดที่กรอก % ปนอยู่
+ * ★ งวดสุดท้ายรับเศษเสมอ — ตรงนี้มีไว้จับการกรอกผิดของคน ไม่ใช่เศษสตางค์จากการปัด
+ */
+export function planSum(rows: PlanRowInput[], net: number, remain: number, ctx: VatCtx) {
+  const fixed = rows.some(isFixed);
+  const need = net > 0 ? r2((remain / net) * 100) : 0;
+  const intended = r2(rows.reduce((s, r) => s + intendedNet(r, net, ctx), 0));
+  if (!fixed) {
+    const sumPct = r2(rows.reduce((s, r) => s + (r.percent || 0), 0));
+    return { fixed, sumPct, need, intended, ok: Math.abs(sumPct - need) <= 0.01 };
+  }
+  const nFixed = rows.filter(isFixed).length;
+  const tol = 0.005 + 0.01 * nFixed + (nFixed < rows.length ? net * 0.0001 : 0);
+  return { fixed, sumPct: net > 0 ? r2((intended / net) * 100) : 0, need, intended, ok: Math.abs(intended - remain) <= tol };
+}
+
+/**
+ * ปรับงวดสุดท้ายให้แผนรวมได้พอดี (ปุ่มใต้ข้อความเตือน · D164) — null = ทำไม่ได้ (งวดก่อนหน้ากินยอดหมดแล้ว)
+ *   · มีงวดกรอกเป็นเงิน → งวดสุดท้ายเป็นเงิน (ยอดที่ขาดพอดี ไม่ผ่าน %)
+ *   · แผน % ล้วน → งวดสุดท้ายเป็น % ที่ขาด (แบบเดิม)
+ */
+export function fillLastRow(rows: PlanRowInput[], net: number, remain: number, ctx: VatCtx): PlanRowInput[] | null {
+  if (!rows.length || !(net > 0)) return null;
+  const others = rows.slice(0, -1);
+  const last = rows[rows.length - 1];
+  if (others.some(isFixed) || isFixed(last)) {
+    const gap = r2(remain - others.reduce((s, r) => s + intendedNet(r, net, ctx), 0));
+    if (!(gap > 0)) return null;
+    return [...others, { ...last, exVat: exVatFromNet(gap, ctx) }];
+  }
+  const pct = r2(r2((remain / net) * 100) - others.reduce((s, r) => s + (r.percent || 0), 0));
+  if (!(pct > 0)) return null;
+  return [...others, { ...last, percent: pct }];
+}
+
+/**
+ * แผนงวดที่บันทึกไว้ → แถวในตัวแก้ (D164 · ใช้ทั้งแก้ใบเสนอราคาและปรับงวด)
+ * ★ งวดที่ยอดไม่ตรงกับ % (= กรอกเป็นเงินไว้) โหลดกลับเป็นงวดกรอกเป็นเงิน — ไม่งั้นเปิดแก้แล้วกดบันทึก
+ *   ยอด 30,000 จะกลายเป็น 28.0374% = 30,000.02 เงียบ ๆ
+ * ★ งวดสุดท้ายรับเศษเสมอ — โหลดเป็น % (ปัด 2 ตำแหน่ง)
+ */
+export function rowsFromPlan(list: Installment[], net: number, ctx: VatCtx, sent = false): PlanRowInput[] {
+  return list.map((i, k) => {
+    const pct = i.percent ?? (net > 0 ? r2((i.amount / net) * 100) : 0);
+    const last = k === list.length - 1;
+    const row: PlanRowInput = { label: i.label, percent: last ? r2(pct) : pct, shipPoint: sent ? false : i.shipPoint, dueDate: i.dueDate };
+    if (!last && r2((net * pct) / 100) !== r2(i.amount)) row.exVat = exVatFromNet(i.amount, ctx);
+    return row;
+  });
+}
 
 /**
  * ตรวจแผนงวดใหม่ (เฉพาะงวดที่ยังไม่ล็อก) ก่อนส่งไปบันทึก — null = ใช้ได้
- * @param remainPct % ที่งวดชุดนี้ต้องรวมให้ได้ (ยอดที่ต้องแบ่ง ÷ ยอดสุทธิ × 100)
  * ★ คลาดได้ 0.01% — ยอดค้างที่เกิดจากลูกค้าจ่ายไม่เท่างวดอาจเป็น % ไม่ลงตัว
+ * @param ctx VAT/หัก ณ ที่จ่ายของออเดอร์ — ต้องส่งเมื่อมีงวดกรอกเป็นเงิน (D164)
+ *   🚨 ไม่ส่งแล้วมีงวดกรอกเป็นเงิน = ไม่ให้บันทึก (เดา VAT = ยอดงวดผิดเงียบ ๆ)
  */
-export function planError(rows: PlanRowInput[], net: number, remain: number, sent: boolean): string | null {
+export function planError(rows: PlanRowInput[], net: number, remain: number, sent: boolean, ctx?: VatCtx): string | null {
   if (remain <= 0) return rows.length ? "รับเงินครบแล้ว — ไม่มีงวดให้แบ่ง" : null;
   if (!rows.length) return "ต้องมีอย่างน้อย 1 งวด";
   if (rows.some((r) => !r.label.trim())) return "ทุกงวดต้องมีชื่อ";
-  if (rows.some((r) => !(r.percent > 0))) return "ทุกงวดต้องมี % มากกว่า 0";
-  const sum = r2(rows.reduce((s, r) => s + r.percent, 0));
-  const need = r2((remain / net) * 100);
+  if (rows.some(isFixed) && !ctx) return "ระบบไม่ทราบ VAT/หัก ณ ที่จ่ายของออเดอร์ — คิดยอดงวดที่กรอกเป็นเงินไม่ได้";
+  const c = ctx ?? { isVat: true, whtPct: 0 }; // ถึงตรงนี้โดยไม่มี ctx = ไม่มีงวดกรอกเป็นเงิน → ค่านี้ไม่ถูกใช้คิดอะไร
+  if (rows.some((r) => isFixed(r) && !(Number(r.exVat) > 0))) return "ทุกงวดต้องมียอดมากกว่า 0";
+  if (rows.some((r) => !isFixed(r) && !(r.percent > 0))) return "ทุกงวดต้องมี % มากกว่า 0";
+  const s = planSum(rows, net, remain, c);
   // 🪤 ประโยคเดียวใช้ทั้งใบเสนอราคาใหม่ (ยังไม่มีเงินเข้า · ต้องได้ 100%) และปรับงวด (ต้องได้เท่ายอดค้าง)
   //    เทสเบราว์เซอร์เจอ: เดิมพูดว่า "งวดที่ยังไม่รับ … ยอดค้าง" บนใบเสนอราคาใหม่ = ไม่เข้ากับสิ่งที่ผู้ใช้กำลังทำ
-  if (Math.abs(sum - need) > 0.01) {
-    return `งวดรวมได้ ${sum}% แต่ต้องได้ ${need}%${need < 100 ? " (เท่ายอดค้าง)" : ""}`;
+  if (!s.ok) {
+    const tail = s.need < 100 ? " (เท่ายอดค้าง)" : "";
+    // D164 — มีงวดกรอกเป็นเงิน → บอกเป็นบาทของยอดชำระ ไม่ใช่ % ที่ผู้ใช้ไม่ได้กรอก
+    return s.fixed
+      ? `ยอดชำระรวมได้ ${money(s.intended)} บาท แต่ต้องได้ ${money(remain)} บาท${tail}`
+      : `งวดรวมได้ ${s.sumPct}% แต่ต้องได้ ${s.need}%${tail}`;
   }
-  const amts = planAmounts(net, rows.map((r) => r.percent), remain);
-  if (amts.some((a) => a <= 0)) return "งวดสุดท้ายเหลือยอดไม่ถึง 0.01 บาท — ลด % ของงวดก่อนหน้า";
+  const amts = planRowAmounts(net, rows, remain, c);
+  if (amts.some((a) => a <= 0)) return `งวดสุดท้ายเหลือยอดไม่ถึง 0.01 บาท — ลด${s.fixed ? "ยอด" : " %"}ของงวดก่อนหน้า`;
   if (rows.filter((r) => r.shipPoint).length > 1) return "จุดส่งของเลือกได้งวดเดียว";
   if (sent && rows.some((r) => r.shipPoint)) return "ส่งคลังไปแล้ว — ไม่ต้องเลือกจุดส่งของ";
   return null;
@@ -146,9 +290,9 @@ export function defaultPlanRows(depositPct = 50): PlanRowInput[] {
  * ★ ใช้ทั้งพรีวิวในหน้าสร้างใบเสนอราคาและตอนพิมพ์ (ประโยคเดียวกัน)
  */
 export function planTermsLines(rows: { seq: number; label: string; percent: number | null; amount: number; shipPoint: boolean }[]): string[] {
-  const money = (n: number) => n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // D164 — งวดที่กรอกเป็นเงินเก็บ % ไว้ 4 ตำแหน่ง → พิมพ์ 2 ตำแหน่ง
   return rows.map((r) =>
-    `งวดที่ ${r.seq} ${r.label.trim()}${r.percent != null ? ` ${r.percent}%` : ""} = ${money(r.amount)} บาท` +
+    `งวดที่ ${r.seq} ${r.label.trim()}${r.percent != null ? ` ${r2(r.percent)}%` : ""} = ${money(r.amount)} บาท` +
     (r.shipPoint ? " (ส่งสินค้าหลังรับงวดนี้)" : ""),
   );
 }

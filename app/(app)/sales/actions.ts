@@ -17,7 +17,7 @@ import {
 import { revenueAccountFor } from "@/lib/sales/cashAccount";
 import { defaultRevenueCat } from "@/lib/sales/revenueCats";
 import { PAY_METHODS } from "@/lib/sales/payments";
-import { planActionError, planAmounts, planError, receiveAmountError, shipNowError, isSent, type PlanRowInput } from "@/lib/sales/installments";
+import { planActionError, planError, planRowAmounts, percentToStore, receiveAmountError, shipNowError, isSent, type PlanRowInput } from "@/lib/sales/installments";
 import { getSalesBootstrap, getOrders, getOrderItems, getOrderPayments, getOrderPlan, getPendingWarehouse, getWarehouseStock, getSyncHistory, getOrderState, getCustomerId, getSaleMenuFull, getMenuLinkOptions, getCancelPlan, getCreditNotes, getCreditNoteNos, getPartialCreditPlan } from "./data";
 import { cancelMode, cnInputError, cnReasonText, cnTotals, partialTotals, CANCEL_AFTER_PARTIAL_TEXT, type CnReason } from "@/lib/sales/creditNote";
 import { accountsFor } from "@/lib/accounting/bankAccounts";
@@ -117,8 +117,10 @@ function withPlan(input: QuotationPayload): QuotationPayload {
   return input.plan?.length ? { ...input, isDepositRequired: false, depositPercent: 0 } : input;
 }
 /** ตรวจแผนงวดของใบเสนอราคาก่อนบันทึก — ยังไม่มีเงินเข้า ⇒ ยอดที่ต้องแบ่ง = ยอดสุทธิทั้งใบ */
-function quotationPlanError(input: QuotationPayload, net: number): string | null {
-  return input.plan?.length ? planError(input.plan, net, net, false) : null;
+function quotationPlanError(input: QuotationPayload, net: number, isVat: boolean): string | null {
+  // D164 — งวดที่กรอกเป็นเงินคิดยอดชำระจาก VAT/หัก ณ ที่จ่ายของใบนี้
+  const ctx = { isVat, whtPct: input.isWhtRequired ? Number(input.whtPercent) || 0 : 0 };
+  return input.plan?.length ? planError(input.plan, net, net, false, ctx) : null;
 }
 
 function buildQuotationDbPayload(input: QuotationPayload, isVat: boolean) {
@@ -163,7 +165,7 @@ async function saveQuotationCore(
   if ("conflict" in vat) return { ok: false, error: vat.conflict };
   const { p, items, totals } = buildQuotationDbPayload(withPlan(input), vat.isVat);
   // D146 — แผนงวดผิดต้องรู้ก่อนสร้างใบเสนอราคา (ไม่งั้นได้ใบเสนอราคาที่ไม่มีแผนค้างไว้)
-  const planErr = quotationPlanError(input, totals.netPayable);
+  const planErr = quotationPlanError(input, totals.netPayable, vat.isVat);
   if (planErr) return { ok: false, error: planErr };
   const { data, error } = await supabase.rpc("fn_save_quotation", { p, p_items: items });
   if (error) return { ok: false, error: mapDbError(error) };
@@ -200,7 +202,7 @@ export async function updateQuotationAction(quNo: string, input: QuotationPayloa
     return fail("ออเดอร์นี้ออกใบแจ้งหนี้หรือรับเงินงวดไปแล้ว — แก้ใบเสนอราคาไม่ได้ (ปรับงวดได้ที่หน้าจัดการออเดอร์)");
   }
   const { p, items, totals } = buildQuotationDbPayload(withPlan(input), vat.isVat);
-  const planErr = quotationPlanError(input, totals.netPayable);
+  const planErr = quotationPlanError(input, totals.netPayable, vat.isVat);
   if (planErr) return fail(planErr);
   const { data, error } = await supabase.rpc("fn_update_quotation", { p_qu_no: quNo, p, p_items: items });
   if (error) return fail(mapDbError(error));
@@ -479,7 +481,7 @@ export async function getOrderPlanAction(quNo: string) {
 
 /**
  * ตั้ง/ปรับแผนงวด — ส่งมาเฉพาะงวดที่ยังไม่ล็อก (รับแล้ว/ออกใบแจ้งหนี้แล้วคงไว้ตามเดิม)
- * ★ ยอดเป็นบาทคิดที่นี่ด้วย `planAmounts()` (งวดสุดท้ายรับเศษ) · RPC ตรวจผลรวมซ้ำ
+ * ★ ยอดเป็นบาทคิดที่นี่ด้วย `planRowAmounts()` (งวดสุดท้ายรับเศษ · งวดที่กรอกเป็นเงินใช้ยอดนั้น D164) · RPC ตรวจผลรวมซ้ำ
  * ★ ส่งว่างตอนยังไม่มีงวดล็อก = ยกเลิกแผน (กลับเป็นจ่ายครั้งเดียว)
  */
 export async function setOrderPlanAction(quNo: string, rows: PlanRowInput[]): Promise<SaveResult> {
@@ -487,9 +489,11 @@ export async function setOrderPlanAction(quNo: string, rows: PlanRowInput[]): Pr
   const order = await getOrderState(quNo);
   if (!order) return fail("ไม่พบออเดอร์นี้ในระบบ");
   const { data: so, error: soErr } = await supabase
-    .from("sales_orders").select("net_payable, grand_total").eq("qu_no", quNo).maybeSingle();
+    .from("sales_orders").select("net_payable, grand_total, vat_amount, wht_percent").eq("qu_no", quNo).maybeSingle();
   if (soErr) return fail(mapDbError(soErr));
   const net = Number(so?.net_payable) || Number(so?.grand_total) || 0;
+  // D164 — งวดที่กรอกเป็นเงินเก็บยอดก่อน VAT → แปลงเป็นยอดชำระด้วย VAT/หัก ณ ที่จ่ายของออเดอร์นี้
+  const ctx = { isVat: Number(so?.vat_amount) > 0, whtPct: Number(so?.wht_percent) || 0 };
   const plan = order.installments ?? [];
   const lockedUnpaid = plan.filter((i) => !i.paid && i.invNo).reduce((s, i) => s + i.amount, 0);
   const locked = plan.some((i) => i.paid || i.invNo);
@@ -497,11 +501,12 @@ export async function setOrderPlanAction(quNo: string, rows: PlanRowInput[]): Pr
 
   let payload: Record<string, unknown>[] = [];
   if (rows.length || locked) {
-    const err = planError(rows, net, remain, isSent(order.status));
+    const err = planError(rows, net, remain, isSent(order.status), ctx);
     if (err) return fail(err);
-    const amounts = planAmounts(net, rows.map((r) => r.percent), remain);
+    // D164 — งวดที่กรอกเป็นเงินคิดยอดจากยอดก่อน VAT ที่ตรึงไว้ (ไม่คิดกลับจาก %) · % เก็บไว้แสดง
+    const amounts = planRowAmounts(net, rows, remain, ctx);
     payload = rows.map((r, i) => ({
-      label: r.label.trim(), percent: r.percent, amount: amounts[i],
+      label: r.label.trim(), percent: percentToStore(r, net, ctx), amount: amounts[i],
       due_date: r.dueDate || null, ship_point: r.shipPoint,
     }));
   }

@@ -7,8 +7,9 @@ import { fmt, todayISO, useSaver } from "./ui";
 import type { OrderRow } from "./types";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import {
-  isLocked, isSent, nextUnpaid, planError, type Installment, type PlanRowInput,
+  isLocked, isSent, nextUnpaid, planError, rowsFromPlan, type Installment, type PlanRowInput,
 } from "@/lib/sales/installments";
+import { amountsVat } from "@/lib/sales/docVat";
 import { issueInstallmentInvoiceAction, setOrderPlanAction, voidInstallmentInvoiceAction } from "../actions";
 import { InstallmentEditor } from "./InstallmentEditor";
 
@@ -200,16 +201,12 @@ function ReplanDialog({ order, onClose, onDone }: { order: OrderRow; onClose: ()
   const remain = Math.round((order.outstandingBalance - lockedUnpaid) * 100) / 100;
   const startSeq = (locked.length ? Math.max(...locked.map((i) => i.seq)) : 0) + 1;
   const sent = isSent(order.status);
-  const [rows, setRows] = useState<PlanRowInput[]>(() =>
-    plan.filter((i) => !isLocked(i)).map((i) => ({
-      label: i.label,
-      percent: i.percent ?? (net > 0 ? Math.round((i.amount / net) * 10000) / 100 : 0),
-      shipPoint: sent ? false : i.shipPoint,
-      dueDate: i.dueDate,
-    })),
-  );
+  // D164 — VAT/หัก ณ ที่จ่ายของออเดอร์ (ตัดสินจากยอดของออเดอร์ ไม่ใช่สถานะ VAT วันนี้ — D154) · server ใช้กฎเดียวกัน
+  const ctx = { isVat: amountsVat(order, false), whtPct: order.whtPercent || 0 };
+  // ★ งวดที่กรอกเป็นเงินไว้ โหลดกลับเป็นเงิน (rowsFromPlan) — ไม่งั้นกดบันทึกเฉย ๆ แล้วยอดขยับเป็นสตางค์
+  const [rows, setRows] = useState<PlanRowInput[]>(() => rowsFromPlan(plan.filter((i) => !isLocked(i)), net, ctx, sent));
   const { pending, run } = useSaver();
-  const err = remain > 0 ? planError(rows, net, remain, sent) : null;
+  const err = remain > 0 ? planError(rows, net, remain, sent, ctx) : null;
   return (
     <Modal title="ปรับงวดที่ยังไม่ได้รับ" onClose={onClose} wide>
       <div className="rounded bg-raised p-2 text-xs text-muted">
@@ -219,7 +216,7 @@ function ReplanDialog({ order, onClose, onDone }: { order: OrderRow; onClose: ()
         งวดที่เหลือต้องรวมได้ <b>฿{fmt(remain)}</b> พอดี (งวดสุดท้ายรับเศษ)
       </div>
       {remain > 0 ? (
-        <InstallmentEditor rows={rows} onChange={setRows} net={net} remain={remain} startSeq={startSeq} sent={sent} />
+        <InstallmentEditor rows={rows} onChange={setRows} net={net} remain={remain} ctx={ctx} startSeq={startSeq} sent={sent} />
       ) : (
         <p className="text-xs text-warn">งวดที่เหลือออกใบแจ้งหนี้ไปแล้วทั้งหมด — ยกเลิกใบแจ้งหนี้ก่อนจึงปรับได้</p>
       )}

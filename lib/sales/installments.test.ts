@@ -230,7 +230,8 @@ describe("S16 ใบเสนอราคา (D146)", () => {
     const src = readFileSync("app/(app)/sales/actions.ts", "utf8");
     expect(src).toMatch(/buildQuotationDbPayload\(withPlan\(input\), vat\.isVat\)[\s\S]*fn_save_quotation/);
     expect(src).toMatch(/buildQuotationDbPayload\(withPlan\(input\), vat\.isVat\)[\s\S]*fn_update_quotation/);
-    expect(src.indexOf("quotationPlanError(input, totals.netPayable)")).toBeLessThan(src.indexOf('rpc("fn_save_quotation"'));
+    expect(src.indexOf("quotationPlanError(input, totals.netPayable, vat.isVat)")).toBeGreaterThan(-1);
+    expect(src.indexOf("quotationPlanError(input, totals.netPayable, vat.isVat)")).toBeLessThan(src.indexOf('rpc("fn_save_quotation"'));
     expect(src).toMatch(/installments\?\.some\(\(i\) => i\.paid \|\| i\.invNo\)[\s\S]*แก้ใบเสนอราคาไม่ได้/);
   });
   it("หน้าใบเสนอราคาเลิกใช้ช่องติ๊กมัดจำแบบเดิม", () => {

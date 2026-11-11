@@ -12,7 +12,8 @@ import {
   type QuotationPayload,
 } from "../actions";
 import { InstallmentEditor } from "./InstallmentEditor";
-import { defaultPlanRows, planAmounts, planError, planTermsLines, type PlanRowInput } from "@/lib/sales/installments";
+import { amountsVat } from "@/lib/sales/docVat";
+import { defaultPlanRows, planError, planRowAmounts, planTermsLines, rowPercent, rowsFromPlan, type PlanRowInput } from "@/lib/sales/installments";
 import { printQuotation, openPrintWindow } from "./print";
 import { IconCart, IconPlus } from "@/lib/shared/icons";
 import { AddCustomerModal } from "./CustomerFields";
@@ -73,12 +74,7 @@ export function QuotationTab({
         if (!plan.length) return;
         const net = editOrder.netPayable || editOrder.grandTotal;
         setPlanOn(true);
-        setPlanRows(plan.map((i) => ({
-          label: i.label,
-          percent: i.percent ?? (net > 0 ? Math.round((i.amount / net) * 10000) / 100 : 0),
-          shipPoint: i.shipPoint,
-          dueDate: i.dueDate,
-        })));
+        setPlanRows(rowsFromPlan(plan, net, { isVat: amountsVat(editOrder, boot.isVat), whtPct: editOrder.whtPercent || 0 })); // D164 — งวดที่กรอกเป็นเงินโหลดกลับเป็นเงิน
       })
       .catch(() => setMsg({ ok: false, text: `โหลดแผนงวดของ ${editOrder.quNo} ไม่สำเร็จ — ปิดแล้วเปิดแก้ใหม่` }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -94,7 +90,9 @@ export function QuotationTab({
   // 4.3 — กิจการที่ออกเอกสารไม่จด VAT → ไม่ถอด VAT และไม่โชว์บรรทัด VAT
   const isVat = boot.isVat;
   const totals = quotationTotals({ items, discount, isWhtRequired: isWht, whtPercent: whtPct, isDepositRequired: false, depositPercent: 0 }, isVat);
-  const planErr = planOn && totals.netPayable > 0 ? planError(planRows, totals.netPayable, totals.netPayable, false) : null;
+  // D164 — VAT/หัก ณ ที่จ่ายของใบนี้ (งวดที่กรอกเป็นเงินเก็บยอดก่อน VAT · ยอดชำระคิดใหม่เมื่อติ๊ก/แก้ WHT)
+  const planCtx = { isVat, whtPct: isWht ? whtPct : 0 };
+  const planErr = planOn && totals.netPayable > 0 ? planError(planRows, totals.netPayable, totals.netPayable, false, planCtx) : null;
 
   function addRawItem(name: string, price: number) {
     setItems((prev) => {
@@ -138,8 +136,8 @@ export function QuotationTab({
     };
     const snapItems = [...items];
     // เงื่อนไขงวดบนใบเสนอราคา — ยอดคิดด้วยฟังก์ชันเดียวกับที่ server บันทึก
-    const amts = plan.length ? planAmounts(totals.netPayable, plan.map((r) => r.percent), totals.netPayable) : [];
-    const planTerms = planTermsLines(plan.map((r, i) => ({ seq: i + 1, label: r.label, percent: r.percent, amount: amts[i], shipPoint: r.shipPoint })));
+    const amts = plan.length ? planRowAmounts(totals.netPayable, plan, totals.netPayable, planCtx) : [];
+    const planTerms = planTermsLines(plan.map((r, i) => ({ seq: i + 1, label: r.label, percent: rowPercent(r, totals.netPayable, planCtx), amount: amts[i], shipPoint: r.shipPoint })));
     // D79 — แผนงวดบันทึกไม่สำเร็จ = เหลือง ไม่ใช่เขียว
     const warnIfAny = (data: unknown) => {
       const w = (data as { warning?: string } | undefined)?.warning;
@@ -297,8 +295,8 @@ export function QuotationTab({
           </label>
           {planOn && (
             <div className="rounded border border-warn-line bg-warn-bg p-2">
-              <InstallmentEditor rows={planRows} onChange={setPlanRows} net={totals.netPayable} remain={totals.netPayable} />
-              <p className="mt-1 text-[11px] text-faint">% คิดจากยอดชำระสุทธิ{isWht ? " (หลังหัก ณ ที่จ่าย)" : ""} · ปรับงวดทีหลังได้ที่หน้าจัดการออเดอร์</p>
+              <InstallmentEditor rows={planRows} onChange={setPlanRows} net={totals.netPayable} remain={totals.netPayable} ctx={planCtx} />
+              <p className="mt-1 text-[11px] text-faint">กรอกได้ทั้ง % หรือจำนวนเงิน · % คิดจากยอดชำระสุทธิ{isWht ? " (หลังหัก ณ ที่จ่าย)" : ""} · ปรับงวดทีหลังได้ที่หน้าจัดการออเดอร์</p>
             </div>
           )}
 
