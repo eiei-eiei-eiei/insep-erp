@@ -66,19 +66,21 @@ export function InstallmentsTab() {
             <span>ยอดรวม: <b>{fmt(group.totalBase)}</b></span>
             <span className="md:col-span-3">รายละเอียด: {group.header.description}</span>
           </div>
-          <table className="tbl">
-            <thead><tr className="text-left text-faint"><th>งวด</th><th>ครบกำหนด</th><th className="num">ยอด(ฐาน)</th><th className="num">สุทธิ</th><th>สถานะ</th><th>บัญชีที่จ่าย</th></tr></thead>
-            <tbody>
-              {group.installments.map((it) => (
-                <tr key={it.txId}>
-                  <td>{it.installmentNo}</td><td className="whitespace-nowrap">{d.date(it.dueDate)}</td>
-                  <td className="num">{fmt(it.base)}</td><td className="num">{fmt(it.net)}</td>
-                  <td>{it.paid ? <span className="text-ok">จ่ายแล้ว</span> : <span className="text-warn">ค้าง</span>}</td>
-                  <td>{it.accountType || "-"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="tbl">
+              <thead><tr className="text-left text-faint"><th>งวด</th><th>ครบกำหนด</th><th className="num">ยอด(ฐาน)</th><th className="num">สุทธิ</th><th>สถานะ</th><th>บัญชีที่จ่าย</th></tr></thead>
+              <tbody>
+                {group.installments.map((it) => (
+                  <tr key={it.txId}>
+                    <td>{it.installmentNo}</td><td className="whitespace-nowrap">{d.date(it.dueDate)}</td>
+                    <td className="num">{fmt(it.base)}</td><td className="num">{fmt(it.net)}</td>
+                    <td>{it.paid ? <span className="text-ok">จ่ายแล้ว</span> : <span className="text-warn">ค้าง</span>}</td>
+                    <td>{it.accountType || "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <div className="mt-3"><button onClick={doVoid} disabled={pending} className="rounded-lg border border-crit-line px-4 py-2 text-sm text-crit hover:bg-crit-bg disabled:opacity-50">ยกเลิกทั้งกลุ่ม</button></div>
         </Card>
       )}

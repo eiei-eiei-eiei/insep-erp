@@ -159,7 +159,7 @@ export function ReceiptLayoutCard({
   return (
     <Card title="รูปแบบบิล" className="lg:col-span-2">
       {confirmNode}
-      <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         {/* ───────── ซ้าย: ตัวตั้งค่า ───────── */}
         <div>
           {/**

@@ -43,15 +43,17 @@ export function Nav({
     <>
       <header className="border-b border-line bg-nav">
         <div className="mx-auto flex max-w-6xl items-center gap-x-5 px-4 py-2.5">
-          <Link href="/" className="flex shrink-0 items-center gap-2 text-ink">
+          {/* 🪤 ชื่อแบรนด์ยาว (เช่น "บริษัท … จำกัด") ห้ามดันปุ่มฝั่งขวาตกจอ — ชื่อยอมย่อเป็น "…" (min-w-0 + truncate)
+              ปุ่มฝั่งขวาเป็น shrink-0 (D165) · ชื่อเต็มอยู่ใน title */}
+          <Link href="/" title={branding.name} className="flex min-w-0 items-center gap-2 text-ink">
             {branding.logoUrl ? (
-              <Image src={branding.logoUrl} alt="" width={22} height={22} className="rounded" unoptimized />
+              <Image src={branding.logoUrl} alt="" width={22} height={22} className="shrink-0 rounded" unoptimized />
             ) : (
-              <span className="grid h-6 w-6 place-items-center rounded bg-brand text-[10px] font-bold text-on-brand">
+              <span className="grid h-6 w-6 shrink-0 place-items-center rounded bg-brand text-[10px] font-bold text-on-brand">
                 {branding.name.trim().slice(0, 1) || "I"}
               </span>
             )}
-            <span className="text-[15px] font-bold tracking-tight">{branding.name}</span>
+            <span className="truncate text-[15px] font-bold tracking-tight">{branding.name}</span>
           </Link>
 
           {/* ลิงก์ workspace — เดสก์ท็อปเท่านั้น (มือถือใช้ bottom-tab ด้านล่าง)
@@ -74,7 +76,7 @@ export function Nav({
             ))}
           </nav>
 
-          <div className="ml-auto flex items-center gap-2 text-sm md:ml-0">
+          <div className="ml-auto flex shrink-0 items-center gap-2 text-sm md:ml-0">
             <span className="hidden items-center gap-2 sm:flex">
               <span className="grid h-6 w-6 place-items-center rounded bg-brand-soft text-[10px] font-bold text-brand">
                 {initials}

@@ -150,16 +150,18 @@ export function CancelOrderDialog({
                     </Select>
                   </Field>
                 </div>
-                <table className="tbl w-full">
-                  <tbody>
-                    <tr><td>มูลค่าตามใบกำกับเดิม</td><td className="num">{fmt(plan.totals.original)}</td></tr>
-                    <tr><td>มูลค่าที่ถูกต้อง</td><td className="num">{fmt(plan.totals.correct)}</td></tr>
-                    <tr><td>ผลต่าง (ก่อน VAT)</td><td className="num">{fmt(plan.totals.diff)}</td></tr>
-                    <tr><td>ภาษีมูลค่าเพิ่มที่ลดลง</td><td className="num">{fmt(plan.totals.vat)}</td></tr>
-                    <tr><td><b>รวมลดหนี้</b></td><td className="num"><b>{fmt(plan.totals.total)}</b></td></tr>
-                    {plan.totals.wht > 0 && <tr><td>ยอดคืนเงินจริง</td><td className="num">{fmt(plan.totals.refund)}</td></tr>}
-                  </tbody>
-                </table>
+                <div className="overflow-x-auto">
+                  <table className="tbl w-full">
+                    <tbody>
+                      <tr><td>มูลค่าตามใบกำกับเดิม</td><td className="num">{fmt(plan.totals.original)}</td></tr>
+                      <tr><td>มูลค่าที่ถูกต้อง</td><td className="num">{fmt(plan.totals.correct)}</td></tr>
+                      <tr><td>ผลต่าง (ก่อน VAT)</td><td className="num">{fmt(plan.totals.diff)}</td></tr>
+                      <tr><td>ภาษีมูลค่าเพิ่มที่ลดลง</td><td className="num">{fmt(plan.totals.vat)}</td></tr>
+                      <tr><td><b>รวมลดหนี้</b></td><td className="num"><b>{fmt(plan.totals.total)}</b></td></tr>
+                      {plan.totals.wht > 0 && <tr><td>ยอดคืนเงินจริง</td><td className="num">{fmt(plan.totals.refund)}</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
                 {cnWhtNote(plan.totals) && <div className="text-xs text-warn">{cnWhtNote(plan.totals)}</div>}
                 <div className="text-xs text-faint">
                   ระบบคืนสต็อกและย้อนรายการสต็อกให้เหมือนการยกเลิกแบบเดิม · ไม่ได้คืนเงินตอนนี้ = ขึ้นในหน้าลูกหนี้-เจ้าหนี้ กดชำระทีหลังได้

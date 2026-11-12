@@ -152,22 +152,24 @@ function PendingOrders({ canWrite, company, active, txt }: { canWrite: boolean; 
               {o.outstandingBalance > 0 && <div className="text-crit">ค้าง ฿{fmt(o.outstandingBalance)}</div>}
             </div>
           </div>
-          <table className="tbl mt-3">
-            <thead>
-              <tr>
-                <th>รายการ</th>
-                <th className="text-center">จำนวน</th>
-              </tr>
-            </thead>
-            <tbody>
-              {o.items.map((it, i) => (
-                <tr key={i} className="border-t">
-                  <td>{it.name}</td>
-                  <td className="text-center">{it.qty}</td>
+          <div className="overflow-x-auto">
+            <table className="tbl mt-3">
+              <thead>
+                <tr>
+                  <th>รายการ</th>
+                  <th className="text-center">จำนวน</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {o.items.map((it, i) => (
+                  <tr key={i} className="border-t">
+                    <td>{it.name}</td>
+                    <td className="text-center">{it.qty}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <div className="mt-3 flex gap-2">
             <button onClick={() => printDoc(o)} className="rounded border border-line px-3 py-1.5 text-sm text-muted hover:bg-raised">
               พิมพ์เอกสาร

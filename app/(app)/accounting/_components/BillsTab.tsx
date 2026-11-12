@@ -195,14 +195,16 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
             <Info k="ยอดก่อนหัก" v={fmt(detail.tx.amount_after_discount as number)} /><Info k="VAT" v={fmt(detail.tx.vat_amount as number)} /><Info k="สุทธิ" v={fmt(detail.tx.net_amount as number)} />
           </div>
           {detail.items.length > 0 && (
-            <table className="tbl mt-3">
-              <thead><tr className="text-left text-faint"><th>รายการ</th><th>หมวด</th><th>งาน</th><th className="num">จำนวน</th><th className="num">ราคา(ex)</th><th className="num">รวม</th></tr></thead>
-              <tbody>
-                {detail.items.map((it) => (
-                  <tr key={it.item_id as string}><td>{it.item_name as string}</td><td>{(it.item_category as string) ?? ""}</td><td>{(it.item_job as string) ?? ""}</td><td className="num">{fmt(it.quantity as number)}</td><td className="num">{fmt(it.ex_vat as number)}</td><td className="num">{fmt(it.total_price as number)}</td></tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="overflow-x-auto">
+              <table className="tbl mt-3">
+                <thead><tr className="text-left text-faint"><th>รายการ</th><th>หมวด</th><th>งาน</th><th className="num">จำนวน</th><th className="num">ราคา(ex)</th><th className="num">รวม</th></tr></thead>
+                <tbody>
+                  {detail.items.map((it) => (
+                    <tr key={it.item_id as string}><td>{it.item_name as string}</td><td>{(it.item_category as string) ?? ""}</td><td>{(it.item_job as string) ?? ""}</td><td className="num">{fmt(it.quantity as number)}</td><td className="num">{fmt(it.ex_vat as number)}</td><td className="num">{fmt(it.total_price as number)}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </Card>
       )}

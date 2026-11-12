@@ -386,7 +386,7 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
     <>
       {confirmNode}
       {/* pb เผื่อแถบตะกร้าที่ลอยอยู่ขอบล่าง — ไม่งั้นเนื้อหาท้ายหน้าถูกบัง */}
-      <div className="grid gap-4 pb-44 lg:grid-cols-[1fr_380px] lg:pb-0 2xl:grid-cols-[1fr_420px]">
+      <div className="grid grid-cols-1 gap-4 pb-44 lg:grid-cols-[minmax(0,1fr)_380px] lg:pb-0 2xl:grid-cols-[minmax(0,1fr)_420px]">
         {/* ───────── ซ้าย: บิล + เมนู ───────── */}
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">

@@ -58,7 +58,7 @@ export function DateFormatCard({
               {DATE_FORMATS.map(option)}
             </Select>
           </Field>
-          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-md bg-raised px-3 py-2 text-xs">
+          <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-md bg-raised px-3 py-2 text-xs">
             <dt className="text-faint">วันที่</dt>
             <dd className="text-ink">{formatDate(todayISO, screen)}</dd>
             <dt className="text-faint">วันที่และเวลา</dt>
@@ -75,7 +75,7 @@ export function DateFormatCard({
               {DATE_FORMATS.map(option)}
             </Select>
           </Field>
-          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-md bg-raised px-3 py-2 text-xs">
+          <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-md bg-raised px-3 py-2 text-xs">
             <dt className="text-faint">วันที่บนเอกสาร</dt>
             <dd className="text-ink">{formatDate(todayISO, doc)}</dd>
           </dl>

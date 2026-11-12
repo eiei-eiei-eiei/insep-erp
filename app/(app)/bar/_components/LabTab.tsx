@@ -879,19 +879,21 @@ function SumTable({ title, rows }: { title: string; rows: { key: string; name: s
       {rows.length === 0 ? (
         <Empty>—</Empty>
       ) : (
-        <table className="tbl">
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.key}>
-                <td>
-                  {r.name}
-                  <div className="text-xs text-faint">{r.count}</div>
-                </td>
-                <td className="num">{fmt(r.cost)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="overflow-x-auto">
+          <table className="tbl">
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.key}>
+                  <td>
+                    {r.name}
+                    <div className="text-xs text-faint">{r.count}</div>
+                  </td>
+                  <td className="num">{fmt(r.cost)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </Card>
   );

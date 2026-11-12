@@ -51,20 +51,22 @@ export function PriceCheckTab({ boot, entityId }: { boot: Bootstrap; entityId: s
         </Field>
         <Field label="หมายเหตุ"><TextInput value={note} onChange={(e) => setNote(e.target.value)} /></Field>
       </div>
-      <table className="tbl mt-3">
-        <thead><tr className="text-left text-faint"><th>รายการ</th><th className="w-20">จำนวน</th><th className="w-28">ราคา(ex VAT)</th><th className="w-24 num">รวม VAT</th><th className="w-8"></th></tr></thead>
-        <tbody>
-          {items.map((it, i) => (
-            <tr key={i}>
-              <td><TextInput value={it.itemName} onChange={(e) => setItems((p) => p.map((x, idx) => idx === i ? { ...x, itemName: e.target.value } : x))} /></td>
-              <td><NumInput value={it.quantity} onChange={(e) => setItems((p) => p.map((x, idx) => idx === i ? { ...x, quantity: Number(e.target.value) } : x))} /></td>
-              <td><NumInput value={it.exVat || ""} onChange={(e) => setItems((p) => p.map((x, idx) => idx === i ? { ...x, exVat: Number(e.target.value) } : x))} /></td>
-              <td className="num">{fmt(inVatFromExVat(it.exVat))}</td>
-              <td><button onClick={() => setItems((p) => p.filter((_, idx) => idx !== i))} className="text-crit">✕</button></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="overflow-x-auto">
+        <table className="tbl mt-3">
+          <thead><tr className="text-left text-faint"><th>รายการ</th><th className="w-20">จำนวน</th><th className="w-28">ราคา(ex VAT)</th><th className="w-24 num">รวม VAT</th><th className="w-8"></th></tr></thead>
+          <tbody>
+            {items.map((it, i) => (
+              <tr key={i}>
+                <td><TextInput value={it.itemName} onChange={(e) => setItems((p) => p.map((x, idx) => idx === i ? { ...x, itemName: e.target.value } : x))} /></td>
+                <td><NumInput value={it.quantity} onChange={(e) => setItems((p) => p.map((x, idx) => idx === i ? { ...x, quantity: Number(e.target.value) } : x))} /></td>
+                <td><NumInput value={it.exVat || ""} onChange={(e) => setItems((p) => p.map((x, idx) => idx === i ? { ...x, exVat: Number(e.target.value) } : x))} /></td>
+                <td className="num">{fmt(inVatFromExVat(it.exVat))}</td>
+                <td><button onClick={() => setItems((p) => p.filter((_, idx) => idx !== i))} className="text-crit">✕</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       <button onClick={() => setItems((p) => [...p, { itemName: "", quantity: 1, exVat: 0 }])} className="mt-2 text-sm text-muted">+ เพิ่มรายการ</button>
       <div className="mt-3"><SaveButton pending={pending} onClick={doSave}>บันทึกเช็คราคา</SaveButton></div>
     </Card>

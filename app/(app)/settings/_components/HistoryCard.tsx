@@ -170,37 +170,39 @@ export function HistoryCard({
                                   ไม่มีช่องไหนเปลี่ยนค่า (บันทึกซ้ำด้วยค่าเดิม)
                                 </p>
                               ) : (
-                                <table className="tbl">
-                                  <thead>
-                                    <tr>
-                                      <th>ช่อง</th>
-                                      <th>ค่าก่อน</th>
-                                      <th>ค่าหลัง</th>
-                                      <th className="num"></th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {fields.map((f) => (
-                                      <tr key={f.key}>
-                                        <td className="text-muted">{f.label}</td>
-                                        <td className="text-crit">{f.before}</td>
-                                        <td className="text-ok">{f.after}</td>
-                                        <td className="num whitespace-nowrap">
-                                          {f.before !== "—" && (
-                                            <RowBtn
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                copy(`${r.id}-${f.key}`, rawBefore(r, f.key));
-                                              }}
-                                            >
-                                              {copied === `${r.id}-${f.key}` ? "คัดลอกแล้ว" : "คัดลอกค่าเก่า"}
-                                            </RowBtn>
-                                          )}
-                                        </td>
+                                <div className="overflow-x-auto">
+                                  <table className="tbl">
+                                    <thead>
+                                      <tr>
+                                        <th>ช่อง</th>
+                                        <th>ค่าก่อน</th>
+                                        <th>ค่าหลัง</th>
+                                        <th className="num"></th>
                                       </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
+                                    </thead>
+                                    <tbody>
+                                      {fields.map((f) => (
+                                        <tr key={f.key}>
+                                          <td className="text-muted">{f.label}</td>
+                                          <td className="text-crit">{f.before}</td>
+                                          <td className="text-ok">{f.after}</td>
+                                          <td className="num whitespace-nowrap">
+                                            {f.before !== "—" && (
+                                              <RowBtn
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  copy(`${r.id}-${f.key}`, rawBefore(r, f.key));
+                                                }}
+                                              >
+                                                {copied === `${r.id}-${f.key}` ? "คัดลอกแล้ว" : "คัดลอกค่าเก่า"}
+                                              </RowBtn>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
                               )}
                             </td>
                           </tr>

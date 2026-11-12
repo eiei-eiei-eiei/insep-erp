@@ -139,11 +139,13 @@
 [data-mode="dark"] [data-brand="rust"],
 [data-mode="dark"][data-brand="rust"] { --color-brand: #e08163; --color-on-brand: #1c0d08; }
 
-html,
-body {
-  max-width: 100vw;
-  overflow-x: hidden;
-}
+/* 🚨 ห้ามใส่ `overflow-x: hidden` (หรือ max-width: 100vw) ที่ html/body กลับมา (D165)
+   เคยมีมาตั้งแต่ตอนวางโครงแอป โดยไม่มีบันทึกเหตุผล ผลจริง 2 อย่าง:
+   1) อะไรก็ตามที่กว้างเกินจอมือถือ ถูกตัดทิ้งเงียบ ๆ เลื่อนไปดูไม่ได้ — ผู้ใช้ต้องหมุนจอเป็นแนวนอน
+   2) body กลายเป็นกล่องเลื่อนอีกชั้น (overflow-y คิดเป็น auto) → `position: sticky` ทั้งแอปไม่ติด
+      (แถบสรุปบิลบาร์บนจอคอม lg:sticky เลื่อนหายไปกับหน้ามาตลอด)
+   ของที่กว้างกว่าจอให้แก้ที่ตัวมัน: ตารางห่อด้วยกรอบ overflow-x-auto · grid ใช้ minmax(0,1fr)
+   ไม่ใช่ซ่อนทั้งหน้า — มีเทสอ่านไฟล์นี้ล็อกไว้ (lib/shared/mobileOverflow.test.ts) */
 
 body {
   background: var(--color-page);

@@ -487,7 +487,7 @@ export function RedistillTab({ products, materials }: { products: Product[]; mat
                     (เลขอ้างอิง {materialDocRef(lot.lot_no, roundNo)}) · รอบที่ไม่ใส่อะไรเลยก็ปล่อยว่างได้
                   </p>
                   {rMats.map((m, i) => (
-                    <div key={i} className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-[2fr_1fr_auto]">
+                    <div key={i} className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_auto]">
                       <Select value={m.material_id}
                         onChange={(e) => setRMats(rMats.map((x, k) => (k === i ? { ...x, material_id: e.target.value } : x)))}>
                         <option value="">-- เลือกวัตถุดิบ --</option>

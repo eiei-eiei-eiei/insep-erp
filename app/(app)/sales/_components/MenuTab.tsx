@@ -70,7 +70,7 @@ export function MenuTab({ active, hasProduction }: { active: boolean; hasProduct
   const linkList = form.category === "สุรา" ? opts.products : opts.warehouse;
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
       {confirmNode}
       <Card title="เมนูขาย (sale_menu)">
         {loading ? (

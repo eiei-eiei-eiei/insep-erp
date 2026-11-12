@@ -185,7 +185,7 @@ export function QuotationTab({
   if (!canWrite) return <div className="rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">ไม่มีสิทธิ์สร้างใบเสนอราคา</div>;
 
   return (
-    <div className={`grid gap-4 lg:grid-cols-[1fr_400px] lg:pb-0 ${items.length > 0 ? "pb-16" : ""}`}>
+    <div className={`grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_400px] lg:pb-0 ${items.length > 0 ? "pb-16" : ""}`}>
       {/* ซ้าย: ลูกค้า + เมนู */}
       <div className="space-y-4">
         <Card>

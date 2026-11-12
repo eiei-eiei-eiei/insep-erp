@@ -132,30 +132,32 @@ export function CreditNoteDialog({
 
             {mode === "return" ? (
               <>
-                <table className="tbl w-full">
-                  <thead><tr><th>รายการ</th><th className="num hidden sm:table-cell">ราคา/หน่วย</th><th className="num hidden sm:table-cell">ขาย</th><th className="num">คืนได้อีก</th><th className="num">คืนครั้งนี้</th></tr></thead>
-                  <tbody>
-                    {plan.items.map((it) => (
-                      <tr key={it.id}>
-                        <td>
-                          {it.name}
-                          {/* จอแคบ: ราคา/จำนวนขายย้ายมาใต้ชื่อ (คอลัมน์ถูกซ่อน) — ไม่งั้นชื่อถูกบีบเหลือคำละบรรทัด */}
-                          <div className="text-xs text-faint sm:hidden">{fmt(it.price)} · ขาย {it.qty}</div>
-                        </td>
-                        <td className="num hidden sm:table-cell">{fmt(it.price)}</td>
-                        <td className="num hidden sm:table-cell">{it.qty}</td>
-                        <td className="num">{rem.qty[it.id]}</td>
-                        <td className="num">
-                          <div className="ml-auto w-16 sm:w-20">
-                            <TextInput type="number" min={0} max={rem.qty[it.id]} step="any" value={qtys[it.id] ?? ""}
-                              disabled={rem.qty[it.id] <= 0}
-                              onChange={(e) => setQtys((q) => ({ ...q, [it.id]: e.target.value }))} />
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <div className="overflow-x-auto">
+                  <table className="tbl w-full">
+                    <thead><tr><th>รายการ</th><th className="num hidden sm:table-cell">ราคา/หน่วย</th><th className="num hidden sm:table-cell">ขาย</th><th className="num">คืนได้อีก</th><th className="num">คืนครั้งนี้</th></tr></thead>
+                    <tbody>
+                      {plan.items.map((it) => (
+                        <tr key={it.id}>
+                          <td>
+                            {it.name}
+                            {/* จอแคบ: ราคา/จำนวนขายย้ายมาใต้ชื่อ (คอลัมน์ถูกซ่อน) — ไม่งั้นชื่อถูกบีบเหลือคำละบรรทัด */}
+                            <div className="text-xs text-faint sm:hidden">{fmt(it.price)} · ขาย {it.qty}</div>
+                          </td>
+                          <td className="num hidden sm:table-cell">{fmt(it.price)}</td>
+                          <td className="num hidden sm:table-cell">{it.qty}</td>
+                          <td className="num">{rem.qty[it.id]}</td>
+                          <td className="num">
+                            <div className="ml-auto w-16 sm:w-20">
+                              <TextInput type="number" min={0} max={rem.qty[it.id]} step="any" value={qtys[it.id] ?? ""}
+                                disabled={rem.qty[it.id] <= 0}
+                                onChange={(e) => setQtys((q) => ({ ...q, [it.id]: e.target.value }))} />
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
                 <label className="flex items-start gap-2">
                   <input type="checkbox" checked={restock} onChange={(e) => setRestock(e.target.checked)} className="mt-1" />
                   <span><b>คืนเข้าสต็อก</b> — สินค้ากลับเข้าคลัง และสุราขึ้นฟอร์ม ภส. เป็นรับคืน (ไม่ติ๊กถ้าสินค้าแตก/เสียหายใช้ขายต่อไม่ได้)</span>
@@ -190,25 +192,27 @@ export function CreditNoteDialog({
             </div>
 
             {totals && (
-              <table className="tbl w-full">
-                <tbody>
-                  {/* ★ บรรทัดเดียวกับบนกระดาษ (cnInvoiceLines) — ใบที่ 2 ขึ้นไปมีบรรทัดหักใบก่อนหน้า */}
-                  {(() => {
-                    const inv = cnInvoiceLines(plan.bills.map((b) => ({ preVat: b.preVat })), totals.original);
-                    return (
-                      <>
-                        <tr><td>มูลค่าตามใบกำกับภาษีเดิม</td><td className="num">{fmt(inv.invoice)}</td></tr>
-                        {inv.prior > 0 && <tr><td>หัก ลดหนี้ครั้งก่อน</td><td className="num">-{fmt(inv.prior)}</td></tr>}
-                      </>
-                    );
-                  })()}
-                  <tr><td>มูลค่าที่ถูกต้อง</td><td className="num">{fmt(totals.correct)}</td></tr>
-                  <tr><td>ผลต่าง (ก่อน VAT)</td><td className="num">{fmt(totals.diff)}</td></tr>
-                  <tr><td>ภาษีมูลค่าเพิ่มที่ลดลง</td><td className="num">{fmt(totals.vat)}</td></tr>
-                  <tr><td><b>รวมลดหนี้</b></td><td className="num"><b>{fmt(totals.total)}</b></td></tr>
-                  {totals.wht > 0 && <tr><td>ยอดคืนเงินจริง</td><td className="num">{fmt(totals.refund)}</td></tr>}
-                </tbody>
-              </table>
+              <div className="overflow-x-auto">
+                <table className="tbl w-full">
+                  <tbody>
+                    {/* ★ บรรทัดเดียวกับบนกระดาษ (cnInvoiceLines) — ใบที่ 2 ขึ้นไปมีบรรทัดหักใบก่อนหน้า */}
+                    {(() => {
+                      const inv = cnInvoiceLines(plan.bills.map((b) => ({ preVat: b.preVat })), totals.original);
+                      return (
+                        <>
+                          <tr><td>มูลค่าตามใบกำกับภาษีเดิม</td><td className="num">{fmt(inv.invoice)}</td></tr>
+                          {inv.prior > 0 && <tr><td>หัก ลดหนี้ครั้งก่อน</td><td className="num">-{fmt(inv.prior)}</td></tr>}
+                        </>
+                      );
+                    })()}
+                    <tr><td>มูลค่าที่ถูกต้อง</td><td className="num">{fmt(totals.correct)}</td></tr>
+                    <tr><td>ผลต่าง (ก่อน VAT)</td><td className="num">{fmt(totals.diff)}</td></tr>
+                    <tr><td>ภาษีมูลค่าเพิ่มที่ลดลง</td><td className="num">{fmt(totals.vat)}</td></tr>
+                    <tr><td><b>รวมลดหนี้</b></td><td className="num"><b>{fmt(totals.total)}</b></td></tr>
+                    {totals.wht > 0 && <tr><td>ยอดคืนเงินจริง</td><td className="num">{fmt(totals.refund)}</td></tr>}
+                  </tbody>
+                </table>
+              </div>
             )}
             {totals && cnWhtNote(totals) && <div className="text-xs text-warn">{cnWhtNote(totals)}</div>}
             {totals?.closing && <div className="text-xs text-muted">ใบนี้ลดหนี้ครบยอดที่เหลือของออเดอร์</div>}
