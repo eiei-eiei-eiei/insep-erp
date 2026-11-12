@@ -10,7 +10,7 @@ import { WarehouseTab } from "./WarehouseTab";
 import { SyncHistoryTab } from "./SyncHistoryTab";
 import { MenuTab } from "./MenuTab";
 import { IconCart } from "@/lib/shared/icons";
-import { tabsFor } from "@/lib/shared/tabs";
+import { slugFromLabel, tabsFor } from "@/lib/shared/tabs";
 import { can, toRole, ROLE_LABEL } from "@/lib/shared/roles";
 import { useTabUrl } from "../../_components/useTabUrl";
 
@@ -27,8 +27,10 @@ export function SalesApp({ boot }: { boot: SalesBoot }) {
   const sp = useSearchParams();
   const urlTab = sp.get("tab");
   const [tab, setTab] = useState<Tab>(() => (urlTab && allowed.includes(urlTab) ? urlTab : allowed[0]));
-  // slug = key อยู่แล้ว · แต่ยังต้องกันแท็บที่ role นี้ไม่มีสิทธิ์ ไม่ให้ยัดผ่าน URL
-  useTabUrl("sales", tab, (t) => { if (allowed.includes(t)) setTab(t); }, (k) => (allowed.includes(k) ? k : ""));
+  // state เก็บเป็น slug · ยังต้องกันแท็บที่ role นี้ไม่มีสิทธิ์ ไม่ให้ยัดผ่าน URL
+  // 🪤 D166 — useTabUrl ส่ง **ชื่อแท็บ** กลับมา ไม่ใช่ slug → ต้องแปลงก่อน
+  //    เดิมเช็ค allowed.includes(ชื่อ) = ไม่ผ่านทุกครั้ง ⇒ เลือกแท็บจากดร็อปดาวน์แถบบน/กดย้อนกลับ แล้ว URL เปลี่ยนแต่จอค้าง
+  useTabUrl("sales", tab, (label) => { const s = slugFromLabel("sales", label); if (allowed.includes(s)) setTab(s); }, (k) => (allowed.includes(k) ? k : ""));
   const [editOrder, setEditOrder] = useState<OrderRow | null>(null);
   const canWrite = can(role, "sales.write");
 

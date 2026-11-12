@@ -12,7 +12,7 @@ import { HistoryTab } from "./HistoryTab";
 import { CustomerTab } from "./CustomerTab";
 import { DashboardTab } from "./DashboardTab";
 import { BarSettingsTab } from "./BarSettingsTab";
-import { tabsFor } from "@/lib/shared/tabs";
+import { slugFromLabel, tabsFor } from "@/lib/shared/tabs";
 import { toRole, ROLE_LABEL } from "@/lib/shared/roles";
 import { IconGlass } from "@/lib/shared/icons";
 import { useTabUrl } from "../../_components/useTabUrl";
@@ -51,11 +51,15 @@ export function BarApp({ boot }: { boot: BarBoot }) {
   const [tab, setTab] = useState<string>(() =>
     urlTab && allowed.includes(urlTab) ? urlTab : (allowed[0] ?? "pos"),
   );
+  // 🪤 D166 — useTabUrl ส่ง **ชื่อแท็บ** ("ประวัติบิล") กลับมา ไม่ใช่ slug ("history")
+  //    บาร์เก็บแท็บเป็น slug (แอปอื่นเก็บเป็นชื่อ) → ต้องแปลงก่อน · เดิมเช็ค allowed.includes(ชื่อ) = ไม่ผ่านทุกครั้ง
+  //    ⇒ ตั้งแต่ D96 เลือกแท็บบาร์จากดร็อปดาวน์แถบบน / กดย้อนกลับ แล้ว URL เปลี่ยนแต่จอค้างแท็บเดิม
   useTabUrl(
     "bar",
     tab,
-    (t) => {
-      if (allowed.includes(t)) setTab(t);
+    (label) => {
+      const slug = slugFromLabel("bar", label);
+      if (allowed.includes(slug)) setTab(slug);
     },
     (k) => (allowed.includes(k) ? k : ""),
   );

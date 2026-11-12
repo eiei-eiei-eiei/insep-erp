@@ -23,9 +23,15 @@ import { labelFromSlug } from "@/lib/shared/tabs";
 export function useTabUrl(
   workspaceKey: string,
   tab: string,
-  setTab: (t: string) => void,
-  toSlug: (label: string) => string,
+  /**
+   * 🚨 ได้ **ชื่อแท็บ** (label เช่น "ประวัติบิล") ไม่ใช่ slug — แอปที่เก็บแท็บเป็น slug ต้องแปลงเอง
+   *    ด้วย `slugFromLabel()` (บาร์เคยเช็คชื่อกับรายการ slug ตรง ๆ → ไม่เคยผ่านเลยตั้งแต่ D96 · D166)
+   */
+  setTabByLabel: (label: string) => void,
+  /** ค่า state ของแอป (ชื่อหรือ slug แล้วแต่แอป) → slug ที่จะเขียนลง URL · ไม่รู้จัก = "" */
+  toSlug: (tabState: string) => string,
 ) {
+  const setTab = setTabByLabel;
   const pathname = usePathname();
   const sp = useSearchParams();
   const urlSlug = sp.get("tab");
