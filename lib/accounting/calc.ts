@@ -17,7 +17,7 @@
  * A21 vatMode        โหมดกรอกราคา "รวม VAT" (D98) — ค่าปริยาย "ex" = เส้นทางเดิมทุกตัวอักษร
  */
 
-import { vatFromGross } from "../shared/vat";
+import { vatFromGross, allocateBase } from "../shared/vat";
 import { SALES_CREDIT_TYPE } from "./creditNote";
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -248,14 +248,8 @@ export function entryCalc(input: EntryCalcInput): EntryCalcResult {
  * ★ เศษปัดตกที่บรรทัดยอดใหญ่ที่สุด — คลาดเป็นสัดส่วนน้อยที่สุด
  */
 export function allocateExTotals(lineGross: number[], base: number): number[] {
-  const out = lineGross.map((g) => vatFromGross(num(g)).base);
-  if (out.length === 0) return out;
-  const diff = round2(num(base) - round2(out.reduce((a, b) => a + b, 0)));
-  if (diff === 0) return out;
-  let k = 0;
-  for (let i = 1; i < lineGross.length; i++) if (num(lineGross[i]) > num(lineGross[k])) k = i;
-  out[k] = round2(out[k] + diff);
-  return out;
+  // D167 — ตัวจริงย้ายไป lib/shared/vat (เอกสารขายใช้ตัวเดียวกัน) · ยอดไม่ติดลบได้ค่าเท่าเดิมเป๊ะ
+  return allocateBase(lineGross.map(num), num(base));
 }
 
 /**

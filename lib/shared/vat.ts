@@ -41,6 +41,33 @@ export function vatFromGross(gross: number, rate: number = VAT_RATE): VatSplit {
   return { base: round2(g - vat), vat, gross: g };
 }
 
+/**
+ * ยอดก่อนภาษีของยอดที่รวมภาษีแล้ว — รองรับยอดติดลบ (บรรทัด "หัก" บนเอกสาร)
+ * ★ ยอดบวกได้ค่าเดียวกับ `vatFromGross(g).base` เป๊ะ
+ */
+export function baseOfGross(gross: number, rate: number = VAT_RATE): number {
+  const g = Number(gross) || 0;
+  return g < 0 ? -vatFromGross(-g, rate).base : vatFromGross(g, rate).base;
+}
+
+/**
+ * แบ่ง "ยอดก่อน VAT ของทั้งใบ" ลงแต่ละบรรทัด (A21 D98 · ย้ายมาจาก lib/accounting ใน D167)
+ *
+ * แต่ละบรรทัดถอด VAT จาก **ยอดรวม VAT ของบรรทัดนั้น** (ไม่ใช่ ราคาต่อหน่วยที่ปัดแล้ว × จำนวน)
+ * 🚨 ผลรวมต้องเท่ากับ `base` **เป๊ะ** — ไม่งั้นคนบวกคอลัมน์แล้วได้ไม่ตรงกับยอดก่อน VAT ของใบเดียวกัน
+ * ★ เศษปัดตกที่บรรทัดยอดใหญ่ที่สุด — คลาดเป็นสัดส่วนน้อยที่สุด
+ */
+export function allocateBase(lineGross: number[], base: number, rate: number = VAT_RATE): number[] {
+  const out = lineGross.map((g) => baseOfGross(g, rate));
+  if (out.length === 0) return out;
+  const diff = round2((Number(base) || 0) - round2(out.reduce((a, b) => a + b, 0)));
+  if (diff === 0) return out;
+  let k = 0;
+  for (let i = 1; i < lineGross.length; i++) if ((Number(lineGross[i]) || 0) > (Number(lineGross[k]) || 0)) k = i;
+  out[k] = round2(out[k] + diff);
+  return out;
+}
+
 /** ข้อความอัตราไว้พิมพ์บนสลิป — `ภาษีมูลค่าเพิ่ม 7%` */
 export function vatLabel(rate: number = VAT_RATE): string {
   return `ภาษีมูลค่าเพิ่ม ${rate}%`;
