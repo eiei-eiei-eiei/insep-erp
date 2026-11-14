@@ -10,6 +10,8 @@ import { DEFAULT_DOC_FORMAT, DOC_DATE_FORMAT_KIND, toDateFormat } from "@/lib/sh
 import { fetchAllRows } from "@/lib/shared/paginate";
 import { mustRead } from "@/lib/shared/dbError";
 import { bangkokDateISO } from "@/lib/shared/datetime";
+import { menuWithStock } from "@/lib/sales/menuStock";
+import { loadPlansFor, mapPayment, PAYMENT_COLS, orderItemsFor, orderStateFor, customerIdFor, warehouseStockFor } from "@/lib/sales/orderLoaders";
 
 async function db() {
   return createClient();
@@ -74,22 +76,12 @@ export async function getSalesBootstrap() {
     userName = ((p?.display_name as string) || (p?.username as string) || "").trim();
   }
 
-  const liveMap = new Map<string, number>();
-  for (const s of mustRead(stockP, "สต็อกสุรา")) liveMap.set(s.product_id as string, Number(s.balance) || 0);
-  const whMap = new Map<string, number>();
-  for (const s of mustRead(whStock, "สต็อกคลัง")) whMap.set(s.item_code as string, Number(s.qty) || 0);
-
-  const menuList: MenuRow[] = mustRead(menu, "เมนูขาย").map((m) => {
-    const itemCode = (m.product_id as string)?.trim() ?? "";
-    const category = (m.category as string)?.trim() ?? "";
-    const multiplier = Number(m.multiplier) || 1;
-    const isLive = category === "สุรา" && itemCode !== "";
-    let raw: number | null = null;
-    if (isLive) raw = liveMap.has(itemCode) ? liveMap.get(itemCode)! : null;
-    else if (itemCode !== "") raw = whMap.has(itemCode) ? whMap.get(itemCode)! : null;
-    const stockQty = raw !== null ? Math.floor(raw / multiplier) : null;
-    return { name: (m.menu_name as string).trim(), price: Number(m.price) || 0, category, itemCode, multiplier, stockQty, isLive };
-  });
+  // D172 — ตัวคิดย้ายไป lib/sales/menuStock (ใช้ร่วมกับ Claude connector)
+  const menuList: MenuRow[] = menuWithStock(
+    mustRead(menu, "เมนูขาย"),
+    mustRead(stockP, "สต็อกสุรา"),
+    mustRead(whStock, "สต็อกคลัง"),
+  );
 
   // เฉพาะลูกค้า (ไม่เอาคู่ค้าที่เป็น "ผู้ขาย" ล้วน) — roles มี 'ลูกค้า' หรือ type ไม่ใช่ 'ผู้ขาย'
   const isCustomer = (c: { contact_type?: unknown; roles?: unknown }) => {
@@ -294,7 +286,7 @@ export async function getOrders(): Promise<OrderRow[]> {
     contactInfoMap(supabase),
   ]);
   // D147 — แผนงวด + การรับเงินรายงวด (การ์ดออเดอร์โชว์ตารางงวด) · คำขอเดียวทั้งหน้า
-  const { plans, payments } = await loadPlans(supabase);
+  const { plans, payments } = await loadPlansFor(supabase);
   return orders.map((r) => ({
     ...mapOrder(r, cmap),
     installments: plans.get(r.qu_no as string) ?? [],
@@ -303,30 +295,8 @@ export async function getOrders(): Promise<OrderRow[]> {
 }
 
 export async function getOrderItems(quNo: string) {
-  const supabase = await db();
-  // 🚨 D89 — ว่าง = พิมพ์ใบกำกับภาษี/ใบเสร็จที่ไม่มีรายการสินค้าสักบรรทัด
-  const data = mustRead(
-    await supabase.from("sales_order_items").select("item_name, qty, price").eq("qu_no", quNo).order("id"),
-    "รายการสินค้าในออเดอร์",
-  );
-  return (data ?? []).map((i) => ({ name: i.item_name as string, qty: Number(i.qty) || 0, price: Number(i.price) || 0 }));
+  return orderItemsFor(await db(), quNo);
 }
-
-/** แถว sales_payments → SalesPayment (D143) */
-function mapPayment(r: Record<string, unknown>): SalesPayment {
-  return {
-    seq: Number(r.seq) || 0,
-    label: (r.label as string) ?? "",
-    amount: Number(r.amount) || 0,
-    method: (r.method as string) ?? "",
-    chequeDetail: (r.cheque_detail as string) ?? "",
-    docDate: (r.doc_date as string) ?? "",
-    docNo: (r.doc_no as string) ?? "",
-    txId: (r.tx_id as string) ?? "",
-    installmentSeq: r.installment_seq == null ? null : Number(r.installment_seq),
-  };
-}
-const PAYMENT_COLS = "qu_no, seq, label, amount, method, cheque_detail, doc_date, doc_no, tx_id, installment_seq";
 
 /**
  * การรับเงินของออเดอร์ทีละครั้ง (D143) — ใบเสร็จอ่านวิธีชำระ/เช็คของครั้งนั้นจากที่นี่
@@ -360,62 +330,7 @@ export async function getOrderPayments(quNo: string): Promise<SalesPayment[]> {
  */
 export async function getOrderPlan(quNo: string): Promise<Installment[]> {
   const supabase = await db();
-  return (await loadPlans(supabase, [quNo])).plans.get(quNo) ?? [];
-}
-
-/**
- * แผนงวด + การรับเงินรายงวด ของหลายออเดอร์ในคำขอเดียว (D147) — แหล่งเดียวของ getOrderPlan/getOrders/คิวคลัง
- * ★ ไม่ส่ง quNos = ทุกออเดอร์ของลูกค้ารายนี้ (RLS กรอง tenant)
- * ★ "รับแล้ว" = มีแถวการรับเงินของงวดที่บิลยังไม่ยกเลิก (กติกาเดียวกับ sales_installment_paid ใน 0101)
- */
-async function loadPlans(
-  supabase: Awaited<ReturnType<typeof db>>,
-  quNos?: string[],
-): Promise<{ plans: Map<string, Installment[]>; payments: Map<string, SalesPayment[]> }> {
-  const plans = new Map<string, Installment[]>();
-  const payments = new Map<string, SalesPayment[]>();
-  if (quNos && !quNos.length) return { plans, payments };
-  let iq = supabase.from("sales_installments")
-    .select("qu_no, seq, label, percent, amount, due_date, inv_no, inv_date, ship_point").order("seq");
-  let pq = supabase.from("sales_payments").select(PAYMENT_COLS).not("installment_seq", "is", null).order("seq");
-  if (quNos) { iq = iq.in("qu_no", quNos); pq = pq.in("qu_no", quNos); }
-  const [inst, pays] = await Promise.all([iq, pq]);
-  const rows = mustRead(inst, "แผนงวดของออเดอร์") ?? [];
-  if (!rows.length) return { plans, payments };
-  const payRows = mustRead(pays, "การรับเงินของออเดอร์") ?? [];
-  const txIds = payRows.map((p) => p.tx_id as string).filter(Boolean);
-  const voided = new Set<string>();
-  if (txIds.length) {
-    const tx = mustRead(
-      await supabase.from("transactions").select("tx_id, status").in("tx_id", txIds),
-      "บิลรายรับของงวด",
-    );
-    for (const t of tx ?? []) if (t.status === "ยกเลิก") voided.add(t.tx_id as string);
-  }
-  const paid = new Set<string>();
-  for (const p of payRows) {
-    if (p.tx_id && voided.has(p.tx_id as string)) continue;
-    paid.add(`${p.qu_no}#${p.installment_seq}`);
-    const arr = payments.get(p.qu_no as string) ?? [];
-    arr.push(mapPayment(p as Record<string, unknown>));
-    payments.set(p.qu_no as string, arr);
-  }
-  for (const r of rows) {
-    const arr = plans.get(r.qu_no as string) ?? [];
-    arr.push({
-      seq: Number(r.seq),
-      label: (r.label as string) ?? "",
-      percent: r.percent == null ? null : Number(r.percent),
-      amount: Number(r.amount) || 0,
-      dueDate: (r.due_date as string) ?? "",
-      invNo: (r.inv_no as string) ?? "",
-      invDate: (r.inv_date as string) ?? "",
-      shipPoint: !!r.ship_point,
-      paid: paid.has(`${r.qu_no}#${r.seq}`),
-    });
-    plans.set(r.qu_no as string, arr);
-  }
-  return { plans, payments };
+  return (await loadPlansFor(supabase, [quNo])).plans.get(quNo) ?? [];
 }
 
 /** ออเดอร์รอคลังจัดส่ง + items */
@@ -447,7 +362,7 @@ export async function getPendingWarehouse() {
     }
   }
   // D147 — ใบแจ้งหนี้/ใบส่งสินค้าของออเดอร์แบ่งงวดพิมพ์ "รับชำระแล้ว" แทน "มัดจำรับแล้ว"
-  const { plans } = await loadPlans(supabase, quNos);
+  const { plans } = await loadPlansFor(supabase, quNos);
   return list.map((o) => ({
     ...o,
     items: itemsByQu.get(o.quNo) ?? [],
@@ -456,34 +371,9 @@ export async function getPendingWarehouse() {
   }));
 }
 
-/** สต็อกรวม: สุรา (stock_product live) + ทั่วไป (warehouse_stock) */
+/** สต็อกรวม: สุรา (stock_product live) + ทั่วไป (warehouse_stock) — ตัวจริงอยู่ lib/sales/orderLoaders (D172) */
 export async function getWarehouseStock() {
-  const supabase = await db();
-  const [stockP, prods, wh] = await Promise.all([
-    supabase.from("stock_product").select("product_id, balance"),
-    supabase.from("products").select("product_id, name"),
-    supabase.from("warehouse_stock").select("item_code, item_name, unit, qty").order("item_code"),
-  ]);
-  const nameMap = new Map<string, string>();
-  for (const p of mustRead(prods, "ทะเบียนสินค้า")) nameMap.set(p.product_id as string, p.name as string);
-  // 🚨 D89 — สต็อกโชว์ 0 เพราะอ่านไม่ได้ = ตัดสินใจสั่งผลิต/รับออเดอร์ผิด
-  const liquor = mustRead(stockP, "สต็อกสุรา").map((s) => ({
-    itemCode: s.product_id as string,
-    itemName: nameMap.get(s.product_id as string) ?? (s.product_id as string),
-    category: "สุรา",
-    unit: "ขวด",
-    currentStock: Number(s.balance) || 0,
-    isLive: true,
-  }));
-  const general = mustRead(wh, "สต็อกคลัง").map((s) => ({
-    itemCode: s.item_code as string,
-    itemName: (s.item_name as string) ?? (s.item_code as string),
-    category: "ทั่วไป",
-    unit: (s.unit as string) ?? "",
-    currentStock: Number(s.qty) || 0,
-    isLive: false,
-  }));
-  return [...liquor, ...general].sort((a, b) => (a.itemCode < b.itemCode ? -1 : 1));
+  return warehouseStockFor(await db());
 }
 
 /** ประวัติเชื่อมระบบ (integration_log) — แทนหน้าคิว sync เดิม */
@@ -509,50 +399,13 @@ export async function getSyncHistory() {
   }));
 }
 
-/** สถานะออเดอร์ปัจจุบัน (สำหรับ processOrder ฝั่ง action) */
+/** สถานะออเดอร์ปัจจุบัน (สำหรับ processOrder ฝั่ง action) — ตัวจริงอยู่ lib/sales/orderLoaders (D172) */
 export async function getOrderState(quNo: string): Promise<OrderState | null> {
-  const supabase = await db();
-  // 🚨 D89 — อ่านไม่ได้แล้วคืน null = ฝั่ง action อ่านว่า "ไม่พบออเดอร์" ทั้งที่มีอยู่
-  //    (และถ้าคืนแถวว่างจะกลายเป็น "ยังไม่มีเลขเอกสาร" → ขอเลขใหม่ซ้ำของเดิม)
-  const data = mustRead<SoRow | null>(
-    await supabase
-      .from("sales_orders")
-      .select("qu_no, order_no, status, deposit, outstanding_balance, sub_total, discount, wht_percent, category, customer_name, customer_id, inv_no, tax_no1, tax_no2, dep_inv_no, rcpt_no1, rcpt_no2")
-      .eq("qu_no", quNo)
-      .maybeSingle(),
-    "สถานะออเดอร์",
-  );
-  if (!data) return null;
-  // D145 — แผนงวด (processOrder ตัดสินสถานะ/การส่งคลังจากธงจุดส่งของ + งวดที่รับแล้ว)
-  const installments = await getOrderPlan(quNo);
-  return {
-    installments,
-    quNo: data.qu_no as string,
-    orderNo: (data.order_no as string) ?? "",
-    status: (data.status as string) ?? "",
-    deposit: Number(data.deposit) || 0,
-    outstandingBalance: Number(data.outstanding_balance) || 0,
-    subTotal: Number(data.sub_total) || 0,
-    discount: Number(data.discount) || 0,
-    whtPercent: Number(data.wht_percent) || 0,
-    category: (data.category as string) ?? "รายได้ค่าสินค้า",
-    customerName: (data.customer_name as string) ?? "",
-    invNo: (data.inv_no as string) ?? "",
-    taxNo1: (data.tax_no1 as string) ?? "",
-    taxNo2: (data.tax_no2 as string) ?? "",
-    depInvNo: (data.dep_inv_no as string) ?? "",
-    rcptNo1: (data.rcpt_no1 as string) ?? "",
-    rcptNo2: (data.rcpt_no2 as string) ?? "",
-  };
+  return orderStateFor(await db(), quNo);
 }
 
 export async function getCustomerId(quNo: string): Promise<string | null> {
-  const supabase = await db();
-  const data = mustRead<SoRow | null>(
-    await supabase.from("sales_orders").select("customer_id").eq("qu_no", quNo).maybeSingle(),
-    "ลูกค้าของออเดอร์",
-  );
-  return (data?.customer_id as string) ?? null;
+  return customerIdFor(await db(), quNo);
 }
 
 // ── จัดการเมนูขาย (sale_menu CRUD) ───────────────────────────────────────────

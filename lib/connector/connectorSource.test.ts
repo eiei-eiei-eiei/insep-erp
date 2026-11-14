@@ -13,7 +13,12 @@ const code = (rel: string) =>
     .replace(/\/\*[\s\S]*?\*\//g, " ")
     .replace(/(^|[^:"'`])\/\/[^\n]*/g, "$1");
 
-const ENDPOINT = ["app/api/mcp/route.ts", "app/api/mcp/oauth-protected-resource/route.ts", "lib/connector/session.ts", "lib/connector/tools.ts", "lib/connector/bill.ts"];
+const ENDPOINT = [
+  "app/api/mcp/route.ts", "app/api/mcp/oauth-protected-resource/route.ts", "lib/connector/session.ts", "lib/connector/tools.ts", "lib/connector/bill.ts",
+  // D172 — ฝั่งขาย: เครื่องมือ + แกนที่ใช้ร่วมกับหน้าเว็บ (ต้องไม่มี service role ทั้งคู่)
+  "lib/connector/salesTools.ts", "lib/connector/access.ts", "lib/connector/pos.ts",
+  "lib/sales/orderCore.ts", "lib/sales/orderLoaders.ts", "lib/sales/menuStock.ts",
+];
 
 /**
  * คอลัมน์ของ `tenants` ตามที่ migration สร้าง/ลบจริง (create table ใน 0025 + alter add/drop ทุกไฟล์ตามลำดับ)

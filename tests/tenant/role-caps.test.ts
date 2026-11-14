@@ -30,6 +30,8 @@ const ROLES_UNDER_TEST = [
   "accounting",
   "payroll_manager",
   "payroll",
+  // D172 — พนักงานทุกฝ่าย (ไม่ใช่ main ⇒ เข้าลูปตั้งค่ากลาง/edit_log/LINE ด้วย)
+  "general_staff",
 ];
 
 beforeAll(async () => {
@@ -281,6 +283,26 @@ describe("🚨 ยิง RPC ตรงโดยไม่ผ่านหน้า
   });
 });
 
+describe("D172 — พนักงานทุกฝ่าย", () => {
+  it("อ่านได้ทุกโดเมน รวมเงินเดือน (ผู้ใช้ตัดสิน)", async () => {
+    for (const t of ["transactions", "log_ferment", "sales_orders", "employees"]) {
+      expect(await visible(as.general_staff, t), t).toBeGreaterThan(0);
+    }
+  });
+
+  it("🚨 แต่ยกเลิกออเดอร์ไม่ได้ (sales.config)", async () => {
+    const { error } = await as.general_staff.rpc("fn_cancel_order", { p_qu_no: T.quNo });
+    expect(error, "ต้องมี error").not.toBeNull();
+    expect(error?.message).toContain("สิทธิ์");
+  });
+
+  it("🚨 และแก้เมนูขายไม่ได้ (sales.config)", async () => {
+    const { data } = await as.general_staff
+      .from("sale_menu").update({ price: 222 }).eq("tenant_id", T.tenantId).select("menu_name");
+    expect((data ?? []).length).toBe(0);
+  });
+});
+
 describe("has_cap() — ฟังก์ชันตัดสินสิทธิ์ฝั่ง DB", () => {
   it("ตอบตรงกับตารางที่ตั้งใจ", async () => {
     const cases: [string, string, boolean][] = [
@@ -297,6 +319,18 @@ describe("has_cap() — ฟังก์ชันตัดสินสิทธ�
       ["sales_manager", "sales.write", true],
       ["finance_manager", "pay.config", true],
       ["finance_manager", "sales.read", false],
+      // D172
+      ["general_staff", "prod.write", true],
+      ["general_staff", "acct.write", true],
+      ["general_staff", "sales.write", true],
+      ["general_staff", "pay.write", true],
+      ["general_staff", "bar.write", true],
+      ["general_staff", "sales.config", false],
+      ["general_staff", "acct.config", false],
+      ["general_staff", "pay.config", false],
+      ["general_staff", "prod.config", false],
+      ["general_staff", "bar.config", false],
+      ["general_staff", "admin", false],
     ];
     for (const [role, cap, want] of cases) {
       const { data, error } = await as[role].rpc("has_cap", { cap });

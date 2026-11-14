@@ -102,7 +102,8 @@ describe("S27 เลิกโฟลว์มัดจำแบบเดิม", 
     }
   });
   it("server ตรวจก่อนทำ action · หน้าจอไม่มีปุ่มมัดจำเดิมในสถานะรอคอนเฟิร์ม และบอกทางแทน", () => {
-    const act = readFileSync("app/(app)/sales/actions.ts", "utf8");
+    // D172 — applyOrderActionCore ย้ายไป lib/sales/orderCore
+    const act = readFileSync("lib/sales/orderCore.ts", "utf8");
     expect(act).toMatch(/legacyDepositError\(action, order\.status\)/);
     const ui = readFileSync("app/(app)/sales/_components/OrdersTab.tsx", "utf8");
     const block = ui.slice(ui.indexOf('o.status === "รอคอนเฟิร์ม" && !hasPlan(o)'), ui.indexOf('o.status === "รอชำระมัดจำ" && !hasPlan(o)'));

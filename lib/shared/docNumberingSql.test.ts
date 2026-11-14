@@ -161,7 +161,9 @@ describe("เฟส 2 — กฎ 'มากกว่าเลขที่มี�
 });
 
 describe("ฝั่งขาย: ชุด RC (ข้อ 4) · เลขตามวันที่เอกสาร + เลขที่กรอกเอง (เฟส 3)", () => {
-  const s = () => tsCode("app/(app)/sales/actions.ts");
+  // D172 — แกนขอเลข/ลงบัญชี/ขายหน้าร้านย้ายไป lib/sales/orderCore · ตรวจทั้งสองไฟล์รวมกัน
+  //   (กติกา "ขอเลขจุดเดียว" นับรวมทั้งสองไฟล์ = ยังจุดเดียวในฝั่งขายทั้งหมด)
+  const s = () => tsCode("app/(app)/sales/actions.ts") + "\n" + tsCode("lib/sales/orderCore.ts");
 
   it("ใบเสร็จผู้ไม่จด VAT ขอเลขชุด sales_rcpt (RC) ไม่ใช่ sales_inv", () => {
     expect(s()).toMatch(/gen\.rcptNo1\s*=\s*manualPay\s*\|\|\s*\(await\s+nextDoc\("sales_rcpt"\)\)/);

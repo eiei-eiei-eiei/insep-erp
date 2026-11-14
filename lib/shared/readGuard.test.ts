@@ -18,6 +18,8 @@ import fs from "node:fs";
 const GUARDED = [
   "app/(app)/accounting/data.ts",
   "app/(app)/sales/data.ts",
+  // D172 — ตัวโหลดออเดอร์ที่ย้ายออกมาให้ Claude connector ใช้ร่วม
+  "lib/sales/orderLoaders.ts",
   "app/(app)/production/excise-data.ts",
 ];
 

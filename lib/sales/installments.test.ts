@@ -255,10 +255,12 @@ describe("S16 ใบเสนอราคา (D146)", () => {
   });
   it("สร้าง/แก้ใบเสนอราคา: มีแผน = ปิดมัดจำเดิม · ตรวจแผนก่อนบันทึก · แก้ไม่ได้เมื่อมีงวดล็อก", () => {
     const src = readFileSync("app/(app)/sales/actions.ts", "utf8");
-    expect(src).toMatch(/buildQuotationDbPayload\(withPlan\(input\), vat\.isVat\)[\s\S]*fn_save_quotation/);
+    // D172 — แกนสร้างใบเสนอราคาย้ายไป lib/sales/orderCore (ใช้ร่วมกับ Claude connector)
+    const core = readFileSync("lib/sales/orderCore.ts", "utf8");
+    expect(core).toMatch(/buildQuotationDbPayload\(withPlan\(input\), vat\.isVat\)[\s\S]*fn_save_quotation/);
     expect(src).toMatch(/buildQuotationDbPayload\(withPlan\(input\), vat\.isVat\)[\s\S]*fn_update_quotation/);
-    expect(src.indexOf("quotationPlanError(input, totals.netPayable, vat.isVat)")).toBeGreaterThan(-1);
-    expect(src.indexOf("quotationPlanError(input, totals.netPayable, vat.isVat)")).toBeLessThan(src.indexOf('rpc("fn_save_quotation"'));
+    expect(core.indexOf("quotationPlanError(input, totals.netPayable, vat.isVat)")).toBeGreaterThan(-1);
+    expect(core.indexOf("quotationPlanError(input, totals.netPayable, vat.isVat)")).toBeLessThan(core.indexOf('rpc("fn_save_quotation"'));
     expect(src).toMatch(/installments\?\.some\(\(i\) => i\.paid \|\| i\.invNo\)[\s\S]*แก้ใบเสนอราคาไม่ได้/);
   });
   it("หน้าใบเสนอราคาเลิกใช้ช่องติ๊กมัดจำแบบเดิม", () => {

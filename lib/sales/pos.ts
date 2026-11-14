@@ -37,6 +37,12 @@ export function posTotals(items: CartItem[], discount: number, isVat = true): Qu
   return quotationTotals(posQuotationInput(items, discount), isVat);
 }
 
+/**
+ * วิธีรับเงินของขายหน้าร้าน (D172 — ย้ายจาก PosTab ให้ Claude connector ใช้ชุดเดียวกัน)
+ * ★ ไม่มีเช็ค — เช็คต้องกรอกรายละเอียด ซึ่งหน้าขายหน้าร้านไม่มีช่องให้
+ */
+export const POS_METHODS = ["เงินสด", "โอนเงิน", "บัตรเครดิต"] as const;
+
 export type Shortage = { name: string; want: number; have: number };
 
 /**

@@ -16,6 +16,8 @@ import { newContactRow, findExistingContact, ilikeExact, type ContactRow, type E
 import { rankJobs } from "./jobs";
 import { BILL_CARD_HTML } from "./card/billCard.generated";
 import type { ConnectorMe } from "./session";
+import { accessSummary, type ConnectorAccess } from "./access";
+import { registerSalesTools, SALES_INSTRUCTIONS } from "./salesTools";
 
 /**
  * เครื่องมือของ Claude connector (D141) — บันทึกได้แค่ รายจ่าย/รายรับ (+ ตั้งค้าง)
@@ -67,7 +69,18 @@ Workflow for every bill image the user sends:
    You cannot add contacts directly.
 Do not record bills the user did not send.`;
 
-type Ctx = { db: SupabaseClient; me: ConnectorMe };
+/**
+ * คำแนะนำตอนเชื่อมต่อ — ประกอบตามสิ่งที่ทำได้ (D172)
+ * ★ ส่วนบัญชีคือ SERVER_INSTRUCTIONS เดิมทั้งก้อน (เทสอ่านค่านี้อยู่) · ส่วนขายต่อท้าย
+ */
+export function serverInstructions(a: ConnectorAccess): string {
+  const parts: string[] = [];
+  if (a.accounting) parts.push(SERVER_INSTRUCTIONS);
+  if (a.salesRead) parts.push(SALES_INSTRUCTIONS(a));
+  return parts.join("\n\n");
+}
+
+export type Ctx = { db: SupabaseClient; me: ConnectorMe };
 
 const text = (s: string, isError = false) => ({ content: [{ type: "text" as const, text: s }], ...(isError ? { isError: true } : {}) });
 const json = (o: unknown) => text(JSON.stringify(o, null, 2));
@@ -316,9 +329,13 @@ const slugOk = (me: ConnectorMe, slug: string | undefined) => String(slug ?? "")
 const slugError = (me: ConnectorMe, slug: string | undefined) =>
   text(`ไม่บันทึก: tenant_slug "${slug}" ไม่ตรงกับบัญชีที่เชื่อมต่ออยู่ (${me.tenantSlug} · ${me.tenantName}) — ตรวจว่าใช้ connector ของลูกค้าถูกเจ้า`, true);
 
+/**
+ * D172 — เครื่องมือลงทะเบียนตาม `me.access` (บทบาท × โมดูล) · ทำไม่ได้ = ไม่มีเครื่องมือนั้นเลย
+ * (ไม่ใช่มีแล้วคืนลิสต์ว่าง — RLS ตอบ "อ่านไม่ได้" เป็นลิสต์ว่าง แล้ว Claude จะบอกว่า "ไม่มี" · D89)
+ */
 export function buildServer(ctx: Ctx): McpServer {
-  const { db, me } = ctx;
-  const server = new McpServer({ name: "insep-erp", version: "1.0.0" }, { instructions: SERVER_INSTRUCTIONS });
+  const { me } = ctx;
+  const server = new McpServer({ name: "insep-erp", version: "1.0.0" }, { instructions: serverInstructions(me.access) });
 
   server.registerTool(
     "who_am_i",
@@ -335,8 +352,25 @@ export function buildServer(ctx: Ctx): McpServer {
         role: me.role,
         entities: me.entities.map((e) => ({ entity_id: e.entity_id, name: e.name, vat_registered: e.is_vat })),
         note: me.entities.length === 1 ? "มีกิจการเดียว — ใช้ entity_id นี้ทุกบิล" : "มีหลายกิจการ — ถามผู้ใช้ถ้าไม่แน่ใจว่าบิลนี้เป็นของกิจการไหน",
+        // D172 — ทำอะไรได้บ้างในการเชื่อมต่อนี้ (บทบาท × โมดูลที่ลูกค้าซื้อ)
+        can_do: accessSummary(me.access),
       }),
   );
+
+  // ★ การ์ด (MCP App) ชุดเดียวใช้ทั้งบิลบัญชี · คู่ค้า · ขายหน้าร้าน (D172) — ลงทะเบียนเมื่อมีเครื่องมือที่ใช้การ์ด
+  if (me.access.accounting || me.access.salesWrite) {
+    registerAppResource(server, "การ์ดตรวจบิล", BILL_CARD_URI, { description: "Interactive bill / contact / shop-sale card" }, async () => ({
+      contents: [{ uri: BILL_CARD_URI, mimeType: RESOURCE_MIME_TYPE, text: BILL_CARD_HTML }],
+    }));
+  }
+  if (me.access.accounting) registerAccountingTools(server, ctx);
+  if (me.access.salesRead) registerSalesTools(server, ctx);
+  return server;
+}
+
+/** เครื่องมือบัญชี (D141 รอบ 1-8) — ลงทะเบียนเฉพาะเมื่อบันทึกบัญชีได้ */
+function registerAccountingTools(server: McpServer, ctx: Ctx): void {
+  const { db, me } = ctx;
 
   server.registerTool(
     "find_contact",
@@ -465,10 +499,6 @@ export function buildServer(ctx: Ctx): McpServer {
       return { ...text(r.card.errors[0] ?? "ok"), structuredContent: r.card };
     },
   );
-
-  registerAppResource(server, "การ์ดตรวจบิล", BILL_CARD_URI, { description: "Interactive bill review card" }, async () => ({
-    contents: [{ uri: BILL_CARD_URI, mimeType: RESOURCE_MIME_TYPE, text: BILL_CARD_HTML }],
-  }));
 
   // 🚨 บันทึกได้จากการ์ดทางเดียว (visibility: app) — การกดปุ่มในการ์ดคือการยืนยันของผู้ใช้
   registerAppTool(
@@ -819,7 +849,6 @@ export function buildServer(ctx: Ctx): McpServer {
     },
   );
 
-  return server;
 }
 
 /** ตรวจคู่ค้าใหม่ + หาตัวซ้ำ + บิลที่จะผูก → ข้อมูลการ์ดคู่ค้า */

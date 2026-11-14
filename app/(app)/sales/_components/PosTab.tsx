@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import type { SalesBoot, CustomerRow, MenuRow, OrderItem } from "./types";
 import { Card, Combobox, MissingHint, Select, fmt, useSaver } from "./ui";
 import { AddCustomerModal } from "./CustomerFields";
-import { posTotals, stockShortages, mergeCart } from "@/lib/sales/pos";
+import { posTotals, stockShortages, mergeCart, POS_METHODS } from "@/lib/sales/pos";
 import { posSaleAction, savePosWalkinContactAction, getSalesBootstrapAction } from "../actions";
 import { printSalesDocs, openPrintWindow } from "./print";
 import { IconCart, IconPlus } from "@/lib/shared/icons";
@@ -14,7 +14,7 @@ import { todayISO } from "@/lib/shared/ui";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { manualNoError, saleDateError, saleDateNote } from "@/lib/sales/backdate";
 
-const METHODS = ["เงินสด", "โอนเงิน", "บัตรเครดิต"];
+const METHODS: string[] = [...POS_METHODS];
 
 /**
  * ขายหน้าร้าน (POS · D86) — กดครั้งเดียวได้ครบ: ออกใบกำกับ/ใบเสร็จ · ลงบัญชี · ตัดสต็อก

@@ -50,7 +50,9 @@ describe("C6 — การ์ดตรวจบิล", () => {
     const s = src("lib/connector/tools.ts");
     const preview = s.slice(s.indexOf('"preview_bill"'), s.indexOf('"recalc_bill"'));
     expect(preview).toMatch(/resourceUri: BILL_CARD_URI/);
-    const recalc = s.slice(s.indexOf('"recalc_bill"'), s.indexOf("registerAppResource("));
+    // D172 — registerAppResource ย้ายไป buildServer (การ์ดใช้ร่วมกับขายหน้าร้าน) · ตัดถึง save_bill แทน
+    const recalc = s.slice(s.indexOf('"recalc_bill"'), s.indexOf('"save_bill"'));
+    expect(recalc.length).toBeGreaterThan(50);
     expect(recalc).toMatch(/visibility: \["app"\]/);
     expect(recalc).not.toMatch(/fn_save_transaction/);
   });

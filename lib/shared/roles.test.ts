@@ -23,6 +23,10 @@ const EXPECTED: Record<Role, Cap[]> = {
   payroll: ["pay.read", "pay.write"],
   bar: ["bar.read", "bar.write"],
   bar_manager: ["bar.read", "bar.write", "bar.config"],
+  general_staff: [
+    "prod.read", "prod.write", "acct.read", "acct.write", "sales.read", "sales.write",
+    "pay.read", "pay.write", "bar.read", "bar.write",
+  ],
 };
 
 const sorted = (a: readonly string[]) => [...a].sort();
@@ -124,6 +128,18 @@ describe("เส้นแบ่งที่ห้ามหลุด", () => {
     for (const c of ["prod.read", "acct.read", "sales.read", "pay.read", "admin"] as Cap[]) {
       expect(can("bar_manager", c), `หัวหน้าบาร์ไม่ควรมี ${c}`).toBe(false);
     }
+  });
+
+  it("D172 พนักงานทุกฝ่าย: งานประจำวันทุกโดเมน แต่ไม่มี config ของโดเมนไหนเลย และไม่มี admin", () => {
+    for (const c of CAPS) {
+      const want = c.endsWith(".read") || c.endsWith(".write");
+      expect(can("general_staff", c), `general_staff ${want ? "ควร" : "ไม่ควร"}มี ${c}`).toBe(want);
+    }
+  });
+
+  it("D172 คำอธิบายบทบาทต้องบอกว่าเห็นเงินเดือน (ใครก็ให้บทบาทนี้ได้ที่หน้าผู้ใช้)", () => {
+    expect(can("general_staff", "pay.read")).toBe(true);
+    expect(ROLE_HINT.general_staff).toMatch(/เห็นเงินเดือน/);
   });
 
   it("viewer ดูบาร์ได้แต่แตะอะไรไม่ได้ (รวมแดชบอร์ดกำไรที่อยู่หลัง bar.config)", () => {

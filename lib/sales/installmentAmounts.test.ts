@@ -167,7 +167,8 @@ describe("S24 เปิดแผนที่บันทึกไว้มาแ
 
 describe("S24 ทุกจุดส่ง VAT/หัก ณ ที่จ่ายของออเดอร์ (อ่านซอร์ส)", () => {
   it("server: ตรวจ + คิดยอด + เก็บ % ด้วย ctx เดียวกัน", () => {
-    const src = readFileSync("app/(app)/sales/actions.ts", "utf8");
+    // D172 — แกนใบเสนอราคาย้ายไป lib/sales/orderCore (quotationPlanError อยู่ที่นั่น)
+    const src = readFileSync("app/(app)/sales/actions.ts", "utf8") + readFileSync("lib/sales/orderCore.ts", "utf8");
     expect(src).toContain("planError(rows, net, remain, isSent(order.status), ctx)");
     expect(src).toContain("planRowAmounts(net, rows, remain, ctx)");
     expect(src).toContain("percent: percentToStore(r, net, ctx)");

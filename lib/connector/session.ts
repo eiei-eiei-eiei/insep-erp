@@ -1,7 +1,7 @@
 import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { toRole, can, type Role } from "@/lib/shared/roles";
-import { hasModule } from "@/lib/shared/workspaces";
+import { toRole, type Role } from "@/lib/shared/roles";
+import { connectorAccess, hasAnyAccess, noAccessText, type ConnectorAccess } from "./access";
 import { tenantDisplayName } from "./guard";
 
 /**
@@ -20,6 +20,8 @@ export type ConnectorMe = {
   tenantName: string;
   /** tenants.modules_enabled (ว่าง = เปิดหมด · hasModule) */
   modules: string[] | null;
+  /** D172 — สิ่งที่การเชื่อมต่อนี้ทำได้ (บทบาท × โมดูล) · เครื่องมือลงทะเบียนตามนี้ */
+  access: ConnectorAccess;
   entities: { entity_id: string; name: string; is_vat: boolean }[];
 };
 
@@ -71,13 +73,12 @@ export async function authenticate(token: string): Promise<AuthResult> {
   }
 
   const role = toRole(prof.data.role as string);
-  if (!can(role, "acct.write")) {
-    return { ok: false, status: 403, message: `บทบาท ${role} บันทึกบิลบัญชีไม่ได้ — ต้องมีสิทธิ์เขียนบัญชี (เช่น accounting / accounting_manager / main)` };
-  }
+  // D172 — เดิมบังคับ acct.write + โมดูลบัญชีที่ด่านแรก ⇒ แอคเค้าฝ่ายขาย/ลูกค้าที่ซื้อแค่ขายต่อไม่ได้เลย
+  //   ตอนนี้ด่านแรกถามแค่ว่า "ทำอะไรได้สักอย่างไหม" · แต่ละกลุ่มเครื่องมือลงทะเบียนตาม access
   // ★ ธงโมดูล fail-open ตามกติกาเดิม (hasModule ค่าว่าง = เปิดหมด · D53)
-  if (!hasModule(ten.data.modules_enabled as string[] | null, "accounting")) {
-    return { ok: false, status: 403, message: "กิจการนี้ไม่ได้ใช้โมดูลบัญชี — บันทึกบิลผ่าน Claude ไม่ได้" };
-  }
+  const modules = (ten.data.modules_enabled as string[] | null) ?? null;
+  const access = connectorAccess(role, modules);
+  if (!hasAnyAccess(access)) return { ok: false, status: 403, message: noAccessText(role) };
 
   return {
     ok: true,
@@ -90,7 +91,8 @@ export async function authenticate(token: string): Promise<AuthResult> {
       tenantSlug: String(ten.data.slug),
       // ชื่อแบรนด์ (D47) · อ่านแบรนด์ไม่ได้ = ใช้ชื่อลูกค้าแทน (เป็นแค่ชื่อที่พูดในแชท ไม่ใช่ด่านสิทธิ์)
       tenantName: tenantDisplayName(brand.data?.[0]?.value as string | undefined, ten.data.name as string),
-      modules: (ten.data.modules_enabled as string[] | null) ?? null,
+      modules,
+      access,
       entities: (ents.data ?? []).map((e) => ({
         entity_id: String(e.entity_id),
         name: String(e.name ?? ""),

@@ -17,6 +17,7 @@ import {
 import type { NewContactInput } from "../contact";
 import type { DraftItem } from "../bill";
 import { jobSummary, similarJob, JOB_CHIPS } from "../jobs";
+import { isPosCard, posPrimary, type PosCardData } from "../pos";
 
 const app = new App({ name: "Insep ERP bill card", version: "1.0.0" }, { availableDisplayModes: ["inline", "fullscreen"] });
 
@@ -44,6 +45,10 @@ let ncLocal: NewContactInput | null = null;
 /** การ์ดคู่ค้า (add_contact · รอบ 4) — มีค่า = การ์ดนี้เป็นการ์ดคู่ค้า ไม่ใช่การ์ดบิล */
 let cdata: ContactCardData | null = null;
 let cdone: string | null = null;
+/** การ์ดขายหน้าร้าน (pos_preview · D172) — มีค่า = การ์ดนี้เป็นการ์ดขาย */
+let pdata: PosCardData | null = null;
+/** ขายแล้ว: ข้อความผลการขาย (+ คำเตือนเหลืองถ้าตัดสต็อกไม่สำเร็จ) */
+let pdone: { message: string; warning: string } | null = null;
 let timer: ReturnType<typeof setTimeout> | undefined;
 
 const root = document.getElementById("root")!;
@@ -391,6 +396,7 @@ function paintSuspects() {
 // ── กด/พิมพ์ ───────────────────────────────────────────────────────────────────
 root.addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest<HTMLElement>("[data-act]");
+  if (b && pdata) return void posClick(b);
   if (b && cdata) return contactClick(b);
   if (!b || !data || saved) return;
   const val = b.dataset.val ?? "";
@@ -565,6 +571,62 @@ async function contactClick(b: HTMLElement) {
   renderContact();
 }
 
+// ── การ์ดขายหน้าร้าน (pos_preview · D172) ──────────────────────────────────────
+// 🚨 การ์ดไม่คิดเงินเอง — ยอดมาจาก server (posTotals ตัวเดียวกับแอป) · กดขาย = server คิดใหม่จาก DB ทั้งหมด
+// ★ แก้รายการ/จำนวน/ส่วนลด ทำในแชท (Claude เปิดการ์ดใหม่) · ในการ์ดเลือกได้แค่วิธีรับเงิน
+function renderPos() {
+  const d = pdata!;
+  const line = (k: string, v: string, cls = "") => `<div class="tl ${cls}"><span>${k}</span><span class="num">${v}</span></div>`;
+  const rows = d.lines.map((l) => `<div class="tl"><span>${esc(l.name)} × ${l.qty}${l.stock_left !== null ? ` <span class="mu">(เหลือ ${l.stock_left})</span>` : ""}</span><span class="num">${baht(l.total)}</span></div>`).join("");
+  const t = d.totals;
+  const tot = `<div class="tot">${d.discount > 0 ? line("รวมสินค้า", baht(t.grand_incl)) + line("ส่วนลด", "−" + baht(d.discount)) : ""}${d.is_vat ? line("ก่อน VAT", baht(t.before_vat)) + line("VAT", baht(t.vat)) : ""}${line("รวม", baht(t.grand_total), "big")}</div>`;
+  const methods = pdone ? "" : `<div class="mu">รับเงินเป็น</div><div class="chips">${d.methods.map((m) => `<button class="chip${m === d.method ? " on" : ""}" data-act="p-method" data-val="${esc(m)}"${busy ? " disabled" : ""}>${esc(m)}</button>`).join("")}</div>`;
+  const a = posPrimary(d);
+  const acts = pdone
+    ? `<div class="done">${esc(pdone.message)}</div>${pdone.warning ? `<div class="warn">${esc(pdone.warning)}</div>` : ""}`
+    : `<div class="acts"><button class="pri" data-act="p-sell"${busy || !a.enabled ? " disabled" : ""}>${busy ? "กำลังขาย…" : esc(a.label)}</button><button class="sec" data-act="p-chat">แก้ในแชท ↗</button></div>`;
+  root.innerHTML = `<div class="card"><div class="hd1"><b>ขายหน้าร้าน · ${esc(d.customer.name)}</b><span class="mu">${esc(d.tenant_slug)}</span></div>
+    <div class="mu">${esc(d.doc_title)} · ${esc(fmtDate(d.sale_date))} · ตัดสต็อกทันที</div>
+    ${rows}${tot}${d.errors.map((x) => `<div class="bad">${esc(x)}</div>`).join("")}${d.warnings.map((x) => `<div class="warn">${esc(x)}</div>`).join("")}
+    ${methods}${acts}${failText ? `<div class="bad">${esc(failText)}</div>` : ""}</div>`;
+}
+
+async function posClick(b: HTMLElement) {
+  if (!pdata || busy || pdone) return;
+  const act = b.dataset.act;
+  if (act === "p-method") { pdata = { ...pdata, method: b.dataset.val ?? pdata.method }; return renderPos(); }
+  if (act === "p-chat") return ask("ขอแก้รายการขายหน้าร้านนี้: ");
+  if (act !== "p-sell" || !posPrimary(pdata).enabled) return;
+  busy = true;
+  failText = "";
+  renderPos();
+  try {
+    const r = await app.callServerTool({
+      name: "pos_sell",
+      arguments: {
+        tenant_slug: pdata.tenant_slug,
+        previewed_at: pdata.previewed_at,
+        expected_total: pdata.totals.grand_total,
+        customer_id: pdata.customer.id,
+        items: pdata.items,
+        discount: pdata.discount,
+        method: pdata.method,
+      },
+    });
+    const sc = r.structuredContent as { sold?: boolean; message?: string; warning?: string } | undefined;
+    if (!r.isError && sc?.sold) {
+      pdone = { message: sc.message ?? "ขายแล้ว", warning: sc.warning ?? "" };
+      app.updateModelContext({ content: [{ type: "text", text: `ผู้ใช้กดขายในการ์ดแล้ว: ${sc.message ?? ""}${sc.warning ? ` · ⚠ ${sc.warning}` : ""}` }] }).catch(() => undefined);
+    } else {
+      failText = textOf(r) || "ขายไม่สำเร็จ";
+    }
+  } catch {
+    failText = "ขายไม่สำเร็จ — เชื่อมต่อระบบไม่ได้ · ตรวจในแอปแท็บจัดการออเดอร์ก่อนกดอีกครั้ง";
+  }
+  busy = false;
+  renderPos();
+}
+
 // ── เชื่อมกับ Claude ────────────────────────────────────────────────────────────
 function applyCtx(ctx: McpUiHostContext | undefined) {
   if (!ctx) return;
@@ -577,6 +639,7 @@ function applyCtx(ctx: McpUiHostContext | undefined) {
 
 app.ontoolresult = (r) => {
   const sc = r.structuredContent;
+  if (isPosCard(sc)) { pdata = sc; renderPos(); return; }
   if (isContactCard(sc)) { cdata = sc; renderContact(); return; }
   const bill = sc as CardData | undefined;
   if (bill && bill.v === 1) { data = bill; render(); }
