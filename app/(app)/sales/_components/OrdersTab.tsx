@@ -20,7 +20,7 @@ import { actionPostsRevenue, docDateNote, manualNoError, manualNoFields } from "
 import { cancelledDocTypes } from "@/lib/sales/cancelledDocs";
 import { originalDateOnRevision, quotationDocDate, revisionLabel } from "@/lib/sales/quotationRevision";
 import { PAY_METHODS, chequeText, hasReceivedPayment } from "@/lib/sales/payments";
-import { receiveAmountError, type Installment } from "@/lib/sales/installments";
+import { DEPOSIT_HINT, receiveAmountError, type Installment } from "@/lib/sales/installments";
 import { PlanPanel } from "./PlanPanel";
 import { EditPaymentDialog } from "./EditPaymentDialog";
 import { CancelOrderDialog } from "./CancelOrderDialog";
@@ -238,12 +238,12 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
       )}
       {canWrite && o.status === "รอคอนเฟิร์ม" && !hasPlan(o) && (
         <>
-          {/* D45 — เงื่อนไขมัดจำ: ปกติต้องวางบิลค่ามัดจำก่อน ลูกค้าถึงโอน → ปุ่มนี้เด่นสุด */}
-          <ActBtn tone={o.isDeposit ? "primary" : "secondary"} icon={<IconDoc size={14} />} onClick={() => setDialog({ order: o, action: "ISSUE_INVOICE_DEPOSIT" })}>ใบแจ้งหนี้มัดจำ</ActBtn>
-          <ActBtn tone={o.isDeposit ? "secondary" : "primary"} icon={<IconMoney size={14} />} onClick={() => setDialog({ order: o, action: "DEPOSIT_AND_SEND" })}>รับมัดจำ &amp; ส่งคลัง</ActBtn>
-          <ActBtn tone="secondary" icon={<IconDoc size={14} />} onClick={() => setDialog({ order: o, action: "ISSUE_INVOICE_FULL" })}>ใบแจ้งหนี้ (เต็ม)</ActBtn>
+          {/* D170 — เลิกปุ่มมัดจำแบบเดิม (D45) · แผนงวดทำแทนได้ครบ · server กันอีกชั้น (legacyDepositError)
+              🚨 ห้ามแค่ซ่อนแล้วเงียบ — บอกว่าไปทำที่ไหนแทน (D92) */}
+          <ActBtn tone="primary" icon={<IconDoc size={14} />} onClick={() => setDialog({ order: o, action: "ISSUE_INVOICE_FULL" })}>ใบแจ้งหนี้ (เต็ม)</ActBtn>
           <ActBtn tone="secondary" icon={<IconBox size={14} />} onClick={() => setDialog({ order: o, action: "SEND_TO_WH" })}>ส่งคลัง (เครดิต)</ActBtn>
           <ActBtn tone="secondary" icon={<IconEdit size={14} />} onClick={() => onEdit(o)}>แก้ไข</ActBtn>
+          <span className="w-full text-center text-[11px] text-faint">{DEPOSIT_HINT}</span>
         </>
       )}
       {canWrite && o.status === "รอชำระมัดจำ" && !hasPlan(o) && (

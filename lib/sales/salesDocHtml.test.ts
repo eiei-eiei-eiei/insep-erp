@@ -16,7 +16,8 @@ const NON = { ...COMPANY, isVat: false };
 /** ตัวเลข/ข้อความในกรอบสรุปท้ายเอกสารใบแรก (ต้นฉบับ) */
 function summary(html: string): string {
   const t = html.split("(สำเนา")[0].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-  return t.match(/รวมเป็นเงิน.*?\( ผู้/)?.[0] ?? "";
+  // D170 — ใบของออเดอร์แบ่งงวดเริ่มกรอบสรุปที่ "มูลค่างวดนี้/มูลค่ายอดคงค้าง"
+  return t.match(/(รวมเป็นเงิน|มูลค่างวดนี้|มูลค่ายอดคงค้าง).*?\( ผู้/)?.[0] ?? "";
 }
 
 describe("S20 ใบจด VAT — ตัวเลขเดิมไม่ขยับ", () => {
@@ -32,7 +33,7 @@ describe("S20 ใบจด VAT — ตัวเลขเดิมไม่ขย
     expect(summary(salesDocsHtml(COMPANY, vatOrder(3), ITEMS, ["invoice"])))
       .toContain("หัก มัดจำรับแล้ว (ก่อน VAT) -961.54 ยอดคงค้างยกมา (ก่อน VAT) 1,038.46 ภาษีมูลค่าเพิ่ม 7% 72.69 หัก ณ ที่จ่าย 3% -31.15 ยอดค้างชำระ (รวม VAT) 1,080.00");
     expect(summary(salesDocsHtml(COMPANY, planned(vatOrder(3), true), ITEMS, ["tax-invoice-installment:1"])))
-      .toContain("มูลค่า (ก่อน VAT) 961.54 ภาษีมูลค่าเพิ่ม 7% 67.31 หัก ณ ที่จ่าย 3% -28.85 ยอดรับงวดนี้ (รวม VAT) 1,000.00");
+      .toContain("มูลค่างวดนี้ (ก่อน VAT) 961.54 ภาษีมูลค่าเพิ่ม 7% 67.31 หัก ณ ที่จ่าย 3% -28.85 ยอดรับงวดนี้ 1,000.00");
   });
 });
 
@@ -67,7 +68,7 @@ describe("S20 ใบผู้ไม่จด VAT — ไม่มีคำว่
     expect(summary(salesDocsHtml(NON, nonVatOrder(0), ITEMS, ["invoice"])))
       .toContain("หัก มัดจำรับแล้ว -1,000.00 ยอดคงค้างยกมา 1,140.00 ยอดค้างชำระ 1,140.00");
     expect(summary(salesDocsHtml(NON, planned(nonVatOrder(3), false), ITEMS, ["tax-invoice-installment:1"])))
-      .toContain("มูลค่า 1,030.93 หัก ณ ที่จ่าย 3% -30.93 ยอดรับงวดนี้ 1,000.00");
+      .toContain("มูลค่างวดนี้ 1,030.93 หัก ณ ที่จ่าย 3% -30.93 ยอดรับงวดนี้ 1,000.00");
   });
 });
 

@@ -351,6 +351,21 @@ export function planActionError(action: string, hasPlan: boolean): string | null
   return null;
 }
 
+/**
+ * D170 — เลิกโฟลว์มัดจำแบบเดิม (D45) เหลือแค่แบ่งงวด (แผนงวดทำแทนได้ครบ)
+ *   ใบแจ้งหนี้มัดจำ = ใบแจ้งหนี้งวดที่ 1 · รับมัดจำ & ส่งคลัง = รับงวดที่ 1 ที่ติ๊ก "ส่งของเมื่อรับงวดนี้"
+ * 🚨 กันที่ server ไม่ใช่แค่ซ่อนปุ่ม · ออเดอร์ที่อยู่กลางโฟลว์เดิมแล้ว (รอชำระมัดจำ) ทำต่อได้จนจบ
+ *    ★ นับแล้วตอนทำ (2026-11-14): ทั้ง 2 DB ไม่มีออเดอร์ค้างกลางโฟลว์มัดจำเดิมเลย
+ */
+export const LEGACY_DEPOSIT_MSG = "เก็บมัดจำ/แบ่งจ่าย: กดแก้ไขใบเสนอราคา → ติ๊ก “แบ่งชำระเป็นงวด” (ระบบเลิกใช้ปุ่มมัดจำแบบเดิมแล้ว)";
+/** ข้อความสั้นใต้ปุ่มของออเดอร์ที่ยังรอคอนเฟิร์ม (บอกทางแทนปุ่มที่หายไป) */
+export const DEPOSIT_HINT = "เก็บมัดจำ/แบ่งจ่าย: กด แก้ไข → ติ๊ก แบ่งชำระเป็นงวด";
+export function legacyDepositError(action: string, status: string): string | null {
+  if (action === "ISSUE_INVOICE_DEPOSIT") return LEGACY_DEPOSIT_MSG;
+  if (action === "DEPOSIT_AND_SEND" && status === "รอคอนเฟิร์ม") return LEGACY_DEPOSIT_MSG;
+  return null;
+}
+
 /** ส่งคลังตอนนี้ (ก่อนถึงจุดส่งของ) — ส่งได้ครั้งเดียว */
 export function shipNowError(status: string): string | null {
   if (status === "ยกเลิก") return "ออเดอร์ถูกยกเลิกแล้ว";

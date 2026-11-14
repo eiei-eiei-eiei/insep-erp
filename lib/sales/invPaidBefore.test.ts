@@ -61,22 +61,25 @@ describe("S21 processOrder แช่ยอดตอนออกเลขใบ�
 });
 
 describe("S21 ตัวพิมพ์ใช้ยอดที่แช่ไว้", () => {
-  const summary = (html: string) => html.split("(สำเนา")[0].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").match(/รวมเป็นเงิน.*?\( ผู้/)?.[0] ?? "";
+  const summary = (html: string) => html.split("(สำเนา")[0].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").match(/(รวมเป็นเงิน|มูลค่ายอดคงค้าง).*?\( ผู้/)?.[0] ?? "";
   // ออเดอร์ 2,140 · รับครบแล้ว (deposit 2,140) · ตอนส่งของรับไปแค่ 1,000
   const paidAll = { ...planned(vatOrder(0), true), deposit: 2140 };
 
   it("🔴 เคสที่เจอจริง: รับครบแล้วพิมพ์ซ้ำ → ยังหักแค่ 1,000 คงค้าง 1,140", () => {
     const s = summary(salesDocsHtml(COMPANY, { ...paidAll, invNo: "INV-S", invPaidBefore: 1000 }, ITEMS, ["invoice"]));
-    expect(s).toContain("หัก รับชำระแล้ว (ก่อน VAT) -934.58");
-    expect(s).toContain("ยอดค้างชำระ (รวม VAT) 1,140.00");
+    // D170 — ออเดอร์แบ่งงวด: ใบแจ้งหนี้/ใบส่งสินค้าเป็นรูปแบบใบรายงวด (ยอดคงค้างก่อน VAT → VAT → ยอดค้าง · อ้างอิงรับแล้ว)
+    expect(s).toContain("มูลค่ายอดคงค้าง (ก่อน VAT) 1,065.42 ภาษีมูลค่าเพิ่ม 7% 74.58 ยอดค้างชำระ 1,140.00");
+    expect(s).toContain("รับชำระแล้ว 1,000.00");
   });
   it("ไม่มีค่าที่แช่ไว้ (null) = แบบเดิม (หัก deposit ปัจจุบัน) — ไม่เดาตัวเลข", () => {
     const s = summary(salesDocsHtml(COMPANY, { ...paidAll, invNo: "INV-S", invPaidBefore: null }, ITEMS, ["invoice"]));
-    expect(s).toContain("ยอดค้างชำระ (รวม VAT) 0.00");
+    expect(s).toContain("ยอดค้างชำระ 0.00");
   });
   it("ส่งของก่อนรับเงินสักงวด (แช่ 0) → ไม่มีบรรทัดหัก ยอดค้างเต็ม", () => {
     const s = summary(salesDocsHtml(COMPANY, { ...paidAll, invNo: "INV-S", invPaidBefore: 0 }, ITEMS, ["invoice"]));
     expect(s).not.toContain("หัก รับชำระแล้ว");
+    expect(s).toContain("ยอดค้างชำระ 2,140.00"); // D170
+    expect(s).toContain("รับชำระแล้ว 0.00");
   });
   it("ออเดอร์แบบเดิม: มีค่านี้ติดมาก็ไม่ใช้ (หัก deposit เหมือนเดิม)", () => {
     const s = summary(salesDocsHtml(COMPANY, { ...vatOrder(0), invPaidBefore: 0 }, ITEMS, ["invoice"]));

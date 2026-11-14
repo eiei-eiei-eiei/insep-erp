@@ -23,6 +23,7 @@ import { amountsVat, docVatAtIssue } from "@/lib/sales/docVat";
 import { cnInvoiceLines } from "@/lib/sales/creditNote";
 import { docDiscountEx, docLines, docLinesBase } from "@/lib/sales/docLines";
 import { revisionLabel, revisionLabelEng } from "@/lib/sales/quotationRevision";
+import { BALANCE_TAG, installmentTag, planDocRows, type PlanDocRow } from "@/lib/sales/planDocTable";
 import type { OrderItem } from "./types";
 import { mountDocViewer, viewerHead } from "@/lib/shared/docViewer";
 
@@ -139,6 +140,33 @@ function itemsTable(items: OrderItem[], padRows: boolean, isVat: boolean, target
       <th style="padding:4px 10px;border:1px solid #94a3b8;width:16%;text-align:center;font-weight:600;font-size:13px;">หน่วยละ${exNote}</th>
       <th style="padding:4px 10px;border:1px solid #94a3b8;width:20%;text-align:center;font-weight:600;font-size:13px;">จำนวนเงิน${exNote}</th>
     </tr></thead><tbody>${rows}${filler}</tbody></table>`;
+}
+
+/**
+ * D170 — ตารางของเอกสารออเดอร์แบ่งงวด (lib/sales/planDocTable)
+ *   บรรทัดหลัก 1 บรรทัดมีราคา = งวดนี้/ยอดคงค้าง · รายการตามใบเสนอราคามีแค่จำนวน ช่องราคาเว้นว่าง
+ *   หัวคอลัมน์เหมือน itemsTable (จด VAT = ก่อน VAT)
+ */
+function planItemsTable(rows: PlanDocRow[], isVat: boolean): string {
+  const td = (s: string) => `<td style="padding:2px 10px 1px 10px;border:1px solid #94a3b8;vertical-align:top;${s}">`;
+  const body = rows.map((r) => {
+    if (r.kind === "main") {
+      return `<tr>${td("text-align:center;")}${r.no}</td>${td("font-weight:500;white-space:pre-wrap;")}${esc(r.name)}</td>${td("text-align:center;")}${r.qty}</td>${td("text-align:right;")}${nf(r.unit)}</td>${td("text-align:right;font-weight:500;")}${nf(r.amount)}</td></tr>`;
+    }
+    if (r.kind === "head") {
+      return `<tr>${td("")}</td>${td("font-size:12px;color:#475569;")}${esc(r.name)}</td>${td("")}</td>${td("")}</td>${td("")}</td></tr>`;
+    }
+    return `<tr>${td("")}</td>${td("padding-left:22px;font-size:13px;color:#334155;white-space:pre-wrap;")}· ${esc(r.name)}</td>${td("text-align:center;font-size:13px;color:#334155;")}${r.qty}</td>${td("")}</td>${td("")}</td></tr>`;
+  }).join("");
+  const exNote = isVat ? `<br><span style="font-size:11px;font-weight:400;">(ก่อน VAT)</span>` : "";
+  return `<table style="width:100%;border-collapse:collapse;margin-bottom:15px;font-size:14px;">
+    <thead><tr style="background-color:#f1f5f9;color:#0f172a;">
+      <th style="padding:4px 6px;border:1px solid #94a3b8;width:8%;text-align:center;font-weight:600;font-size:13px;">ลำดับ</th>
+      <th style="padding:4px 12px;border:1px solid #94a3b8;text-align:center;font-weight:600;font-size:13px;">รายการ</th>
+      <th style="padding:4px 6px;border:1px solid #94a3b8;width:10%;text-align:center;font-weight:600;font-size:13px;">จำนวน</th>
+      <th style="padding:4px 10px;border:1px solid #94a3b8;width:16%;text-align:center;font-weight:600;font-size:13px;">หน่วยละ${exNote}</th>
+      <th style="padding:4px 10px;border:1px solid #94a3b8;width:20%;text-align:center;font-weight:600;font-size:13px;">จำนวนเงิน${exNote}</th>
+    </tr></thead><tbody>${body}</tbody></table>`;
 }
 
 /**
@@ -484,6 +512,9 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
     const f = installmentDocFigures(plan, seq, netPayable);
     const inst = plan.find((i) => i.seq === seq);
     const tag = `งวดที่ ${f.k}/${f.n}`;
+    // D170 — ตารางเหลือบรรทัดเงินบรรทัดเดียว = งวดนี้ (+ รายการสินค้ามีแค่จำนวน)
+    const planRows = (value: number) =>
+      planDocRows({ quNo: order.quNo, tag: installmentTag(f.k, f.n, f.label, inst?.percent ?? null), value, items });
     doc.docType = base; // ลายเซ็น/กล่องชำระเงินตัดสินจากชนิดหลัก
     doc.instTag = `${tag}${f.label ? ` (${f.label})` : ""}`;
     doc.instContract = f.contract;
@@ -498,6 +529,12 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
       doc.dueDate = inst?.dueDate ? fmt(inst.dueDate) : "";
       doc.instDue = f.amount;
       doc.outstandingBalance = f.amount; // > 0 → กล่องเลขบัญชีธนาคาร (เหมือนใบแจ้งหนี้อื่น)
+      // D170 — แยกมูลค่า/VAT/หัก ณ ที่จ่ายของงวด ด้วยตัวเดียวกับใบกำกับรายงวด (ตัวเลขตรงกันเมื่อรับเงินเต็มงวด)
+      const v = reverseCalcPrint(f.amount, whtPercent, isVat);
+      doc.receiptPreVat = v.preVat;
+      doc.receiptVat = v.vat;
+      doc.receiptWht = v.wht;
+      doc.planTable = planRows(v.preVat);
     } else {
       // 4.3 — ผู้ไม่จด VAT ห้ามมีคำว่า "ใบกำกับภาษี" (ม.86/13)
       doc.receiptTitle = isVat ? `ใบกำกับภาษี/ใบเสร็จรับเงิน (${tag})` : `ใบเสร็จรับเงิน (${tag})`;
@@ -511,6 +548,7 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
       doc.receiptVat = v.vat;
       doc.receiptWht = v.wht;
       doc.outstandingBalance = 0;
+      doc.planTable = planRows(v.preVat);
     }
     return doc;
   }
@@ -525,12 +563,17 @@ function setupDoc(order: OrderLike, items: OrderItem[], docType: string, copyTyp
     const paid = (doc.planOrder && order.invPaidBefore != null ? order.invPaidBefore : order.deposit) || 0;
     doc.deposit = paid;
     doc.outstandingBalance = roundTo2(netPayable - paid);
-    if (paid > 0) {
+    if (paid > 0 || doc.planOrder) {
       const balVals = reverseCalcPrint(doc.outstandingBalance as number, whtPercent, isVat);
       doc.receiptPreVat = balVals.preVat;
       doc.receiptVat = balVals.vat;
       doc.receiptWht = balVals.wht;
       doc.depositPreVat = reverseCalcPrint(paid, whtPercent, isVat).preVat;
+    }
+    // D170 — ใบแจ้งหนี้/ใบส่งสินค้าของออเดอร์แบ่งงวด: รูปแบบเดียวกับใบรายงวด (บรรทัดเงิน = ยอดคงค้าง)
+    //   ออเดอร์แบบเดิม (ไม่มีแผน) ไม่แตะ
+    if (doc.planOrder) {
+      doc.planTable = planDocRows({ quNo: order.quNo, tag: BALANCE_TAG, value: Number(doc.receiptPreVat) || 0, items });
     }
   } else if (docType === "invoice-only") {
     doc.receiptTitle = "ใบแจ้งหนี้";
@@ -624,6 +667,38 @@ function docSummaryRows(doc: PreparedDoc): string {
     ? ""
     : `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;">${exLabel("มูลค่าสินค้า")}</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">${n("subDiscount")}</td></tr>`;
   const whtRow = whtP > 0 ? `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;">หัก ณ ที่จ่าย ${whtP}%</td><td style="padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">-${n("receiptWht")}</td></tr>` : "";
+
+  // ── D170 — เอกสารของออเดอร์แบ่งงวด: กรอบสรุปเหลือเฉพาะงวดนี้ (ตารางมีบรรทัดเงินบรรทัดเดียว) ──────
+  //   มูลค่า (ก่อน VAT) = บรรทัดเงินในตาราง → VAT → หัก ณ ที่จ่าย → ยอดที่ต้องจ่าย/ที่รับ
+  //   แล้วบรรทัดอ้างอิงตัวเล็ก: ยอดตามสัญญา · รับแล้ว · คงเหลือ
+  // 🚨 บนใบกำกับภาษีมีตัวเลข VAT ตัวเดียว = VAT ของงวดนี้ (ไม่พิมพ์ VAT ทั้งสัญญา — ลูกค้าจะขอคืนภาษีซื้อผิดตัว)
+  if (doc.planTable) {
+    const cell = "padding:4px 12px;text-align:right;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;";
+    const small = (label: string, v: string, last = false) =>
+      `<tr><td style="padding:3px 12px;text-align:left;font-size:12px;color:#475569;">${label}</td><td style="padding:3px 12px;text-align:right;font-size:12px;color:#475569;border-left:2px solid #cbd5e1;border-right:2px solid #cbd5e1;${last ? "border-bottom:2px solid #cbd5e1;" : ""}">${v}</td></tr>`;
+    const isInst = dt === "invoice-installment" || dt === "tax-invoice-installment";
+    const what = isInst ? "งวดนี้" : "ยอดคงค้าง";
+    const contractLabel = `ยอดตามสัญญา${whtP > 0 ? " (สุทธิ)" : isVat ? " (รวม VAT)" : ""}`;
+    const top =
+      `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;">${exLabel(`มูลค่า${what}`)}</td><td style="padding:4px 12px;text-align:right;width:120px;border:2px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">${n("receiptPreVat")}</td></tr>` +
+      (isVat ? `<tr><td style="padding:4px 12px;text-align:left;font-size:13px;">ภาษีมูลค่าเพิ่ม 7%</td><td style="${cell}">${n("receiptVat")}</td></tr>` : "") +
+      whtRow;
+    const total = (label: string, key: string, tone: "due" | "paid") => {
+      const c = tone === "paid" ? "#15803d" : "#be123c";
+      const bg = tone === "paid" ? "#f0fdf4" : "#fff1f2";
+      return `<tr style="background-color:${bg};"><td style="padding:8px 12px;text-align:left;font-weight:bold;font-size:14px;border-bottom:4px double ${c};color:${c};">${label}</td><td style="padding:8px 12px;text-align:right;font-weight:bold;font-size:15px;border:2px solid #cbd5e1;border-bottom:4px double ${c};color:${c};">${n(key)}</td></tr>`;
+    };
+    if (isInst) {
+      const main = dt === "invoice-installment" ? total("ยอดเรียกเก็บงวดนี้", "instDue", "due") : total("ยอดรับงวดนี้", "receiptAmount", "paid");
+      return `${top}${main}
+        ${small(contractLabel, n("instContract"))}
+        ${small("รับชำระแล้วก่อนหน้า", n("instPaidBefore"))}
+        ${small("คงเหลือหลังงวดนี้", n("instRemaining"), true)}`;
+    }
+    return `${top}${total("ยอดค้างชำระ", "outstandingBalance", "due")}
+      ${small(contractLabel, nf(Number(doc.netPayable) || Number(doc.grandTotal)))}
+      ${small("รับชำระแล้ว", n("deposit"), true)}`;
+  }
 
   // ── D147 — เอกสารรายงวด: ยอดตามสัญญา · รับก่อนหน้า · งวดนี้ · คงเหลือ (ผู้ใช้ตกลงรูปนี้) ──────
   if (dt === "invoice-installment" || dt === "tax-invoice-installment") {
@@ -757,7 +832,7 @@ function b2bDocHtml(c: CompanyInfo, doc: PreparedDoc, idx: number, cancelled = f
         </table>
       </div>
     </div>
-    ${itemsTable(doc.items as OrderItem[], false, doc.isVat !== false)}
+    ${doc.planTable ? planItemsTable(doc.planTable as PlanDocRow[], doc.isVat !== false) : itemsTable(doc.items as OrderItem[], false, doc.isVat !== false)}
     <div style="page-break-inside:avoid;break-inside:avoid;">
       <table style="width:100%;font-size:14px;"><tr>
         <td style="width:55%;vertical-align:bottom;padding-right:20px;">${bankOrPaymentBox(c, doc)}</td>

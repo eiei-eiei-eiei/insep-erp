@@ -17,7 +17,7 @@ import {
 import { revenueAccountFor } from "@/lib/sales/cashAccount";
 import { defaultRevenueCat } from "@/lib/sales/revenueCats";
 import { PAY_METHODS } from "@/lib/sales/payments";
-import { planActionError, planError, planRowAmounts, percentToStore, receiveAmountError, shipNowError, isSent, type PlanRowInput } from "@/lib/sales/installments";
+import { legacyDepositError, planActionError, planError, planRowAmounts, percentToStore, receiveAmountError, shipNowError, isSent, type PlanRowInput } from "@/lib/sales/installments";
 import { getSalesBootstrap, getOrders, getOrderItems, getOrderPayments, getOrderPlan, getPendingWarehouse, getWarehouseStock, getSyncHistory, getOrderState, getCustomerId, getSaleMenuFull, getMenuLinkOptions, getCancelPlan, getCreditNotes, getCreditNoteNos, getPartialCreditPlan } from "./data";
 import { cancelMode, cnInputError, cnReasonText, cnTotals, partialTotals, CANCEL_AFTER_PARTIAL_TEXT, type CnReason } from "@/lib/sales/creditNote";
 import { accountsFor } from "@/lib/accounting/bankAccounts";
@@ -333,6 +333,9 @@ async function applyOrderActionCore(
   const plan = order.installments ?? [];
   const planErr = planActionError(action, plan.length > 0);
   if (planErr) return { ok: false, error: planErr };
+  // D170 — มัดจำแบบเดิมเลิกใช้กับออเดอร์ใหม่ (ออเดอร์ที่อยู่กลางโฟลว์เดิมแล้วทำต่อได้)
+  const legacyErr = legacyDepositError(action, order.status);
+  if (legacyErr) return { ok: false, error: legacyErr };
   if (action === "RECEIVE_INSTALLMENT") {
     const e = receiveAmountError(plan, Number(payload.installmentSeq), Number(payload.amount) || 0, order.outstandingBalance);
     if (e) return { ok: false, error: e };
