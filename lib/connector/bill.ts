@@ -122,6 +122,11 @@ export type Mismatch = {
   canUseBillAmounts: boolean;
   /** ขั้น 3: แถว (เริ่ม 0) ที่ส่วนต่างเท่ากับผลของแถวนั้นหลายหน่วยพอดี ⇒ น่าจะอ่านจำนวนผิด */
   suspectLines: number[];
+  /**
+   * รอบ 8 — ยอดรวมตรงบิล แต่ "ก่อน VAT / VAT" ที่พิมพ์บนบิลแยกต่างจากที่ระบบคิด (ผู้ขายปัดเศษคนละวิธี)
+   * ★ ภาษีซื้อที่ขอคืนได้คือยอดบนใบกำกับ ⇒ เสนอ "ใช้ VAT ตามบิล" · ไม่มีค่า = เป็นเรื่องยอดรวม (ของเดิม)
+   */
+  split?: { computedVat: number; billVat: number; computedBefore: number; billBefore: number };
 };
 
 export type CheckResult = {
@@ -269,6 +274,15 @@ export function checkBill(d: BillDraft, ctx: BillContext): CheckResult {
   const diff = round2(gross - onBill);
   let mismatch: Mismatch | null = null;
   let usedBillAmounts = false;
+  /** บันทึกด้วยยอดก่อน VAT / VAT ที่พิมพ์บนบิล (ด่านอยู่ใน billAmounts) — ใช้ทั้งยอดรวมต่าง และ VAT แยกต่าง */
+  const applyBillAmounts = (warning: string) => {
+    const r = billAmounts(d, hasVat, whtRate, onBill);
+    if (typeof r === "string") return void errors.push(r);
+    usedBillAmounts = true;
+    // base_amount ยังเป็นยอดจากรายการ (เหมือนโหมดแก้ยอดเองของฟอร์ม) · ตัวเลขที่เข้าบัญชี/ภาษีเป็นของบิล
+    computed = { ...computed, ...r, gross_total: round2(r.amount_after_discount + r.vat_amount) };
+    warnings.push(warning);
+  };
   if (Math.abs(diff) > TOTAL_TOLERANCE) {
     // ── ขั้น 1: สลับโหมดราคา (กิจการไม่จด VAT ไม่มีโหมดให้สลับ) ──
     const alt: VatMode = mode === "in" ? "ex" : "in";
@@ -281,18 +295,28 @@ export function checkBill(d: BillDraft, ctx: BillContext): CheckResult {
     mismatch = { computed: gross, onBill, diff, altPriceMode, canUseBillAmounts, suspectLines };
 
     if (d.use_bill_amounts && canUseBillAmounts) {
-      const r = billAmounts(d, hasVat, whtRate, onBill);
-      if (typeof r === "string") errors.push(r);
-      else {
-        usedBillAmounts = true;
-        // base_amount ยังเป็นยอดจากรายการ (เหมือนโหมดแก้ยอดเองของฟอร์ม) · ตัวเลขที่เข้าบัญชี/ภาษีเป็นของบิล
-        computed = { ...computed, ...r, gross_total: round2(r.amount_after_discount + r.vat_amount) };
-        warnings.push(`ใช้ยอดตามบิล — ระบบคิดได้ ${baht(gross)} ต่างจากบิล ${baht(Math.abs(diff))} (ผู้ขายปัดเศษคนละวิธี)`);
-      }
+      applyBillAmounts(`ใช้ยอดตามบิล — ระบบคิดได้ ${baht(gross)} ต่างจากบิล ${baht(Math.abs(diff))} (ผู้ขายปัดเศษคนละวิธี)`);
     } else if (d.use_bill_amounts) {
       errors.push(altPriceMode
         ? `ใช้ยอดตามบิลไม่ได้ — สลับ price_mode เป็น "${altPriceMode}" แล้วยอดตรงบิลพอดี ให้สลับแทน`
         : `ใช้ยอดตามบิลไม่ได้ — ต่าง ${baht(Math.abs(diff))} เกินเพดาน ${baht(ROUNDING_CAP)} ไม่ใช่เรื่องปัดเศษ ต้องอ่านรายการใหม่`);
+    } else {
+      errors.push(mismatchText(mismatch, d.items));
+    }
+  } else if (hasVat && d.bill_before_vat != null && d.bill_vat != null && splitDiffers(d, c)) {
+    // ── รอบ 8: ยอดรวมตรง แต่ก่อน VAT / VAT บนบิลแยกต่างจากที่คิด (เช่น VAT ต่าง 0.01) ──
+    // เดิมบันทึก VAT ที่ระบบคิดเงียบ ๆ ทั้งที่ใบกำกับพิมพ์อีกค่า · ด่าน VAT ~7% อยู่ใน billAmounts ตัวเดิม
+    const billVat = round2(num(d.bill_vat));
+    const billBefore = round2(num(d.bill_before_vat));
+    const canUse = Math.abs(round2(c.vatAmount - billVat)) <= ROUNDING_CAP;
+    mismatch = {
+      computed: gross, onBill, diff, altPriceMode: null, canUseBillAmounts: canUse, suspectLines: [],
+      split: { computedVat: c.vatAmount, billVat, computedBefore: c.amountAfterDiscount, billBefore },
+    };
+    if (d.use_bill_amounts && canUse) {
+      applyBillAmounts(`ใช้ VAT ตามบิล ${baht(billVat)} — ระบบคิดได้ ${baht(c.vatAmount)} (ผู้ขายปัดเศษคนละวิธี · ยอดรวมเท่าเดิม)`);
+    } else if (d.use_bill_amounts) {
+      errors.push(`ใช้ VAT ตามบิลไม่ได้ — VAT ต่าง ${baht(Math.abs(round2(c.vatAmount - billVat)))} เกินเพดาน ${baht(ROUNDING_CAP)} ต้องอ่านบิลใหม่`);
     } else {
       errors.push(mismatchText(mismatch, d.items));
     }
@@ -312,7 +336,7 @@ export function checkBill(d: BillDraft, ctx: BillContext): CheckResult {
     contact_name: String(d.contact_name ?? "").trim(),
     contact_id: d.contact_id || undefined,
     // ใช้ยอดตามบิล = ทิ้งร่องรอยไว้ในคำอธิบาย ให้ย้อนดูได้ว่าทำไมยอดไม่เท่าผลรวมรายการ
-    description: [String(d.description ?? "").trim(), usedBillAmounts ? `(ยอดตามบิล ต่างจากคำนวณ ${baht(Math.abs(diff))})` : ""].filter(Boolean).join(" "),
+    description: [String(d.description ?? "").trim(), usedBillAmounts ? billAmountsNote(mismatch, diff) : ""].filter(Boolean).join(" "),
     base_amount: c.baseAmount,
     discount: num(d.bill_discount),
     amount_after_discount: computed.amount_after_discount,
@@ -384,8 +408,30 @@ function billAmounts(d: BillDraft, hasVat: boolean, whtRate: number, onBill: num
   return { amount_after_discount: before, vat_amount: vat, wht_rate: w.whtRate, wht_amount: w.whtAmount, net_amount: round2(before + vat - w.whtAmount) };
 }
 
+/**
+ * VAT ที่พิมพ์บนบิล ต่างจากที่คิดได้ไหม (ยอดรวมตรงแล้ว) — เทียบระดับสตางค์
+ * 🪤 ดู VAT ตัวเดียว: บิลที่พิมพ์ "รวมก่อนหักส่วนลด" แล้ว Claude ส่งตัวนั้นเป็น bill_before_vat ต้องไม่ถูกนับว่า VAT ไม่ตรง
+ *    (ยอดรวมตรง + VAT ตรง ⇒ ก่อน VAT ก็ตรงเอง) · ความสอดคล้อง ก่อน VAT + VAT = ยอดรวม ตรวจใน billAmounts ตอนกดใช้
+ */
+function splitDiffers(d: BillDraft, c: { vatAmount: number }): boolean {
+  return Math.abs(round2(num(d.bill_vat)) - c.vatAmount) > 0.001;
+}
+
+/** ร่องรอยในคำอธิบายบิล ให้ย้อนดูได้ว่าทำไมยอดไม่เท่าที่คำนวณจากรายการ */
+function billAmountsNote(m: Mismatch | null, diff: number): string {
+  if (m?.split) return `(VAT ตามบิล ${baht(m.split.billVat)} ระบบคิดได้ ${baht(m.split.computedVat)})`;
+  return `(ยอดตามบิล ต่างจากคำนวณ ${baht(Math.abs(diff))})`;
+}
+
 /** ประโยคตอนยอดไม่ตรง — ตัดสินตาม 3 ขั้น (การ์ดใช้ mismatch ตัวเดียวกันตัดสินปุ่ม) */
 export function mismatchText(m: Mismatch, items: DraftItem[]): string {
+  if (m.split) {
+    const s = m.split;
+    return `ยอดรวมตรงบิล แต่ VAT บนบิล ${baht(s.billVat)} (ก่อน VAT ${baht(s.billBefore)}) ต่างจากที่คิดได้ ${baht(s.computedVat)} (ก่อน VAT ${baht(s.computedBefore)})` +
+      (m.canUseBillAmounts
+        ? " — มักเกิดจากผู้ขายปัดเศษคนละวิธี: ถ้าอ่านตัวเลขบนบิลถูกแล้ว ให้ผู้ใช้กด ใช้ VAT ตามบิล ในการ์ด (หรือส่ง use_bill_amounts = true)"
+        : " — ต่างเกินเรื่องปัดเศษ อ่านยอดก่อน VAT และ VAT บนบิลใหม่");
+  }
   const head = `ยอดที่คิดได้ ${baht(m.computed)} ไม่ตรงกับยอดรวมบนบิล ${baht(m.onBill)} (ต่าง ${baht(m.diff)})`;
   if (m.altPriceMode) {
     return `${head} — ถ้านับราคาเป็น${m.altPriceMode === "in" ? "รวม VAT" : "ไม่รวม VAT"} จะตรงบิลพอดี: ส่ง price_mode = "${m.altPriceMode}"`;

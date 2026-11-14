@@ -152,8 +152,9 @@ describe("C1 — 🚨 ขั้น 2: ผู้ขายปัดเศษคน
     expect(checkBill(three({ use_bill_amounts: true }), ctx).errors.join()).toMatch(/bill_before_vat และ bill_vat/);
   });
 
-  it("ยอดตรงอยู่แล้ว = ไม่สนธง use_bill_amounts (ใช้ยอดของระบบ)", () => {
-    const r = checkBill(draft({ use_bill_amounts: true, bill_before_vat: 1, bill_vat: 1 }), ctx);
+  // รอบ 8: ยอดรวมตรงแล้ว VAT บนบิลยังถูกเทียบ (เดิมไม่สนเลย) — ธงไม่มีผลเฉพาะเมื่อ VAT ตรงด้วย
+  it("ยอดตรง + VAT ตรง = ไม่สนธง use_bill_amounts (ใช้ยอดของระบบ)", () => {
+    const r = checkBill(draft({ use_bill_amounts: true, bill_before_vat: 1121.5, bill_vat: 78.5 }), ctx);
     expect(r.errors).toEqual([]);
     expect(r.usedBillAmounts).toBe(false);
     expect(r.payload!.p.amount_after_discount).toBe(1121.5);
@@ -273,5 +274,60 @@ describe("C1 — 🚨 ไม่มีสูตรเงินในไฟล์ 
   });
   it("ยอดมาจาก entryCalc", () => {
     expect(src).toMatch(/entryCalc\(/);
+  });
+});
+
+describe("C1 — รอบ 8: ยอดรวมตรง แต่ VAT บนบิลต่างจากที่คิด (เช่น 0.01)", () => {
+  // 16 × 75 รวม VAT → ระบบคิด ก่อน VAT 1,121.50 · VAT 78.50 · บิลพิมพ์ 1,121.49 + 78.51 (ยอดรวม 1,200 เท่ากัน)
+  const split = (p: Partial<BillDraft> = {}) => draft({ bill_before_vat: 1121.49, bill_vat: 78.51, ...p });
+
+  it("เดิมบันทึก VAT ที่คิดเองเงียบ ๆ → ตอนนี้ไม่บันทึกเอง + เสนอใช้ VAT ตามบิล", () => {
+    const r = checkBill(split(), ctx);
+    expect(r.payload).toBeNull();
+    expect(r.mismatch).toMatchObject({ diff: 0, canUseBillAmounts: true, split: { computedVat: 78.5, billVat: 78.51 } });
+    expect(r.errors[0]).toMatch(/ยอดรวมตรงบิล แต่ VAT บนบิล 78.51/);
+  });
+
+  it("กดใช้ VAT ตามบิล → บันทึกตัวเลขบนใบกำกับ · ยอดรวม/สุทธิเท่าเดิม · ร่องรอยบอกว่า VAT ต่าง", () => {
+    const r = checkBill(split({ use_bill_amounts: true }), ctx);
+    expect(r.errors).toEqual([]);
+    expect(r.payload!.p).toMatchObject({ amount_after_discount: 1121.49, vat_amount: 78.51, net_amount: 1200 });
+    expect(r.payload!.p.description).toMatch(/VAT ตามบิล 78.51 ระบบคิดได้ 78.50/);
+    expect(r.warnings.join()).toMatch(/ใช้ VAT ตามบิล 78.51/);
+  });
+
+  it("VAT บนบิลตรงกับที่คิด = ไม่มีอะไรเปลี่ยน (ของเดิม)", () => {
+    const r = checkBill(draft({ bill_before_vat: 1121.5, bill_vat: 78.5 }), ctx);
+    expect(r.errors).toEqual([]);
+    expect(r.mismatch).toBeNull();
+  });
+
+  it("🪤 บิลพิมพ์ยอดก่อนหักส่วนลดเป็น bill_before_vat แต่ VAT ตรง → ไม่ถูกนับว่า VAT ไม่ตรง", () => {
+    const r = checkBill(draft({ bill_before_vat: 9999, bill_vat: 78.5 }), ctx);
+    expect(r.mismatch).toBeNull();
+    expect(r.errors).toEqual([]);
+  });
+
+  it("ก่อน VAT + VAT ที่อ่านมาไม่เท่ายอดรวม → กดใช้ไม่ได้ ต้องอ่านใหม่", () => {
+    const r = checkBill(split({ bill_before_vat: 1121.4, use_bill_amounts: true }), ctx);
+    expect(r.payload).toBeNull();
+    expect(r.errors.join()).toMatch(/ไม่เท่ายอดรวมบนบิล/);
+  });
+
+  it("VAT ต่างเกินเรื่องปัดเศษ (ไม่ใกล้ 7%) → ไม่ยอม", () => {
+    const r = checkBill(split({ bill_before_vat: 1120.9, bill_vat: 79.1, use_bill_amounts: true }), ctx);
+    expect(r.payload).toBeNull();
+    expect(r.errors.join()).toMatch(/ไม่ใช่ 7%/);
+  });
+
+  it("ยอดรวมตรง แต่ VAT ที่อ่านมาห่างมาก (อ่านผิด) → ไม่บันทึก ให้อ่านใหม่", () => {
+    const r = checkBill(draft({ bill_before_vat: 1, bill_vat: 1 }), ctx);
+    expect(r.payload).toBeNull();
+    expect(r.mismatch).toMatchObject({ canUseBillAmounts: false });
+    expect(r.errors[0]).toMatch(/อ่านยอดก่อน VAT และ VAT บนบิลใหม่/);
+  });
+
+  it("บิลไม่มี VAT / กิจการไม่จด VAT → ไม่เทียบ VAT แยก", () => {
+    expect(checkBill(split({ entity_id: "EID02" }), ctx).mismatch).toBeNull();
   });
 });

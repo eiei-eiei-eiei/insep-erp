@@ -162,6 +162,14 @@ describe("C4 — ด่านเรียงถูก", () => {
     expect(s).toContain('q.ilike("name", ilikeExact(row.name))');
   });
 
+  it("🪤 รอบ 8: ช่องแก้ส่วนลด/ยอดบนบิลอยู่นอก #live (paintLive เขียนใหม่ทุกครั้ง = โฟกัสหลุดระหว่างพิมพ์)", () => {
+    const s = code("lib/connector/card/billCard.ts");
+    const totals = s.slice(s.indexOf("function totalsHtml"), s.indexOf("function amountEditHtml"));
+    expect(totals).not.toMatch(/id="bdisc"|id="tob"/);
+    expect(s.slice(s.indexOf("function amountEditHtml"))).toMatch(/id="bdisc"/);
+    expect(s).toContain("itemsEditHtml(d) + amountEditHtml(d)");
+  });
+
   it("🚨 middleware ยกเว้น /api/mcp ก่อน updateSession (ไม่งั้น Claude ได้ 200 หน้า login)", () => {
     const s = code("middleware.ts");
     expect(s.indexOf("isConnectorPath(")).toBeGreaterThan(0);

@@ -73,6 +73,7 @@
 - 🔴 รหัสผ่าน DB ก้อนเจ้าของหลุดลงบันทึกแชทตอนไล่บั๊ก (error ของ `supabase db query` พิมพ์ connection string) — แนะนำให้ผู้ใช้ reset รหัสใน Supabase แล้วแก้ `supabase/targets.json`
 - ⚠️ ยังไม่รู้จนกว่าจะลองจริง: Supabase OAuth ต้องการ scope อะไรจาก Claude (metadata ไม่ประกาศ scope ไว้) · ถ้าเชื่อมต่อแล้วล้มที่ขั้น token ให้ส่งข้อความ error ให้ Claude
 - ✅ รอบ 7 (2026-10-29): หลายบิลร้านใหม่เดียวกันแสดงพร้อมกันได้ (ผูกคู่ค้าเดิมตอนบันทึก · ชื่อไม่สนตัวพิมพ์) + `get_bill` ดูงาน/หมวดรายบรรทัด · test 2202 · ✅ push แล้ว (021f660) · ⏳ ผู้ใช้: Connect ใหม่ + TESTING 99.12
+- ✅ รอบ 8 (2026-11-14): ยอดรวมตรงแต่ VAT บนบิลต่าง → การ์ดเสนอ *ใช้ VAT ตามบิล* (เดิมบันทึก VAT ที่คิดเองเงียบ ๆ) + การ์ดแสดง/แก้ส่วนลดท้ายบิล · test 2622 · ⏳ ยังไม่ push ณ ตอนเขียน · ⏳ ผู้ใช้: Connect ใหม่ + TESTING 99.13
 - เปลี่ยน DB ที่ยิงทดสอบ: `.env.local` ชี้ DB ลูกค้า (proof-app) แต่ผู้ใช้บอท `claudeacc` อยู่ DB เจ้าของ ⇒ ยิงเครื่องมือด้วย session ของ claudeacc ต้องเปิด `next dev` พร้อม env URL/anon key ของ DB เจ้าของ (ทำใน scratchpad ไม่คอมมิต)
 - `.claude/launch.json` มี config `connector-smoke` (next start port 3100 + env) ไว้ยิงทดสอบบนเครื่อง ต้อง `npm run build` ก่อน
 

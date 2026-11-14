@@ -11,7 +11,7 @@
 import { App, applyDocumentTheme, applyHostStyleVariables } from "@modelcontextprotocol/ext-apps/app-with-deps";
 import type { McpUiHostContext } from "@modelcontextprotocol/ext-apps";
 import {
-  primaryAction, suspectSet, savedContextText, savedContactText, NEW_CONTACT_SHARED_NOTE, type SavedContact, INLINE_ITEMS, EDIT_TOTAL_WARN, type CardData,
+  primaryAction, suspectSet, totalStatus, billDiscountLine, savedContextText, savedContactText, NEW_CONTACT_SHARED_NOTE, type SavedContact, INLINE_ITEMS, EDIT_TOTAL_WARN, type CardData,
   contactPrimary, contactDoneText, isContactCard, type ContactCardData,
 } from "../cardView";
 import type { NewContactInput } from "../contact";
@@ -313,20 +313,26 @@ function itemsEditHtml(d: CardData): string {
 
 function totalsHtml(d: CardData): string {
   const c = d.computed;
-  const m = d.mismatch;
   const line = (k: string, v: string, cls = "") => `<div class="tl ${cls}"><span>${k}</span><span class="num">${v}</span></div>`;
-  let status = "";
-  if (d.used_bill_amounts && m) status = `<div class="ok">ใช้ยอดตามบิล ${baht(m.onBill)} (ระบบคิดได้ ${baht(m.computed)})</div>`;
-  else if (m) status = `<div class="bad">ไม่ตรงบิล — คิดได้ ${baht(m.computed)} บนบิล ${baht(m.onBill)}</div>`;
-  else if (c) status = `<div class="ok">ตรงกับยอดบนบิล ${baht(d.draft.total_on_bill)}</div>`;
-  const totalEdit = full
-    ? editTotal
-      ? `<div class="warnbox">${esc(EDIT_TOTAL_WARN)}</div><label class="lab">ยอดรวมบนบิล <input id="tob" inputmode="decimal" value="${esc(d.draft.total_on_bill)}"></label>`
-      : `<button class="link" data-act="edit-total">แก้ยอดบนบิล</button>`
-    : "";
-  return `<div class="tot">${c ? line("ก่อน VAT", baht(c.amount_after_discount)) + line("VAT", baht(c.vat_amount)) + line("รวม", baht(c.gross_total), "big") : ""}
+  const st = totalStatus(d);
+  const status = st ? `<div class="${st.ok ? "ok" : "bad"}">${esc(st.text)}</div>` : "";
+  const disc = billDiscountLine(d);
+  return `<div class="tot">${disc && c ? line(esc(disc.label), "−" + baht(disc.amount)) : ""}${c ? line("ก่อน VAT", baht(c.amount_after_discount)) + line("VAT", baht(c.vat_amount)) + line("รวม", baht(c.gross_total), "big") : ""}
     ${c && c.wht_amount > 0 ? line(`หัก ณ ที่จ่าย ${c.wht_rate}%`, baht(c.wht_amount)) + line("สุทธิ", baht(c.net_amount)) : ""}
-    ${status}${totalEdit}</div>`;
+    ${status}</div>`;
+}
+
+/**
+ * หน้าเต็มจอ: ช่องแก้ส่วนลดท้ายบิล + ยอดบนบิล (รอบ 8)
+ * 🪤 ต้องอยู่นอก #live — paintLive เขียน #live ใหม่ทุกครั้งที่คิดยอด ถ้าช่องอยู่ข้างใน = โฟกัสหลุด แป้นพิมพ์ปิดระหว่างพิมพ์
+ */
+function amountEditHtml(d: CardData): string {
+  const basis = d.vat_effective ? (d.draft.price_mode === "in" ? " · รวม VAT" : " · ก่อน VAT") : "";
+  const disc = `<label class="lab">ส่วนลดท้ายบิล (บาท${basis}) <input id="bdisc" inputmode="decimal" value="${esc(d.draft.bill_discount ?? "")}"></label>`;
+  const total = editTotal
+    ? `<div class="warnbox">${esc(EDIT_TOTAL_WARN)}</div><label class="lab">ยอดรวมบนบิล <input id="tob" inputmode="decimal" value="${esc(d.draft.total_on_bill)}"></label>`
+    : `<button class="link" data-act="edit-total">แก้ยอดบนบิล</button>`;
+  return `<div class="row">${disc}${total}</div>`;
 }
 
 function warningsHtml(d: CardData): string {
@@ -358,7 +364,7 @@ function render() {
   const head = `<div class="hd1"><b>${esc(x.contact_name || "(ไม่ระบุคู่ค้า)")}</b><span class="mu">${esc(d.tenant_name)}</span></div>
     <div class="mu">${esc(x.type)} · ${esc(fmtDate(x.transaction_date))}${x.tax_invoice_no ? ` · ใบกำกับ ${esc(x.tax_invoice_no)}` : ""}</div>`;
   root.innerHTML = `<div class="card${full ? " full" : ""}">${head}
-    ${full ? itemsEditHtml(d) : choicesHtml(d) + itemsInlineHtml(d)}
+    ${full ? itemsEditHtml(d) + amountEditHtml(d) : choicesHtml(d) + itemsInlineHtml(d)}
     <div id="live">${full ? contactStatusHtml(d) : ""}${totalsHtml(d)}${warningsHtml(d)}<div id="acts">${actionsHtml(d)}</div></div></div>`;
   paintSuspects();
 }
@@ -412,7 +418,7 @@ root.addEventListener("click", (e) => {
     case "chat": return ask("ขอแก้บิลนี้: ");
     case "edit": return void setFull(true);
     case "done-edit": return void setFull(false);
-    case "edit-total": editTotal = true; return paintLive();
+    case "edit-total": editTotal = true; render(); return void document.getElementById("tob")?.focus();
     case "del": {
       const items = data.draft.items.filter((_, i) => i !== Number(val));
       data = { ...data, draft: { ...data.draft, items } };
@@ -436,6 +442,8 @@ root.addEventListener("input", (e) => {
   if (cdata) return contactInput(el);
   if (!data) return;
   if (el.id === "tob") return void recalc({ total_on_bill: Number(el.value) || 0, use_bill_amounts: false }, 500);
+  // ส่วนลดท้ายบิลเปลี่ยน = ยอดเปลี่ยน ⇒ เลิกใช้ยอดตามบิลที่เคยกด
+  if (el.id === "bdisc") return void recalc({ bill_discount: Number(el.value) || 0, use_bill_amounts: false }, 500);
   if (el.dataset.nc && ncLocal) {
     ncLocal = { ...ncLocal, [el.dataset.nc]: el.value };
     // แก้คู่ค้า = ตรวจใหม่ทั้งหมด (อาจไปตรงกับคู่ค้าเดิมในทะเบียน) · ทิ้ง contact_id ที่ server เคยผูกให้

@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { checkBill, type BillDraft, type BillContext } from "./bill";
-import { primaryAction, categoryChips, suspectSet, savedContextText, savedContactText, NEW_CONTACT_SHARED_NOTE, type CardData } from "./cardView";
+import { primaryAction, categoryChips, suspectSet, savedContextText, savedContactText, NEW_CONTACT_SHARED_NOTE, totalStatus, billDiscountLine, type CardData } from "./cardView";
 
 const ctx: BillContext = {
   entities: [
@@ -149,5 +149,38 @@ describe("C6 — รอบ 7: ข้อความคู่ค้าหลั�
     expect(savedContextText("TR-1", { contact_id: "C-0067", name: "Shopee", status: "linked" })).toMatch(/TR-1 · ใช้คู่ค้าเดิม C-0067/);
     expect(savedContextText("TR-1")).toBe("ผู้ใช้กดบันทึกบิลในการ์ดแล้ว เลขที่ TR-1 — ไม่ต้องเรียก save_bill ซ้ำ");
     expect(NEW_CONTACT_SHARED_NOTE).toMatch(/ไม่เพิ่มซ้ำ/);
+  });
+});
+
+describe("C6 — รอบ 8: การ์ด VAT แยกไม่ตรง + ส่วนลดท้ายบิล", () => {
+
+  const base = (over: Partial<CardData>): CardData => ({
+    v: 1, tenant_slug: "t", tenant_name: "T", entities: [], category_chips: [], categories_all: [], accounts: [], jobs: [],
+    jobs_required: false, item_categories: [], contact: { kind: "none" }, vat_effective: true,
+    computed: { base_amount: 1121.5, amount_after_discount: 1121.5, vat_amount: 78.5, wht_rate: 0, wht_amount: 0, net_amount: 1200, gross_total: 1200 },
+    mismatch: null, used_bill_amounts: false, errors: [], warnings: [], possible_duplicates: [],
+    draft: { entity_id: "EID01", type: "รายจ่าย", transaction_date: "2026-10-27", category: "x", price_mode: "in", has_vat: true, items: [], total_on_bill: 1200 },
+    ...over,
+  });
+  const split = { computed: 1200, onBill: 1200, diff: 0, altPriceMode: null, canUseBillAmounts: true, suspectLines: [], split: { computedVat: 78.5, billVat: 78.51, computedBefore: 1121.5, billBefore: 1121.49 } };
+
+  it("ปุ่มหลัก = ใช้ VAT ตามบิล พร้อมบอกตัวเลขทั้งสอง", () => {
+    const a = primaryAction(base({ mismatch: split }));
+    expect(a).toMatchObject({ kind: "use_bill_amounts", label: "ใช้ VAT ตามบิล" });
+    expect(a.hint).toMatch(/78.51.*78.50/);
+  });
+  it("ต่างเกินเพดาน → ให้ Claude อ่านใหม่", () => {
+    expect(primaryAction(base({ mismatch: { ...split, canUseBillAmounts: false } })).kind).toBe("ask_claude");
+  });
+  it("สถานะใต้ยอดรวม: ยังไม่กด = แดง · กดแล้ว = เขียว · ไม่มีเรื่อง = ตรงบิล", () => {
+    expect(totalStatus(base({ mismatch: split }))).toMatchObject({ ok: false });
+    expect(totalStatus(base({ mismatch: split, used_bill_amounts: true }))?.text).toMatch(/ใช้ VAT ตามบิล 78.51/);
+    expect(totalStatus(base({}))).toMatchObject({ ok: true, text: "ตรงกับยอดบนบิล 1,200.00" });
+  });
+  it("ส่วนลดท้ายบิล: ไม่มี = ไม่มีบรรทัด · บอกฐาน VAT ตามโหมดราคา", () => {
+    expect(billDiscountLine(base({}))).toBeNull();
+    expect(billDiscountLine(base({ draft: { ...base({}).draft, bill_discount: 100 } }))).toEqual({ label: "ส่วนลดท้ายบิล (รวม VAT)", amount: 100 });
+    expect(billDiscountLine(base({ draft: { ...base({}).draft, bill_discount: 50, price_mode: "ex" } }))?.label).toBe("ส่วนลดท้ายบิล (ก่อน VAT)");
+    expect(billDiscountLine(base({ vat_effective: false, draft: { ...base({}).draft, bill_discount: 50 } }))?.label).toBe("ส่วนลดท้ายบิล");
   });
 });

@@ -47,7 +47,9 @@ Workflow for every bill image the user sends:
    a new job name is fine; "no job" means job_none = true and is stored empty). Skip questions whose answer is obvious.
 6. Call preview_bill with the answers. total_on_bill = the grand total printed on the bill (incl. VAT, before withholding tax),
    read independently from the lines. price_mode "in" when unit prices include VAT, "ex" when VAT is added below.
-   If the bill prints a subtotal before VAT and a VAT amount, also send bill_before_vat and bill_vat.
+   If the bill prints a subtotal before VAT and a VAT amount, ALWAYS send bill_before_vat and bill_vat: the card compares
+   them even when the grand total matches (VAT off by a satang = vendor rounding; the user can choose ใช้ VAT ตามบิล).
+   A discount printed at the bottom of the bill goes in bill_discount (same VAT basis as the unit prices), not into a line.
    NEVER tweak quantities or prices just to make totals match; re-read the bill instead.
 7. preview_bill shows the user an interactive card. The user reviews and presses Save in the card. You cannot save bills:
    save_bill is only available to the card. If the user asks you to save, tell them to press บันทึก in the card.
@@ -225,7 +227,7 @@ const billShape = {
   due_date: z.string().optional().describe("Due date YYYY-MM-DD when unpaid"),
   items: z.array(itemSchema).describe("Line items exactly as printed"),
   total_on_bill: z.number().describe("Grand total printed on the bill (incl. VAT, before withholding tax). Used only to cross-check."),
-  bill_before_vat: z.number().optional().describe("Subtotal before VAT as printed on the bill, if printed"),
+  bill_before_vat: z.number().optional().describe("Amount before VAT (after any bill discount) as printed on the bill, if printed"),
   bill_vat: z.number().optional().describe("VAT amount as printed on the bill, if printed"),
   use_bill_amounts: z.boolean().optional().describe("Save with the printed before-VAT/VAT amounts when they differ from the computed ones by at most 1 baht (vendor rounding). Only after the user agrees."),
 };

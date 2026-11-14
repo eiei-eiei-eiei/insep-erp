@@ -96,6 +96,20 @@ export function primaryAction(d: CardData): Primary {
         hint: `คิดได้ ${baht(m.computed)} บนบิล ${baht(m.onBill)} — ถ้าราคาบนบิลเป็นราคา${to} จะตรงพอดี`,
       };
     }
+    if (m.split) {
+      return m.canUseBillAmounts
+        ? {
+            kind: "use_bill_amounts",
+            label: "ใช้ VAT ตามบิล",
+            hint: `ยอดรวมตรงบิล แต่ VAT บนบิล ${baht(m.split.billVat)} ระบบคิดได้ ${baht(m.split.computedVat)} — ผู้ขายปัดเศษคนละวิธี กดเพื่อบันทึกตามใบกำกับ`,
+          }
+        : {
+            kind: "ask_claude",
+            label: "ให้ Claude อ่าน VAT ใหม่",
+            hint: `VAT บนบิล ${baht(m.split.billVat)} ต่างจากที่คิดได้ ${baht(m.split.computedVat)} เกินเรื่องปัดเศษ`,
+            message: "ยอดก่อน VAT / VAT ที่อ่านจากบิลไม่ตรงกับที่ระบบคิด ช่วยอ่านตัวเลขบนบิลใหม่อีกครั้ง",
+          };
+    }
     if (m.canUseBillAmounts) {
       // บิลมี VAT ต้องมียอดก่อน VAT + VAT ที่อ่านจากบิล — ไม่มีให้ Claude อ่านเพิ่ม (การ์ดไม่เดาตัวเลข)
       if (d.vat_effective && (d.draft.bill_before_vat == null || d.draft.bill_vat == null)) {
@@ -129,6 +143,34 @@ export function primaryAction(d: CardData): Primary {
     };
   }
   return { kind: "save", label: "บันทึก", hint: "" };
+}
+
+/**
+ * บรรทัดสถานะใต้ยอดรวม (รอบ 8 ย้ายมาจากตัวการ์ด เพื่อให้มีเทสคุม)
+ * ok = สีเขียว · false = สีแดง · null = ยังคิดไม่ได้
+ */
+export function totalStatus(d: CardData): { ok: boolean; text: string } | null {
+  const m = d.mismatch;
+  if (m?.split) {
+    return d.used_bill_amounts
+      ? { ok: true, text: `ใช้ VAT ตามบิล ${baht(m.split.billVat)} (ระบบคิดได้ ${baht(m.split.computedVat)}) · ยอดรวม ${baht(m.onBill)} ตรงบิล` }
+      : { ok: false, text: `ยอดรวมตรงบิล แต่ VAT ไม่ตรง — บนบิล ${baht(m.split.billVat)} คิดได้ ${baht(m.split.computedVat)}` };
+  }
+  if (d.used_bill_amounts && m) return { ok: true, text: `ใช้ยอดตามบิล ${baht(m.onBill)} (ระบบคิดได้ ${baht(m.computed)})` };
+  if (m) return { ok: false, text: `ไม่ตรงบิล — คิดได้ ${baht(m.computed)} บนบิล ${baht(m.onBill)}` };
+  if (d.computed) return { ok: true, text: `ตรงกับยอดบนบิล ${baht(d.draft.total_on_bill)}` };
+  return null;
+}
+
+/**
+ * บรรทัดส่วนลดท้ายบิล (รอบ 8) — ฐานเดียวกับราคาที่กรอก (โหมดรวม VAT = ส่วนลดรวม VAT)
+ * 🚨 แสดงค่าที่ Claude ส่งมาตรง ๆ ไม่คิดเงินในการ์ด · ไม่มีส่วนลด = ไม่มีบรรทัด
+ */
+export function billDiscountLine(d: CardData): { label: string; amount: number } | null {
+  const x = Number(d.draft.bill_discount) || 0;
+  if (!(x > 0)) return null;
+  const basis = d.vat_effective ? (d.draft.price_mode === "in" ? " (รวม VAT)" : " (ก่อน VAT)") : "";
+  return { label: `ส่วนลดท้ายบิล${basis}`, amount: x };
 }
 
 /** แถวที่ต้องไฮไลต์ในรายการ (ขั้น 3) */
