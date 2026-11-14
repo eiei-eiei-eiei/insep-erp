@@ -206,10 +206,21 @@ export async function updateQuotationAction(quNo: string, input: QuotationPayloa
   if (planErr) return fail(planErr);
   const { data, error } = await supabase.rpc("fn_update_quotation", { p_qu_no: quNo, p, p_items: items });
   if (error) return fail(mapDbError(error));
-  const res = data as { ok: boolean; error?: string; qu_no?: string; warning?: string };
+  const res = data as { ok: boolean; error?: string; qu_no?: string; warning?: string; fp_before?: string; rev?: number };
   if (!res.ok) return fail(res.error ?? "แก้ไขไม่สำเร็จ");
   // ยอดสุทธิอาจเปลี่ยน → ตั้งแผนใหม่ทั้งชุด (ส่งว่าง = ยกเลิกแผน กลับเป็นจ่ายครั้งเดียว)
   if (input.plan?.length || current?.installments?.length) res.warning = await savePlanAfter(quNo, input.plan ?? []);
+  // D168 — ปิดรอบหลังบันทึกแผนงวดแล้ว (แก้แค่เงื่อนไขงวดก็นับเป็นฉบับแก้ไข) · ไม่เปลี่ยนอะไร = ไม่นับ
+  //   🚨 ล้ม = ใบถูกแก้แล้วแต่ไม่ได้นับ → เหลือง ไม่ใช่เขียว (D79) ไม่งั้นใบที่พิมพ์ไม่บอกว่าเป็นฉบับแก้ไข
+  const rv = await supabase.rpc("fn_quotation_close_revision", { p_qu_no: quNo, p_fp_before: res.fp_before ?? null });
+  const rvRes = rv.data as { ok?: boolean; rev?: number; error?: string } | null;
+  if (rv.error || !rvRes?.ok) {
+    const why = rv.error ? mapDbError(rv.error) : rvRes?.error ?? "";
+    res.warning = [res.warning, `บันทึกการแก้ไขแล้ว แต่ไม่ได้นับเป็นฉบับแก้ไข${why ? ` — ${why}` : ""} · ใบที่พิมพ์จะไม่ขึ้นว่าเป็นฉบับแก้ไข`].filter(Boolean).join(" · ");
+  } else {
+    res.rev = rvRes.rev ?? 0;
+  }
+  delete res.fp_before;
   await sendLine(supabase, `✏️ แก้ไขออเดอร์\n[${quNo}] ${input.customer.name}\n${items.length} รายการ | ยอด ฿${totals.grandTotal.toLocaleString("th-TH", { minimumFractionDigits: 0 })}`);
   revalidatePath("/sales");
   return { ok: true, data: res };

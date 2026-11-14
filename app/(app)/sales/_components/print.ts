@@ -22,6 +22,7 @@ import { CANCELLED_STAMP, CANCELLED_STAMP_ENG } from "@/lib/sales/cancelledDocs"
 import { amountsVat, docVatAtIssue } from "@/lib/sales/docVat";
 import { cnInvoiceLines } from "@/lib/sales/creditNote";
 import { docDiscountEx, docLines, docLinesBase } from "@/lib/sales/docLines";
+import { revisionLabel, revisionLabelEng } from "@/lib/sales/quotationRevision";
 import type { OrderItem } from "./types";
 import { mountDocViewer, viewerHead } from "@/lib/shared/docViewer";
 
@@ -190,6 +191,12 @@ export type QuotationDoc = {
   cancelled?: boolean;
   /** เลขออเดอร์ (ORD) — ออกพร้อมใบเสนอราคา · พิมพ์เฉพาะใบที่ยกเลิก */
   orderNo?: string;
+  /**
+   * D168 — ฉบับแก้ไข (0/ไม่ส่ง = ฉบับแรก) · `dateISO` ต้องเป็นวันที่ของฉบับนั้นแล้ว (`quotationDocDate()`)
+   * `originalDateISO` = วันที่ฉบับแรก (`originalDateOnRevision()`) · ว่าง = ไม่พิมพ์บรรทัดนั้น
+   */
+  revision?: number;
+  originalDateISO?: string;
 };
 
 export function quotationHtml(c: CompanyInfo, d: QuotationDoc): string {
@@ -212,7 +219,10 @@ export function quotationHtml(c: CompanyInfo, d: QuotationDoc): string {
   const grandBottom = d.whtPercent
     ? "border-bottom:1px solid #cbd5e1;"
     : "border-bottom:4px double #0f172a;background-color:#f1f5f9;";
-  const title = d.cancelled ? `ใบเสนอราคา (${CANCELLED_STAMP})` : "ใบเสนอราคา";
+  // D168 — ฉบับแก้ไข: ชื่อไฟล์/ภาพที่แชร์ต้องแยกจากฉบับแรกได้ด้วย
+  const rev = Math.max(0, Math.floor(Number(d.revision) || 0));
+  const baseTitle = rev > 0 ? `ใบเสนอราคา ${revisionLabel(rev)}` : "ใบเสนอราคา";
+  const title = d.cancelled ? `${baseTitle} (${CANCELLED_STAMP})` : baseTitle;
   return `<div class="a4-container" data-doc-title="${escAttr(title)}" data-doc-no="${escAttr(d.quNo)}" style="${d.cancelled ? "position:relative;" : ""}font-family:'Kanit',sans-serif;color:#111;line-height:1.5;">
     ${d.cancelled ? cancelledStamp() : ""}
     ${companyHeader(c, "ใบเสนอราคา", "Quotation")}
@@ -221,8 +231,10 @@ export function quotationHtml(c: CompanyInfo, d: QuotationDoc): string {
       <div style="width:41%;border:2px solid #cbd5e1;padding:12px 15px;border-radius:8px;background-color:#f8fafc;box-sizing:border-box;">
         <table style="width:100%;border-collapse:collapse;font-size:14px;">
           <tr><td style="padding:3px 0;font-weight:600;width:60%;">เลขที่ / Quotation No.</td><td style="padding:3px 0;font-weight:500;text-align:right;">${esc(d.quNo)}</td></tr>
+          ${rev > 0 ? `<tr><td colspan="2" style="padding:3px 0;font-weight:600;text-align:right;color:#b45309;">${esc(revisionLabel(rev))} / ${esc(revisionLabelEng(rev))}</td></tr>` : ""}
           ${d.cancelled && d.orderNo ? `<tr><td style="padding:3px 0;font-weight:600;">เลขที่ออเดอร์ / Order No.</td><td style="padding:3px 0;font-weight:500;text-align:right;">${esc(d.orderNo)}</td></tr>` : ""}
           <tr><td style="padding:3px 0;font-weight:600;">วันที่ / Date</td><td style="padding:3px 0;text-align:right;">${esc(docDate(c)(d.dateISO))}</td></tr>
+          ${rev > 0 && d.originalDateISO ? `<tr><td style="padding:3px 0;font-weight:600;">ฉบับแรกลงวันที่ / Original</td><td style="padding:3px 0;text-align:right;">${esc(docDate(c)(d.originalDateISO))}</td></tr>` : ""}
           <tr><td style="padding:3px 0;font-weight:600;">ยืนราคาถึงวันที่ / Validity</td><td style="padding:3px 0;text-align:right;">${esc(d.quExp)}</td></tr>
           <tr><td style="padding:3px 0;font-weight:600;">เครดิตเทอม / Credit Term</td><td style="padding:3px 0;text-align:right;">${d.creditTerm > 0 ? d.creditTerm + " วัน" : "-"}</td></tr>
         </table>

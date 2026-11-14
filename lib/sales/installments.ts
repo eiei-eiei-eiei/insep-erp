@@ -13,7 +13,7 @@
  *   · D164 — กรอกงวดเป็นจำนวนเงินได้ (ก่อน/รวม VAT) → ยอดชำระสุทธิตรึงไว้ที่ `amount` · % คิดกลับให้ไว้แสดง
  * 🚨 ไม่มีสูตรภาษีชุดใหม่ในไฟล์นี้ — ถอด VAT/WHT ใช้ `reverseVatWht` ตัวเดิม (processOrder · และตัวแปลงยอดที่กรอกด้านล่าง)
  */
-import { reverseVatWht } from "./calc";
+import { reverseCalcPrint, reverseVatWht } from "./calc";
 
 /** สถานะใหม่ — รับเงินแล้วบางงวด แต่ยังไม่ส่งของ (เช่น รับ 50% แล้วกำลังผลิต) */
 export const STATUS_INSTALLMENT = "กำลังผ่อนชำระ";
@@ -286,15 +286,32 @@ export function defaultPlanRows(depositPct = 50): PlanRowInput[] {
 }
 
 /**
- * บรรทัดเงื่อนไขการชำระบนใบเสนอราคา — "งวดที่ 1 มัดจำ 50% = 5,000.00 บาท (ส่งสินค้าหลังรับงวดนี้)"
+ * บรรทัดเงื่อนไขการชำระบนใบเสนอราคา
  * ★ ใช้ทั้งพรีวิวในหน้าสร้างใบเสนอราคาและตอนพิมพ์ (ประโยคเดียวกัน)
+ *
+ * D169 — กิจการที่จด VAT: บอกมูลค่าก่อน VAT ทุกงวด (ลูกค้าบางเจ้าตั้งงบ/PO เป็นยอดก่อน VAT)
+ *   "งวดที่ 1 มัดจำ 50% — ก่อน VAT 50,000.00 · VAT 3,500.00 · รวม 53,500.00 บาท"
+ *   มีหัก ณ ที่จ่าย: "… · VAT 3,500.00 · หัก ณ ที่จ่าย 1,500.00 · ชำระ 52,000.00 บาท"
+ * 🚨 ตัวเลขก่อน VAT/VAT/หัก ณ ที่จ่าย ถอดด้วย `reverseCalcPrint()` **ตัวเดียวกับใบกำกับภาษีของงวดนั้น** (print.ts)
+ *    ⇒ ลูกค้าเทียบใบเสนอราคากับใบกำกับที่ได้ทีหลังแล้วตรงกันทุกตัว · ยอดท้ายบรรทัด = ยอดงวดที่บันทึกจริง
+ *    ★ คั่นด้วย "·" ไม่ใช่ + − = เพราะแต่ละตัวปัดแยกกัน (เหมือนบนใบกำกับ) บางงวดบวกลบแล้วคลาด 1 สตางค์
+ * ★ ไม่จด VAT: ไม่มีอะไรให้ถอด → "งวดที่ 1 มัดจำ 50% = 5,000.00 บาท" เหมือนเดิม
+ * ★ ตัดวงเล็บ "(ส่งสินค้าหลังรับงวดนี้)" ออก (ผู้ใช้สั่ง) — งานบริการ/ค่าที่ปรึกษาไม่มีการส่งของ
+ *   จุดส่งของยังทำงานเหมือนเดิม (ship_point คุมการส่งคลัง) แค่ไม่พิมพ์บนใบเสนอราคา
  */
-export function planTermsLines(rows: { seq: number; label: string; percent: number | null; amount: number; shipPoint: boolean }[]): string[] {
-  // D164 — งวดที่กรอกเป็นเงินเก็บ % ไว้ 4 ตำแหน่ง → พิมพ์ 2 ตำแหน่ง
-  return rows.map((r) =>
-    `งวดที่ ${r.seq} ${r.label.trim()}${r.percent != null ? ` ${r2(r.percent)}%` : ""} = ${money(r.amount)} บาท` +
-    (r.shipPoint ? " (ส่งสินค้าหลังรับงวดนี้)" : ""),
-  );
+export function planTermsLines(
+  rows: { seq: number; label: string; percent: number | null; amount: number }[],
+  ctx: VatCtx,
+): string[] {
+  const wht = ctx.whtPct || 0;
+  return rows.map((r) => {
+    // D164 — งวดที่กรอกเป็นเงินเก็บ % ไว้ 4 ตำแหน่ง → พิมพ์ 2 ตำแหน่ง
+    const head = `งวดที่ ${r.seq} ${r.label.trim()}${r.percent != null ? ` ${r2(r.percent)}%` : ""}`;
+    if (!ctx.isVat) return `${head} = ${money(r.amount)} บาท`;
+    const v = reverseCalcPrint(r.amount, wht, true);
+    return `${head} — ก่อน VAT ${money(v.preVat)} · VAT ${money(v.vat)}` +
+      (wht > 0 ? ` · หัก ณ ที่จ่าย ${money(v.wht)} · ชำระ ${money(r.amount)} บาท` : ` · รวม ${money(r.amount)} บาท`);
+  });
 }
 
 /**

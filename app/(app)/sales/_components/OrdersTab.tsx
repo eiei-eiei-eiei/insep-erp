@@ -18,6 +18,7 @@ import {
 import { can, toRole } from "@/lib/shared/roles";
 import { actionPostsRevenue, docDateNote, manualNoError, manualNoFields } from "@/lib/sales/backdate";
 import { cancelledDocTypes } from "@/lib/sales/cancelledDocs";
+import { originalDateOnRevision, quotationDocDate, revisionLabel } from "@/lib/sales/quotationRevision";
 import { PAY_METHODS, chequeText, hasReceivedPayment } from "@/lib/sales/payments";
 import { receiveAmountError, type Installment } from "@/lib/sales/installments";
 import { PlanPanel } from "./PlanPanel";
@@ -154,7 +155,10 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
     printQuotation(boot.company, {
       quNo: o.quNo,
       // ⏳ D161 เฟส 3: วันที่บนใบเสนอราคาจะตาม "รูปแบบบนเอกสาร" — ตอนนี้คงรูปเดิม (dd/MM/yyyy พ.ศ.)
-      dateISO: o.createdOn, // D161 เฟส 3 — print.ts จัดรูปตามค่าตั้งของเอกสาร
+      // D168 — ฉบับแก้ไขลงวันที่ของฉบับนั้น + บอกวันที่ฉบับแรก (D161 เฟส 3 — print.ts จัดรูปตามค่าตั้งของเอกสาร)
+      dateISO: quotationDocDate({ rev: o.quRev, revOn: o.quRevOn, createdOn: o.createdOn }),
+      revision: o.quRev,
+      originalDateISO: originalDateOnRevision({ rev: o.quRev, revOn: o.quRevOn, createdOn: o.createdOn }),
       quExp: "-",
       customerName: o.customerName,
       customerAddress: o.customerAddress,
@@ -173,7 +177,8 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
       remarks: o.remarks,
       saleName: o.saleName,
       // D146 — เงื่อนไขงวดตามแผนปัจจุบัน (ยอดงวดที่รับแล้วเป็นยอดที่รับจริง)
-      planTerms: planTermsLines(plan),
+      // D169 — จด VAT ไหมตัดสินจากยอดของใบนี้ (D154) · หัก ณ ที่จ่ายตามออเดอร์ = ตัวเดียวกับใบกำกับรายงวด
+      planTerms: planTermsLines(plan, { isVat: o.vatAmount > 0, whtPct: o.whtPercent }),
       cancelled,
       orderNo: o.orderNo,
     }, w);
@@ -377,7 +382,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
                         {o.quNo}
                         <button onClick={() => doReprintQuotation(o, undefined, o.status === "ยกเลิก")} title="พิมพ์ใบเสนอราคาซ้ำ" className="rounded border border-line p-1 text-faint hover:text-warn"><IconPrint size={16} /></button>
                       </div>
-                      <div className="text-[10px] text-faint">{o.orderNo}</div>
+                      <div className="text-[10px] text-faint">{o.orderNo}{o.quRev > 0 && <span className="ml-1 text-warn">· {revisionLabel(o.quRev)}</span>}</div>
                     </td>
                     <td className="text-ink">{o.customerName}</td>
                     <td className="whitespace-nowrap font-semibold text-brand num">฿{fmt(o.netPayable)}</td>
@@ -406,7 +411,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
                       {o.quNo}
                       <button onClick={() => doReprintQuotation(o, undefined, o.status === "ยกเลิก")} title="พิมพ์ใบเสนอราคาซ้ำ" className="rounded border border-line p-1 text-faint hover:text-warn"><IconPrint size={16} /></button>
                     </div>
-                    <div className="text-[10px] text-faint">{o.orderNo} · {d.date(o.createdOn)}</div>
+                    <div className="text-[10px] text-faint">{o.orderNo} · {d.date(o.createdOn)}{o.quRev > 0 && <span className="ml-1 text-warn">· {revisionLabel(o.quRev)}</span>}</div>
                     <div className="mt-0.5 truncate text-sm text-muted">{o.customerName}</div>
                   </div>
                   <StatusBadge status={o.status} />

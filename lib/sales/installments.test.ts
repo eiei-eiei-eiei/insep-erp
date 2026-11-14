@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { reverseCalcPrint } from "./calc";
 import { readdirSync, readFileSync } from "node:fs";
 import {
   STATUS_INSTALLMENT, installmentLabel, nextUnpaid, isLocked, planAmounts, planError, defaultPlanRows, planTermsLines, installmentDocFigures,
@@ -216,15 +217,41 @@ describe("S16 ใบเสนอราคา (D146)", () => {
     expect(defaultPlanRows(0)[0].percent).toBe(50); // ใบเก่าไม่ได้ระบุ % → 50
     expect(defaultPlanRows(100)[0].percent).toBe(50); // 100% ไม่ใช่การแบ่งงวด
   });
-  it("บรรทัดเงื่อนไขบนใบเสนอราคา", () => {
+  it("บรรทัดเงื่อนไขบนใบเสนอราคา — ไม่จด VAT: ยอดตรง ๆ · ไม่มีวงเล็บส่งสินค้า (D169)", () => {
+    const NO = { isVat: false, whtPct: 0 };
     expect(planTermsLines([
-      { seq: 1, label: "มัดจำ", percent: 50, amount: 50000, shipPoint: false },
-      { seq: 2, label: "ส่งของ", percent: 50, amount: 50000, shipPoint: true },
-    ])).toEqual([
+      { seq: 1, label: "มัดจำ", percent: 50, amount: 50000 },
+      { seq: 2, label: "ส่งของ", percent: 50, amount: 50000 },
+    ], NO)).toEqual([
       "งวดที่ 1 มัดจำ 50% = 50,000.00 บาท",
-      "งวดที่ 2 ส่งของ 50% = 50,000.00 บาท (ส่งสินค้าหลังรับงวดนี้)",
+      "งวดที่ 2 ส่งของ 50% = 50,000.00 บาท",
     ]);
-    expect(planTermsLines([{ seq: 1, label: "ก", percent: null, amount: 1.5, shipPoint: false }])).toEqual(["งวดที่ 1 ก = 1.50 บาท"]);
+    expect(planTermsLines([{ seq: 1, label: "ก", percent: null, amount: 1.5 }], NO)).toEqual(["งวดที่ 1 ก = 1.50 บาท"]);
+  });
+  it("D169 จด VAT: ก่อน VAT · VAT · รวม — ตัวเลขเดียวกับใบกำกับรายงวด (reverseCalcPrint)", () => {
+    expect(planTermsLines([
+      { seq: 1, label: "มัดจำ", percent: 50, amount: 53500 },
+      { seq: 2, label: "ค่าที่ปรึกษางวดสุดท้าย", percent: 50, amount: 53500 },
+    ], { isVat: true, whtPct: 0 })).toEqual([
+      "งวดที่ 1 มัดจำ 50% — ก่อน VAT 50,000.00 · VAT 3,500.00 · รวม 53,500.00 บาท",
+      "งวดที่ 2 ค่าที่ปรึกษางวดสุดท้าย 50% — ก่อน VAT 50,000.00 · VAT 3,500.00 · รวม 53,500.00 บาท",
+    ]);
+  });
+  it("D169 จด VAT + หัก ณ ที่จ่าย 3%: บอกยอดหัก และปิดด้วยยอดชำระ", () => {
+    expect(planTermsLines([{ seq: 1, label: "มัดจำ", percent: 50, amount: 52000 }], { isVat: true, whtPct: 3 }))
+      .toEqual(["งวดที่ 1 มัดจำ 50% — ก่อน VAT 50,000.00 · VAT 3,500.00 · หัก ณ ที่จ่าย 1,500.00 · ชำระ 52,000.00 บาท"]);
+  });
+  it("D169 ตัวเลขในบรรทัด = ตัวเลขบนใบกำกับรายงวด ทุกยอด 1–3,000 บาท (มี/ไม่มี WHT)", () => {
+    for (const wht of [0, 3]) {
+      for (let a = 1; a <= 3000; a += 7.31) {
+        const amt = Math.round(a * 100) / 100;
+        const v = reverseCalcPrint(amt, wht, true);
+        const m = (n: number) => n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const [line] = planTermsLines([{ seq: 1, label: "ก", percent: null, amount: amt }], { isVat: true, whtPct: wht });
+        expect(line).toContain(`ก่อน VAT ${m(v.preVat)} · VAT ${m(v.vat)}`);
+        expect(line.endsWith(`${m(amt)} บาท`)).toBe(true);
+      }
+    }
   });
   it("สร้าง/แก้ใบเสนอราคา: มีแผน = ปิดมัดจำเดิม · ตรวจแผนก่อนบันทึก · แก้ไม่ได้เมื่อมีงวดล็อก", () => {
     const src = readFileSync("app/(app)/sales/actions.ts", "utf8");

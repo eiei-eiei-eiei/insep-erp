@@ -131,7 +131,7 @@ describe("S24 แผนที่มีงวดกรอกเป็นเงิ
     expect(fillLastRow([money(107000, "incl", VAT), pct(5)], 107000, 107000, VAT)).toBeNull();
   });
   it("พิมพ์ % 4 ตำแหน่งบนใบเสนอราคาเป็น 2 ตำแหน่ง", () => {
-    expect(planTermsLines([{ seq: 1, label: "มัดจำ", percent: 28.0374, amount: 30000, shipPoint: false }])).toEqual(["งวดที่ 1 มัดจำ 28.04% = 30,000.00 บาท"]);
+    expect(planTermsLines([{ seq: 1, label: "มัดจำ", percent: 28.0374, amount: 30000 }], { isVat: false, whtPct: 0 })).toEqual(["งวดที่ 1 มัดจำ 28.04% = 30,000.00 บาท"]);
   });
 });
 

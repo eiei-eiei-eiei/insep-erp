@@ -19,6 +19,7 @@ import { IconCart, IconPlus } from "@/lib/shared/icons";
 import { AddCustomerModal } from "./CustomerFields";
 import { defaultRevenueCat, revenueCatHint, revenueCatOptions } from "@/lib/sales/revenueCats";
 import { bangkokDateISO } from "@/lib/shared/datetime";
+import { revisionLabel } from "@/lib/sales/quotationRevision";
 
 export function QuotationTab({
   boot,
@@ -93,6 +94,12 @@ export function QuotationTab({
   // D164 — VAT/หัก ณ ที่จ่ายของใบนี้ (งวดที่กรอกเป็นเงินเก็บยอดก่อน VAT · ยอดชำระคิดใหม่เมื่อติ๊ก/แก้ WHT)
   const planCtx = { isVat, whtPct: isWht ? whtPct : 0 };
   const planErr = planOn && totals.netPayable > 0 ? planError(planRows, totals.netPayable, totals.netPayable, false, planCtx) : null;
+  // D169 — เงื่อนไขการชำระที่จะพิมพ์บนใบเสนอราคา · โชว์ใต้ตารางงวดก่อนกดออกใบ
+  //   ★ คิดแบบเดียวกับตอนพิมพ์ใน submit() (planRowAmounts + planTermsLines ตัวเดียวกัน)
+  const termsAmts = planOn && !planErr && totals.netPayable > 0 ? planRowAmounts(totals.netPayable, planRows, totals.netPayable, planCtx) : [];
+  const termsLines = termsAmts.length
+    ? planTermsLines(planRows.map((r, i) => ({ seq: i + 1, label: r.label, percent: rowPercent(r, totals.netPayable, planCtx), amount: termsAmts[i] })), planCtx)
+    : [];
 
   function addRawItem(name: string, price: number) {
     setItems((prev) => {
@@ -137,15 +144,18 @@ export function QuotationTab({
     const snapItems = [...items];
     // เงื่อนไขงวดบนใบเสนอราคา — ยอดคิดด้วยฟังก์ชันเดียวกับที่ server บันทึก
     const amts = plan.length ? planRowAmounts(totals.netPayable, plan, totals.netPayable, planCtx) : [];
-    const planTerms = planTermsLines(plan.map((r, i) => ({ seq: i + 1, label: r.label, percent: rowPercent(r, totals.netPayable, planCtx), amount: amts[i], shipPoint: r.shipPoint })));
+    const planTerms = planTermsLines(plan.map((r, i) => ({ seq: i + 1, label: r.label, percent: rowPercent(r, totals.netPayable, planCtx), amount: amts[i] })), planCtx);
     // D79 — แผนงวดบันทึกไม่สำเร็จ = เหลือง ไม่ใช่เขียว
     const warnIfAny = (data: unknown) => {
       const w = (data as { warning?: string } | undefined)?.warning;
       if (w) setMsg({ ok: true, warn: true, text: w });
     };
     if (editOrder) {
-      run(() => updateQuotationAction(editOrder.quNo, payload), `อัปเดต ${editOrder.quNo} แล้ว`, (data) => {
-        warnIfAny(data);
+      run(() => updateQuotationAction(editOrder.quNo, payload), `อัปเดต ${editOrder.quNo} แล้ว (ไม่มีอะไรเปลี่ยน — ยังเป็นฉบับเดิม)`, (data) => {
+        // D168 — บอกว่ากลายเป็นฉบับไหน · ไม่มีอะไรเปลี่ยน = ข้อความปริยายข้างบน
+        const d = data as { warning?: string; rev?: number } | undefined;
+        if (d?.warning) warnIfAny(data);
+        else if (d?.rev && d.rev > editOrder.quRev) setMsg({ ok: true, text: `อัปเดต ${editOrder.quNo} แล้ว — เป็น${revisionLabel(d.rev)} พิมพ์ใบใหม่ส่งลูกค้าได้ที่หน้าจัดการออเดอร์` });
         reset();
       });
     } else {
@@ -297,6 +307,12 @@ export function QuotationTab({
             <div className="rounded border border-warn-line bg-warn-bg p-2">
               <InstallmentEditor rows={planRows} onChange={setPlanRows} net={totals.netPayable} remain={totals.netPayable} ctx={planCtx} />
               <p className="mt-1 text-[11px] text-faint">กรอกได้ทั้ง % หรือจำนวนเงิน · % คิดจากยอดชำระสุทธิ{isWht ? " (หลังหัก ณ ที่จ่าย)" : ""} · ปรับงวดทีหลังได้ที่หน้าจัดการออเดอร์</p>
+              {termsLines.length > 0 && (
+                <div className="mt-2 rounded border border-line bg-raised p-2 text-[11px] text-muted">
+                  <div className="mb-0.5 font-semibold text-ink">เงื่อนไขการชำระที่จะพิมพ์บนใบเสนอราคา</div>
+                  {termsLines.map((l) => <div key={l}>{l}</div>)}
+                </div>
+              )}
             </div>
           )}
 

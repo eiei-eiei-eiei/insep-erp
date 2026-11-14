@@ -191,6 +191,9 @@ export type OrderRow = {
   rcptNo2: string;
   /** D156 — ยอดรับชำระแล้ว ณ วันออกใบแจ้งหนี้ของออเดอร์แบ่งงวด (null = ไม่รู้ → ตัวพิมพ์ใช้ deposit) */
   invPaidBefore: number | null;
+  /** D168 — ฉบับแก้ไขของใบเสนอราคา (0 = ฉบับแรก) + วันที่ของฉบับล่าสุด (ISO · ว่าง = ยังไม่เคยแก้) */
+  quRev: number;
+  quRevOn: string;
   /** D147 — แผนงวด (ว่าง = จ่ายแบบเดิม) · getOrders เติมให้ · ที่อื่นที่ไม่เติม = ไม่มีแผน */
   installments?: Installment[];
   /** D147 — การรับเงินรายงวด (บิลยังไม่ยกเลิก) */
@@ -198,7 +201,7 @@ export type OrderRow = {
 };
 
 const ORDER_COLS =
-  "qu_no, order_no, created_at, customer_id, customer_name, sale_name, sub_total, discount, sub_discount, vat_amount, grand_total, status, deposit, outstanding_balance, due_date, payment_method, inv_no, tax_no1, tax_no2, remarks, doc_date1, doc_date2, check_detail1, check_detail2, wht_percent, wht_amount, net_payable, doc_to_print, next_status, category, is_deposit, deposit_percent, dep_inv_no, dep_inv_date, dep_inv_amount, dep_due_date, rcpt_no1, rcpt_no2, inv_paid_before";
+  "qu_no, order_no, created_at, customer_id, customer_name, sale_name, sub_total, discount, sub_discount, vat_amount, grand_total, status, deposit, outstanding_balance, due_date, payment_method, inv_no, tax_no1, tax_no2, remarks, doc_date1, doc_date2, check_detail1, check_detail2, wht_percent, wht_amount, net_payable, doc_to_print, next_status, category, is_deposit, deposit_percent, dep_inv_no, dep_inv_date, dep_inv_amount, dep_due_date, rcpt_no1, rcpt_no2, inv_paid_before, qu_rev, qu_rev_on";
 
 type SoRow = Record<string, unknown>;
 function mapOrder(r: SoRow, contactMap: Map<string, { address: string; taxId: string; branch: string }>): OrderRow {
@@ -250,6 +253,8 @@ function mapOrder(r: SoRow, contactMap: Map<string, { address: string; taxId: st
     rcptNo1: (r.rcpt_no1 as string) ?? "",
     rcptNo2: (r.rcpt_no2 as string) ?? "",
     invPaidBefore: r.inv_paid_before == null ? null : Number(r.inv_paid_before),
+    quRev: Number(r.qu_rev) || 0,
+    quRevOn: r.qu_rev_on ? String(r.qu_rev_on).substring(0, 10) : "",
   };
 }
 
