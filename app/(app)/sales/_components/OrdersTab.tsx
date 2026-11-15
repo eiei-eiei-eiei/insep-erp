@@ -1,7 +1,7 @@
 "use client";
 
 import { showToast } from "@/lib/shared/toast";
-import { useConfirm } from "@/lib/shared/ui";
+import { useConfirm, Modal, ModalCancel } from "@/lib/shared/ui";
 import { Fragment, useEffect, useRef, useState } from "react";
 import type { SalesBoot, OrderRow, OrderItem } from "./types";
 import { Card, StatusBadge, TextInput, useSaver, fmt, LoadError } from "./ui";
@@ -600,14 +600,23 @@ function PaymentDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/50 p-4">
-      <div className="w-full max-w-md rounded-lg bg-card p-5">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-ink">{ACTION_TITLES[action]}{isInstallment && installment ? ` งวดที่ ${installment.seq}` : ""}</h2>
-          <button onClick={onClose} className="text-2xl leading-none text-faint hover:text-crit">
-            &times;
+    // รับเงิน/ออกเอกสารมีเลข = ห้ามส่ง onSubmit (กฎข้อ 3)
+    <Modal
+      title={<>{ACTION_TITLES[action]}{isInstallment && installment ? ` งวดที่ ${installment.seq}` : ""}</>}
+      onClose={onClose}
+      backdropClose={false}
+      size="md"
+      busy={pending}
+      footer={
+        <>
+          <ModalCancel onClick={onClose} />
+          <button onClick={submit} disabled={pending || !!manualErr || !!instErr} className="rounded-lg bg-brand px-4 py-2 font-bold text-on-brand hover:opacity-90 disabled:opacity-50">
+            {pending ? "กำลังบันทึก…" : "บันทึก"}
           </button>
-        </div>
+        </>
+      }
+    >
+      <div>
         <div className="space-y-3 text-sm">
           <div className="rounded bg-raised p-2 text-muted">
             {order.quNo} · {order.customerName}
@@ -694,11 +703,8 @@ function PaymentDialog({
             </div>
           )}
 
-          <button onClick={submit} disabled={pending || !!manualErr || !!instErr} className="w-full rounded-lg bg-brand py-2 font-bold text-on-brand hover:opacity-90 disabled:opacity-50">
-            {pending ? "กำลังบันทึก…" : "บันทึก"}
-          </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

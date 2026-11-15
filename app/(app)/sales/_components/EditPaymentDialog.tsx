@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { EscToClose } from "@/lib/shared/ui";
+import { Modal, ModalCancel } from "@/lib/shared/ui";
 import { showToast } from "@/lib/shared/toast";
 import { fmt, TextInput, useSaver, LoadError } from "./ui";
 import type { OrderRow } from "./types";
@@ -98,17 +98,9 @@ export function EditPaymentDialog({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/50 p-4"
-      // D73 — ปิดเมื่อกดลงที่พื้นหลังเท่านั้น (ลากคลุมข้อความแล้วปล่อยนอกกล่องต้องไม่ปิด)
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <EscToClose onClose={onClose} />
-      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-lg bg-card p-5">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-ink">แก้วิธีชำระ</h2>
-          <button onClick={onClose} aria-label="ปิด" className="text-2xl leading-none text-faint hover:text-crit">&times;</button>
-        </div>
+    // เปลี่ยนวิธีรับเงิน/บัญชี = ห้ามส่ง onSubmit (กฎข้อ 3) · ปุ่มบันทึกอยู่ในแต่ละแถวที่กำลังแก้
+    <Modal title="แก้วิธีชำระ" onClose={onClose} size="md" busy={pending} footer={<ModalCancel onClick={onClose}>ปิด</ModalCancel>}>
+      <div>
         <div className="mb-3 rounded bg-raised p-2 text-sm text-muted">
           {order.quNo} · {order.customerName}
           <br />
@@ -180,6 +172,6 @@ export function EditPaymentDialog({
           </div>
         )}
       </div>
-    </div>
+    </Modal>
   );
 }

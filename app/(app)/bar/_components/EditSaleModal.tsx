@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { EscToClose, Field, TextInput, fmt } from "@/lib/shared/ui";
+import { Field, Modal, ModalCancel, TextInput, fmt } from "@/lib/shared/ui";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { editMethodOptions, editSaleChanged, editSaleProblem } from "@/lib/bar/billDay";
 
@@ -48,13 +48,26 @@ export function EditSaleModal({
   const changed = editSaleChanged({ oldDate: sale.business_date, newDate: date, oldMethod: sale.method, newMethod: method });
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-overlay p-4"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    <Modal
+      title={<>แก้บิล {sale.tab_name || sale.sale_no}</>}
+      onClose={onClose}
+      busy={busy}
+      size="md"
+      footer={
+        <>
+          <ModalCancel onClick={onClose}>กลับ</ModalCancel>
+          <button
+            type="button"
+            disabled={busy || Boolean(problem) || !changed}
+            onClick={() => onSave({ businessDate: date, method })}
+            className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-on-brand disabled:opacity-50"
+          >
+            บันทึก
+          </button>
+        </>
+      }
     >
-      <EscToClose onClose={onClose} />
-      <div className="w-full max-w-md rounded-xl border border-line bg-card p-5 shadow-xl">
-        <h3 className="text-lg font-bold text-ink">แก้บิล {sale.tab_name || sale.sale_no}</h3>
+      <div>
         <p className="mb-4 text-sm text-muted">
           {sale.sale_no} · ยอด {fmt(sale.grand_total)} บาท
           {sale.closed_at && <> · กดรับเงินเมื่อ {df.dateTime(sale.closed_at)}</>}
@@ -93,23 +106,10 @@ export function EditSaleModal({
         </p>
         {problem && <p className="mt-2 text-sm text-warn">{problem}</p>}
 
-        <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            disabled={busy || Boolean(problem) || !changed}
-            onClick={() => onSave({ businessDate: date, method })}
-            className="flex-1 rounded-lg bg-brand px-3 py-2 text-sm font-medium text-on-brand disabled:opacity-50"
-          >
-            บันทึก
-          </button>
-          <button type="button" onClick={onClose} className="rounded-lg border border-line bg-card px-3 py-2 text-sm text-ink">
-            กลับ
-          </button>
-        </div>
         {!problem && !changed && (
           <p className="mt-1 text-xs text-muted">ยังไม่ได้เปลี่ยนวันขายหรือวิธีรับเงิน</p>
         )}
       </div>
-    </div>
+    </Modal>
   );
 }

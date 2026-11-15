@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { BarItem } from "@/lib/bar/types";
 import { stockText, numText } from "@/lib/bar/units";
 import { receiveHistory, changeText, type ReceiveRecord } from "@/lib/bar/receiveHistory";
-import { Empty, EscToClose, LoadError, fmt, useRead } from "@/lib/shared/ui";
+import { Empty, LoadError, Modal, ModalCancel, fmt, useRead } from "@/lib/shared/ui";
 import { itemMovesAction, itemReceivesAction } from "../actions";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
@@ -58,21 +58,18 @@ export function ItemHistoryModal({
   const moveRows = moves.data ?? [];
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    <Modal
+      title={
+        <>
+          ประวัติ — {item?.name ?? "—"}
+          {item && <div className="text-sm font-normal text-muted">คงเหลือ {stockText(item)}</div>}
+        </>
+      }
+      onClose={onClose}
+      size="lg"
+      footer={<ModalCancel onClick={onClose}>ปิด</ModalCancel>}
     >
-      <EscToClose onClose={onClose} />
-      <div className="w-full max-w-3xl rounded-xl bg-card p-5">
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div>
-            <h3 className="text-lg font-bold text-ink">ประวัติ — {item?.name ?? "—"}</h3>
-            {item && <div className="text-sm text-muted">คงเหลือ {stockText(item)}</div>}
-          </div>
-          <button type="button" onClick={onClose} className="rounded-lg bg-raised px-3 py-1.5 text-sm text-ink">
-            ปิด
-          </button>
-        </div>
+      <div>
 
         {canSeeCost && (
           <div className="mb-3 inline-flex overflow-hidden rounded-md border border-line">
@@ -197,6 +194,6 @@ export function ItemHistoryModal({
           </>
         )}
       </div>
-    </div>
+    </Modal>
   );
 }

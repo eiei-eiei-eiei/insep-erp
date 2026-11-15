@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { BarBoot } from "../data";
-import { Field, TextInput } from "@/lib/shared/ui";
+import { Field, Modal, ModalCancel, TextInput } from "@/lib/shared/ui";
 import type { saveCustomerAction } from "../actions";
 
 /**
@@ -35,14 +35,51 @@ export function CustomerModal({
   const [consent, setConsent] = useState(false);
   const [showTax, setShowTax] = useState(Boolean(cur?.taxId));
 
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div className="w-full max-w-lg rounded-xl bg-card p-5">
-        <h3 className="mb-3 text-lg font-bold text-ink">{cur ? "แก้ข้อมูลลูกค้า" : "เพิ่มลูกค้า"}</h3>
+  const save = () => {
+    if (busy || !name.trim()) return;
+    onSave({
+      customerId,
+      name, nickname, phone, note,
+      taxId: showTax ? taxId : "",
+      branch: showTax ? branch : "",
+      address: showTax ? address : "",
+      consentMarketing: consent,
+    });
+  };
 
+  return (
+    <Modal
+      title={cur ? "แก้ข้อมูลลูกค้า" : "เพิ่มลูกค้า"}
+      onClose={onClose}
+      onSubmit={save}
+      busy={busy}
+      size="md"
+      footer={
+        <>
+          {/* ปุ่มลบแยกไปชิดซ้าย — ห่างจากปุ่มบันทึก กันกดพลาด (DESIGN_SYSTEM: ปุ่ม danger แยกระยะจากปุ่มอื่น) */}
+          {cur && boot.canConfig && onDelete && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onDelete(cur.customerId)}
+              className="mr-auto rounded-lg bg-raised px-3 py-2 text-sm text-crit disabled:opacity-50"
+            >
+              ลบ
+            </button>
+          )}
+          <ModalCancel onClick={onClose} />
+          <button
+            type="button"
+            disabled={busy || !name.trim()}
+            onClick={save}
+            className="rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
+          >
+            บันทึก
+          </button>
+        </>
+      }
+    >
+      <div>
         <div className="grid gap-2 sm:grid-cols-2">
           <Field label="ชื่อ">
             <TextInput value={name} onChange={(e) => setName(e.target.value)} />
@@ -97,40 +134,7 @@ export function CustomerModal({
             </p>
           )}
         </div>
-
-        <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            disabled={busy || !name.trim()}
-            onClick={() =>
-              onSave({
-                customerId,
-                name, nickname, phone, note,
-                taxId: showTax ? taxId : "",
-                branch: showTax ? branch : "",
-                address: showTax ? address : "",
-                consentMarketing: consent,
-              })
-            }
-            className="flex-1 rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
-          >
-            บันทึก
-          </button>
-          {cur && boot.canConfig && onDelete && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => onDelete(cur.customerId)}
-              className="rounded-lg bg-raised px-3 py-2 text-sm text-crit disabled:opacity-50"
-            >
-              ลบ
-            </button>
-          )}
-          <button type="button" onClick={onClose} className="rounded-lg bg-raised px-3 py-2 text-sm text-ink">
-            ยกเลิก
-          </button>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }

@@ -14,7 +14,7 @@ import {
   type ReceiveDraft, type NewItemDraft, type NewItemRow, type CountDraft, type ItemEditDraft, type QtyUnit,
 } from "@/lib/bar/stockBatch";
 import {
-  Card, TextInput, NumBox, Select, Field, Badge, Empty, EscToClose, Combobox, fmt, useSaver,
+  Card, TextInput, NumBox, Select, Field, Badge, Empty, Modal, ModalCancel, Combobox, fmt, useSaver,
 } from "@/lib/shared/ui";
 import {
   STOCK_VIEW_LABEL, parseStockView, itemPasses, countPasses, countRowFilled, visibleRows,
@@ -860,14 +860,35 @@ function NewItemsModal({
   const set = (idx: number, patch: Partial<NewItemDraft>) =>
     setRows((rs) => patchRow(rs, idx, patch, newItem, (r) => !!r.name.trim()));
 
+  const save = async () => {
+    if (busy || plan.rows.length === 0 || plan.errors.length > 0) return;
+    const r = await onSave(plan.rows);
+    if (r.ok) onClose();
+    else showToast({ ok: false, text: r.error ?? "บันทึกไม่สำเร็จ" });
+  };
+
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    <Modal
+      title="เพิ่มวัตถุดิบ"
+      onClose={onClose}
+      onSubmit={() => void save()}
+      busy={busy}
+      size="xl"
+      footer={
+        <>
+          <ModalCancel onClick={onClose} />
+          <button
+            type="button"
+            disabled={busy || plan.rows.length === 0 || plan.errors.length > 0}
+            onClick={() => void save()}
+            className="rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
+          >
+            {plan.rows.length > 0 ? `บันทึก ${plan.rows.length} รายการ` : "บันทึก"}
+          </button>
+        </>
+      }
     >
-      <EscToClose onClose={onClose} />
-      <div className="w-full max-w-4xl rounded-xl bg-card p-5">
-        <h3 className="mb-1 text-lg font-bold text-ink">เพิ่มวัตถุดิบ</h3>
+      <div>
         <p className="mb-3 text-xs text-faint">
           🚨 <b>หน่วยที่สูตรใช้</b> คือหน่วยที่สูตรกิน ไม่ใช่หน่วยที่ซื้อ — เหล้าควรเป็น <b>ml</b> ไม่ใช่ขวด
           ไม่งั้นขาย 1 แก้วแล้วสต็อกกลายเป็นเศษทศนิยมของขวด · ยอดคงเหลือเริ่มที่ 0 แล้วค่อย <b>รับของเข้า</b>
@@ -951,25 +972,7 @@ function NewItemsModal({
 
         {plan.errors.length > 0 && <p className="mt-2 text-xs text-warn">ยังบันทึกไม่ได้ — {errorsText(plan.errors)}</p>}
         {/* ★ D134 — ผลการบันทึกขึ้นป้ายลอยเหนือป๊อปอัพ (z สูงกว่า) จึงไม่โดนบังแบบที่ D71 เจอ */}
-
-        <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            disabled={busy || plan.rows.length === 0 || plan.errors.length > 0}
-            onClick={async () => {
-              const r = await onSave(plan.rows);
-              if (r.ok) onClose();
-              else showToast({ ok: false, text: r.error ?? "บันทึกไม่สำเร็จ" });
-            }}
-            className="flex-1 rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
-          >
-            {plan.rows.length > 0 ? `บันทึก ${plan.rows.length} รายการ` : "บันทึก"}
-          </button>
-          <button type="button" onClick={onClose} className="rounded-lg bg-raised px-3 py-2 text-sm text-ink">
-            ยกเลิก
-          </button>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }

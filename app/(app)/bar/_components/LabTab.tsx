@@ -27,7 +27,7 @@ import {
   type LabCategory, type LabRecipe, type LabUse, type LabStatus, type RecipeFilter, type UseDraft,
 } from "@/lib/bar/lab";
 import {
-  Card, TextInput, NumBox, Select, Field, Badge, Empty, EscToClose, Combobox, SuggestInput, LoadError,
+  Card, TextInput, NumBox, Select, Field, Badge, Empty, Modal, ModalCancel, Combobox, SuggestInput, LoadError,
   fmt, useSaver, useRead, useConfirm,
 } from "@/lib/shared/ui";
 import {
@@ -499,13 +499,26 @@ function RoundModal({
   ];
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-overlay/40 p-4"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    <Modal
+      title={isNew ? "ลองสูตรใหม่" : `ลองรอบใหม่ — ${target.name}`}
+      onClose={onClose}
+      busy={busy}
+      size="md"
+      footer={
+        <>
+          <ModalCancel onClick={onClose} />
+          <button
+            type="button"
+            disabled={busy || missing.length > 0}
+            onClick={() => onSubmit({ name, glasses: glasses as number, recipe, note })}
+            className="rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
+          >
+            {busy ? "กำลังบันทึก…" : "ชงแล้ว — ตัดสต็อก"}
+          </button>
+        </>
+      }
     >
-      <EscToClose onClose={onClose} />
-      <div className="w-full max-w-lg rounded-lg bg-card p-5">
-        <h3 className="mb-3 text-lg font-bold text-ink">{isNew ? "ลองสูตรใหม่" : `ลองรอบใหม่ — ${target.name}`}</h3>
+      <div>
         {isNew && (
           <Field label="ชื่อสูตร (ชื่อชั่วคราวก็ได้)">
             <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="ฟักทอง Negroni ตัวที่ 1" />
@@ -538,21 +551,8 @@ function RoundModal({
           กดแล้ว<b>ตัดสต็อกทันที</b> (ทุกแก้ว) และจำสูตร+ทุนของรอบนี้ไว้ · ขวดไม่พอก็ตัดได้ (ติดลบ) เหมือนตอนขาย
         </p>
         {missing.length > 0 && <p className="mt-1 text-xs text-warn">ยังกรอกไม่ครบ: {missing.join(" · ")}</p>}
-        <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            disabled={busy || missing.length > 0}
-            onClick={() => onSubmit({ name, glasses: glasses as number, recipe, note })}
-            className="flex-1 rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
-          >
-            {busy ? "กำลังบันทึก…" : "ชงแล้ว — ตัดสต็อก"}
-          </button>
-          <button type="button" onClick={onClose} className="rounded-lg bg-raised px-3 py-2 text-sm text-ink">
-            ยกเลิก
-          </button>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 

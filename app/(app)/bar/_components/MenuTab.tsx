@@ -11,7 +11,7 @@ import { RecipeEditor, PriceSuggest } from "./RecipeEditor";
 import { lineCost } from "@/lib/bar/cost";
 import { searchMenus } from "@/lib/bar/menuFilter";
 import { customerLabel } from "@/lib/bar/customerName";
-import { Card, TextInput, NumBox, Select, Field, Badge, Empty, fmt, useSaver, useConfirm } from "@/lib/shared/ui";
+import { Card, TextInput, NumBox, Select, Field, Badge, Empty, Modal, ModalCancel, fmt, useSaver, useConfirm } from "@/lib/shared/ui";
 import {
   saveMenuAction, saveCategoryAction, deleteCategoryAction, saveCategoriesAction,
   getMenuUsageAction, setMenuActiveAction, deleteMenuAction,
@@ -495,14 +495,44 @@ export function MenuModal({
   const nPrice = price === "" ? 0 : price;
   const isVat = boot.seller?.isVat ?? false;
 
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div className="w-full max-w-lg rounded-xl bg-card p-5">
-        <h3 className="mb-3 text-lg font-bold text-ink">{title ?? (cur ? "แก้เมนู" : "เมนูใหม่")}</h3>
+  const save = () => {
+    if (busy || !name.trim()) return;
+    onSave({
+      menuId,
+      name,
+      price: nPrice,
+      categoryId,
+      fixedCost: useFixed ? (fixedCost === "" ? 0 : fixedCost) : null,
+      glass,
+      method,
+      note,
+      createdFor: createdFor || null,
+      recipe: useFixed ? [] : recipe,
+    });
+  };
 
+  return (
+    <Modal
+      title={title ?? (cur ? "แก้เมนู" : "เมนูใหม่")}
+      onClose={onClose}
+      onSubmit={save}
+      busy={busy}
+      size="md"
+      footer={
+        <>
+          <ModalCancel onClick={onClose} />
+          <button
+            type="button"
+            disabled={busy || !name.trim()}
+            onClick={save}
+            className="rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
+          >
+            บันทึก
+          </button>
+        </>
+      }
+    >
+      <div>
         <div className="grid gap-2 sm:grid-cols-3">
           <Field label="ชื่อเมนู">
             <TextInput value={name} onChange={(e) => setName(e.target.value)} />
@@ -587,34 +617,7 @@ export function MenuModal({
             className="w-full rounded-lg border border-line bg-card px-3 py-2 text-sm text-ink"
           />
         </Field>
-
-        <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            disabled={busy || !name.trim()}
-            onClick={() =>
-              onSave({
-                menuId,
-                name,
-                price: nPrice,
-                categoryId,
-                fixedCost: useFixed ? (fixedCost === "" ? 0 : fixedCost) : null,
-                glass,
-                method,
-                note,
-                createdFor: createdFor || null,
-                recipe: useFixed ? [] : recipe,
-              })
-            }
-            className="flex-1 rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
-          >
-            บันทึก
-          </button>
-          <button type="button" onClick={onClose} className="rounded-lg bg-raised px-3 py-2 text-sm text-ink">
-            ยกเลิก
-          </button>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }

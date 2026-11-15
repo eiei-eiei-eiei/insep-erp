@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Route } from "next";
 import {
-  Badge, Card, EscToClose, Field, NumBox, RowBtn, SaveButton, Select, TextInput, useConfirm, useSaver,
+  Badge, Card, Modal, ModalCancel, Field, NumBox, RowBtn, SaveButton, Select, TextInput, useConfirm, useSaver,
 } from "@/lib/shared/ui";
 import {
   DOC_GROUPS, DOC_TYPE_INFO, DATE_FMTS, DATE_FMT_LABEL, ERAS, ERA_LABEL, RESETS, RESET_LABEL, SEPS, SEP_LABEL, PREFIX_RE,
@@ -207,14 +207,25 @@ function DocNumberEditor({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40 p-4"
-      onMouseDown={(e) => { if (e.target === e.currentTarget && !pending) onClose(); }}
-    >
-      <EscToClose onClose={() => { if (!pending) onClose(); }} />
-      {confirmNode}
-      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-lg bg-card p-5 shadow-xl">
-        <div className="mb-1 text-lg font-bold text-ink">{info?.label ?? row.doc_type}</div>
+    <>
+      <Modal
+        title={info?.label ?? row.doc_type}
+        onClose={onClose}
+        busy={pending}
+        footer={
+          <>
+            {row.cfg.configured && (
+              <RowBtn disabled={pending} onClick={reset}>
+                กลับไปใช้รูปแบบเดิม
+              </RowBtn>
+            )}
+            <ModalCancel onClick={onClose} disabled={pending} />
+            <SaveButton pending={pending} disabled={!changed || !!blockReason || !pv?.ok} onClick={save}>
+              บันทึก
+            </SaveButton>
+          </>
+        }
+      >
         <p className="mb-4 text-xs text-faint">ตอนนี้ใบถัดไปคือ {row.next_no}</p>
 
         <div className="mb-4 rounded-lg border border-line bg-raised px-3 py-3">
@@ -290,23 +301,9 @@ function DocNumberEditor({
         )}
         {blockReason && <p className="mt-3 text-sm text-crit">{blockReason}</p>}
 
-        <div className="mt-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <SaveButton pending={pending} disabled={!changed || !!blockReason || !pv?.ok} onClick={save}>
-              บันทึก
-            </SaveButton>
-            {row.cfg.configured && (
-              <RowBtn disabled={pending} onClick={reset}>
-                กลับไปใช้รูปแบบเดิม
-              </RowBtn>
-            )}
-            <RowBtn disabled={pending} onClick={onClose}>
-              ยกเลิก
-            </RowBtn>
-          </div>
-          {!changed && <p className="mt-1 text-xs text-faint">ยังไม่ได้เปลี่ยนอะไร</p>}
-        </div>
-      </div>
-    </div>
+        {!changed && <p className="mt-3 text-xs text-faint">ยังไม่ได้เปลี่ยนอะไร</p>}
+      </Modal>
+      {confirmNode}
+    </>
   );
 }

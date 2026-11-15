@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, Field, NumBox, SaveButton, Select, TextInput, useSaver, Empty, EscToClose } from "@/lib/shared/ui";
+import { Card, Field, NumBox, SaveButton, Select, TextInput, useSaver, Empty, Modal, ModalCancel } from "@/lib/shared/ui";
 import { WAGE_LABEL, wageSwitchWarning, wageUnit } from "@/lib/payroll/workDays";
 import { saveEmployeeAction } from "../actions";
 import type { EmployeeRow } from "../data";
@@ -103,10 +103,19 @@ export function EmployeesTab({ config, initial }: { config: PayrollConfig; initi
       </Card>
 
       {edit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setEdit(null); }}>
-          <EscToClose onClose={() => { setEdit(null); }} />
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-card p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-3 font-semibold text-ink">{edit.empId ? `แก้ไข ${edit.empId}` : "เพิ่มพนักงาน"}</h3>
+        <Modal
+          title={edit.empId ? `แก้ไข ${edit.empId}` : "เพิ่มพนักงาน"}
+          onClose={() => setEdit(null)}
+          onSubmit={save}
+          busy={pending}
+          size="lg"
+          footer={
+            <>
+              <ModalCancel onClick={() => setEdit(null)} />
+              <SaveButton pending={pending} onClick={save}>บันทึก</SaveButton>
+            </>
+          }
+        >
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="ชื่อ-สกุล">
                 <TextInput value={edit.name ?? ""} onChange={(e) => set("name", e.target.value)} />
@@ -172,12 +181,7 @@ export function EmployeesTab({ config, initial }: { config: PayrollConfig; initi
               </p>
             )}
 
-            <div className="mt-4 flex justify-end gap-2">
-              <button onClick={() => setEdit(null)} className="rounded-lg border border-line px-4 py-2 text-sm">ยกเลิก</button>
-              <SaveButton pending={pending} onClick={save}>บันทึก</SaveButton>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

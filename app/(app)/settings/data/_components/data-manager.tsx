@@ -2,7 +2,7 @@
 
 import { showToast } from "@/lib/shared/toast";
 import { useState, useTransition } from "react";
-import { EscToClose } from "@/lib/shared/ui";
+import { Modal, ModalCancel } from "@/lib/shared/ui";
 import { downloadBlob, MIME } from "@/lib/shared/download";
 import { tableLabel } from "@/lib/shared/tenantTables";
 import {
@@ -162,13 +162,23 @@ export function DataManager() {
       )}
 
       {ask && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40 p-4"
-          onMouseDown={(e) => { if (e.target === e.currentTarget && !pending) setAsk(null); }}
+        <Modal
+          title="ยืนยันดาวน์โหลดข้อมูล"
+          onClose={() => setAsk(null)}
+          busy={pending}
+          footer={
+            <>
+              <ModalCancel onClick={() => setAsk(null)} disabled={pending} />
+              <button
+                onClick={submit}
+                disabled={pending || !password}
+                className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-on-brand hover:opacity-90 disabled:opacity-50"
+              >
+                {pending ? "กำลังเตรียมไฟล์…" : "ดาวน์โหลด"}
+              </button>
+            </>
+          }
         >
-          <EscToClose onClose={() => { if (!pending) setAsk(null); }} />
-          <div className="w-full max-w-md rounded-lg bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-1 text-lg font-bold text-ink">ยืนยันดาวน์โหลดข้อมูล</div>
             <p className="mb-3 text-sm text-muted">{KIND_LABEL[ask]}</p>
             <p className="mb-3 rounded-lg bg-raised px-3 py-2 text-xs text-faint">
               ไฟล์จะมีข้อมูลทั้งกิจการรวมถึงเงินเดือนและเลขบัตรพนักงาน — กรอกรหัสผ่านเพื่อยืนยันว่าเป็นคุณจริง
@@ -179,29 +189,11 @@ export function DataManager() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              autoFocus
               onKeyDown={(e) => e.key === "Enter" && password && submit()}
               // ★ ต้องมี bg-input + text-ink — ไม่งั้นโหมดมืดได้สีปริยายของเบราว์เซอร์ (พื้นจม อ่านไม่ออก)
-              className="mb-4 w-full rounded-lg border border-line bg-input px-3 py-2 text-ink outline-none focus:border-brand"
+              className="w-full rounded-lg border border-line bg-input px-3 py-2 text-ink outline-none focus:border-brand"
             />
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setAsk(null)}
-                disabled={pending}
-                className="rounded-lg border border-line px-4 py-2 text-sm text-muted disabled:opacity-50"
-              >
-                ยกเลิก
-              </button>
-              <button
-                onClick={submit}
-                disabled={pending || !password}
-                className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-on-brand hover:opacity-90 disabled:opacity-50"
-              >
-                {pending ? "กำลังเตรียมไฟล์…" : "ดาวน์โหลด"}
-              </button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

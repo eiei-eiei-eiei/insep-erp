@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { SalesBoot, CustomerRow, MenuRow, OrderRow, OrderItem } from "./types";
 import { Card, Combobox, MissingHint, NumBox, Select, TextInput, useSaver, fmt } from "./ui";
+import { Modal, ModalCancel } from "@/lib/shared/ui";
 import { quotationTotals, inclFromExVat } from "@/lib/sales/calc";
 import {
   saveQuotationAction,
@@ -437,14 +438,22 @@ function CustomItemModal({ onClose, onAdd, isVat }: { onClose: () => void; onAdd
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/50 p-4">
-      <div className="w-full max-w-md rounded-lg bg-card p-5">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-ink"><IconPlus size={15} className="mr-1 inline align-[-2px]" />เพิ่มสินค้านอกระบบ / สั่งทำ</h2>
-          <button onClick={onClose} className="text-2xl leading-none text-faint hover:text-crit">
-            &times;
+    <Modal
+      title={<><IconPlus size={15} className="mr-1 inline align-[-2px]" />เพิ่มสินค้านอกระบบ / สั่งทำ</>}
+      onClose={onClose}
+      backdropClose={false}
+      size="md"
+      onSubmit={add}
+      footer={
+        <>
+          <ModalCancel onClick={onClose} />
+          <button onClick={add} className="rounded-lg bg-brand px-4 py-2 font-bold text-on-brand hover:opacity-90">
+            เพิ่มลงตะกร้า
           </button>
-        </div>
+        </>
+      }
+    >
+      <div>
         <div className="space-y-3 text-sm">
           <label className="block">
             <span className="mb-1 block font-bold text-muted">รายละเอียดสินค้า/บริการ</span>
@@ -465,12 +474,9 @@ function CustomItemModal({ onClose, onAdd, isVat }: { onClose: () => void; onAdd
           </div>
           <div className="text-xs text-faint">สินค้านอกระบบไม่ตัดสต็อก (ไม่มีใน sale_menu) — ใช้กับงานสั่งทำ/บริการ</div>
           {err && <div className="rounded-lg bg-crit-bg px-3 py-2 text-xs text-crit">{err}</div>}
-          <button onClick={add} className="w-full rounded-lg bg-brand py-2 font-bold text-on-brand hover:opacity-90">
-            เพิ่มลงตะกร้า
-          </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 

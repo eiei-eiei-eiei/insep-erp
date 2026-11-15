@@ -7,7 +7,8 @@ import { rolesFor } from "@/lib/shared/moduleScope";
 import { PASSWORD_MIN } from "@/lib/shared/password";
 import {
   Card,
-  EscToClose,
+  Modal,
+  ModalCancel,
   MissingHint,
   RowBtn,
   SaveButton,
@@ -280,97 +281,98 @@ export function UsersManager({
            · `confirm()` ก็ถูกกลืนในบางบริบท → กดลบแล้วเหมือนปุ่มเสีย
         🪤 พื้นหลังปิดด้วย onMouseDown ไม่ใช่ onClick (D73 — ลากคลุมข้อความแล้วป๊อปอัพปิดเอง)
       */}
-      {dialog && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40 p-4"
-          onMouseDown={(e) => { if (e.target === e.currentTarget) closeDialog(); }}
-        >
-          <EscToClose onClose={closeDialog} />
-          <div className="w-full max-w-md rounded-lg bg-card p-5 shadow-xl">
-            {dialog.kind === "scope" ? (
-              <ScopeDialog
-                user={dialog.user}
-                entities={entities}
-                scope={scope}
-                setScope={setScope}
+      {dialog?.kind === "scope" && (
+        <ScopeDialog
+          user={dialog.user}
+          entities={entities}
+          scope={scope}
+          setScope={setScope}
+          pending={pending}
+          onCancel={closeDialog}
+          onSave={() =>
+            run(
+              () => updateEntityScopeAction({ id: dialog.user.id, entityIds: scope }),
+              `ตั้งกิจการที่ ${dialog.user.username} เห็นได้แล้ว`,
+              () => setDialog(null),
+            )
+          }
+        />
+      )}
+      {dialog?.kind === "reset" && (
+        <Modal
+          title="รีเซ็ตรหัสผ่าน"
+          onClose={closeDialog}
+          busy={pending}
+          footer={
+            <>
+              <ModalCancel onClick={closeDialog} disabled={pending} />
+              <SaveButton
                 pending={pending}
-                onCancel={closeDialog}
-                onSave={() =>
+                pendingText="กำลังตั้ง…"
+                disabled={newPw.length < PASSWORD_MIN}
+                onClick={() => doReset(dialog.user)}
+              >
+                ตั้งรหัสใหม่
+              </SaveButton>
+            </>
+          }
+        >
+          <p className="mb-3 text-sm text-muted">
+            ตั้งรหัสผ่านใหม่ให้ <b className="text-ink">{dialog.user.username}</b>
+          </p>
+          <p className="mb-3 rounded-lg bg-raised px-3 py-2 text-xs text-faint">
+            ผู้ใช้จะเข้าระบบด้วยรหัสนี้ได้ทันที — บอกเขาให้เปลี่ยนเองหลังเข้าได้แล้ว
+          </p>
+          <label className="mb-1 block text-sm text-muted">
+            รหัสผ่านใหม่ (อย่างน้อย {PASSWORD_MIN} ตัว)
+          </label>
+          <TextInput
+            type="password"
+            value={newPw}
+            onChange={(e) => setNewPw(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && newPw.length >= PASSWORD_MIN) doReset(dialog.user);
+            }}
+          />
+          <MissingHint
+            checks={[
+              { label: `รหัสผ่านอย่างน้อย ${PASSWORD_MIN} ตัว`, ok: newPw.length >= PASSWORD_MIN },
+            ]}
+          />
+        </Modal>
+      )}
+      {dialog?.kind === "delete" && (
+        <Modal
+          title={<span className="text-crit">ลบผู้ใช้ถาวร</span>}
+          onClose={closeDialog}
+          busy={pending}
+          footer={
+            <>
+              <ModalCancel onClick={closeDialog} disabled={pending} />
+              <RowBtn
+                tone="red"
+                disabled={pending}
+                onClick={() =>
                   run(
-                    () => updateEntityScopeAction({ id: dialog.user.id, entityIds: scope }),
-                    `ตั้งกิจการที่ ${dialog.user.username} เห็นได้แล้ว`,
-                    () => setDialog(null),
+                    () => deleteUserAction({ id: dialog.user.id }),
+                    `ลบผู้ใช้ ${dialog.user.username} แล้ว`,
+                    () => { setDialog(null); setNewPw(""); },
                   )
                 }
-              />
-            ) : dialog.kind === "reset" ? (
-              <>
-                <div className="mb-1 text-lg font-bold text-ink">รีเซ็ตรหัสผ่าน</div>
-                <p className="mb-3 text-sm text-muted">
-                  ตั้งรหัสผ่านใหม่ให้ <b className="text-ink">{dialog.user.username}</b>
-                </p>
-                <p className="mb-3 rounded-lg bg-raised px-3 py-2 text-xs text-faint">
-                  ผู้ใช้จะเข้าระบบด้วยรหัสนี้ได้ทันที — บอกเขาให้เปลี่ยนเองหลังเข้าได้แล้ว
-                </p>
-                <label className="mb-1 block text-sm text-muted">
-                  รหัสผ่านใหม่ (อย่างน้อย {PASSWORD_MIN} ตัว)
-                </label>
-                <TextInput
-                  type="password"
-                  value={newPw}
-                  autoFocus
-                  onChange={(e) => setNewPw(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && newPw.length >= PASSWORD_MIN) doReset(dialog.user);
-                  }}
-                />
-                <div className="mt-4 flex justify-end gap-2">
-                  <RowBtn onClick={closeDialog} disabled={pending}>ยกเลิก</RowBtn>
-                  <SaveButton
-                    pending={pending}
-                    pendingText="กำลังตั้ง…"
-                    disabled={newPw.length < PASSWORD_MIN}
-                    onClick={() => doReset(dialog.user)}
-                  >
-                    ตั้งรหัสใหม่
-                  </SaveButton>
-                </div>
-                <MissingHint
-                  checks={[
-                    { label: `รหัสผ่านอย่างน้อย ${PASSWORD_MIN} ตัว`, ok: newPw.length >= PASSWORD_MIN },
-                  ]}
-                />
-              </>
-            ) : (
-              <>
-                <div className="mb-1 text-lg font-bold text-crit">ลบผู้ใช้ถาวร</div>
-                <p className="mb-3 text-sm text-muted">
-                  จะลบบัญชี <b className="text-ink">{dialog.user.username}</b> ออกจากระบบ
-                </p>
-                <p className="mb-4 rounded-lg border border-crit-line bg-crit-bg px-3 py-2 text-xs text-crit">
-                  ลบแล้วเข้าระบบด้วยบัญชีนี้ไม่ได้อีก · ส่วนข้อมูลที่เขาเคยบันทึกไว้ยังอยู่ครบ
-                  (ประวัติการแก้ไขยังเก็บชื่อผู้ใช้ไว้)
-                </p>
-                <div className="flex justify-end gap-2">
-                  <RowBtn onClick={closeDialog} disabled={pending}>ยกเลิก</RowBtn>
-                  <RowBtn
-                    tone="red"
-                    disabled={pending}
-                    onClick={() =>
-                      run(
-                        () => deleteUserAction({ id: dialog.user.id }),
-                        `ลบผู้ใช้ ${dialog.user.username} แล้ว`,
-                        () => { setDialog(null); setNewPw(""); },
-                      )
-                    }
-                  >
-                    {pending ? "กำลังลบ…" : "ลบถาวร"}
-                  </RowBtn>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
+              >
+                {pending ? "กำลังลบ…" : "ลบถาวร"}
+              </RowBtn>
+            </>
+          }
+        >
+          <p className="mb-3 text-sm text-muted">
+            จะลบบัญชี <b className="text-ink">{dialog.user.username}</b> ออกจากระบบ
+          </p>
+          <p className="rounded-lg border border-crit-line bg-crit-bg px-3 py-2 text-xs text-crit">
+            ลบแล้วเข้าระบบด้วยบัญชีนี้ไม่ได้อีก · ส่วนข้อมูลที่เขาเคยบันทึกไว้ยังอยู่ครบ
+            (ประวัติการแก้ไขยังเก็บชื่อผู้ใช้ไว้)
+          </p>
+        </Modal>
       )}
     </div>
   );
@@ -396,8 +398,19 @@ function ScopeDialog({
   const picked = scope ?? [];
   const checks = [{ label: "เลือกอย่างน้อย 1 กิจการ", ok: !limited || picked.length > 0 }];
   return (
-    <>
-      <div className="mb-1 text-lg font-bold text-ink">กิจการที่เห็นได้</div>
+    <Modal
+      title="กิจการที่เห็นได้"
+      onClose={onCancel}
+      busy={pending}
+      footer={
+        <>
+          <ModalCancel onClick={onCancel} disabled={pending} />
+          <SaveButton pending={pending} pendingText="กำลังบันทึก…" disabled={!checks.every((c) => c.ok)} onClick={onSave}>
+            บันทึก
+          </SaveButton>
+        </>
+      }
+    >
       <p className="mb-3 text-sm text-muted">
         ผู้ใช้ <b className="text-ink">{user.username}</b> ({ROLE_LABEL[user.role] ?? user.role})
       </p>
@@ -428,13 +441,7 @@ function ScopeDialog({
         <div className="mt-1 text-warn">ยังไม่ถูกจำกัด: {ENTITY_SCOPE_NOT_COVERED}</div>
         <div className="mt-1 text-faint">มีผลตั้งแต่ผู้ใช้เปิดหน้าถัดไป (ไม่ต้องออกจากระบบ)</div>
       </div>
-      <div className="flex justify-end gap-2">
-        <RowBtn onClick={onCancel} disabled={pending}>ยกเลิก</RowBtn>
-        <SaveButton pending={pending} pendingText="กำลังบันทึก…" disabled={!checks.every((c) => c.ok)} onClick={onSave}>
-          บันทึก
-        </SaveButton>
-      </div>
       <MissingHint checks={checks} />
-    </>
+    </Modal>
   );
 }

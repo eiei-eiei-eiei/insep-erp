@@ -11,7 +11,8 @@ import { VatModeCard } from "./VatModeCard";
 import { accountsFor } from "@/lib/accounting/bankAccounts";
 import { MissingInvoiceWarn } from "./MissingInvoiceWarn";
 import type { Bootstrap } from "./types";
-import { Card, Combobox, Field, NumBox, SaveButton, Select, TextInput, fmt, useSaver, EscToClose, useRead, LoadError } from "./ui";
+import { Card, Combobox, Field, NumBox, SaveButton, Select, TextInput, fmt, useSaver, useRead, LoadError } from "./ui";
+import { Modal, ModalCancel } from "@/lib/shared/ui";
 import { billTotals, billTotalLabel, billTotalsNote } from "@/lib/accounting/billTotals";
 import { can, toRole } from "@/lib/shared/roles";
 import { ADVANCE_TYPE, ADVANCE_REFUND_TYPE, advanceStatusLabel } from "@/lib/accounting/advance";
@@ -368,10 +369,18 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-overlay/30 p-0 sm:p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <EscToClose onClose={() => { onClose(); }} />
-      <div className="min-h-dvh w-full rounded-none bg-card p-5 sm:my-8 sm:min-h-0 sm:max-w-5xl sm:rounded-lg" onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-3 font-semibold text-ink">แก้ไขบิล {txId}</h3>
+    <Modal
+      title={`แก้ไขบิล ${txId}`}
+      onClose={onClose}
+      size="xl"
+      busy={pending}
+      footer={loading ? undefined : (
+        <>
+          <ModalCancel onClick={onClose} />
+          <SaveButton pending={pending} onClick={save}>บันทึกการแก้ไข</SaveButton>
+        </>
+      )}
+    >
         {loading ? <p className="text-faint">กำลังโหลด…</p> : (
           <>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
@@ -489,14 +498,9 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
             <p className="mt-1 text-xs text-faint">
               * คงสถานะชำระ (AP/AR) และกลุ่มงวด/โอนไว้เดิม · ดูย้อนหลังได้ที่ <b>ตั้งค่า → ประวัติการแก้ไข</b>
             </p>
-            <div className="mt-3 flex justify-end gap-2">
-              <button onClick={onClose} className="rounded-lg border border-line px-4 py-2 text-sm">ยกเลิก</button>
-              <SaveButton pending={pending} onClick={save}>บันทึกการแก้ไข</SaveButton>
-            </div>
           </>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 

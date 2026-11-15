@@ -29,7 +29,8 @@ import {
   getItemHistoryAction,
 } from "../actions";
 import type { Bootstrap, Contact } from "./types";
-import { Card, Field, NumBox, NumInput, SaveButton, Select, TextInput, cleanTaxId13, fmt, todayISO, useSaver, EscToClose } from "./ui";
+import { Card, Field, NumBox, NumInput, SaveButton, Select, TextInput, cleanTaxId13, fmt, todayISO, useSaver } from "./ui";
+import { Modal, ModalCancel } from "@/lib/shared/ui";
 import { IconTrash } from "@/lib/shared/icons";
 import { isForwardCat } from "@/lib/accounting/forwardCats";
 import { ADVANCE_TYPE, advanceTargets } from "@/lib/accounting/advance";
@@ -639,10 +640,21 @@ function ContactModal({ defaultName, onClose, onSaved }: { defaultName: string; 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <EscToClose onClose={() => { onClose(); }} />
-      <div className="w-full max-w-md rounded-lg bg-card p-5" onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-3 font-semibold text-ink">เพิ่มคู่ค้าใหม่</h3>
+    // ป๊อปอัพนี้ render อยู่ใต้กล่องฟอร์มบันทึกที่ดัก Ctrl+Enter = บันทึกบิล —
+    // Modal กันปุ่มที่กดข้างในไม่ให้ไหลขึ้นไปถึงหน้าหลังแล้ว (Enter ในนี้ = เพิ่มคู่ค้าอย่างเดียว)
+    <Modal
+      title="เพิ่มคู่ค้าใหม่"
+      onClose={onClose}
+      onSubmit={save}
+      size="md"
+      busy={pending}
+      footer={
+        <>
+          <ModalCancel onClick={onClose} />
+          <SaveButton pending={pending} onClick={save}>เพิ่ม</SaveButton>
+        </>
+      }
+    >
         <div className="space-y-3">
           <Field label="ชื่อคู่ค้า"><TextInput value={name} onChange={(e) => setName(e.target.value)} /></Field>
           <div className="grid grid-cols-2 gap-3">
@@ -653,11 +665,6 @@ function ContactModal({ defaultName, onClose, onSaved }: { defaultName: string; 
           <Field label="ประเภท"><Select value={contactType} onChange={(e) => setContactType(e.target.value)}><option>ทั้งสอง</option><option>ผู้ขาย</option><option>ลูกค้า</option></Select></Field>
         </div>
         <p className="mt-1 text-xs text-faint">“ทั้งสอง” = เป็นได้ทั้งผู้ขายและลูกค้า → โผล่ทั้งรายรับและรายจ่าย</p>
-        <div className="mt-3 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-lg border border-line px-4 py-2 text-sm">ยกเลิก</button>
-          <SaveButton pending={pending} onClick={save}>เพิ่ม</SaveButton>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

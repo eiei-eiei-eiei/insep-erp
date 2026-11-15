@@ -18,8 +18,8 @@ import {
 } from "../actions";
 import type { BankAccountAdminRow } from "../data";
 import type { Bootstrap } from "./types";
-import { Badge, Card, Field, NumBox, SaveButton, TextInput, fmt, useSaver, useRead, LoadError, EscToClose } from "./ui";
-import { SuggestInput, useConfirm } from "@/lib/shared/ui";
+import { Badge, Card, Field, NumBox, SaveButton, TextInput, fmt, useSaver, useRead, LoadError } from "./ui";
+import { Modal, ModalCancel, SuggestInput, useConfirm } from "@/lib/shared/ui";
 import {
   accountNameError,
   usageText,
@@ -172,10 +172,19 @@ export function BankAccountsCard({ boot }: { boot: Bootstrap }) {
       )}
 
       {form && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setForm(null); }}>
-          <EscToClose onClose={() => setForm(null)} />
-          <div className="w-full max-w-md rounded-lg bg-card p-5">
-            <h3 className="mb-3 font-semibold text-ink">{form.accountId ? "แก้ไขบัญชีเงิน" : "เพิ่มบัญชีเงิน"}</h3>
+        <Modal
+          title={form.accountId ? "แก้ไขบัญชีเงิน" : "เพิ่มบัญชีเงิน"}
+          onClose={() => setForm(null)}
+          size="md"
+          busy={pending}
+          onSubmit={save}
+          footer={
+            <>
+              <ModalCancel onClick={() => setForm(null)} />
+              <SaveButton pending={pending} onClick={save}>บันทึก</SaveButton>
+            </>
+          }
+        >
             <div className="space-y-3">
               <Field label="ชื่อบัญชี"><TextInput value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="เช่น กสิกร ออมทรัพย์ 123-4" /></Field>
               {renaming && <p className="text-xs text-warn">⚠️ {renameWarnText(form.originalName, editing?.usage)}</p>}
@@ -201,12 +210,7 @@ export function BankAccountsCard({ boot }: { boot: Bootstrap }) {
               ) : null}
             </div>
             {formErr && <p className="mt-2 text-sm text-crit">{formErr}</p>}
-            <div className="mt-3 flex justify-end gap-2">
-              <button onClick={() => setForm(null)} className="rounded-lg border border-line px-4 py-2 text-sm">ยกเลิก</button>
-              <SaveButton pending={pending} onClick={save}>บันทึก</SaveButton>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </Card>
   );

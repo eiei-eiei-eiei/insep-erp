@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, Field, NumBox, SaveButton, Select, SuggestInput, TextInput, useSaver, Empty, EscToClose, useConfirm } from "@/lib/shared/ui";
+import { Card, Field, NumBox, SaveButton, Select, SuggestInput, TextInput, useSaver, Empty, Modal, ModalCancel, useConfirm } from "@/lib/shared/ui";
 import type {
   LegAmountSource,
   PayComponent,
@@ -528,10 +528,22 @@ function WorkDays({ config }: { config: PayrollConfig }) {
       </div>
 
       {edit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setEdit(null); }}>
-          <EscToClose onClose={() => { setEdit(null); }} />
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-card p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-3 font-semibold text-ink">วันทำงาน — {WAGE_LABEL[edit.wage]}</h3>
+        <Modal
+          title={`วันทำงาน — ${WAGE_LABEL[edit.wage]}`}
+          onClose={() => setEdit(null)}
+          onSubmit={() => run(() => saveWorkDayRuleAction(edit.wage, edit.v), "บันทึกแล้ว", () => { setEdit(null); router.refresh(); })}
+          busy={pending}
+          size="lg"
+          footer={
+            <>
+              <ModalCancel onClick={() => setEdit(null)} />
+              <SaveButton
+                pending={pending}
+                onClick={() => run(() => saveWorkDayRuleAction(edit.wage, edit.v), "บันทึกแล้ว", () => { setEdit(null); router.refresh(); })}
+              >บันทึก</SaveButton>
+            </>
+          }
+        >
             <VarForm
               v={edit.v} inputOpts={inputOpts} inputLabels={inputLabels}
               set={set} setStep={setStep} kinds={WORK_DAY_SOURCES}
@@ -539,15 +551,7 @@ function WorkDays({ config }: { config: PayrollConfig }) {
             <p className="mt-2 text-xs text-faint">
               คนรายวันได้เงินตามวันที่มาจริง — ถ้าไม่อยากให้ระบบคิดเป็นวันมาตรฐาน ให้สร้างช่องกรอก เช่น &ldquo;วันมาทำงาน&rdquo; แล้วเลือกช่องนั้นเป็นตัวตั้ง
             </p>
-            <div className="mt-3 flex justify-end gap-2">
-              <button onClick={() => setEdit(null)} className="rounded-lg border border-line px-4 py-2 text-sm">ยกเลิก</button>
-              <SaveButton
-                pending={pending}
-                onClick={() => run(() => saveWorkDayRuleAction(edit.wage, edit.v), "บันทึกแล้ว", () => { setEdit(null); router.refresh(); })}
-              >บันทึก</SaveButton>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </Card>
   );
@@ -712,13 +716,19 @@ function Formulas({ config, employees }: { config: PayrollConfig; employees: Emp
       </div>
 
       {edit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setEdit(null); }}>
-          <EscToClose onClose={() => { setEdit(null); }} />
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-card p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-3 font-semibold text-ink">
-              {edit.type === "var" ? (edit.v.name || "ตัวแปรใหม่") : (edit.c.name || "รายการใหม่")}
-            </h3>
-
+        <Modal
+          title={edit.type === "var" ? (edit.v.name || "ตัวแปรใหม่") : (edit.c.name || "รายการใหม่")}
+          onClose={() => setEdit(null)}
+          onSubmit={save}
+          busy={pending}
+          size="lg"
+          footer={
+            <>
+              <ModalCancel onClick={() => setEdit(null)} />
+              <SaveButton pending={pending} onClick={save}>บันทึก</SaveButton>
+            </>
+          }
+        >
             {/* สลับชนิดได้เฉพาะตอนสร้างใหม่ — ของที่บันทึกแล้วอยู่คนละตาราง ย้ายข้ามไม่ได้ */}
             {edit.isNew && (
               <div className="mb-3 flex flex-wrap gap-4 rounded-lg border border-line px-3 py-2">
@@ -751,13 +761,7 @@ function Formulas({ config, employees }: { config: PayrollConfig; employees: Emp
               />
             )}
 
-            {/* 🚨 ข้อความผลลัพธ์ต้องอยู่**ในป๊อปอัพ** — ของเดิมอยู่บนการ์ดซึ่งถูกป๊อปอัพบังจนมองไม่เห็น */}
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setEdit(null)} className="rounded-lg border border-line px-4 py-2 text-sm">ยกเลิก</button>
-              <SaveButton pending={pending} onClick={save}>บันทึก</SaveButton>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </Card>
   );
@@ -1085,10 +1089,21 @@ function PostLegs({ config }: { config: PayrollConfig }) {
       </div>
 
       {edit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setEdit(null); }}>
-          <EscToClose onClose={() => { setEdit(null); }} />
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-card p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-3 font-semibold text-ink">{edit.name || "ขาใหม่"}</h3>
+        <Modal
+          title={edit.name || "ขาใหม่"}
+          onClose={() => setEdit(null)}
+          onSubmit={() => run(() => savePayPostLegAction(edit), "บันทึกแล้ว", () => { setEdit(null); router.refresh(); })}
+          busy={pending}
+          size="lg"
+          footer={
+            <>
+              <ModalCancel onClick={() => setEdit(null)} />
+              <SaveButton pending={pending} onClick={() => run(() => savePayPostLegAction(edit), "บันทึกแล้ว", () => { setEdit(null); router.refresh(); })}>
+                บันทึก
+              </SaveButton>
+            </>
+          }
+        >
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="ชื่อขา (ขึ้นบนปุ่ม)"><TextInput value={edit.name} onChange={(e) => set("name", e.target.value)} placeholder="จ่ายเงินเดือน" /></Field>
               <Field label="ยอดที่ลงบัญชี">
@@ -1146,15 +1161,7 @@ function PostLegs({ config }: { config: PayrollConfig }) {
               เปิดใช้งาน
             </label>
 
-            {/* 🚨 ข้อความผลลัพธ์ต้องอยู่ในป๊อปอัพ — ตัวบนการ์ดถูกป๊อปอัพบังจนมองไม่เห็น */}
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setEdit(null)} className="rounded-lg border border-line px-4 py-2 text-sm">ยกเลิก</button>
-              <SaveButton pending={pending} onClick={() => run(() => savePayPostLegAction(edit), "บันทึกแล้ว", () => { setEdit(null); router.refresh(); })}>
-                บันทึก
-              </SaveButton>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </Card>
   );

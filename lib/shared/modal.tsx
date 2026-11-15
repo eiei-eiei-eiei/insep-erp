@@ -53,7 +53,7 @@ function unlockScroll() {
 
 const SIZES = {
   sm: "sm:max-w-sm",
-  md: "sm:max-w-md",
+  md: "sm:max-w-lg",
   lg: "sm:max-w-2xl",
   xl: "sm:max-w-4xl",
 } as const;
@@ -70,12 +70,17 @@ export type ModalProps = {
   footer?: React.ReactNode;
   /** false = กดพื้นหลัง/Esc ไม่ปิด (ใช้กับป๊อปอัพที่ต้องอ่านให้จบ) · ปุ่ม ✕ ก็ไม่แสดง */
   dismissable?: boolean;
+  /**
+   * false = กดพื้นหลังไม่ปิด (Esc กับปุ่ม ✕ ยังปิดได้) — ใช้กับฟอร์มยาวที่กดพลาดแล้วของที่กรอกหาย
+   * หรือป๊อปอัพรับเงิน/ออกเอกสารที่เดิมก็ไม่ปิดด้วยการกดพื้นหลัง
+   */
+  backdropClose?: boolean;
   /** กล่องยืนยันที่ซ้อนบนป๊อปอัพอื่น */
   top?: boolean;
   children: React.ReactNode;
 };
 
-export function Modal({ title, onClose, onSubmit, busy = false, size = "md", footer, dismissable = true, top = false, children }: ModalProps) {
+export function Modal({ title, onClose, onSubmit, busy = false, size = "md", footer, dismissable = true, backdropClose = true, top = false, children }: ModalProps) {
   const panel = useRef<HTMLDivElement>(null);
   const titleId = useId();
   // เก็บค่าล่าสุดไว้ใน ref — listener ผูกครั้งเดียวตอนเปิด ไม่ผูกใหม่ทุก render
@@ -90,12 +95,35 @@ export function Modal({ title, onClose, onSubmit, busy = false, size = "md", foo
 
     // เปิดแล้วพร้อมพิมพ์
     const el = panel.current;
-    if (el) {
-      const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
-      const marked = el.querySelector<HTMLElement>("[data-autofocus]");
-      const first = coarse ? null : el.querySelector<HTMLElement>(TYPEABLE);
-      (marked ?? first ?? el).focus({ preventScroll: true });
-    }
+    const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+    const target = () =>
+      el?.querySelector<HTMLElement>("[data-autofocus]") ?? (coarse ? null : el?.querySelector<HTMLElement>(TYPEABLE)) ?? null;
+    if (el) (target() ?? el).focus({ preventScroll: true });
+
+    // เนื้อหาที่โหลดทีหลัง (เช่น ป๊อปอัพแก้บิลขึ้น "กำลังโหลด…" ก่อน) — ช่องกรอกโผล่มาเมื่อไร ค่อยวางเคอร์เซอร์ให้
+    // เฉพาะตอนผู้ใช้ยังไม่ได้ย้ายโฟกัสไปไหนเอง · และถ้าปุ่มที่โฟกัสอยู่ถูกถอดออกจากจอ (โฟกัสตกไป body) ดึงกลับเข้าป๊อปอัพ
+    let settled = el ? document.activeElement !== el : true;
+    const watch = el
+      ? new MutationObserver(() => {
+          if (stack[stack.length - 1] !== id) return;
+          const a = document.activeElement;
+          if (a === document.body || a === null) {
+            (settled ? el : target() ?? el).focus({ preventScroll: true });
+            if (document.activeElement !== el) settled = true;
+            return;
+          }
+          if (settled || a !== el) {
+            settled = true;
+            return;
+          }
+          const t = target();
+          if (t) {
+            t.focus({ preventScroll: true });
+            settled = true;
+          }
+        })
+      : null;
+    if (el) watch?.observe(el, { childList: true, subtree: true });
 
     function onKey(e: KeyboardEvent) {
       if (stack[stack.length - 1] !== id) return; // ไม่ใช่ตัวบนสุด
@@ -122,6 +150,7 @@ export function Modal({ title, onClose, onSubmit, busy = false, size = "md", foo
     document.addEventListener("keydown", onKey, true);
 
     return () => {
+      watch?.disconnect();
       document.removeEventListener("keydown", onKey, true);
       const i = stack.indexOf(id);
       if (i >= 0) stack.splice(i, 1);
@@ -132,6 +161,9 @@ export function Modal({ title, onClose, onSubmit, busy = false, size = "md", foo
   }, []);
 
   function onPanelKey(e: React.KeyboardEvent) {
+    // ป๊อปอัพไม่ได้ย้ายออกจากต้นไม้ของหน้า — ปุ่มที่กดในนี้ต้องไม่ไหลขึ้นไปถึงคีย์ลัดของหน้าหลัง
+    // (เจอจริง: Ctrl+Enter ในป๊อปอัพเพิ่มคู่ค้าของแท็บบันทึก ไปบันทึกบิลทั้งใบของหน้าหลังด้วย)
+    e.stopPropagation();
     if (!onSubmit) return;
     const t = e.target as HTMLElement;
     const ok = enterSubmits({
@@ -142,7 +174,8 @@ export function Modal({ title, onClose, onSubmit, busy = false, size = "md", foo
       tag: t.tagName,
       inputType: (t.getAttribute("type") ?? "").toLowerCase(),
       expanded: t.getAttribute("aria-expanded") === "true",
-      ownEnter: !!t.closest('[data-enter="own"]'),
+      // ช่องที่ผูก <datalist>: Enter อาจเป็นการเลือกคำแนะนำ — ไม่ถือเป็นบันทึก (Ctrl+Enter ยังบันทึกได้)
+      ownEnter: !!t.closest('[data-enter="own"]') || t.hasAttribute("list"),
       busy,
     });
     if (!ok) return;
@@ -151,7 +184,7 @@ export function Modal({ title, onClose, onSubmit, busy = false, size = "md", foo
   }
 
   function onBackdrop(e: React.MouseEvent) {
-    if (e.target === e.currentTarget && dismissable && !busy) onClose();
+    if (e.target === e.currentTarget && dismissable && backdropClose && !busy) onClose();
   }
 
   return (

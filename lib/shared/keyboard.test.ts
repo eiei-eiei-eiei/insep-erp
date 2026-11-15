@@ -145,3 +145,56 @@ describe("component ใช้กติกากลาง (อ่านซอร�
     expect(confirm).not.toContain("fixed inset-0");
   });
 });
+
+/**
+ * ป๊อปอัพต้องผ่าน <Modal> ตัวเดียว — เดิมเขียนแยกกัน 29 ไฟล์ (ฉากหลัง 5 ความเข้ม · ส่วนใหญ่เปิดแล้วไม่พร้อมพิมพ์ ·
+ * Tab หลุดไปหน้าหลัง) · ใครเขียนฉากหลังเองอีก เทสนี้แดง
+ */
+describe("ป๊อปอัพทั้งแอปใช้ Modal ตัวกลาง (อ่านซอร์สทุกไฟล์)", () => {
+  const ROOT = path.join(__dirname, "../..");
+  function walk(dir: string, out: string[] = []): string[] {
+    for (const f of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, f.name);
+      if (f.isDirectory()) walk(p, out);
+      else if (f.name.endsWith(".tsx")) out.push(p);
+    }
+    return out;
+  }
+  const files = [...walk(path.join(ROOT, "app")), ...walk(path.join(ROOT, "lib"))];
+  const rel = (f: string) => path.relative(ROOT, f).split(path.sep).join("/");
+  // ตัดคอมเมนต์ออกก่อนตรวจ — คอมเมนต์ยกตัวอย่างของต้องห้ามไว้สอนคน
+  const code = (f: string) => fs.readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+  it("อ่านไฟล์ได้จริง (กันเทสเปล่า)", () => {
+    expect(files.length).toBeGreaterThan(80);
+    expect(files.map(rel)).toContain("lib/shared/modal.tsx");
+  });
+
+  it("ไม่มีฉากหลัง fixed inset-0 เขียนเองนอก modal.tsx", () => {
+    const bad = files.filter((f) => rel(f) !== "lib/shared/modal.tsx" && /fixed inset-0/.test(code(f))).map(rel);
+    expect(bad).toEqual([]);
+  });
+
+  it("ป๊อปอัพหลายสิบจุดใช้ <Modal> จริง", () => {
+    const users = files.filter((f) => /<Modal\b/.test(code(f)));
+    expect(users.length).toBeGreaterThanOrEqual(25);
+  });
+
+  it("🚨 ป๊อปอัพที่ยกเลิก/ออกเอกสารมีเลข/รับ-จ่ายเงิน ต้องไม่มี onSubmit (Enter ห้ามทำงานแทนการกดปุ่ม)", () => {
+    for (const f of [
+      "app/(app)/sales/_components/CancelOrderDialog.tsx",
+      "app/(app)/sales/_components/CreditNoteDialog.tsx",
+      "app/(app)/sales/_components/EditPaymentDialog.tsx",
+      "app/(app)/sales/_components/PlanPanel.tsx",
+      "app/(app)/sales/_components/WarehouseTab.tsx",
+      "app/(app)/accounting/_components/TaxPayCard.tsx",
+      "app/(app)/payroll/_components/FilingTab.tsx",
+      "app/(app)/bar/_components/EditSaleModal.tsx",
+      "app/(app)/_components/billing-notice.tsx",
+    ]) {
+      const c = code(path.join(ROOT, f));
+      expect(c, f).toMatch(/<Modal\b/);
+      expect(c, f).not.toMatch(/onSubmit=/);
+    }
+  });
+});
