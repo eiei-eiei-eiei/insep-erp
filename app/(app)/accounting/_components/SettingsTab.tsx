@@ -13,8 +13,8 @@ import Link from "next/link";
 import { FORWARD_CAT_KIND, DEFAULT_FORWARD_CATS } from "@/lib/accounting/forwardCats";
 import { validateNewCustomer, branchToSave, taxIdToSave, hidesBranch, branchFormOf, type NewCustomerInput } from "@/lib/shared/taxCustomer";
 import type { Bootstrap, Contact } from "./types";
-import { Card, Field, SaveButton, Select, TextInput, useSaver, EscToClose } from "./ui";
-import { useConfirm } from "@/lib/shared/ui";
+import { Card, Field, SaveButton, Select, TextInput, useSaver } from "./ui";
+import { useConfirm, Modal, ModalCancel } from "@/lib/shared/ui";
 import { BankAccountsCard } from "./BankAccountsCard";
 
 /**
@@ -183,38 +183,41 @@ function Contacts({ initial }: { initial: Contact[] }) {
         </table>
       </div>
       {edit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setEdit(null); }}>
-          <EscToClose onClose={() => { setEdit(null); }} />
-          <div className="w-full max-w-md rounded-lg bg-card p-5">
-            <h3 className="mb-3 font-semibold text-ink">{edit.contactId ? "แก้ไขคู่ค้า" : "เพิ่มคู่ค้า"}</h3>
-            <div className="space-y-3">
-              <Field label="ชื่อ"><TextInput value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>
-              <label className="flex items-center gap-1.5 text-sm text-muted">
-                <input type="checkbox" checked={edit.noTaxId} onChange={(e) => setEdit({ ...edit, noTaxId: e.target.checked })} />
-                ไม่มีเลขประจำตัวผู้เสียภาษี (บุคคลทั่วไป / ร้านค้าที่ไม่ออกใบกำกับ)
-              </label>
-              {!hidesBranch(edit) && (
-                <>
-                  <Field label="เลขประจำตัวผู้เสียภาษี (13 หลัก)"><TextInput value={edit.taxId} inputMode="numeric" onChange={(e) => setEdit({ ...edit, taxId: e.target.value.replace(/\D/g, "").slice(0, 13) })} /></Field>
-                  <div className="flex flex-wrap items-end gap-3 text-sm">
-                    <label className="flex items-center gap-1.5"><input type="radio" checked={edit.branchMode === "hq"} onChange={() => setEdit({ ...edit, branchMode: "hq" })} /> สำนักงานใหญ่</label>
-                    <label className="flex items-center gap-1.5"><input type="radio" checked={edit.branchMode === "branch"} onChange={() => setEdit({ ...edit, branchMode: "branch" })} /> สาขาที่</label>
-                    {edit.branchMode === "branch" && (
-                      <div className="w-28"><TextInput value={edit.branchNumber} inputMode="numeric" placeholder="เช่น 2" onChange={(e) => setEdit({ ...edit, branchNumber: e.target.value.replace(/\D/g, "").slice(0, 5) })} /></div>
-                    )}
-                  </div>
-                </>
-              )}
-              <Field label="ที่อยู่ (ใช้ในหนังสือรับรองหัก ณ ที่จ่าย)"><TextInput value={edit.address} onChange={(e) => setEdit({ ...edit, address: e.target.value })} /></Field>
-              <Field label="ประเภท"><Select value={edit.contactType} onChange={(e) => setEdit({ ...edit, contactType: e.target.value })}><option>ทั้งสอง</option><option>ผู้ขาย</option><option>ลูกค้า</option></Select></Field>
-            </div>
-            {formErr && <p className="mt-2 text-sm text-crit">{formErr}</p>}
-            <div className="mt-3 flex justify-end gap-2">
-              <button onClick={() => setEdit(null)} className="rounded-lg border border-line px-4 py-2 text-sm">ยกเลิก</button>
+        <Modal
+          title={edit.contactId ? "แก้ไขคู่ค้า" : "เพิ่มคู่ค้า"}
+          onClose={() => setEdit(null)}
+          onSubmit={() => save(edit)}
+          busy={pending}
+          footer={
+            <>
+              <ModalCancel onClick={() => setEdit(null)} />
               <SaveButton pending={pending} onClick={() => save(edit)}>บันทึก</SaveButton>
-            </div>
+            </>
+          }
+        >
+          <div className="space-y-3">
+            <Field label="ชื่อ"><TextInput value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>
+            <label className="flex items-center gap-1.5 text-sm text-muted">
+              <input type="checkbox" checked={edit.noTaxId} onChange={(e) => setEdit({ ...edit, noTaxId: e.target.checked })} />
+              ไม่มีเลขประจำตัวผู้เสียภาษี (บุคคลทั่วไป / ร้านค้าที่ไม่ออกใบกำกับ)
+            </label>
+            {!hidesBranch(edit) && (
+              <>
+                <Field label="เลขประจำตัวผู้เสียภาษี (13 หลัก)"><TextInput value={edit.taxId} inputMode="numeric" onChange={(e) => setEdit({ ...edit, taxId: e.target.value.replace(/\D/g, "").slice(0, 13) })} /></Field>
+                <div className="flex flex-wrap items-end gap-3 text-sm text-ink">
+                  <label className="flex items-center gap-1.5"><input type="radio" checked={edit.branchMode === "hq"} onChange={() => setEdit({ ...edit, branchMode: "hq" })} /> สำนักงานใหญ่</label>
+                  <label className="flex items-center gap-1.5"><input type="radio" checked={edit.branchMode === "branch"} onChange={() => setEdit({ ...edit, branchMode: "branch" })} /> สาขาที่</label>
+                  {edit.branchMode === "branch" && (
+                    <div className="w-28"><TextInput value={edit.branchNumber} inputMode="numeric" placeholder="เช่น 2" onChange={(e) => setEdit({ ...edit, branchNumber: e.target.value.replace(/\D/g, "").slice(0, 5) })} /></div>
+                  )}
+                </div>
+              </>
+            )}
+            <Field label="ที่อยู่ (ใช้ในหนังสือรับรองหัก ณ ที่จ่าย)"><TextInput value={edit.address} onChange={(e) => setEdit({ ...edit, address: e.target.value })} /></Field>
+            <Field label="ประเภท"><Select value={edit.contactType} onChange={(e) => setEdit({ ...edit, contactType: e.target.value })}><option>ทั้งสอง</option><option>ผู้ขาย</option><option>ลูกค้า</option></Select></Field>
           </div>
-        </div>
+          {formErr && <p className="mt-2 text-sm text-crit">{formErr}</p>}
+        </Modal>
       )}
     </Card>
   );
