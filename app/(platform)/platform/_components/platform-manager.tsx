@@ -5,6 +5,7 @@ import {
   Card,
   Empty,
   Field,
+  Help,
   RowBtn,
   SaveButton,
   Select,
@@ -351,16 +352,18 @@ function TenantPanel({
 
       {/* ── โมดูลตามแพ็กเกจ ── */}
       <div className="border-t border-line-soft pt-4">
-        <h3 className="mb-2 text-sm font-semibold text-ink">โมดูลที่เปิดใช้</h3>
+        <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-ink">
+          โมดูลที่เปิดใช้
+          <Help>
+            ลูกค้าเห็นเมนูใหม่ทันทีที่รีเฟรช · ลูกค้าเปลี่ยนค่านี้เองไม่ได้ (ตาราง tenants ไม่มี policy update)
+          </Help>
+        </h3>
         <ModulePicker value={modules} onChange={setModules} idPrefix={`m-${t.id}`} />
         <div className="mt-3">
           <SaveButton pending={pending} onClick={() => onModules(modules)} type="button">
             บันทึกโมดูล
           </SaveButton>
         </div>
-        <p className="mt-2 text-xs text-faint">
-          ลูกค้าเห็นเมนูใหม่ทันทีที่รีเฟรช · ลูกค้าเปลี่ยนค่านี้เองไม่ได้ (ตาราง tenants ไม่มี policy update)
-        </p>
       </div>
 
       {/* ── โควตากิจการ (แยกจากปุ่มเพิ่มกิจการโดยตั้งใจ — D53) ── */}

@@ -116,7 +116,7 @@ export function ProductTab({ products }: { products: Product[] }) {
       </div>
     </Card>
 
-    <Card title="รายการล่าสุด (แก้ไข / ลบ ได้จากแอป)">
+    <Card title="รายการล่าสุด (แก้ไข / ลบ ได้จากแอป)" help="แสดง 30 รายการล่าสุด · แก้/ลบแล้วสต็อกสินค้าปรับให้อัตโนมัติ (trigger ครอบ UPDATE/DELETE)">
       {recent.length === 0 ? <p className="text-sm text-faint">— ยังไม่มีรายการ —</p> : (
         <div className="overflow-x-auto">
           <table className="tbl">
@@ -151,7 +151,6 @@ export function ProductTab({ products }: { products: Product[] }) {
               ))}
             </tbody>
           </table>
-          <p className="mt-1 text-xs text-faint">แสดง 30 รายการล่าสุด · แก้/ลบแล้วสต็อกสินค้าปรับให้อัตโนมัติ (trigger ครอบ UPDATE/DELETE)</p>
         </div>
       )}
     </Card>

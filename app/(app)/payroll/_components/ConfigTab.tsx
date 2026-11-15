@@ -197,14 +197,14 @@ function BasicSettings({ config }: { config: PayrollConfig }) {
             <option value="satang">เก็บทศนิยม 2 ตำแหน่ง</option>
           </Select>
         </Field>
-        <Field label="บัญชีเงินหลักที่ใช้จ่ายเงินเดือน">
+        <Field
+          label="บัญชีเงินหลักที่ใช้จ่ายเงินเดือน"
+          help={<>ขาลงบัญชีที่ไม่ระบุบัญชีเงินของตัวเอง จะใช้บัญชีหลักนี้ ·
+            รายชื่อบัญชีมาจากบัญชีเงินที่ตั้งไว้ในแอปบัญชี</>}
+        >
           <AccountSelect value={pay} onChange={setPay} accounts={config.bankAccounts} />
         </Field>
       </div>
-      <p className="mt-2 text-xs text-faint">
-        ขาลงบัญชีที่ไม่ระบุบัญชีเงินของตัวเอง จะใช้บัญชีหลักนี้ ·
-        รายชื่อบัญชีมาจากบัญชีเงินที่ตั้งไว้ในแอปบัญชี
-      </p>
       <div className="mt-3"><SaveButton pending={pending} onClick={saveAll}>บันทึกค่าตั้ง</SaveButton></div>
     </Card>
   );
@@ -218,12 +218,12 @@ function Groups({ config }: { config: PayrollConfig }) {
   const [val, setVal] = useState("");
 
   return (
-    <Card title="กลุ่มพนักงาน">
+    <Card
+      title="กลุ่มพนักงาน"
+      help={<>ใช้คุมว่ารายการไหนให้ใครบ้าง — เช่นตั้ง 2 กลุ่มแล้วให้ค่าล่วงเวลาคนละตัวคูณ
+        (สร้างรายการ 2 แถว แถวละกลุ่ม)</>}
+    >
       {confirmNode}
-      <p className="mb-2 text-xs text-faint">
-        ใช้คุมว่ารายการไหนให้ใครบ้าง — เช่นตั้ง 2 กลุ่มแล้วให้ค่าล่วงเวลาคนละตัวคูณ
-        (สร้างรายการ 2 แถว แถวละกลุ่ม)
-      </p>
       <div className="mb-2 flex flex-wrap gap-2">
         {config.groups.length === 0 && <span className="text-sm text-faint">— ยังไม่มี —</span>}
         {config.groups.map((g) => (
@@ -274,16 +274,18 @@ function Inputs({ config }: { config: PayrollConfig }) {
   }
 
   return (
-    <Card title="ช่องที่ต้องกรอกต่อคนต่องวด">
-      {confirmNode}
-      <p className="mb-2 text-xs text-faint">
+    <Card
+      title="ช่องที่ต้องกรอกต่อคนต่องวด"
+      help={<>
         คอลัมน์ในตารางงวดจ่ายมาจากที่นี่ — เช่น ชั่วโมง OT · วันลาป่วย · จำนวนครั้งที่มาสาย
         (รหัสเป็นภาษาอังกฤษเพราะใช้เป็นคีย์ของข้อมูล ส่วนชื่อที่แสดงเป็นไทยได้)
         <br />
         ★ ปุ่ม ▲▼ ย้ายลำดับคอลัมน์ได้ — ช่องที่เพิ่มทีหลังไม่จำเป็นต้องอยู่ท้ายสุดตลอดไป
         <br />
         ★ <b>จำค่าจากงวดก่อน</b> เหมาะกับค่าที่เท่าเดิมทุกเดือน เช่นค่าตำแหน่ง — ตอนสร้างงวดใหม่ระบบยกค่าของคนเดิมจากงวดล่าสุดมาให้ แก้ในงวดนั้นได้
-      </p>
+      </>}
+    >
+      {confirmNode}
       <div className="overflow-x-auto">
         <table className="tbl">
           <thead>
@@ -502,11 +504,11 @@ function WorkDays({ config }: { config: PayrollConfig }) {
   }
 
   return (
-    <Card title="ค่าจ้างและวันทำงาน">
-      <p className="mb-2 text-xs text-faint">
-        ค่าตั้งต้นของตารางงวด — วันทำงานในตารางคิดจากสูตรนี้ แล้วแก้รายคนได้ในตาราง ·
-        เปลี่ยนสูตรแล้วมีผลกับงวดร่าง ส่วนงวดที่ลงบัญชีแล้วไม่ขยับ
-      </p>
+    <Card
+      title="ค่าจ้างและวันทำงาน"
+      help={<>ค่าตั้งต้นของตารางงวด — วันทำงานในตารางคิดจากสูตรนี้ แล้วแก้รายคนได้ในตาราง ·
+        เปลี่ยนสูตรแล้วมีผลกับงวดร่าง ส่วนงวดที่ลงบัญชีแล้วไม่ขยับ</>}
+    >
       <div className="overflow-x-auto">
         <table className="tbl">
           <thead>
@@ -604,13 +606,14 @@ function Formulas({ config, employees }: { config: PayrollConfig; employees: Emp
   }
 
   return (
-    <Card title="สูตรและรายการคำนวณ">
+    <Card
+      title="สูตรและรายการคำนวณ"
+      help={<>ที่นี่มี 2 อย่าง — <b>ตัวแปร</b> คือค่ากลางที่คำนวณไว้ให้เอาไปใช้ต่อ (เช่นอัตราต่อชั่วโมง)
+        และ <b>รายการเพิ่ม/หัก</b> คือเงินที่ขึ้นบนสลิปจริง</>}
+    >
       {confirmNode}
       <div className="mb-3 flex items-start justify-between gap-3">
         <p className="text-xs text-faint">
-          ที่นี่มี 2 อย่าง — <b>ตัวแปร</b> คือค่ากลางที่คำนวณไว้ให้เอาไปใช้ต่อ (เช่นอัตราต่อชั่วโมง)
-          และ <b>รายการเพิ่ม/หัก</b> คือเงินที่ขึ้นบนสลิปจริง
-          <br />
           🚨 <b>ตัวแปรถูกคิดก่อนรายการเสมอ</b> → รายการอ้างตัวแปรได้ แต่<b>ตัวแปรอ้างรายการไม่ได้</b>
         </p>
         <div className="flex shrink-0 gap-2">
@@ -1036,13 +1039,14 @@ function PostLegs({ config }: { config: PayrollConfig }) {
     setEdit((p) => (p ? { ...p, [k]: v } : p));
 
   return (
-    <Card title="ขาลงบัญชี">
+    <Card
+      title="ขาลงบัญชี"
+      help={<>กำหนดว่าเงินเดือนไปเป็นรายจ่ายในบัญชีเป็นกี่ก้อน — ตั้งกี่ขาก็ได้ ·
+        หมวดรายจ่ายพิมพ์เอง ไม่ต้องมีในรายการหมวดเดิม</>}
+    >
       {confirmNode}
       <div className="mb-3 flex items-start justify-between gap-3">
         <p className="text-xs text-faint">
-          กำหนดว่าเงินเดือนไปเป็นรายจ่ายในบัญชีเป็นกี่ก้อน — ตั้งกี่ขาก็ได้ ·
-          หมวดรายจ่ายพิมพ์เอง ไม่ต้องมีในรายการหมวดเดิม
-          <br />
           🚨 <b>ขาที่ยอดซ้อนกัน = ลงรายจ่ายซ้ำ</b> (เช่นตั้งขาโอทีเพิ่มทั้งที่โอทีอยู่ในยอดสุทธิแล้ว) —
           ตรวจตัวเลขคุมที่แท็บงวดจ่ายก่อนลงบัญชีทุกครั้ง
         </p>

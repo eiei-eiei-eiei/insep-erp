@@ -2,7 +2,7 @@
 
 import { showToast } from "@/lib/shared/toast";
 import { useState, useTransition } from "react";
-import { Modal, ModalCancel } from "@/lib/shared/ui";
+import { Help, Modal, ModalCancel } from "@/lib/shared/ui";
 import { downloadBlob, MIME } from "@/lib/shared/download";
 import { tableLabel } from "@/lib/shared/tenantTables";
 import {
@@ -89,11 +89,13 @@ export function DataManager() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h2 className="mb-1 text-xl font-bold text-ink">ดาวน์โหลดข้อมูลไปเก็บไว้เอง</h2>
-      <p className="mb-4 text-sm text-faint">
-        ดึงข้อมูลทั้งหมดของกิจการออกมาเป็นไฟล์เดียว เก็บไว้ในเครื่องหรือไดรฟ์ของคุณเอง ·
-        เฉพาะเจ้าของกิจการ (main) และต้องยืนยันด้วยรหัสผ่าน
-      </p>
+      <h2 className="mb-4 flex items-center gap-1.5 text-xl font-bold text-ink">
+        ดาวน์โหลดข้อมูลไปเก็บไว้เอง
+        <Help>
+          ดึงข้อมูลทั้งหมดของกิจการออกมาเป็นไฟล์เดียว เก็บไว้ในเครื่องหรือไดรฟ์ของคุณเอง ·
+          เฉพาะเจ้าของกิจการ (main) และต้องยืนยันด้วยรหัสผ่าน
+        </Help>
+      </h2>
 
       <div className="mb-4 rounded-lg bg-warn-bg px-4 py-3 text-sm text-warn">
         <div className="font-medium">อ่านก่อนใช้</div>

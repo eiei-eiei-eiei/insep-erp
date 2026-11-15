@@ -120,7 +120,7 @@ export function MaterialTab({ materials }: { materials: Material[] }) {
       </div>
     </Card>
 
-    <Card title="รายการล่าสุด (แก้ไข / ลบ ได้จากแอป)">
+    <Card title="รายการล่าสุด (แก้ไข / ลบ ได้จากแอป)" help="แสดง 30 รายการล่าสุด · แก้/ลบแล้วสต็อกวัตถุดิบปรับให้อัตโนมัติ">
       {recent.length === 0 ? <p className="text-sm text-faint">— ยังไม่มีรายการ —</p> : (
         <div className="overflow-x-auto">
           <table className="tbl">
@@ -155,7 +155,6 @@ export function MaterialTab({ materials }: { materials: Material[] }) {
               ))}
             </tbody>
           </table>
-          <p className="mt-1 text-xs text-faint">แสดง 30 รายการล่าสุด · แก้/ลบแล้วสต็อกวัตถุดิบปรับให้อัตโนมัติ</p>
         </div>
       )}
     </Card>

@@ -14,7 +14,7 @@ import type { BarCustomerRow, BarSaleLine } from "../data";
 import { resolveLine } from "@/lib/bar/discount";
 import { lineAmount } from "@/lib/bar/totals";
 import { customerLabel } from "@/lib/bar/customerName";
-import { NumBox, Select, TextInput, fmt } from "@/lib/shared/ui";
+import { Help, NumBox, Select, TextInput, fmt } from "@/lib/shared/ui";
 import { IconEdit, IconTrash } from "@/lib/shared/icons";
 
 type LinePatch = { lineDiscount: number; lineDiscountPct: number | null; isComp: boolean };
@@ -187,7 +187,10 @@ export function EditBillCustomer({
 
   return (
     <div className="mb-3 space-y-2 rounded-lg bg-raised p-3 text-sm">
-      <div className="font-medium text-ink">แก้บิล {saleNo}</div>
+      <div className="flex items-center gap-1.5 font-medium text-ink">
+        แก้บิล {saleNo}
+        <Help>แก้ได้เฉพาะบิลที่ยังเปิดอยู่ · ใบเสร็จตอนปิดบิลจะใช้ลูกค้าคนใหม่</Help>
+      </div>
       <div className="grid gap-2 sm:grid-cols-2">
         <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="ชื่อบิล / โต๊ะ" />
         <Select value={cust} onChange={(e) => setCust(e.target.value)}>
@@ -211,7 +214,6 @@ export function EditBillCustomer({
         <button type="button" onClick={onCancel} className="text-muted underline">
           เลิกแก้
         </button>
-        <span className="text-xs text-muted">แก้ได้เฉพาะบิลที่ยังเปิดอยู่ · ใบเสร็จตอนปิดบิลจะใช้ลูกค้าคนใหม่</span>
       </div>
     </div>
   );

@@ -118,7 +118,7 @@ export function BankAccountsCard({ boot }: { boot: Bootstrap }) {
   const renaming = !!form?.accountId && form.name.trim() !== form.originalName;
 
   return (
-    <Card title={`บัญชีเงิน (${rows.filter((r) => r.active).length})`}>
+    <Card title={`บัญชีเงิน (${rows.filter((r) => r.active).length})`} help={<>คงเหลือ = ยอดยกมา + เงินเข้า − เงินออก ถึงวันนี้ (ตัวเดียวกับแท็บ บัญชี &amp; เงินสด)</>}>
       {confirmNode}
       <div className="mb-2 flex flex-wrap items-center gap-3">
         <button onClick={openNew} className="rounded-lg bg-brand px-4 py-2 text-sm text-on-brand">+ เพิ่มบัญชี</button>
@@ -165,7 +165,6 @@ export function BankAccountsCard({ boot }: { boot: Bootstrap }) {
             </tbody>
           </table>
           <p className="mt-1 text-xs text-faint">
-            คงเหลือ = ยอดยกมา + เงินเข้า − เงินออก ถึงวันนี้ (ตัวเดียวกับแท็บ บัญชี &amp; เงินสด) ·
             บัญชีที่มีรายการแล้วลบไม่ได้ ให้กด ปิดใช้ แทน (ประวัติยังอยู่ครบ)
           </p>
         </div>

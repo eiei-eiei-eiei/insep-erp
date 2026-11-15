@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { BarItem } from "@/lib/bar/types";
 import { stockText, numText } from "@/lib/bar/units";
 import { receiveHistory, changeText, type ReceiveRecord } from "@/lib/bar/receiveHistory";
-import { Empty, LoadError, Modal, ModalCancel, fmt, useRead } from "@/lib/shared/ui";
+import { Empty, Help, LoadError, Modal, ModalCancel, fmt, useRead } from "@/lib/shared/ui";
 import { itemMovesAction, itemReceivesAction } from "../actions";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
@@ -104,7 +104,14 @@ export function ItemHistoryModal({
                         <th className="text-right">จำนวน</th>
                         <th className="text-right">ราคารวม</th>
                         <th className="text-right">ราคา/หน่วยซื้อ</th>
-                        <th className="text-right">ราคา/{unitWord}</th>
+                        <th className="text-right">
+                          <span className="inline-flex items-center gap-1.5">
+                            ราคา/{unitWord}
+                            <Help>
+                              ▲▼ เทียบราคาต่อ {unitWord} กับครั้งก่อนหน้าที่กรอกราคา (ข้ามครั้งที่ไม่ได้กรอก) · ราคาต่อหน่วยซื้อคิดจากขนาดของล็อตนั้นเอง
+                            </Help>
+                          </span>
+                        </th>
                         <th>ร้าน / หมายเหตุ</th>
                       </tr>
                     </thead>
@@ -148,10 +155,7 @@ export function ItemHistoryModal({
                     </tbody>
                   </table>
                 </div>
-                <p className="mt-2 text-xs text-faint">
-                  ▲▼ เทียบราคาต่อ {unitWord} กับครั้งก่อนหน้าที่กรอกราคา (ข้ามครั้งที่ไม่ได้กรอก) · ราคาต่อหน่วยซื้อคิดจากขนาดของล็อตนั้นเอง
-                  {priced.length >= 100 && " · แสดง 100 ครั้งล่าสุด"}
-                </p>
+                {priced.length >= 100 && <p className="mt-2 text-xs text-faint">แสดง 100 ครั้งล่าสุด</p>}
               </>
             )}
           </>

@@ -45,6 +45,7 @@ export function ReportTab({ active }: { active: boolean }) {
             <NumBox value={year} onChange={(v) => setYear(v === "" ? new Date().getFullYear() : v)} />
           </Field>
         </div>
+        {/* คงไว้บนจอ (D173 เฟส 2b) — ไม่เห็นแล้วเข้าใจว่างวดหาย */}
         <p className="mt-2 text-xs text-faint">
           ตัวเลขมาจากงวดที่<b>กดคำนวณ &amp; บันทึกแล้ว</b> — งวดร่างที่ยังไม่บันทึกจะไม่โผล่
         </p>
@@ -97,10 +98,7 @@ export function ReportTab({ active }: { active: boolean }) {
             </div>
           </Card>
 
-          <Card title="แยกรายคน">
-            <p className="mb-2 text-xs text-faint">
-              ใช้ดู performance ได้ — เช่นใครทำคอมมิชชั่นได้เท่าไร ใครทำล่วงเวลาเยอะ
-            </p>
+          <Card title="แยกรายคน" help="ใช้ดู performance ได้ — เช่นใครทำคอมมิชชั่นได้เท่าไร ใครทำล่วงเวลาเยอะ">
             <div className="overflow-x-auto">
               <table className="tbl">
                 <thead>

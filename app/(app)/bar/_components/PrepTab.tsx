@@ -22,7 +22,7 @@ import {
 } from "@/lib/bar/prep";
 import { stockText, numText } from "@/lib/bar/units";
 import {
-  Card, TextInput, NumBox, Field, Badge, Empty, Modal, ModalCancel, SuggestInput, LoadError,
+  Card, TextInput, NumBox, Field, Badge, Empty, Help, Modal, ModalCancel, SuggestInput, LoadError,
   fmt, useSaver, useRead, useConfirm,
 } from "@/lib/shared/ui";
 import {
@@ -140,12 +140,16 @@ export function PrepView({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
         </Card>
       )}
 
-      <Card title="ของทำเองในร้าน">
-        <p className="mb-3 text-xs text-muted">
-          ไซรัป · infused · cordial — ตั้งสูตรต่อ 1 ล็อตไว้ แล้วกด <b>ทำล็อต</b> ทุกครั้งที่ทำ (ทำทีละน้อยได้ เช่น 0.3 ล็อต)
-          · ระบบตัดวัตถุดิบ แล้วเอาของทำเองเข้าสต็อก คิดทุนต่อหน่วยจากของที่ใช้จริง · ใช้ในสูตรเมนูได้เหมือนวัตถุดิบทั่วไป
-          · ไม่นับค่าแรง/ค่าแก๊ส
-        </p>
+      <Card
+        title="ของทำเองในร้าน"
+        help={
+          <>
+            ไซรัป · infused · cordial — ตั้งสูตรต่อ 1 ล็อตไว้ แล้วกด <b>ทำล็อต</b> ทุกครั้งที่ทำ (ทำทีละน้อยได้ เช่น 0.3 ล็อต)
+            · ระบบตัดวัตถุดิบ แล้วเอาของทำเองเข้าสต็อก คิดทุนต่อหน่วยจากของที่ใช้จริง · ใช้ในสูตรเมนูได้เหมือนวัตถุดิบทั่วไป
+            · ไม่นับค่าแรง/ค่าแก๊ส
+          </>
+        }
+      >
         <button
           type="button"
           disabled={busy || !boot.canWrite}
@@ -434,7 +438,10 @@ function PrepModal({
             )}
           </Field>
         </div>
-        <div className="mt-2 text-sm font-medium text-muted">วัตถุดิบต่อ 1 ล็อต</div>
+        <div className="mt-2 flex items-center gap-1.5 text-sm font-medium text-muted">
+          วัตถุดิบต่อ 1 ล็อต
+          {def && <Help tone="warn">แก้สูตรแล้วมีผลกับล็อตถัดไปเท่านั้น — ล็อตที่ทำไปแล้วไม่ขยับ</Help>}
+        </div>
         <RecipeEditor
           mode="prep"
           items={items}
@@ -464,7 +471,6 @@ function PrepModal({
             {pv.missing > 0 && <span className="text-warn"> · มี {pv.missing} วัตถุดิบที่ยังไม่มีทุน</span>}
           </p>
         )}
-        {def && <p className="mt-1 text-xs text-faint">แก้สูตรแล้วมีผลกับล็อตถัดไปเท่านั้น — ล็อตที่ทำไปแล้วไม่ขยับ</p>}
         {err && <p className="mt-1 text-xs text-warn">{err}</p>}
       </div>
     </Modal>
@@ -535,10 +541,10 @@ function BatchModal({
     >
       <div>
         <div className="grid gap-2 sm:grid-cols-3">
-          <Field label="กี่ล็อต">
+          <Field label="กี่ล็อต" help="ทำทีละน้อยใส่ 0.3 ได้">
             <NumBox value={mult} onChange={changeMult} blankZero placeholder="1" />
           </Field>
-          <p className="self-end pb-2 text-xs text-faint sm:col-span-2">ทำทีละน้อยใส่ 0.3 ได้ · เปลี่ยนตัวเลขนี้แล้วปริมาณข้างล่างคิดใหม่จากสูตร</p>
+          <p className="self-end pb-2 text-xs text-faint sm:col-span-2">เปลี่ยนตัวเลขนี้แล้วปริมาณข้างล่างคิดใหม่จากสูตร</p>
         </div>
         <div className="mt-2 text-sm font-medium text-muted">วัตถุดิบที่ใช้จริง (แก้ได้ถ้าวันนี้ใส่ต่างไป)</div>
         <RecipeEditor

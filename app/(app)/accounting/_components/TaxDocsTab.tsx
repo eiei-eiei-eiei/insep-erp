@@ -30,7 +30,7 @@ import { ReportChecklist } from "../../_components/ReportChecklist";
 import { TaxPayCard } from "./TaxPayCard";
 import { dueDateOf } from "@/lib/accounting/taxPay";
 import type { AccountRow, Contact } from "./types";
-import { Field, Select, TextInput, fmt, todayISO, useSaver, LoadError } from "./ui";
+import { Field, Help, Select, TextInput, fmt, todayISO, useSaver, LoadError } from "./ui";
 
 /** ★ กำหนดยื่นเติมตอน render (ขึ้นกับเดือนที่เลือก) — ดู `dueDateOf` ใน lib/accounting/taxPay */
 const TAX_CHECKLIST = [
@@ -241,8 +241,7 @@ export function TaxDocsTab({
           </div>
         )}
         <div className={box}>
-          <h3 className="mb-1 font-semibold text-ink">ภงด.3 / ภงด.53</h3>
-          <p className="mb-2 text-sm text-faint">แยกบุคคล/นิติบุคคลอัตโนมัติ</p>
+          <h3 className="mb-2 flex items-center gap-1.5 font-semibold text-ink">ภงด.3 / ภงด.53<Help>แยกบุคคล/นิติบุคคลอัตโนมัติ</Help></h3>
           <button onClick={genPnd} disabled={busy} className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-on-brand disabled:opacity-50">สร้าง ภงด.3/53</button>
         </div>
       </div>

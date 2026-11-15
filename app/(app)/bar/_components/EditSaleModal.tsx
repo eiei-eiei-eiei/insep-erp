@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Field, Modal, ModalCancel, TextInput, fmt } from "@/lib/shared/ui";
+import { Field, Help, Modal, ModalCancel, TextInput, fmt } from "@/lib/shared/ui";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { editMethodOptions, editSaleChanged, editSaleProblem } from "@/lib/bar/billDay";
 
@@ -49,7 +49,15 @@ export function EditSaleModal({
 
   return (
     <Modal
-      title={<>แก้บิล {sale.tab_name || sale.sale_no}</>}
+      title={
+        <>
+          แก้บิล {sale.tab_name || sale.sale_no}
+          <Help className="ml-1.5">
+            แก้รายการในบิลไม่ได้ — ถ้ากดรายการผิด ใช้ปุ่ม ยกเลิกรายการ หรือยกเลิกทั้งบิลแล้วเปิดใหม่ ·
+            เวลาบนใบเสร็จยังเป็นเวลาที่กดรับเงินจริง · ระบบเก็บค่าเดิมไว้ในประวัติการแก้ไข (เจ้าของกิจการดูได้ที่ ตั้งค่า)
+          </Help>
+        </>
+      }
       onClose={onClose}
       busy={busy}
       size="md"
@@ -100,14 +108,10 @@ export function EditSaleModal({
           ))}
         </div>
 
-        <p className="mt-4 text-xs text-faint">
-          แก้รายการในบิลไม่ได้ — ถ้ากดรายการผิด ใช้ปุ่ม ยกเลิกรายการ หรือยกเลิกทั้งบิลแล้วเปิดใหม่ ·
-          เวลาบนใบเสร็จยังเป็นเวลาที่กดรับเงินจริง · ระบบเก็บค่าเดิมไว้ในประวัติการแก้ไข (เจ้าของกิจการดูได้ที่ ตั้งค่า)
-        </p>
-        {problem && <p className="mt-2 text-sm text-warn">{problem}</p>}
+        {problem && <p className="mt-4 text-sm text-warn">{problem}</p>}
 
         {!problem && !changed && (
-          <p className="mt-1 text-xs text-muted">ยังไม่ได้เปลี่ยนวันขายหรือวิธีรับเงิน</p>
+          <p className="mt-4 text-xs text-muted">ยังไม่ได้เปลี่ยนวันขายหรือวิธีรับเงิน</p>
         )}
       </div>
     </Modal>

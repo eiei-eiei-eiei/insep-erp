@@ -194,7 +194,7 @@ export function DiluteTab({ products }: { products: Product[] }) {
       </div>
     </Card>
 
-    <Card title="รายการล่าสุด (แก้ไข / ลบ ได้จากแอป)">
+    <Card title="รายการล่าสุด (แก้ไข / ลบ ได้จากแอป)" help="แสดง 30 รายการล่าสุด · แก้/ลบแล้วปริมาณคงเหลือรอปรุงปรับให้อัตโนมัติ">
       {recent.length === 0 ? <p className="text-sm text-faint">— ยังไม่มีรายการ —</p> : (
         <div className="overflow-x-auto">
           <table className="tbl">
@@ -257,7 +257,6 @@ export function DiluteTab({ products }: { products: Product[] }) {
               ))}
             </tbody>
           </table>
-          <p className="mt-1 text-xs text-faint">แสดง 30 รายการล่าสุด · แก้/ลบแล้วปริมาณคงเหลือรอปรุงปรับให้อัตโนมัติ</p>
           {recent.some((r) => r.redistill_lot) && (
             <p className="mt-1 text-xs text-warn">
               แถวที่ติดป้าย <b>ล็อต …</b> ถูกสร้างจากแท็บ <b>กลั่นซ้ำ</b> — แก้หรือลบได้ที่แท็บนั้นทางเดียว

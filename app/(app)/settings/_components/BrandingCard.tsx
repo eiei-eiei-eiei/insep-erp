@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveBrandingAction } from "../actions";
 import { BRAND_COLORS, type BrandColor, type ColorMode } from "@/lib/shared/branding";
-import { Card, Field, MissingHint, SaveButton, Select, TextInput, useSaver } from "@/lib/shared/ui";
+import { Card, Field, Help, MissingHint, SaveButton, Select, TextInput, useSaver } from "@/lib/shared/ui";
 
 /**
  * ตั้งค่าแบรนด์ของกิจการ (D43) — ชื่อ/สี/โลโก้/โหมดเริ่มต้น
@@ -33,7 +33,13 @@ export function BrandingCard({
   }
 
   return (
-    <Card title="แบรนด์ของกิจการ">
+    <Card
+      title="แบรนด์ของกิจการ"
+      help={<>
+        สีสถานะ (เขียว = ปกติ · เหลือง = ค้าง · แดง = ผิดพลาด) ตั้งค่าไม่ได้โดยตั้งใจ —
+        ต้องแปลเหมือนกันทุกกิจการเวลาสอนงานหรือแก้ปัญหาทางโทรศัพท์
+      </>}
+    >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="ชื่อที่แสดงบนแถบเมนู">
           <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="เช่น ร้านของฉัน" />
@@ -45,7 +51,12 @@ export function BrandingCard({
           </Select>
         </Field>
         <div className="sm:col-span-2">
-          <span className="mb-1 block text-xs font-medium tracking-wide text-muted">สีแบรนด์</span>
+          <span className="mb-1 flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted">
+            สีแบรนด์
+            <Help>
+              แต่ละสีมีค่าคู่ สว่าง/มืด ที่ตรวจแล้วว่าอ่านออกทั้งสองโหมด — จึงเลือกจากลิสต์ ไม่ใช่กรอกรหัสสีเอง
+            </Help>
+          </span>
           <div className="flex flex-wrap gap-2">
             {BRAND_COLORS.map((c) => (
               <button
@@ -62,9 +73,6 @@ export function BrandingCard({
               </button>
             ))}
           </div>
-          <p className="mt-2 text-xs text-faint">
-            แต่ละสีมีค่าคู่ สว่าง/มืด ที่ตรวจแล้วว่าอ่านออกทั้งสองโหมด — จึงเลือกจากลิสต์ ไม่ใช่กรอกรหัสสีเอง
-          </p>
         </div>
         <div className="sm:col-span-2">
           <Field label="ลิงก์โลโก้ (ไม่ใส่ = ใช้ตัวอักษรแรกของชื่อ)">
@@ -78,10 +86,6 @@ export function BrandingCard({
         </SaveButton>
         <MissingHint checks={[{ label: "ชื่อที่แสดงบนแถบเมนู", ok: !!name.trim() }]} />
       </div>
-      <p className="mt-2 text-xs text-faint">
-        สีสถานะ (เขียว = ปกติ · เหลือง = ค้าง · แดง = ผิดพลาด) ตั้งค่าไม่ได้โดยตั้งใจ —
-        ต้องแปลเหมือนกันทุกกิจการเวลาสอนงานหรือแก้ปัญหาทางโทรศัพท์
-      </p>
     </Card>
   );
 }

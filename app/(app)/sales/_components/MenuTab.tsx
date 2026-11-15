@@ -2,7 +2,7 @@
 
 import { useConfirm } from "@/lib/shared/ui";
 import { useEffect, useRef, useState } from "react";
-import { Card, NumBox, NumInput, Select, TextInput, useSaver, fmt, LoadError } from "./ui";
+import { Card, Help, NumBox, NumInput, Select, TextInput, useSaver, fmt, LoadError } from "./ui";
 import { getSaleMenuAction, getMenuLinkOptionsAction, saveSaleMenuAction, deleteSaleMenuAction } from "../actions";
 import type { SaleMenuRow } from "../data";
 
@@ -130,9 +130,11 @@ export function MenuTab({ active, hasProduction }: { active: boolean; hasProduct
             <TextInput value={form.menuName} onChange={(e) => setForm({ ...form, menuName: e.target.value })} />
           </label>
           <label className="block">
-            <span className="mb-1 block text-muted">ราคาขายต่อหน่วย (รวม VAT แล้ว)</span>
+            <span className="mb-1 flex items-center gap-1.5 text-muted">
+              ราคาขายต่อหน่วย (รวม VAT แล้ว)
+              <Help>ใส่ราคาที่ลูกค้าจ่ายจริง เช่น 210 → ระบบถอด VAT ให้เอง (196.26 + 13.74)</Help>
+            </span>
             <NumBox value={form.price} blankZero onChange={(v) => setForm({ ...form, price: v === "" ? 0 : v })} />
-            <span className="mt-1 block text-xs text-faint">ใส่ราคาที่ลูกค้าจ่ายจริง เช่น 210 → ระบบถอด VAT ให้เอง (196.26 + 13.74)</span>
           </label>
           <label className="block">
             <span className="mb-1 block text-muted">ประเภท</span>

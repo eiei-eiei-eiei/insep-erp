@@ -17,7 +17,7 @@ import {
   getDistillMultiAction,
 } from "../actions";
 import { XYChart, type XYSeries } from "./XYChart";
-import { Card } from "./ui";
+import { Card, Help } from "./ui";
 import { CHART_COLORS } from "@/lib/shared/chart";
 import type { Product } from "./types";
 
@@ -108,7 +108,7 @@ function FermentCompare({ list }: { list: BatchInfo[] }) {
           <div className="overflow-x-auto">
             <table className="tbl">
               <thead>
-                <tr><th>Batch</th><th className="num">วันหมัก</th><th className="num">Brix เริ่ม→จบ</th><th className="num">Atten%</th><th className="num">~ดีกรี</th><th className="num">pH เริ่ม→จบ</th><th className="num">Temp พีค</th></tr>
+                <tr><th>Batch</th><th className="num">วันหมัก</th><th className="num">Brix เริ่ม→จบ</th><th className="num">Atten%</th><th className="num"><span className="inline-flex items-center gap-1.5">~ดีกรี<Help>~ดีกรีน้ำส่าประมาณจาก Brix (apparent) ไม่ใช่ค่าทางการ</Help></span></th><th className="num">pH เริ่ม→จบ</th><th className="num">Temp พีค</th></tr>
               </thead>
               <tbody>
                 {sel.filter((b) => (data[b] ?? []).length).map((b) => {
@@ -127,7 +127,6 @@ function FermentCompare({ list }: { list: BatchInfo[] }) {
                 })}
               </tbody>
             </table>
-            <p className="mt-2 text-xs text-faint">~ดีกรีน้ำส่าประมาณจาก Brix (apparent) ไม่ใช่ค่าทางการ</p>
           </div>
         </div>
       )}
@@ -190,7 +189,10 @@ function DistillCompare({ list, degreeMap, redistill = false }: {
   const hasData = series.length > 0;
 
   return (
-    <Card title={redistill ? "เทียบการกลั่นซ้ำ (overlay ต่อหม้อ)" : "เทียบการกลั่น (overlay ต่อหม้อ) + สรุปหัวใจ/Yield"}>
+    <Card
+      title={redistill ? "เทียบการกลั่นซ้ำ (overlay ต่อหม้อ)" : "เทียบการกลั่น (overlay ต่อหม้อ) + สรุปหัวใจ/Yield"}
+      help="หัวใจ = ค่าจริงจาก log_distill ถ้าปิด batch แล้ว · Yield = ปริมาณ@ดีกรีเป้าหมาย ÷ น้ำหมักที่กลั่น"
+    >
       <BatchPicker list={list} sel={sel} onToggle={toggle} />
       {sel.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-3 text-sm">
@@ -242,7 +244,6 @@ function DistillCompare({ list, degreeMap, redistill = false }: {
                 })}
               </tbody>
             </table>
-            <p className="mt-2 text-xs text-faint">หัวใจ = ค่าจริงจาก log_distill ถ้าปิด batch แล้ว · Yield = ปริมาณ@ดีกรีเป้าหมาย ÷ น้ำหมักที่กลั่น</p>
           </div>
         </div>
       )}

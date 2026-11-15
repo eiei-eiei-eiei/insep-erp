@@ -136,14 +136,13 @@ export function FermentTab({
             ))}
           </Select>
         </Field>
-        <Field label="ปริมาณต่อถัง (ล.) — แก้ไขได้">
+        <Field label="ปริมาณต่อถัง (ล.) — แก้ไขได้" help="ปริมาณต่อถัง × จำนวนภาชนะ = วัตถุดิบหลัก (แถวแรก) อัตโนมัติ — แก้ทับเองได้ · เลือกภาชนะแล้วเติมความจุให้">
           <NumInput value={volPerTank} onChange={(e) => { setVolPerTank(e.target.value); recalcMain(e.target.value, containerQty); }} />
         </Field>
         <Field label="จำนวนภาชนะ">
           <NumInput value={containerQty} onChange={(e) => { setContainerQty(e.target.value); recalcMain(volPerTank, e.target.value); }} />
         </Field>
       </div>
-      <p className="mt-1 text-xs text-faint">ปริมาณต่อถัง × จำนวนภาชนะ = วัตถุดิบหลัก (แถวแรก) อัตโนมัติ — แก้ทับเองได้ · เลือกภาชนะแล้วเติมความจุให้</p>
 
       <div className="mt-5">
         <div className="mb-2 flex items-center justify-between">

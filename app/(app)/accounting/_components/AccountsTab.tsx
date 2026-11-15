@@ -69,7 +69,7 @@ export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstra
 
   return (
     <div className="space-y-4">
-      <Card title={`ยอดคงเหลือทุกบัญชี ณ สิ้นเดือน ${d.month(period)}`}>
+      <Card title={`ยอดคงเหลือทุกบัญชี ณ สิ้นเดือน ${d.month(period)}`} help="ป้าย “ใช้ร่วม” = ใช้ได้หลายกิจการ">
         <LoadError err={err} onRetry={reload} what="ยอดคงเหลือ" />
         {!bal ? <p className="text-faint">{err ? "— โหลดไม่สำเร็จ —" : "กำลังโหลด…"}</p> : (
           <div className="overflow-x-auto">
@@ -89,7 +89,6 @@ export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstra
                 <tr className="border-t-2 border-line font-semibold"><td>รวมทุกบัญชี</td><td colSpan={3}></td><td className="num">{fmt(bal.grandTotal)}</td><td></td></tr>
               </tbody>
             </table>
-            <p className="mt-1 text-xs text-faint">ป้าย “ใช้ร่วม” = ใช้ได้หลายกิจการ</p>
           </div>
         )}
       </Card>

@@ -48,14 +48,15 @@ export function HistoryCard({
 
   return (
     <div className="space-y-4">
-      <Card title="ประวัติการแก้ไข">
-        <p className="mb-4 text-xs text-faint">
+      <Card
+        title="ประวัติการแก้ไข"
+        help={<>
           ทุกการเพิ่ม/แก้/ลบของข้อมูลสำคัญถูกบันทึกไว้ที่นี่ — ใครแก้ · แก้ช่องไหน · ค่าก่อนเป็นอะไร
           <br />
-          ★ หน้านี้ <b>ดูอย่างเดียว</b> · ถ้าจะย้อนค่ากลับ ให้กดคัดลอกค่าเก่าแล้วเอาไปกรอกกลับในหน้าของมันเอง
+          หน้านี้ <b>ดูอย่างเดียว</b> · ถ้าจะย้อนค่ากลับ ให้กดคัดลอกค่าเก่าแล้วเอาไปกรอกกลับในหน้าของมันเอง
           (ย้อนทั้งระบบใช้แท็บ <b>สำรองข้อมูล</b>)
-        </p>
-
+        </>}
+      >
         <form method="get" className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <label className="block text-sm">
             <span className="mb-1 block text-xs font-medium tracking-wide text-muted">ข้อมูล</span>

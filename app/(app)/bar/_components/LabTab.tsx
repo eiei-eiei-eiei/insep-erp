@@ -921,10 +921,10 @@ export function LabCategoriesCard({ boot }: { boot: BarBoot }) {
   const ARROW = "grid h-8 w-8 place-items-center rounded text-muted hover:bg-raised hover:text-ink disabled:opacity-30";
 
   return (
-    <Card title="หมวดการใช้ (ห้องทดลอง)">
-      <p className="mb-2 text-xs text-muted">
-        ใช้แยกทุนในหน้า <b>สรุปต้นทุน</b> · เพิ่มหมวดได้จากแท็บห้องทดลองเลย · การ์ดนี้ไว้เปลี่ยนชื่อ/จัดลำดับ/ลบ
-      </p>
+    <Card
+      title="หมวดการใช้ (ห้องทดลอง)"
+      help={<>ใช้แยกทุนในหน้า <b>สรุปต้นทุน</b> · เพิ่มหมวดได้จากแท็บห้องทดลองเลย · การ์ดนี้ไว้เปลี่ยนชื่อ/จัดลำดับ/ลบ</>}
+    >
       {cur.map((c, i) => {
         const n = used(c.categoryId);
         return (

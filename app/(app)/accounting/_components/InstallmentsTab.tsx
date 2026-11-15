@@ -37,7 +37,7 @@ export function InstallmentsTab() {
   return (
     <div className="space-y-4">
       {confirmNode}
-      <Card title="ดูกลุ่มแบ่งจ่ายงวด">
+      <Card title="ดูกลุ่มแบ่งจ่ายงวด" help="สร้างกลุ่มงวดใหม่ได้ที่แท็บ “บันทึก” → ติ๊ก “แบ่งจ่ายหลายงวด” · ชำระแต่ละงวดที่แท็บ “ลูกหนี้-เจ้าหนี้” · กดปุ่มรีโหลด ถ้าเพิ่งสร้างใหม่">
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[280px] flex-1">
             <Field label="เลือกกลุ่มงวด">
@@ -53,7 +53,6 @@ export function InstallmentsTab() {
           </div>
           <button onClick={refreshList} className="mb-0.5 rounded-lg border border-line px-3 py-2 text-sm text-muted hover:bg-raised"><IconRefresh size={16} /></button>
         </div>
-        <p className="mt-1 text-xs text-faint">สร้างกลุ่มงวดใหม่ได้ที่แท็บ “บันทึก” → ติ๊ก “แบ่งจ่ายหลายงวด” · ชำระแต่ละงวดที่แท็บ “ลูกหนี้-เจ้าหนี้” · กดปุ่มรีโหลด ถ้าเพิ่งสร้างใหม่</p>
       </Card>
 
       {loading && <p className="text-faint">กำลังโหลด…</p>}

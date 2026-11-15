@@ -169,7 +169,7 @@ export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: ()
       </Card>
 
       <Card title="อื่น ๆ">
-        <Field label="ป้ายช่องทาง/งาน (บรรทัดละ 1 ชื่อ)">
+        <Field label="ป้ายช่องทาง/งาน (บรรทัดละ 1 ชื่อ)" help="ใช้ดูรายงานว่างานไหนคุ้ม — 🚫 ไม่พิมพ์ลงบิลของลูกค้า">
           <textarea
             value={channels}
             onChange={(e) => setChannels(e.target.value)}
@@ -178,7 +178,6 @@ export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: ()
             className="w-full rounded-lg border border-line bg-card px-3 py-2 text-sm text-ink"
           />
         </Field>
-        <p className="mt-1 text-xs text-faint">ใช้ดูรายงานว่างานไหนคุ้ม — 🚫 ไม่พิมพ์ลงบิลของลูกค้า</p>
 
         <label className="mt-3 flex items-center gap-2 text-sm text-ink">
           <input type="checkbox" checked={roundCash} onChange={(e) => setRoundCash(e.target.checked)} />
@@ -223,7 +222,10 @@ export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: ()
           )}
 
           {/* D116 — เงินสดเก็บหมุนในร้าน ไม่ได้ฝากธนาคาร → ลงบัญชีแยกได้ */}
-          <Field label="บัญชีที่ยอดเงินสดเข้า">
+          <Field
+            label="บัญชีที่ยอดเงินสดเข้า"
+            help="ถ้าเงินสดเก็บไว้หมุนในร้าน ให้เลือกบัญชีเงินสด (เช่น เงินสดในร้าน) — ยอดในบัญชีธนาคารของแอปจะตรงกับเงินที่เข้าธนาคารจริง"
+          >
             <Select value={cashAccount} onChange={(e) => setCashAccount(e.target.value)}>
               <option value="">— ใช้บัญชีเดียวกับข้างบน —</option>
               {data.bankAccounts.map((b) => (
@@ -233,11 +235,16 @@ export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: ()
               ))}
             </Select>
           </Field>
-          <p className="mt-1 text-xs text-faint">
-            ถ้าเงินสดเก็บไว้หมุนในร้าน ให้เลือกบัญชีเงินสด (เช่น เงินสดในร้าน) — ยอดในบัญชีธนาคารของแอปจะตรงกับเงินที่เข้าธนาคารจริง
-          </p>
 
-          <Field label="หมวดรายรับ">
+          <Field
+            label="หมวดรายรับ"
+            help={
+              <>
+                ไม่กรอก = ใช้ <b>รายได้บาร์</b> · บิลบัญชีจะถูกสร้าง <b>1 ใบต่อ 1 วิธีรับเงินต่อวัน</b>
+                (เงินสด กับ โอน/QR แยกใบ)
+              </>
+            }
+          >
             <SuggestInput
               value={incomeCat}
               onChange={setIncomeCat}
@@ -246,10 +253,6 @@ export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: ()
               listId="bar-income-cat"
             />
           </Field>
-          <p className="mt-1 text-xs text-faint">
-            ไม่กรอก = ใช้ <b>รายได้บาร์</b> · บิลบัญชีจะถูกสร้าง <b>1 ใบต่อ 1 วิธีรับเงินต่อวัน</b>
-            (เงินสด กับ โอน/QR แยกใบ)
-          </p>
         </Card>
       )}
 

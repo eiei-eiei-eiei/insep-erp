@@ -41,10 +41,12 @@ export function ConnectorManager({ tenants, envOn }: { tenants: ConnectorTenantR
   return (
     <div className="space-y-4">
       {confirmNode}
-      <Card title="Claude connector — ส่งรูปบิลในแชท Claude แล้วลงบัญชี">
+      <Card
+        title="Claude connector — ส่งรูปบิลในแชท Claude แล้วลงบัญชี"
+        help="เฉพาะผู้ใช้ที่อนุญาตในหน้านี้เท่านั้นที่เชื่อมต่อ Claude เข้าบัญชีของลูกค้าได้ · ถอนสิทธิ์แล้วหยุดทันที"
+      >
         <p className="text-sm text-muted">
-          เฉพาะผู้ใช้ที่อนุญาตในหน้านี้เท่านั้นที่เชื่อมต่อ Claude เข้าบัญชีของลูกค้าได้ · ถอนสิทธิ์แล้วหยุดทันที
-          {" · "}อนุญาตอยู่ทั้งหมด <b className="text-ink">{totalAllowed}</b> คน
+          อนุญาตอยู่ทั้งหมด <b className="text-ink">{totalAllowed}</b> คน
         </p>
         <p className="mt-2 text-xs text-faint">
           URL ที่ใส่ใน claude.ai = โดเมนของแอปที่ลูกค้าใช้ + <code>{MCP_PATH}</code>

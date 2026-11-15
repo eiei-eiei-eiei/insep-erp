@@ -103,14 +103,15 @@ export function CompanyCard({
 
   return (
     <div className="space-y-4">
-      <Card title="ข้อมูลกิจการ">
-        <p className="mb-3 text-xs text-faint">
+      <Card
+        title="ข้อมูลกิจการ"
+        help={<>
           {sections.salesDocs
             ? "ค่าชุดนี้ขึ้นหัวใบเสนอราคา / ใบแจ้งหนี้ / ใบกำกับภาษี / ใบเสร็จรับเงิน และหัวฟอร์มราชการ"
             : "ค่าชุดนี้ขึ้นหัวเอกสารและฟอร์มราชการของระบบ"}
           {" "}(แก้ที่นี่ที่เดียว เอกสารทั้งระบบตรงกัน)
-        </p>
-
+        </>}
+      >
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {multiEntity && (
             <div className="sm:col-span-2">

@@ -52,12 +52,15 @@ export function LineCard({
   const configured = current.hasToken && !!current.groupId;
 
   return (
-    <Card title="แจ้งเตือน LINE">
-
-      <p className="mb-3 text-xs text-faint">
-        {events.length > 0 ? `ระบบจะส่งข้อความเข้ากลุ่ม LINE ที่ตั้งไว้เมื่อ: ${events.join(" · ")}` : "ระบบจะส่งข้อความเข้ากลุ่ม LINE ที่ตั้งไว้"}
-        {configured ? null : " — ยังไม่ได้ตั้งค่า ตอนนี้ระบบจะไม่ส่งอะไรเลย (ไม่ถือว่าผิดพลาด)"}
-      </p>
+    <Card
+      title="แจ้งเตือน LINE"
+      help={events.length > 0 ? `ระบบจะส่งข้อความเข้ากลุ่ม LINE ที่ตั้งไว้เมื่อ: ${events.join(" · ")}` : "ระบบจะส่งข้อความเข้ากลุ่ม LINE ที่ตั้งไว้"}
+    >
+      {!configured && (
+        <p className="mb-3 text-xs text-faint">
+          ยังไม่ได้ตั้งค่า ตอนนี้ระบบจะไม่ส่งอะไรเลย (ไม่ถือว่าผิดพลาด)
+        </p>
+      )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="Channel access token">

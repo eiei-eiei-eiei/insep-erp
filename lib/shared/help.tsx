@@ -128,7 +128,7 @@ export function Help({ children, tone = "info", label, className = "" }: HelpPro
             e.stopPropagation();
           }}
           style={{ left: pos?.left ?? 0, top: pos?.top ?? 0, visibility: pos ? "visible" : "hidden" }}
-          className={`fixed z-[70] block max-h-[60vh] w-72 max-w-[calc(100vw-16px)] overflow-y-auto rounded-lg border bg-card px-3 py-2 text-left text-xs font-normal normal-case leading-relaxed tracking-normal text-ink shadow-lg ${
+          className={`fixed z-[70] block max-h-[60vh] w-72 max-w-[calc(100vw-16px)] overflow-y-auto rounded-lg border bg-card px-3 py-2 whitespace-normal text-left text-xs font-normal normal-case leading-relaxed tracking-normal text-ink shadow-lg ${
             warn ? "border-warn-line" : "border-line"
           }`}
         >

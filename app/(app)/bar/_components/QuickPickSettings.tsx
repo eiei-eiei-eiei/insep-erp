@@ -54,7 +54,10 @@ export function QuickPickSettings({ boot, onReload }: { boot: BarBoot; onReload:
   return (
     <>
       <div className="lg:col-span-2">
-        <h3 className="mt-2 text-sm font-semibold text-ink">ปุ่มลัดในหน้าสร้างเมนู</h3>
+        <h3 className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-ink">
+          ปุ่มลัดในหน้าสร้างเมนู
+        </h3>
+        {/* คงไว้บนจอ (D173 เฟส 2b) — ไม่เห็นแล้วกดปุ่มบันทึกด้านบน นึกว่าการ์ดนี้บันทึกแล้ว */}
         <p className="text-xs text-muted">
           3 การ์ดนี้ <b>บันทึกแยกทีละการ์ด</b> ด้วยปุ่มในการ์ดเอง (ไม่เกี่ยวกับปุ่ม บันทึกการตั้งค่า ด้านบน)
         </p>
@@ -101,9 +104,8 @@ function HouseSlotCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Re
   }
 
   return (
-    <Card title="เหล้าประจำบ้าน (House)">
+    <Card title="เหล้าประจำบ้าน (House)" help="ตั้งชื่อช่อง แล้วเลือกขวดที่ใช้อยู่ตอนนี้ · สูตรอ้างช่องแทนขวดยี่ห้อได้">
       <p className="mb-2 text-xs text-muted">
-        ตั้งชื่อช่อง แล้วเลือกขวดที่ใช้อยู่ตอนนี้ · สูตรอ้างช่องแทนขวดยี่ห้อได้ ·{" "}
         <b>เปลี่ยนขวด = ทุกเมนูที่อ้างช่องนี้เปลี่ยนทันที</b> (บิลเก่าไม่ขยับ) · ขวดหมดระบบปล่อยติดลบ ไม่สลับขวดให้เอง
       </p>
       {rows.length === 0 && <p className="text-xs text-faint">— ยังไม่มีช่อง —</p>}
@@ -200,11 +202,17 @@ function GarnishCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Relo
   }
 
   return (
-    <Card title="ชุดตกแต่ง">
+    <Card
+      title="ชุดตกแต่ง"
+      help={
+        <>
+          กดชุดตกแต่งในหน้าสร้างเมนู = <b>เพิ่มเป็นบรรทัดของชุด</b> (กดซ้ำ = เพิ่มจำนวนชุด) · จำนวนพิมพ์เศษส่วนได้ เช่น{" "}
+          <b>1/7</b> (มะนาว 1 ลูกฝานได้ 7 แว่น) · ไม่เลือกวัตถุดิบ = ชุดที่ไม่ตัดสต็อก
+        </>
+      }
+    >
       <p className="mb-2 text-xs text-muted">
-        กดชุดตกแต่งในหน้าสร้างเมนู = <b>เพิ่มเป็นบรรทัดของชุด</b> (กดซ้ำ = เพิ่มจำนวนชุด) ·{" "}
-        <b>แก้ชุดที่นี่ = ทุกเมนูที่ใช้ชุดนี้เปลี่ยนตาม</b> (แก้วที่ขายไปแล้วไม่ขยับ) · จำนวนพิมพ์เศษส่วนได้ เช่น{" "}
-        <b>1/7</b> (มะนาว 1 ลูกฝานได้ 7 แว่น) · ไม่เลือกวัตถุดิบ = ชุดที่ไม่ตัดสต็อก
+        <b>แก้ชุดที่นี่ = ทุกเมนูที่ใช้ชุดนี้เปลี่ยนตาม</b> (แก้วที่ขายไปแล้วไม่ขยับ)
       </p>
       {rows.length === 0 && <p className="text-xs text-faint">— ยังไม่มีชุดตกแต่ง —</p>}
       {rows.map((r, i) => {
@@ -317,10 +325,14 @@ function PinCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Reload; 
   }
 
   return (
-    <Card title="วัตถุดิบใช้บ่อย">
-      <p className="mb-2 text-xs text-muted">
-        ขึ้นเป็นปุ่มลัดกลุ่ม <b>ใช้บ่อย</b> ในหน้าสร้างเมนู เรียงตามที่จัดที่นี่ (ไม่เรียงตามยอดใช้ — ปุ่มอยู่ที่เดิมเสมอ)
-      </p>
+    <Card
+      title="วัตถุดิบใช้บ่อย"
+      help={
+        <>
+          ขึ้นเป็นปุ่มลัดกลุ่ม <b>ใช้บ่อย</b> ในหน้าสร้างเมนู เรียงตามที่จัดที่นี่ (ไม่เรียงตามยอดใช้ — ปุ่มอยู่ที่เดิมเสมอ)
+        </>
+      }
+    >
       {order.length === 0 && <p className="text-xs text-faint">— ยังไม่ได้ปักหมุด —</p>}
       {order.map((id, i) => {
         const it = byId.get(id);

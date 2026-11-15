@@ -20,7 +20,7 @@ import {
 import { buildReceipt } from "@/lib/bar/receipt";
 import { barTotals } from "@/lib/bar/totals";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
-import { Card, Field, TextInput, Select, useConfirm } from "@/lib/shared/ui";
+import { Card, Field, Help, TextInput, Select, useConfirm } from "@/lib/shared/ui";
 
 /** ตัวอย่างที่ใช้พรีวิว — ★ ตั้งใจให้มีครบทุกอย่างที่บล็อกต่าง ๆ ต้องใช้ */
 const SAMPLE_LINES = [
@@ -269,7 +269,14 @@ export function ReceiptLayoutCard({
             *    ให้ลูกค้าเห็น ซึ่งผิดทั้งภาพลักษณ์และผิดว่าใครเป็นผู้ขายบนกระดาษใบนั้น
             */}
           <div className="mt-3">
-            <Field label="ลิงก์โลโก้ของบาร์">
+            <Field
+              label="ลิงก์โลโก้ของบาร์"
+              help={
+                <>
+                  <b>คนละตัวกับโลโก้แบรนด์</b> ใน ตั้งค่า → แบรนด์ — บาร์มักขายในนามอีกกิจการหนึ่ง
+                </>
+              }
+            >
               <TextInput
                 value={value.logoUrl ?? ""}
                 onChange={(e) => set({ logoUrl: e.target.value })}
@@ -277,8 +284,6 @@ export function ReceiptLayoutCard({
               />
             </Field>
             <p className="mt-1 text-xs text-faint">
-              ★ <b>คนละตัวกับโลโก้แบรนด์</b> ใน ตั้งค่า → แบรนด์ — บาร์มักขายในนามอีกกิจการหนึ่ง
-              <br />
               🚨 กระดาษความร้อนพิมพ์ <b>ขาวดำล้วน 203dpi</b> — ภาพสีเทาจะออกมาเป็นด่าง
               ใช้โลโก้ที่เป็นเส้นทึบคอนทราสต์สูง แล้ว<b>พิมพ์จริงดูหนึ่งใบ</b>ก่อนใช้งาน
             </p>
@@ -324,17 +329,19 @@ export function ReceiptLayoutCard({
           ))}
 
           {/* ★ วางไว้ท้ายสุดของคอลัมน์ตั้งค่า — ปุ่มล้างค่าไม่ควรอยู่ใกล้ปุ่มที่กดบ่อย */}
-          <button
-            type="button"
-            onClick={resetAll}
-            className="mt-4 rounded-lg border border-line bg-card px-3 py-1.5 text-sm text-ink hover:bg-raised"
-          >
-            คืนค่าเริ่มต้น
-          </button>
-          <p className="mt-1 text-xs text-faint">
-            คืนทุกอย่างในการ์ดนี้กลับเป็นค่าเริ่มต้น — ยังไม่มีผลจนกว่าจะกด
-            <b> บันทึกการตั้งค่า</b>
-          </p>
+          <div className="mt-4 flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={resetAll}
+              className="rounded-lg border border-line bg-card px-3 py-1.5 text-sm text-ink hover:bg-raised"
+            >
+              คืนค่าเริ่มต้น
+            </button>
+            <Help>
+              คืนทุกอย่างในการ์ดนี้กลับเป็นค่าเริ่มต้น — ยังไม่มีผลจนกว่าจะกด
+              <b> บันทึกการตั้งค่า</b>
+            </Help>
+          </div>
         </div>
 
         {/* ───────── ขวา: พรีวิวขนาดเท่ากระดาษจริง ───────── */}

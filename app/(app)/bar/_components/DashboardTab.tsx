@@ -403,7 +403,7 @@ export function DashboardTab({
             )}
           </Card>
 
-          <Card title="แยกตามช่องทาง/งาน">
+          <Card title="แยกตามช่องทาง/งาน" help={<>🎯 ตารางนี้คือตัวที่ตอบว่า &quot;บูธงานนั้นคุ้มไหม&quot;</>}>
             {channels.length === 0 ? (
               <Empty>— ยังไม่มียอดในช่วงนี้ —</Empty>
             ) : (
@@ -434,7 +434,6 @@ export function DashboardTab({
                 </table>
               </div>
             )}
-            <p className="mt-1 text-xs text-faint">🎯 ตารางนี้คือตัวที่ตอบว่า &quot;บูธงานนั้นคุ้มไหม&quot;</p>
           </Card>
 
           <Card title="เมนูขายดี (10 อันดับ)">

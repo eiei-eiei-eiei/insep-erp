@@ -7,6 +7,7 @@ import { rolesFor } from "@/lib/shared/moduleScope";
 import { PASSWORD_MIN } from "@/lib/shared/password";
 import {
   Card,
+  Help,
   Modal,
   ModalCancel,
   MissingHint,
@@ -111,12 +112,13 @@ export function UsersManager({
 
   return (
     <div>
-      <h2 className="mb-1 text-xl font-bold text-ink">จัดการผู้ใช้</h2>
-      <p className="mb-6 text-sm text-faint">
-        สร้างบัญชีด้วย username (ไม่ต้องมีอีเมลจริง) · ให้สิทธิ์ · รีเซ็ตรหัสผ่าน · ลบ —
-        เฉพาะเจ้าของกิจการ (main)
-      </p>
-
+      <h2 className="mb-6 flex items-center gap-1.5 text-xl font-bold text-ink">
+        จัดการผู้ใช้
+        <Help>
+          สร้างบัญชีด้วย username (ไม่ต้องมีอีเมลจริง) · ให้สิทธิ์ · รีเซ็ตรหัสผ่าน · ลบ —
+          เฉพาะเจ้าของกิจการ (main)
+        </Help>
+      </h2>
 
       {/* สร้างผู้ใช้ใหม่ */}
       <Card className="mb-8">

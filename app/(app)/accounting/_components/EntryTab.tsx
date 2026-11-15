@@ -434,7 +434,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
       </div>
 
       <div ref={itemsCardRef} onKeyDown={onItemsKeyDown}>
-      <Card title="รายการสินค้า">
+      <Card title="รายการสินค้า" help={ITEM_KEYS_HINT}>
         <VatModeCard mode={vatMode} effMode={effVatMode} hasVat={effHasVat} onChange={changeVatMode} />
         {/* Desktop: ตาราง */}
         <div className="hidden overflow-x-auto md:block">
@@ -513,7 +513,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
         <datalist id="hist-item-cats">{itemCatOptions.map((v) => (<option key={v} value={v} />))}</datalist>
         <datalist id="hist-item-jobs">{itemJobOptions.map((v) => (<option key={v} value={v} />))}</datalist>
         <button type="button" onClick={addItem} className="mt-2 text-sm text-muted hover:text-ink">+ เพิ่มรายการ</button>
-        <p className="mt-1 text-xs text-faint">{itemsHintText(effVatMode)} · {ITEM_KEYS_HINT}</p>
+        <p className="mt-1 text-xs text-faint">{itemsHintText(effVatMode)}</p>
       </Card>
       </div>
 
@@ -662,9 +662,8 @@ function ContactModal({ defaultName, onClose, onSaved }: { defaultName: string; 
             <Field label="สาขา"><TextInput value={branch} onChange={(e) => setBranch(e.target.value)} /></Field>
           </div>
           <Field label="ที่อยู่"><TextInput value={address} onChange={(e) => setAddress(e.target.value)} /></Field>
-          <Field label="ประเภท"><Select value={contactType} onChange={(e) => setContactType(e.target.value)}><option>ทั้งสอง</option><option>ผู้ขาย</option><option>ลูกค้า</option></Select></Field>
+          <Field label="ประเภท" help="“ทั้งสอง” = เป็นได้ทั้งผู้ขายและลูกค้า → โผล่ทั้งรายรับและรายจ่าย"><Select value={contactType} onChange={(e) => setContactType(e.target.value)}><option>ทั้งสอง</option><option>ผู้ขาย</option><option>ลูกค้า</option></Select></Field>
         </div>
-        <p className="mt-1 text-xs text-faint">“ทั้งสอง” = เป็นได้ทั้งผู้ขายและลูกค้า → โผล่ทั้งรายรับและรายจ่าย</p>
     </Modal>
   );
 }

@@ -50,7 +50,19 @@ export function DateFormatCard({
   );
 
   return (
-    <Card title="รูปแบบวันที่">
+    <Card
+      title="รูปแบบวันที่"
+      help={<>
+        <span className="mb-1 block font-medium">ที่ไม่เปลี่ยนตามค่านี้</span>
+        {/* <span> ไม่ใช่ <ul> — กล่องคำอธิบายอยู่ใน <h2> ของการ์ด */}
+        <span className="block space-y-0.5">
+          <span className="block">• ฟอร์มราชการ (ภส. · ภพ.30 · ภงด. · 50ทวิ · สปส.) — ใช้รูปแบบตามแบบของกรม</span>
+          <span className="block">• ไฟล์ส่งออก Excel/CSV และไฟล์สำรองข้อมูล — ใช้ ปี-เดือน-วัน ค.ศ. ให้โปรแกรมอื่นอ่านได้ถูก</span>
+          <span className="block">• ช่องเลือกวันที่ตอนกรอก — แสดงตามภาษาและการตั้งค่าของเบราว์เซอร์/เครื่อง</span>
+          <span className="block">• ข้อความเตือนใน LINE</span>
+        </span>
+      </>}
+    >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <Field label="บนหน้าจอ">
@@ -70,7 +82,10 @@ export function DateFormatCard({
           </dl>
         </div>
         <div>
-          <Field label="บนเอกสารการค้า">
+          <Field
+            label="บนเอกสารการค้า"
+            help="ใบเสนอราคา · ใบแจ้งหนี้ · ใบกำกับภาษี · ใบเสร็จ · ใบลดหนี้ · บิลบาร์ · สลิปเงินเดือน"
+          >
             <Select value={doc} onChange={(e) => setDoc(e.target.value as DateFormat)}>
               {DATE_FORMATS.map(option)}
             </Select>
@@ -79,9 +94,6 @@ export function DateFormatCard({
             <dt className="text-faint">วันที่บนเอกสาร</dt>
             <dd className="text-ink">{formatDate(todayISO, doc)}</dd>
           </dl>
-          <p className="mt-2 text-xs text-faint">
-            ใบเสนอราคา · ใบแจ้งหนี้ · ใบกำกับภาษี · ใบเสร็จ · ใบลดหนี้ · บิลบาร์ · สลิปเงินเดือน
-          </p>
         </div>
       </div>
 
@@ -92,16 +104,6 @@ export function DateFormatCard({
         {dirty && (
           <p className="mt-2 text-xs text-warn">ยังไม่ได้บันทึก — กด บันทึกรูปแบบวันที่ ก่อน รูปแบบที่เลือกจึงจะมีผล</p>
         )}
-      </div>
-
-      <div className="mt-4 border-t border-line pt-3 text-xs text-faint">
-        <p className="mb-1 font-medium text-muted">ที่ไม่เปลี่ยนตามค่านี้</p>
-        <ul className="list-disc space-y-0.5 pl-5">
-          <li>ฟอร์มราชการ (ภส. · ภพ.30 · ภงด. · 50ทวิ · สปส.) — ใช้รูปแบบตามแบบของกรม</li>
-          <li>ไฟล์ส่งออก Excel/CSV และไฟล์สำรองข้อมูล — ใช้ ปี-เดือน-วัน ค.ศ. ให้โปรแกรมอื่นอ่านได้ถูก</li>
-          <li>ช่องเลือกวันที่ตอนกรอก — แสดงตามภาษาและการตั้งค่าของเบราว์เซอร์/เครื่อง</li>
-          <li>ข้อความเตือนใน LINE</li>
-        </ul>
       </div>
     </Card>
   );

@@ -11,7 +11,7 @@ import { RecipeEditor, PriceSuggest } from "./RecipeEditor";
 import { lineCost } from "@/lib/bar/cost";
 import { searchMenus } from "@/lib/bar/menuFilter";
 import { customerLabel } from "@/lib/bar/customerName";
-import { Card, TextInput, NumBox, Select, Field, Badge, Empty, Modal, ModalCancel, fmt, useSaver, useConfirm } from "@/lib/shared/ui";
+import { Card, TextInput, NumBox, Select, Field, Badge, Empty, Help, Modal, ModalCancel, fmt, useSaver, useConfirm } from "@/lib/shared/ui";
 import {
   saveMenuAction, saveCategoryAction, deleteCategoryAction, saveCategoriesAction,
   getMenuUsageAction, setMenuActiveAction, deleteMenuAction,
@@ -352,9 +352,11 @@ function CategoryEditor({
   return (
     <div className="mb-3 rounded-lg bg-raised p-3">
       {confirmNode}
-      <div className="mb-1 text-sm font-medium text-ink">หมวดเมนู (เรียงตามลำดับที่โชว์ในหน้าขาย)</div>
-      <div className="mb-2 text-xs text-muted">
-        ▲▼ เลื่อนลำดับ · แก้ชื่อในช่อง · เสร็จแล้วกด <b>บันทึก</b> ทีเดียว
+      <div className="mb-2 flex items-center gap-1.5 text-sm font-medium text-ink">
+        หมวดเมนู (เรียงตามลำดับที่โชว์ในหน้าขาย)
+        <Help>
+          ▲▼ เลื่อนลำดับ · แก้ชื่อในช่อง · เสร็จแล้วกด <b>บันทึก</b> ทีเดียว
+        </Help>
       </div>
       {ids.map((id, i) => {
         const c = byId.get(id);
@@ -595,7 +597,10 @@ export function MenuModal({
             <TextInput value={note} onChange={(e) => setNote(e.target.value)} placeholder="ของพี่โอ๊ต — ลดเวอร์มุท" />
           </Field>
         </div>
-        <Field label="สร้างให้ลูกค้า">
+        <Field
+          label="สร้างให้ลูกค้า"
+          help={<>แค่ป้ายบอกที่มา + ใช้กับชิป &quot;ดูเฉพาะเมนูของ…&quot; ในหน้าขาย · ลูกค้าคนอื่นยังสั่งเมนูนี้ได้ตามปกติ</>}
+        >
           <Select value={createdFor} onChange={(e) => setCreatedFor(e.target.value)}>
             <option value="">— ไม่ได้สร้างให้ใคร —</option>
             {boot.customers.map((c) => (
@@ -605,18 +610,17 @@ export function MenuModal({
             ))}
           </Select>
         </Field>
-        <p className="-mt-1 text-xs text-faint">
-          แค่ป้ายบอกที่มา + ใช้กับชิป &quot;ดูเฉพาะเมนูของ…&quot; ในหน้าขาย · ลูกค้าคนอื่นยังสั่งเมนูนี้ได้ตามปกติ
-        </p>
-        <Field label="วิธีชง">
-          <textarea
-            value={method}
-            onChange={(e) => setMethod(e.target.value)}
-            rows={2}
-            placeholder="shake 12 วิ · double strain · เหล้าบ๊วยลอยหน้า"
-            className="w-full rounded-lg border border-line bg-card px-3 py-2 text-sm text-ink"
-          />
-        </Field>
+        <div className="mt-2">
+          <Field label="วิธีชง">
+            <textarea
+              value={method}
+              onChange={(e) => setMethod(e.target.value)}
+              rows={2}
+              placeholder="shake 12 วิ · double strain · เหล้าบ๊วยลอยหน้า"
+              className="w-full rounded-lg border border-line bg-card px-3 py-2 text-sm text-ink"
+            />
+          </Field>
+        </div>
       </div>
     </Modal>
   );
