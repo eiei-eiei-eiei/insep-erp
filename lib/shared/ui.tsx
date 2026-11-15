@@ -17,8 +17,10 @@ import { showToast } from "./toast";
 import { missingText, type FieldCheck } from "./forms";
 import { comboKey } from "./keyboard";
 import { Modal, ModalCancel } from "./modal";
+import { Help } from "./help";
 
 export { Modal, ModalCancel, type ModalProps } from "./modal";
+export { Help, type HelpProps } from "./help";
 
 export type SaveResultLike = { ok: boolean; error?: string; data?: unknown };
 
@@ -183,19 +185,33 @@ export function LoadError({ err, onRetry, what }: { err: boolean; onRetry?: () =
  *   🚨 อย่าเอาแถบในการ์ดกลับมา — ผู้ใช้สั่งเอาออกเอง (ค้างทั้งที่เริ่มงานถัดไปแล้ว)
  */
 
-export function Field({ label, children }: { label: string; children: React.ReactNode }) {
+/**
+ * `help` = คำอธิบายที่ซ่อนอยู่หลังปุ่ม ⓘ ข้างป้าย (D173) — แทนโน้ตตัวเล็กใต้ช่อง
+ * 🚨 คำเตือนเงิน/ภาษี/ราชการ และข้อความตามสถานะ ห้ามใส่ที่นี่ (DESIGN_SYSTEM "คำอธิบาย ⓘ")
+ */
+export function Field({ label, help, children }: { label: string; help?: React.ReactNode; children: React.ReactNode }) {
   return (
     <label className="block text-sm">
-      <span className="mb-1 block text-xs font-medium tracking-wide text-muted">{label}</span>
+      <span className="mb-1 flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted">
+        {label}
+        {help && <Help>{help}</Help>}
+      </span>
       {children}
     </label>
   );
 }
 
-export function Card({ title, children, className }: { title?: string; children: React.ReactNode; className?: string }) {
+export function Card({
+  title, help, children, className,
+}: { title?: string; help?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
     <div className={`rounded-lg border border-line bg-card p-4 sm:p-5 ${className ?? ""}`}>
-      {title && <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-ink">{title}</h2>}
+      {title && (
+        <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-ink">
+          {title}
+          {help && <Help>{help}</Help>}
+        </h2>
+      )}
       {children}
     </div>
   );

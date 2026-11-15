@@ -64,7 +64,7 @@ function ChipList({ kind, title, initial, placeholder, emptyHint, note }: {
   kind: string; title: string; initial: string[]; placeholder?: string;
   /** ข้อความตอนยังไม่มีรายการ — ใช้บอกว่า "ระบบใช้ค่าปริยายอะไรให้อยู่" */
   emptyHint?: string;
-  /** คำอธิบายใต้กล่อง (ผลของการตั้งค่านี้) */
+  /** คำอธิบาย (ผลของการตั้งค่านี้) — อยู่หลังปุ่ม ⓘ ข้างหัวการ์ด (D173) */
   note?: string;
 }) {
   const { pending, run } = useSaver();
@@ -79,7 +79,7 @@ function ChipList({ kind, title, initial, placeholder, emptyHint, note }: {
     run(() => deleteSettingAction(kind, v), "ลบแล้ว", () => setList((p) => p.filter((x) => x !== v)));
   }
   return (
-    <Card title={title}>
+    <Card title={title} help={note}>
       <div className="mb-2 flex flex-wrap gap-2">
         {list.length === 0 && (
           <span className={emptyHint ? "text-sm text-warn" : "text-sm text-faint"}>
@@ -96,7 +96,6 @@ function ChipList({ kind, title, initial, placeholder, emptyHint, note }: {
         <TextInput value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} placeholder={placeholder ?? "เพิ่มรายการ…"} />
         <SaveButton pending={pending} onClick={add}>เพิ่ม</SaveButton>
       </div>
-      {note && <p className="mt-2 text-xs text-faint">{note}</p>}
     </Card>
   );
 }
