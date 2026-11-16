@@ -349,8 +349,8 @@ function BatchHistory({
                         ยกเลิก
                       </button>
                     ) : (
-                      <span className="text-xs text-faint" title={block}>
-                        ยกเลิกไม่ได้
+                      <span className="block max-w-56 whitespace-normal text-xs text-faint" title={block}>
+                        ยกเลิกไม่ได้ — {block}
                       </span>
                     ))}
                 </td>
@@ -432,6 +432,7 @@ function PrepModal({
             {def ? (
               <div className="py-2 text-sm text-muted" title="เปลี่ยนหน่วยได้ที่ส่วน วัตถุดิบ → แก้ไข (ตอนยอดเป็น 0 และไม่มีสูตรเมนูใช้)">
                 {u}
+                <p className="text-xs text-faint">เปลี่ยนหน่วยได้ที่ส่วน วัตถุดิบ → แก้ไข (ตอนยอดเป็น 0 และไม่มีสูตรเมนูใช้)</p>
               </div>
             ) : (
               <SuggestInput value={unit} onChange={setUnit} options={UNITS} listId="prep-units" />
@@ -587,6 +588,7 @@ function BatchModal({
           ของยังไม่เข้า — กรองเสร็จแล้วค่อยกด เสร็จแล้ว ที่กล่องกำลังแช่ · ขวดไม่พอก็ตัดได้ (ติดลบ)
         </p>
         {errSoak && <p className="mt-1 text-xs text-warn">{errSoak}</p>}
+        {errNow && errNow !== errSoak && <p className="mt-1 text-xs text-warn">ทำเสร็จแล้วไม่ได้: {errNow}</p>}
       </div>
     </Modal>
   );

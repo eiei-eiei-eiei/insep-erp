@@ -1,7 +1,8 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { Card, Empty, Badge, RowBtn } from "@/lib/shared/ui";
+import { Empty, Badge, Field, RowBtn, Select, TextInput } from "@/lib/shared/ui";
+import { SettingsCard } from "@/lib/shared/settings";
 import { tableLabel, type TenantTable } from "@/lib/shared/tenantTables";
 import { changedFields, rawBefore, rowPkLabel, ACTION_LABEL_TH, type EditLogRow } from "@/lib/shared/editLog";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
@@ -48,7 +49,7 @@ export function HistoryCard({
 
   return (
     <div className="space-y-4">
-      <Card
+      <SettingsCard
         title="ประวัติการแก้ไข"
         help={<>
           ทุกการเพิ่ม/แก้/ลบของข้อมูลสำคัญถูกบันทึกไว้ที่นี่ — ใครแก้ · แก้ช่องไหน · ค่าก่อนเป็นอะไร
@@ -58,55 +59,34 @@ export function HistoryCard({
         </>}
       >
         <form method="get" className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <label className="block text-sm">
-            <span className="mb-1 block text-xs font-medium tracking-wide text-muted">ข้อมูล</span>
-            <select
-              name="table"
-              defaultValue={filter.table}
-              className="w-full rounded-lg border border-line bg-card px-3 py-2 text-ink outline-none focus:border-brand"
-            >
+          <Field label="ข้อมูล">
+            <Select name="table" defaultValue={filter.table}>
               <option value="">ทั้งหมด</option>
               {tables.map((t) => (
                 <option key={t} value={t}>{tableLabel(t)}</option>
               ))}
-            </select>
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-xs font-medium tracking-wide text-muted">การกระทำ</span>
-            <select
-              name="action"
-              defaultValue={filter.action}
-              className="w-full rounded-lg border border-line bg-card px-3 py-2 text-ink outline-none focus:border-brand"
-            >
+            </Select>
+          </Field>
+          <Field label="การกระทำ">
+            <Select name="action" defaultValue={filter.action}>
               <option value="">ทั้งหมด</option>
               <option value="insert">เพิ่ม</option>
               <option value="update">แก้ไข</option>
               <option value="delete">ลบ</option>
-            </select>
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-xs font-medium tracking-wide text-muted">ย้อนหลัง</span>
-            <select
-              name="days"
-              defaultValue={String(filter.days)}
-              className="w-full rounded-lg border border-line bg-card px-3 py-2 text-ink outline-none focus:border-brand"
-            >
+            </Select>
+          </Field>
+          <Field label="ย้อนหลัง">
+            <Select name="days" defaultValue={String(filter.days)}>
               <option value="7">7 วัน</option>
               <option value="30">30 วัน</option>
               <option value="90">90 วัน</option>
               <option value="365">1 ปี</option>
               <option value="0">ทั้งหมด</option>
-            </select>
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-xs font-medium tracking-wide text-muted">ค้นด้วยเลขที่/รหัส</span>
+            </Select>
+          </Field>
+          <Field label="ค้นด้วยเลขที่/รหัส">
             <div className="flex gap-1">
-              <input
-                name="q"
-                defaultValue={filter.q}
-                placeholder="เช่น TR-2026… / TESTDISL"
-                className="w-full rounded-lg border border-line bg-card px-3 py-2 text-ink outline-none focus:border-brand"
-              />
+              <TextInput name="q" defaultValue={filter.q} placeholder="เช่น TR-2026… / TESTDISL" />
               <button
                 type="submit"
                 className="whitespace-nowrap rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-on-brand hover:opacity-90"
@@ -114,11 +94,11 @@ export function HistoryCard({
                 ค้น
               </button>
             </div>
-          </label>
+          </Field>
         </form>
-      </Card>
+      </SettingsCard>
 
-      <Card title={`รายการ (${total.toLocaleString("th-TH")})`}>
+      <SettingsCard title="รายการ" count={total}>
         {rows.length === 0 ? (
           <Empty>— ไม่พบการแก้ไขตามเงื่อนไขนี้ —</Empty>
         ) : (
@@ -216,7 +196,7 @@ export function HistoryCard({
             </div>
           </>
         )}
-      </Card>
+      </SettingsCard>
     </div>
   );
 }

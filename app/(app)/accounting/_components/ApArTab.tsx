@@ -6,7 +6,7 @@ import { getApArAction, settleApArAction, voidTransactionAction } from "../actio
 import type { Bootstrap } from "./types";
 import { AdvanceCard } from "./AdvanceCard";
 import { accountsFor } from "@/lib/accounting/bankAccounts";
-import { Card, Field, Select, TextInput, fmt, todayISO, useSaver, useRead, LoadError } from "./ui";
+import { Card, Field, RowBtn, Select, TextInput, fmt, todayISO, useSaver, useRead, LoadError } from "./ui";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
 type ApAr = Awaited<ReturnType<typeof getApArAction>>;
@@ -69,8 +69,8 @@ export function ApArTab({ boot, entityId, active }: { boot: Bootstrap; entityId:
                     <td className="whitespace-nowrap">{d.date(r.dueDate)}</td>
                     <td className={`p-1 text-right font-medium ${tone}`}>{fmt(r.amount)}</td>
                     <td className="whitespace-nowrap">
-                      <button onClick={() => toggleSettle(r.transactionId)} className="text-sm text-muted hover:underline">ชำระ</button>
-                      <button onClick={() => doVoid(r.transactionId)} className="ml-2 text-sm text-crit hover:underline">ยกเลิก</button>
+                      <RowBtn tone="brand" onClick={() => toggleSettle(r.transactionId)}>ชำระ</RowBtn>
+                      <RowBtn tone="red" onClick={() => doVoid(r.transactionId)} className="ml-2">ยกเลิก</RowBtn>
                     </td>
                   </tr>
                   {settleId === r.transactionId && (

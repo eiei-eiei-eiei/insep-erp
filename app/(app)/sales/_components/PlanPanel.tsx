@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Modal, ModalCancel } from "@/lib/shared/ui";
 import { showToast } from "@/lib/shared/toast";
-import { fmt, todayISO, useSaver } from "./ui";
+import { fmt, NumInput, TextInput, todayISO, useSaver } from "./ui";
 import type { OrderRow } from "./types";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import {
@@ -191,11 +191,11 @@ function InstallmentInvoiceDialog({
       </div>
       <label className="block">
         <span className="mb-1 block font-bold text-muted">วันที่ออกใบแจ้งหนี้</span>
-        <input type="date" value={docDate} onChange={(e) => setDocDate(e.target.value)} className="w-full rounded-lg border border-line p-2" />
+        <TextInput type="date" value={docDate} onChange={(e) => setDocDate(e.target.value)} />
       </label>
       <label className="block">
         <span className="mb-1 block font-bold text-muted">ครบกำหนดชำระภายใน (วัน)</span>
-        <input type="number" min={0} value={days} onChange={(e) => setDays(Number(e.target.value) || 0)} className="w-full rounded-lg border border-line p-2" />
+        <NumInput min={0} value={days} onChange={(e) => setDays(Number(e.target.value) || 0)} />
       </label>
       {inst.seq === 1 && order.status === "รอคอนเฟิร์ม" && (
         <p className="text-xs text-warn">ออกใบแจ้งหนี้งวดแรกแล้ว จะแก้ใบเสนอราคาไม่ได้อีก (ยกเลิกใบแจ้งหนี้ก่อนจึงแก้ได้)</p>

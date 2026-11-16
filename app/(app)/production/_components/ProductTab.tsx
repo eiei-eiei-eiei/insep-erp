@@ -3,7 +3,7 @@
 import { useConfirm } from "@/lib/shared/ui";
 import { useEffect, useState } from "react";
 import { saveProductAction, getRecentProductsAction, deleteProductLogAction, updateProductLogAction } from "../actions";
-import { Card, Field, MissingHint, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
+import { Card, Field, IconBtn, MissingHint, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
 import { PRODUCT_TYPES, type Product } from "./types";
 import { IconEdit, IconTrash } from "@/lib/shared/icons";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
@@ -120,7 +120,7 @@ export function ProductTab({ products }: { products: Product[] }) {
       {recent.length === 0 ? <p className="text-sm text-faint">— ยังไม่มีรายการ —</p> : (
         <div className="overflow-x-auto">
           <table className="tbl">
-            <thead><tr><th>วันที่</th><th>ประเภท</th><th>สินค้า</th><th className="num">ขวด</th><th>หมายเหตุ</th><th></th></tr></thead>
+            <thead><tr><th className="whitespace-nowrap">วันที่</th><th className="whitespace-nowrap">ประเภท</th><th>สินค้า</th><th className="num whitespace-nowrap">ขวด</th><th>หมายเหตุ</th><th></th></tr></thead>
             <tbody>
               {recent.map((r) => (
                 editId === (r.id as number) ? (
@@ -138,13 +138,13 @@ export function ProductTab({ products }: { products: Product[] }) {
                 ) : (
                   <tr key={r.id as number}>
                     <td className="whitespace-nowrap">{d.date(String(r.doc_date))}</td>
-                    <td>{r.trans_type as string}</td>
+                    <td className="whitespace-nowrap">{r.trans_type as string}</td>
                     <td>{prodName(r.product_id as string)}</td>
-                    <td className="num">{r.amount as number}</td>
+                    <td className="num whitespace-nowrap">{r.amount as number}</td>
                     <td className="text-faint">{(r.note as string) ?? ""}</td>
                     <td className="whitespace-nowrap">
-                      <button onClick={() => startEdit(r)} disabled={pending} className="text-muted hover:text-ink" title="แก้ไข"><IconEdit size={16} /></button>
-                      <button onClick={() => del(r)} disabled={pending} className="ml-2 text-crit hover:text-crit" title="ลบ"><IconTrash size={16} /></button>
+                      <IconBtn onClick={() => startEdit(r)} disabled={pending} title="แก้ไข" aria-label={`แก้ไขรายการ ${prodName(r.product_id as string)}`} className="inline-grid"><IconEdit size={16} /></IconBtn>
+                      <IconBtn tone="red" onClick={() => del(r)} disabled={pending} title="ลบ" aria-label={`ลบรายการ ${prodName(r.product_id as string)}`} className="ml-1 inline-grid"><IconTrash size={16} /></IconBtn>
                     </td>
                   </tr>
                 )

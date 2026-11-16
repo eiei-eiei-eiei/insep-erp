@@ -6,7 +6,7 @@ import type { Bootstrap } from "./types";
 import { accountsFor } from "@/lib/accounting/bankAccounts";
 import type { StatementRange } from "@/lib/accounting/ledger";
 import { STATEMENT_PRESETS, presetRange, rangeTitle, rangeError, isMultiMonth, type StatementPreset } from "@/lib/accounting/statementView";
-import { Badge, Card, Field, NumBox, SaveButton, Select, TextInput, fmt, todayISO, useSaver, useRead, LoadError } from "./ui";
+import { Badge, Card, Field, NumBox, RowBtn, SaveButton, Select, TextInput, fmt, todayISO, useSaver, useRead, LoadError } from "./ui";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 
 type Balances = Awaited<ReturnType<typeof getBalancesAction>>;
@@ -83,7 +83,7 @@ export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstra
                     <td className="text-ok num">{fmt(b.totalIn)}</td>
                     <td className="text-crit num">{fmt(b.totalOut)}</td>
                     <td className="font-semibold num">{fmt(b.balance)}</td>
-                    <td><button onClick={() => openStatement(b.accountType)} className="text-muted hover:underline">statement</button></td>
+                    <td><RowBtn onClick={() => openStatement(b.accountType)}>statement</RowBtn></td>
                   </tr>
                 ))}
                 <tr className="border-t-2 border-line font-semibold"><td>รวมทุกบัญชี</td><td colSpan={3}></td><td className="num">{fmt(bal.grandTotal)}</td><td></td></tr>
@@ -104,8 +104,8 @@ export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstra
               className={`rounded-full border px-3 py-1 ${preset === "custom" ? "border-brand-line bg-brand-soft text-brand" : "border-line text-muted hover:bg-raised"}`}>กำหนดเอง</button>
             {preset === "custom" && (
               <span className="flex flex-wrap items-center gap-1">
-                จาก <input type="month" value={custom.from ?? ""} onChange={(e) => setCustom((c) => ({ ...c, from: e.target.value || null }))} className="rounded-lg border border-line px-2 py-1" />
-                ถึง <input type="month" value={custom.to ?? ""} onChange={(e) => setCustom((c) => ({ ...c, to: e.target.value || null }))} className="rounded-lg border border-line px-2 py-1" />
+                จาก <div className="w-40"><TextInput type="month" value={custom.from ?? ""} onChange={(e) => setCustom((c) => ({ ...c, from: e.target.value || null }))} className="py-1" /></div>
+                ถึง <div className="w-40"><TextInput type="month" value={custom.to ?? ""} onChange={(e) => setCustom((c) => ({ ...c, to: e.target.value || null }))} className="py-1" /></div>
               </span>
             )}
           </div>

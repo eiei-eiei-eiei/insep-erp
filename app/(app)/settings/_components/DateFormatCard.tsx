@@ -13,7 +13,8 @@ import {
   type DateFormat,
   type DateFormats,
 } from "@/lib/shared/dateFormat";
-import { Card, Field, SaveButton, Select, useSaver } from "@/lib/shared/ui";
+import { Field, SaveButton, Select, useSaver } from "@/lib/shared/ui";
+import { SettingsCard } from "@/lib/shared/settings";
 
 /**
  * รูปแบบวันที่ (D161) — หน้าจอกับเอกสารการค้าเลือกแยกกัน
@@ -50,7 +51,7 @@ export function DateFormatCard({
   );
 
   return (
-    <Card
+    <SettingsCard
       title="รูปแบบวันที่"
       help={<>
         <span className="mb-1 block font-medium">ที่ไม่เปลี่ยนตามค่านี้</span>
@@ -105,6 +106,6 @@ export function DateFormatCard({
           <p className="mt-2 text-xs text-warn">ยังไม่ได้บันทึก — กด บันทึกรูปแบบวันที่ ก่อน รูปแบบที่เลือกจึงจะมีผล</p>
         )}
       </div>
-    </Card>
+    </SettingsCard>
   );
 }

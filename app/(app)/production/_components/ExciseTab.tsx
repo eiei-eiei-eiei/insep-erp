@@ -14,6 +14,7 @@ import {
   type MonthCloseView,
 } from "../excise-actions";
 import { ReportChecklist } from "../../_components/ReportChecklist";
+import { Select, TextInput } from "./ui";
 import {
   closeStatus, monthCloseBadge, closeWarnText, pendingRecomputeText, driftSummary, recomputeResultText,
 } from "@/lib/production/monthClose";
@@ -321,13 +322,13 @@ export function ExciseTab({ active, role }: { active: boolean; role: Role }) {
         <label className="text-sm">
           <span className="mb-1 block text-muted">กิจการ</span>
           {options.entities.length > 1 ? (
-            <select value={entityId} onChange={(e) => setEntityId(e.target.value)} className="rounded-lg border border-line px-3 py-2">
+            <Select value={entityId} onChange={(e) => setEntityId(e.target.value)}>
               {options.entities.map((en) => (
                 <option key={en.entity_id} value={en.entity_id}>
                   {en.entity_id} — {en.name} {en.excise_id ? "" : "(ไม่มีเลขสรรพสามิต)"}
                 </option>
               ))}
-            </select>
+            </Select>
           ) : (
             <span className="block rounded-lg border border-line px-3 py-2 text-ink">
               {options.entities[0]?.name ?? "ยังไม่มีข้อมูลกิจการ"}
@@ -341,7 +342,7 @@ export function ExciseTab({ active, role }: { active: boolean; role: Role }) {
         </label>
         <label className="text-sm">
           <span className="mb-1 block text-muted">เดือน</span>
-          <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="rounded-lg border border-line px-3 py-2" />
+          <TextInput type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
         </label>
         <button
           onClick={generate}
@@ -455,13 +456,15 @@ export function ExciseTab({ active, role }: { active: boolean; role: Role }) {
           )}
 
           <div className="flex flex-wrap items-center gap-2">
-            <input
-              value={mcNote}
-              onChange={(e) => setMcNote(e.target.value)}
-              placeholder="หมายเหตุ (ไม่บังคับ)"
-              disabled={!mayClose || mcBusy}
-              className="min-w-48 flex-1 rounded-lg border border-line px-3 py-2 text-sm"
-            />
+            <div className="min-w-48 flex-1">
+              <TextInput
+                value={mcNote}
+                onChange={(e) => setMcNote(e.target.value)}
+                placeholder="หมายเหตุ (ไม่บังคับ)"
+                disabled={!mayClose || mcBusy}
+                className="text-sm"
+              />
+            </div>
             {st.closed ? (
               <button
                 type="button"
@@ -493,6 +496,9 @@ export function ExciseTab({ active, role }: { active: boolean; role: Role }) {
               </>
             )}
           </div>
+          {mayClose && !st.closed && pendingN === 0 && (
+            <p className="mt-2 text-xs text-muted">ปุ่ม คำนวณใหม่ตามจริง ใช้ไม่ได้ตอนนี้ — ไม่มีคู่ จ่าย/รับ ที่ต้องปรับ</p>
+          )}
           {!mayClose && (
             <p className="mt-2 text-sm text-warn">
               ปิด/ถอนปิดเดือนได้เฉพาะ {capHolderText("prod.config")} — บทบาทนี้ดูสถานะได้อย่างเดียว

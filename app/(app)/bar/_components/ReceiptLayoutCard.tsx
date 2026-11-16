@@ -20,7 +20,8 @@ import {
 import { buildReceipt } from "@/lib/bar/receipt";
 import { barTotals } from "@/lib/bar/totals";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
-import { Card, Field, Help, TextInput, Select, useConfirm } from "@/lib/shared/ui";
+import { Field, Help, TextInput, Select, useConfirm } from "@/lib/shared/ui";
+import { SettingsCard } from "@/lib/shared/settings";
 
 /** ตัวอย่างที่ใช้พรีวิว — ★ ตั้งใจให้มีครบทุกอย่างที่บล็อกต่าง ๆ ต้องใช้ */
 const SAMPLE_LINES = [
@@ -157,7 +158,7 @@ export function ReceiptLayoutCard({
   }, [value, kind, boot.seller, L.paper, L.fontLarge, df.docFmt]);
 
   return (
-    <Card title="รูปแบบบิล" className="lg:col-span-2">
+    <SettingsCard title="รูปแบบบิล">
       {confirmNode}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         {/* ───────── ซ้าย: ตัวตั้งค่า ───────── */}
@@ -373,6 +374,6 @@ export function ReceiptLayoutCard({
           </p>
         </div>
       </div>
-    </Card>
+    </SettingsCard>
   );
 }

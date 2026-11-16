@@ -4,13 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Route } from "next";
 import {
-  Badge, Card, Modal, ModalCancel, Field, NumBox, RowBtn, SaveButton, Select, TextInput, useConfirm, useSaver,
+  Badge, IconBtn, Modal, ModalCancel, Field, NumBox, RowBtn, SaveButton, Select, TextInput, useConfirm, useSaver,
 } from "@/lib/shared/ui";
 import {
   DOC_GROUPS, DOC_TYPE_INFO, DATE_FMTS, DATE_FMT_LABEL, ERAS, ERA_LABEL, RESETS, RESET_LABEL, SEPS, SEP_LABEL, PREFIX_RE,
   allowedResets, fitReset, toCfg,
   type DocEntityParam, type DocNumberCfg, type DocNumberingRow, type DocNumberPreview, type DocType,
 } from "@/lib/shared/docNumbering";
+import { IconEdit } from "@/lib/shared/icons";
+import { ListEmpty, ListRow, SettingsCard } from "@/lib/shared/settings";
 import { previewDocNumberAction, resetDocNumberAction, saveDocNumberAction } from "../actions";
 
 /**
@@ -49,7 +51,7 @@ export function DocNumberingCard({
 
   return (
     <div className="space-y-4">
-      <Card
+      <SettingsCard
         title="รูปแบบเลขเอกสาร"
         help={<>
           กำหนดเองได้ว่าเลขเอกสารขึ้นต้นด้วยอะไร มีวันที่แบบไหน และเริ่มนับใหม่เมื่อไร
@@ -60,16 +62,16 @@ export function DocNumberingCard({
           เลขใหม่มากกว่าเลขล่าสุดที่ออกไปแล้วเสมอ — ไม่ซ้ำ ไม่ย้อนลำดับ ไม่เอาเลขที่ถูกลบกลับมาใช้
           · เอกสารที่ออกไปแล้วยังใช้เลขเดิม ไม่ถูกแก้ย้อนหลัง
         </p>
-      </Card>
+      </SettingsCard>
 
       {groups.length === 0 && (
-        <Card>
-          <p className="text-sm text-muted">แพ็กเกจนี้ยังไม่มีเอกสารที่ตั้งรูปแบบเลขได้</p>
-        </Card>
+        <SettingsCard title="เอกสารที่ตั้งรูปแบบเลขได้">
+          <ListEmpty>แพ็กเกจนี้ยังไม่มีเอกสารที่ตั้งรูปแบบเลขได้</ListEmpty>
+        </SettingsCard>
       )}
 
       {groups.map((g) => (
-        <Card key={g.title} title={g.title}>
+        <SettingsCard key={g.title} title={g.title} count={g.rows.length}>
           {/* กิจการเดียว = ไม่มีอะไรให้เลือก ไม่ต้องอธิบายเรื่องเลือกกิจการ (หลักเดียวกับ D53) */}
           {g.note && (!g.entityParam || entities.length > 1) && (
             <p className="mb-3 text-xs text-faint">{g.note.replace("{กิจการ}", entityName(g.rows[0].entity_id))}</p>
@@ -88,7 +90,7 @@ export function DocNumberingCard({
             </div>
           )}
           <DocRows rows={g.rows} onEdit={setEditing} />
-        </Card>
+        </SettingsCard>
       ))}
 
       {editing && (
@@ -108,29 +110,35 @@ export function DocNumberingCard({
 
 function DocRows({ rows, onEdit }: { rows: DocNumberingRow[]; onEdit: (r: DocNumberingRow) => void }) {
   return (
-    <ul className="divide-y divide-line">
+    <div>
       {rows.map((r) => {
         const info = DOC_TYPE_INFO[r.doc_type];
+        const label = info?.label ?? r.doc_type;
         return (
-          <li key={r.doc_type} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-3">
-            <div className="min-w-[12rem] flex-1">
-              <div className="flex items-center gap-2 text-sm font-medium text-ink">
-                {info?.label ?? r.doc_type}
+          <ListRow
+            key={r.doc_type}
+            title={
+              <span className="flex flex-wrap items-center gap-2 font-medium">
+                {label}
                 {r.cfg.configured ? <Badge tone="brand">ตั้งเอง</Badge> : <Badge>รูปแบบเดิม</Badge>}
-              </div>
-              {info?.hint && <div className="text-xs text-faint">{info.hint}</div>}
-            </div>
-            <div className="text-sm text-muted">
-              ใบถัดไป <span className="tnum font-mono font-semibold text-ink">{r.next_no}</span>
-              <span className="ml-2 text-xs text-faint">· เริ่มนับใหม่{RESET_LABEL[toCfg(r.cfg).reset]}</span>
-            </div>
-            <RowBtn tone="brand" onClick={() => onEdit(r)}>
-              แก้รูปแบบ
-            </RowBtn>
-          </li>
+              </span>
+            }
+            sub={info?.hint}
+            meta={
+              <span className="text-muted">
+                ใบถัดไป <span className="tnum font-mono font-semibold text-ink">{r.next_no}</span>
+                <span className="ml-2 text-xs text-faint">· เริ่มนับใหม่{RESET_LABEL[toCfg(r.cfg).reset]}</span>
+              </span>
+            }
+            actions={
+              <IconBtn tone="brand" onClick={() => onEdit(r)} aria-label={`แก้รูปแบบเลข ${label}`} title={`แก้รูปแบบเลข ${label}`}>
+                <IconEdit size={16} />
+              </IconBtn>
+            }
+          />
         );
       })}
-    </ul>
+    </div>
   );
 }
 

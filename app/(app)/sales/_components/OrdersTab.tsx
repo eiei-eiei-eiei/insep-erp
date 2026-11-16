@@ -4,7 +4,7 @@ import { showToast } from "@/lib/shared/toast";
 import { useConfirm, Modal, ModalCancel } from "@/lib/shared/ui";
 import { Fragment, useEffect, useRef, useState } from "react";
 import type { SalesBoot, OrderRow, OrderItem } from "./types";
-import { Card, StatusBadge, TextInput, useSaver, fmt, LoadError } from "./ui";
+import { Card, NumInput, Select, StatusBadge, TextInput, useSaver, fmt, LoadError } from "./ui";
 import { todayISO } from "./ui";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { getOrdersAction, getOrderItemsAction, getOrderPaymentsAction, getOrderPlanAction, processOrderActionAction, voidDepositInvoiceAction, getCreditNotesAction, getCreditNoteNosAction } from "../actions";
@@ -301,6 +301,9 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
         >
           แก้วิธีชำระ
         </ActBtn>
+      )}
+      {canWrite && hasReceivedPayment(o) && !canCancel && (
+        <span className="text-xs text-muted">แก้วิธีชำระได้เฉพาะหัวหน้าฝ่ายขายขึ้นไป</span>
       )}
       {canCancel && o.status !== "ยกเลิก" && (
         <ActBtn tone="danger" icon={<IconTrash size={14} />} onClick={() => cancel(o)}>ยกเลิก</ActBtn>
@@ -637,7 +640,7 @@ function PaymentDialog({
               <span className="mb-1 block font-bold text-muted">
                 {isDepositInvoice ? `ยอดมัดจำที่เรียกเก็บ${order.isDeposit && order.depositPercent > 0 ? ` (${order.depositPercent}% ตามใบเสนอราคา)` : ""}` : isInstallment ? "ยอดที่รับจริง (ไม่เท่ายอดงวดได้ — ส่วนต่างไปงวดสุดท้าย)" : "ยอดเงินมัดจำที่รับ"}
               </span>
-              <input type="number" step="0.01" min={0.01} max={target} value={amount} onChange={(e) => setAmount(Number(e.target.value) || 0)} className="w-full rounded-lg border border-line p-2 outline-none focus:border-brand" />
+              <NumInput step="0.01" min={0.01} max={target} value={amount} onChange={(e) => setAmount(Number(e.target.value) || 0)} />
               {instErr && <span className="mt-1 block text-xs text-warn">{instErr}</span>}
             </label>
           )}
@@ -646,7 +649,7 @@ function PaymentDialog({
             <>
               <label className="block">
                 <span className="mb-1 block font-bold text-muted">ครบกำหนดชำระมัดจำภายใน (วัน)</span>
-                <input type="number" min={0} value={depositDays} onChange={(e) => setDepositDays(Number(e.target.value) || 0)} className="w-full rounded-lg border border-line p-2 outline-none focus:border-brand" />
+                <NumInput min={0} value={depositDays} onChange={(e) => setDepositDays(Number(e.target.value) || 0)} />
               </label>
               <div className="rounded border border-line bg-raised p-2 text-xs text-muted">
                 ใบนี้เป็น<b>ใบแจ้งหนี้</b> ยังไม่ลงบัญชีรับเงิน — เมื่อลูกค้าโอนแล้วให้กด &ldquo;รับมัดจำ &amp; ส่งคลัง&rdquo; ระบบจะออก<b>ใบกำกับภาษี/ใบเสร็จค่ามัดจำ</b>และลงบัญชีให้
@@ -657,16 +660,16 @@ function PaymentDialog({
           {needsMethod && (
             <label className="block">
               <span className="mb-1 block font-bold text-muted">ช่องทางการชำระ</span>
-              <select value={method} onChange={(e) => setMethod(e.target.value)} className="w-full rounded-lg border border-line p-2 outline-none focus:border-brand">
+              <Select value={method} onChange={(e) => setMethod(e.target.value)}>
                 {PAY_METHODS.map((m) => <option key={m}>{m}</option>)}
-              </select>
+              </Select>
             </label>
           )}
           {needsMethod && method === "เช็ค" && (
             <div className="space-y-2 rounded border border-line bg-raised p-2">
               <TextInput placeholder="ธนาคาร (เช่น กสิกรไทย)" value={chequeBank} onChange={(e) => setChequeBank(e.target.value)} />
               <TextInput placeholder="เลขที่เช็ค" value={chequeNo} onChange={(e) => setChequeNo(e.target.value)} />
-              <input type="date" value={chequeDate} onChange={(e) => setChequeDate(e.target.value)} className="w-full rounded-lg border border-line p-2 text-sm" />
+              <TextInput type="date" value={chequeDate} onChange={(e) => setChequeDate(e.target.value)} />
             </div>
           )}
 
@@ -674,7 +677,7 @@ function PaymentDialog({
 
           <label className="block">
             <span className="mb-1 block font-bold text-muted">วันที่ออกเอกสาร / วันที่รับเงิน</span>
-            <input type="date" value={docDate} onChange={(e) => setDocDate(e.target.value)} className="w-full rounded-lg border border-line p-2 outline-none focus:border-brand" />
+            <TextInput type="date" value={docDate} onChange={(e) => setDocDate(e.target.value)} />
             {dateNote && <span className="mt-1 block text-xs text-warn">{dateNote}</span>}
           </label>
 

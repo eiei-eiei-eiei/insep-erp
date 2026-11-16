@@ -85,8 +85,8 @@ export function HistoryTab({ boot, period, entityId, active }: { boot: Bootstrap
           <button type="button" onClick={() => { setCustom(range.from || range.to ? range : { from: period, to: period }); setPreset("custom"); }} aria-pressed={preset === "custom"} className={chip(preset === "custom")}>กำหนดเอง</button>
           {preset === "custom" && (
             <span className="flex flex-wrap items-center gap-1">
-              จาก <input type="month" value={custom.from ?? ""} onChange={(e) => setCustom((c) => ({ ...c, from: e.target.value || null }))} className="rounded-lg border border-line px-2 py-1" />
-              ถึง <input type="month" value={custom.to ?? ""} onChange={(e) => setCustom((c) => ({ ...c, to: e.target.value || null }))} className="rounded-lg border border-line px-2 py-1" />
+              จาก <div className="w-40"><TextInput type="month" value={custom.from ?? ""} onChange={(e) => setCustom((c) => ({ ...c, from: e.target.value || null }))} className="py-1" /></div>
+              ถึง <div className="w-40"><TextInput type="month" value={custom.to ?? ""} onChange={(e) => setCustom((c) => ({ ...c, to: e.target.value || null }))} className="py-1" /></div>
             </span>
           )}
           <label className="ml-auto flex items-center gap-2"><input type="checkbox" checked={includePriceCheck} onChange={(e) => setIncludePriceCheck(e.target.checked)} /> รวมใบเช็คราคา</label>

@@ -17,7 +17,7 @@ import {
   getDistillMultiAction,
 } from "../actions";
 import { XYChart, type XYSeries } from "./XYChart";
-import { Card, Help } from "./ui";
+import { Card, Help, Select } from "./ui";
 import { CHART_COLORS } from "@/lib/shared/chart";
 import type { Product } from "./types";
 
@@ -197,15 +197,19 @@ function DistillCompare({ list, degreeMap, redistill = false }: {
       {sel.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-3 text-sm">
           <label>ค่าที่ดู:{" "}
-            <select value={metric} onChange={(e) => setMetric(e.target.value as typeof metric)} className="rounded border border-line px-2 py-1">
-              {D_METRICS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
-            </select>
+            <span className="inline-block w-48 align-middle">
+              <Select value={metric} onChange={(e) => setMetric(e.target.value as typeof metric)}>
+                {D_METRICS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+              </Select>
+            </span>
           </label>
           <label>แกนนอน:{" "}
-            <select value={xaxis} onChange={(e) => setXaxis(e.target.value as typeof xaxis)} className="rounded border border-line px-2 py-1">
-              <option value="minute">นาทีที่</option>
-              <option value="cum">ปริมาณสะสม</option>
-            </select>
+            <span className="inline-block w-40 align-middle">
+              <Select value={xaxis} onChange={(e) => setXaxis(e.target.value as typeof xaxis)}>
+                <option value="minute">นาทีที่</option>
+                <option value="cum">ปริมาณสะสม</option>
+              </Select>
+            </span>
           </label>
         </div>
       )}

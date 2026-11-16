@@ -4,7 +4,7 @@ import { salesProductionText } from "@/lib/sales/productionText";
 import { useState } from "react";
 import type { CustomerRow } from "./types";
 import { NumInput, TextInput, useSaver } from "./ui";
-import { Modal, ModalCancel } from "@/lib/shared/ui";
+import { Modal, ModalCancel, TextArea } from "@/lib/shared/ui";
 import { saveCustomerAction } from "../actions";
 import { IconPlus } from "@/lib/shared/icons";
 import { validateNewCustomer, branchToSave, taxIdToSave, hidesBranch } from "@/lib/sales/customer";
@@ -67,7 +67,7 @@ export function AddCustomerModal({ onClose, onAdded, hasProduction }: { onClose:
       <div>
         <div className="space-y-3">
           <TextInput placeholder="ชื่อบริษัท / ลูกค้า *" value={name} onChange={(e) => setName(e.target.value)} />
-          <textarea placeholder="ที่อยู่จดทะเบียน *" value={address} onChange={(e) => setAddress(e.target.value)} rows={2} className="w-full rounded-lg border border-line p-2 text-sm outline-none focus:border-brand" />
+          <TextArea placeholder="ที่อยู่จดทะเบียน *" value={address} onChange={(e) => setAddress(e.target.value)} rows={2} />
           {/* D86 — ลูกค้าขาจรหน้าร้านไม่มีเลขประจำตัวผู้เสียภาษี · ติ๊กแล้วซ่อนทั้งเลขภาษีและสาขา
               (สาขาว่าง = ไม่พิมพ์วงเล็บสาขาบนเอกสาร ซึ่งถูกกว่าการพิมพ์ "(สำนักงานใหญ่)" ให้คนเดินเข้ามาซื้อ) */}
           <label className="flex items-center gap-3 rounded-lg border border-line bg-raised p-3 text-sm">

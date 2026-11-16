@@ -16,7 +16,7 @@ import {
   startDistillRunAction, saveDistillReadingAction, deleteDistillRunAction,
 } from "../actions";
 import {
-  Card, Field, MissingHint, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver,
+  Card, Field, IconBtn, MissingHint, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver,
 } from "./ui";
 import { DISTILL_PHASES, type Material, type Product } from "./types";
 import { IconTrash } from "@/lib/shared/icons";
@@ -306,8 +306,7 @@ export function RedistillTab({ products, materials }: { products: Product[]; mat
             <TextInput value={newLot} readOnly />
           </Field>
           <Field label="วันที่ยกออก / เริ่มแช่">
-            <input type="date" value={drawDate} onChange={(e) => setDrawDate(e.target.value)}
-              className="w-full rounded-lg border border-line bg-card px-3 py-2 text-ink" />
+            <TextInput type="date" value={drawDate} onChange={(e) => setDrawDate(e.target.value)} />
           </Field>
           <Field label="ชื่อสุรา">
             <Select value={productName} onChange={(e) => setProductName(e.target.value)}>
@@ -395,7 +394,7 @@ export function RedistillTab({ products, materials }: { products: Product[]; mat
               <div><div className="text-faint">หายระหว่างทาง</div><div className="text-ink">{summary.lpaLossPct == null ? "—" : `${f2(summary.lpaLossPct)}%`}</div></div>
             </div>
             {issues.length > 0 && (
-              <div className="mt-3 rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-sm text-warn">
+              <div className="mt-3 rounded-lg border border-warn-line bg-warn-bg px-3 py-2 text-sm text-warn">
                 {issues.map((m, i) => <div key={i}>⚠ {m}</div>)}
               </div>
             )}
@@ -427,10 +426,10 @@ export function RedistillTab({ products, materials }: { products: Product[]; mat
                             {!closed && (
                               <>
                                 <RowBtn tone="slate" onClick={() => startRoundEdit(r)}>แก้</RowBtn>
-                                <button onClick={() => delRound(r)} disabled={pending}
-                                  className="ml-2 text-crit hover:text-crit" title="ลบรอบ">
+                                <IconBtn tone="red" onClick={() => delRound(r)} disabled={pending}
+                                  className="ml-1 inline-grid" title="ลบรอบ" aria-label={`ลบรอบที่ ${r.round_no}`}>
                                   <IconTrash size={16} />
-                                </button>
+                                </IconBtn>
                               </>
                             )}
                           </td>
@@ -454,12 +453,10 @@ export function RedistillTab({ products, materials }: { products: Product[]; mat
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <Field label="วันเริ่มแช่ (วันตัดวัตถุดิบ)">
-                    <input type="date" value={rSoak} onChange={(e) => setRSoak(e.target.value)}
-                      className="w-full rounded-lg border border-line bg-card px-3 py-2 text-ink" />
+                    <TextInput type="date" value={rSoak} onChange={(e) => setRSoak(e.target.value)} />
                   </Field>
                   <Field label="วันที่กลั่นรอบนี้">
-                    <input type="date" value={rDistill} onChange={(e) => setRDistill(e.target.value)}
-                      className="w-full rounded-lg border border-line bg-card px-3 py-2 text-ink" />
+                    <TextInput type="date" value={rDistill} onChange={(e) => setRDistill(e.target.value)} />
                   </Field>
                   <div />
                   <Field label="ปริมาณเข้ารอบ (ล.)">
@@ -574,14 +571,15 @@ export function RedistillTab({ products, materials }: { products: Product[]; mat
                             <td>{r.temp_spirit ?? "—"}</td><td>{r.abv20 ?? "—"}</td>
                             <td>{r.cum_vol ?? "—"}</td><td>{r.ferm_charge ?? "—"}</td>
                             <td>
-                              <button
+                              <IconBtn
+                                tone="red"
                                 onClick={async () => {
                                   if (!(await ask({ title: `ลบค่าที่บันทึก (หม้อ ${r.pot_no} · ${r.phase ?? ""})?`, confirmText: "ลบ", danger: true }))) return;
                                   run(() => deleteDistillRunAction(r.id), "ลบค่าเรียบร้อย", () => loadReadings(lot.lot_no));
                                 }}
-                                disabled={pending} className="text-crit hover:text-crit" title="ลบ">
+                                disabled={pending} title="ลบ" aria-label={`ลบค่าที่บันทึก หม้อ ${r.pot_no}`}>
                                 <IconTrash size={16} />
-                              </button>
+                              </IconBtn>
                             </td>
                           </tr>
                         ))}
@@ -621,8 +619,7 @@ export function RedistillTab({ products, materials }: { products: Product[]; mat
                 </p>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <Field label="วันที่ปรับดีกรีเสร็จ">
-                    <input type="date" value={cDate} onChange={(e) => setCDate(e.target.value)}
-                      className="w-full rounded-lg border border-line bg-card px-3 py-2 text-ink" />
+                    <TextInput type="date" value={cDate} onChange={(e) => setCDate(e.target.value)} />
                   </Field>
                   <Field label="น้ำที่เติม (ล.)"><NumInput value={cWater} onChange={(e) => setCWater(e.target.value)} /></Field>
                   <Field label="ปริมาณที่ได้ (ล.)"><NumInput value={cVol} onChange={(e) => setCVol(e.target.value)} /></Field>

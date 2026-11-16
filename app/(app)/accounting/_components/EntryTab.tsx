@@ -29,7 +29,8 @@ import {
   getItemHistoryAction,
 } from "../actions";
 import type { Bootstrap, Contact } from "./types";
-import { Card, Field, NumBox, NumInput, SaveButton, Select, TextInput, cleanTaxId13, fmt, todayISO, useSaver } from "./ui";
+import { Card, Field, NumBox, NumInput, SaveButton, Select, TextInput, fmt, todayISO, useSaver } from "./ui";
+import { ContactFields, blankContactForm, contactPayload, type ContactForm } from "./ContactFields";
 import { Modal, ModalCancel } from "@/lib/shared/ui";
 import { IconTrash } from "@/lib/shared/icons";
 import { isForwardCat } from "@/lib/accounting/forwardCats";
@@ -384,7 +385,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
           </Field>
           <Field label="คู่ค้า">
             <div className="flex gap-1">
-              <input list="contact-list" value={contactName} onChange={(e) => setContactName(e.target.value)} className="w-full rounded-lg border border-line px-3 py-2 text-ink outline-none" />
+              <TextInput list="contact-list" value={contactName} onChange={(e) => setContactName(e.target.value)} />
               <button type="button" onClick={() => setShowContactModal(true)} title="เพิ่มคู่ค้าใหม่" className="rounded-lg border border-line px-2 text-muted hover:bg-raised">＋</button>
             </div>
             <datalist id="contact-list">{contactOptions.map((c) => (<option key={c.contact_id} value={c.name} />))}</datalist>
@@ -622,20 +623,19 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
 }
 
 function ContactModal({ defaultName, onClose, onSaved }: { defaultName: string; onClose: () => void; onSaved: (c: Contact) => void }) {
-  const { pending, run, setMsg } = useSaver();
-  const [name, setName] = useState(defaultName);
-  const [taxId, setTaxId] = useState("");
-  const [branch, setBranch] = useState("สำนักงานใหญ่");
-  const [address, setAddress] = useState("");
-  const [contactType, setContactType] = useState("ทั้งสอง");
+  const { pending, run } = useSaver();
+  const [form, setForm] = useState<ContactForm>(() => blankContactForm(defaultName));
+  const [formErr, setFormErr] = useState<string | null>(null);
 
+  // กติกาเดียวกับหน้า ตั้งค่า → คู่ค้า (ติ๊ก "ไม่มีเลขผู้เสียภาษี" ได้ · D173)
   function save() {
-    if (!name.trim()) { setMsg({ ok: false, text: "กรุณากรอกชื่อคู่ค้า" }); return; }
-    const tax = cleanTaxId13(taxId);
-    if (!tax) { setMsg({ ok: false, text: "เลขประจำตัวผู้เสียภาษีต้องมี 13 หลัก" }); return; }
-    run(() => addContactAction({ name: name.trim(), taxId: tax, branch, address, contactType }), "เพิ่มคู่ค้าเรียบร้อย", (data) => {
+    const res = contactPayload(form);
+    if ("error" in res) { setFormErr(res.error); return; }
+    setFormErr(null);
+    const p = res.payload;
+    run(() => addContactAction(p), "เพิ่มคู่ค้าเรียบร้อย", (data) => {
       const id = (data as { contactId: string }).contactId;
-      onSaved({ contact_id: id, name: name.trim(), tax_id: tax, branch, address, contact_type: contactType, roles: [] });
+      onSaved({ contact_id: id, name: p.name, tax_id: p.taxId, branch: p.branch, address: p.address, contact_type: p.contactType, roles: [] });
     });
   }
 
@@ -655,15 +655,7 @@ function ContactModal({ defaultName, onClose, onSaved }: { defaultName: string; 
         </>
       }
     >
-        <div className="space-y-3">
-          <Field label="ชื่อคู่ค้า"><TextInput value={name} onChange={(e) => setName(e.target.value)} /></Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="เลขภาษี (13 หลัก)"><TextInput value={taxId} onChange={(e) => setTaxId(e.target.value)} inputMode="numeric" placeholder="เลข 13 หลัก" /></Field>
-            <Field label="สาขา"><TextInput value={branch} onChange={(e) => setBranch(e.target.value)} /></Field>
-          </div>
-          <Field label="ที่อยู่"><TextInput value={address} onChange={(e) => setAddress(e.target.value)} /></Field>
-          <Field label="ประเภท" help="“ทั้งสอง” = เป็นได้ทั้งผู้ขายและลูกค้า → โผล่ทั้งรายรับและรายจ่าย"><Select value={contactType} onChange={(e) => setContactType(e.target.value)}><option>ทั้งสอง</option><option>ผู้ขาย</option><option>ลูกค้า</option></Select></Field>
-        </div>
+      <ContactFields value={form} onChange={setForm} error={formErr} />
     </Modal>
   );
 }

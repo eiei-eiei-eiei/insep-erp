@@ -337,6 +337,7 @@ function TenantPanel({
           >
             บันทึกชื่อ
           </SaveButton>
+          {!renameDirty && <span className="pb-2 text-xs text-faint">ยังไม่ได้แก้อะไร</span>}
         </div>
         <p className="mt-2 text-xs text-faint">
           ข้อมูลกิจการ การตั้งค่า แบรนด์ที่ลูกค้าเห็น และชื่อผู้ใช้ (เช่น owner-{t.slug}) ไม่เปลี่ยน
@@ -412,7 +413,7 @@ function TenantPanel({
                   <td>{e.isDefault ? "✓" : ""}</td>
                   <td>
                     {/* 🚨 จุดเดียวที่แก้ is_vat ได้ — หน้าตั้งค่าฝั่งลูกค้าจงใจไม่มี (D55) */}
-                    <button
+                    <RowBtn
                       type="button"
                       disabled={pending}
                       onClick={async () => {
@@ -429,10 +430,9 @@ function TenantPanel({
                         if (!ok) return;
                         onSetVat(e.entityId, to);
                       }}
-                      className="rounded border border-line px-2 py-1 text-xs text-muted hover:border-brand disabled:opacity-50"
                     >
                       {e.isVat ? "เปลี่ยนเป็นไม่จด VAT" : "เปลี่ยนเป็นจด VAT"}
-                    </button>
+                    </RowBtn>
                   </td>
                 </tr>
               ))}
@@ -486,12 +486,6 @@ function TenantPanel({
         {quotaFull && (
           <p className="mt-2 text-xs text-warn">
             โควตาเต็มแล้ว ({t.entities.length}/{t.maxEntities}) — ขยายโควตาด้านบนก่อน
-          </p>
-        )}
-        {!isVat && (
-          <p className="mt-2 text-xs text-crit">
-            ⚠️ ระบบยังไม่แยกสูตร VAT ตามกิจการ (งาน 4.3) — กิจการที่ไม่จด VAT ยังถูกคิด VAT 7%
-            และยังออกใบกำกับภาษีได้ ซึ่งผิดกฎหมาย · อย่าเพิ่งใช้กับลูกค้าจริงที่ไม่จด VAT
           </p>
         )}
       </div>

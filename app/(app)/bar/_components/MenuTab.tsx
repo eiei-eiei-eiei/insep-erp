@@ -11,7 +11,7 @@ import { RecipeEditor, PriceSuggest } from "./RecipeEditor";
 import { lineCost } from "@/lib/bar/cost";
 import { searchMenus } from "@/lib/bar/menuFilter";
 import { customerLabel } from "@/lib/bar/customerName";
-import { Card, TextInput, NumBox, Select, Field, Badge, Empty, Help, Modal, ModalCancel, fmt, useSaver, useConfirm } from "@/lib/shared/ui";
+import { Card, TextInput, TextArea, NumBox, Select, Field, Badge, Empty, Help, Modal, ModalCancel, fmt, useSaver, useConfirm } from "@/lib/shared/ui";
 import {
   saveMenuAction, saveCategoryAction, deleteCategoryAction, saveCategoriesAction,
   getMenuUsageAction, setMenuActiveAction, deleteMenuAction,
@@ -285,6 +285,9 @@ export function MenuTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pro
                         >
                           ลบ
                         </button>
+                      )}
+                      {rm.showDelete && rm.deleteBlocked !== null && (
+                        <div className="ml-auto max-w-56 whitespace-normal text-xs text-faint">ลบไม่ได้ — {rm.deleteBlocked}</div>
                       )}
                     </td>
                   </tr>
@@ -612,12 +615,11 @@ export function MenuModal({
         </Field>
         <div className="mt-2">
           <Field label="วิธีชง">
-            <textarea
+            <TextArea
               value={method}
               onChange={(e) => setMethod(e.target.value)}
               rows={2}
               placeholder="shake 12 วิ · double strain · เหล้าบ๊วยลอยหน้า"
-              className="w-full rounded-lg border border-line bg-card px-3 py-2 text-sm text-ink"
             />
           </Field>
         </div>

@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveLineAction, clearLineAction } from "../actions";
-import { Card, Field, SaveButton, TextInput, useSaver } from "@/lib/shared/ui";
+import { Field, SaveButton, TextInput, useSaver } from "@/lib/shared/ui";
+import { SettingsCard } from "@/lib/shared/settings";
 
 /**
  * แจ้งเตือน LINE ของกิจการนี้ (0033)
@@ -52,7 +53,7 @@ export function LineCard({
   const configured = current.hasToken && !!current.groupId;
 
   return (
-    <Card
+    <SettingsCard
       title="แจ้งเตือน LINE"
       help={events.length > 0 ? `ระบบจะส่งข้อความเข้ากลุ่ม LINE ที่ตั้งไว้เมื่อ: ${events.join(" · ")}` : "ระบบจะส่งข้อความเข้ากลุ่ม LINE ที่ตั้งไว้"}
     >
@@ -115,6 +116,6 @@ export function LineCard({
         ค่าชุดนี้เป็นของกิจการนี้เท่านั้น — กิจการอื่นที่ใช้ระบบเดียวกันมีกลุ่มของตัวเองแยกกัน
         และพนักงานที่ไม่ใช่เจ้าของกิจการอ่านโทเคนนี้ไม่ได้
       </p>
-    </Card>
+    </SettingsCard>
   );
 }

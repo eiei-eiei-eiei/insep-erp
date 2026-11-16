@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveEntityInfoAction, saveDocEntityAction, saveSalesRevenueAction } from "../actions";
 import type { SettingsEntity } from "../settings-data";
-import { Card, Field, MissingHint, SaveButton, Select, TextArea, TextInput, useSaver } from "@/lib/shared/ui";
+import { Field, MissingHint, SaveButton, Select, TextArea, TextInput, useSaver } from "@/lib/shared/ui";
+import { SettingsCard } from "@/lib/shared/settings";
 import { companyFromEntity } from "@/lib/sales/company";
 import { cashSettingText } from "@/lib/sales/cashAccount";
 import { FILING_METHODS, FILING_METHOD_LABEL, toFilingMethod } from "@/lib/accounting/taxFiling";
@@ -103,7 +104,7 @@ export function CompanyCard({
 
   return (
     <div className="space-y-4">
-      <Card
+      <SettingsCard
         title="ข้อมูลกิจการ"
         help={<>
           {sections.salesDocs
@@ -112,7 +113,7 @@ export function CompanyCard({
           {" "}(แก้ที่นี่ที่เดียว เอกสารทั้งระบบตรงกัน)
         </>}
       >
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 pt-2 sm:grid-cols-2">
           {multiEntity && (
             <div className="sm:col-span-2">
               <Field label="กิจการที่กำลังแก้">
@@ -223,10 +224,10 @@ export function CompanyCard({
           </SaveButton>
           <MissingHint checks={[{ label: "กิจการที่กำลังแก้", ok: !!entityId }, { label: "ชื่อกิจการ (ไทย)", ok: !!form.name.trim() }]} />
         </div>
-      </Card>
+      </SettingsCard>
 
       {sections.salesDocs && multiEntity && (
-        <Card title="กิจการที่ออกเอกสารการค้า">
+        <SettingsCard title="กิจการที่ออกเอกสารการค้า">
           <p className="mb-3 text-xs text-faint">
             ใบเสนอราคา / ใบแจ้งหนี้ / ใบกำกับภาษี / ใบเสร็จ จะออกในนามกิจการนี้ — แยกจากช่อง
             &ldquo;กิจการที่กำลังแก้&rdquo; ด้านบนโดยตั้งใจ (แก้ข้อมูลอีกกิจการแล้วต้องไม่ย้ายผู้ออกเอกสารตาม)
@@ -247,7 +248,7 @@ export function CompanyCard({
             </SaveButton>
           </div>
           <MissingHint checks={[{ label: "ผู้ออกเอกสาร", ok: !!docId }]} prefix="ยังเลือกไม่ครบ" />
-        </Card>
+        </SettingsCard>
       )}
 
       {/*
@@ -256,7 +257,7 @@ export function CompanyCard({
         ★ แยกจากการ์ด "กิจการที่ออกเอกสารการค้า" โดยตั้งใจ (คนละเรื่อง ตั้งต่างกันได้)
       */}
       {sections.salesDocs && (
-      <Card title="กิจการและบัญชีที่รับรายได้จากการขาย">
+      <SettingsCard title="กิจการและบัญชีที่รับรายได้จากการขาย">
         <p className="mb-3 text-xs text-faint">
           เวลารับเงินจากออเดอร์ ระบบจะลงบิลรายรับเข้ากิจการนี้และบัญชีนี้
           — <b>ไม่ตั้งค่า = กดรับเงินในแอปขายไม่ได้</b>
@@ -314,7 +315,7 @@ export function CompanyCard({
             ยังไม่ได้บันทึก — กด บันทึกกิจการ/บัญชีรับรายได้ ก่อน ค่าที่เลือกจึงจะมีผล
           </p>
         )}
-      </Card>
+      </SettingsCard>
       )}
     </div>
   );

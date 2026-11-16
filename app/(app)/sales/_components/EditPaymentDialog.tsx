@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Modal, ModalCancel } from "@/lib/shared/ui";
 import { showToast } from "@/lib/shared/toast";
-import { fmt, TextInput, useSaver, LoadError } from "./ui";
+import { fmt, Select, TextInput, useSaver, LoadError } from "./ui";
 import type { OrderRow } from "./types";
 import type { CompanyInfo } from "@/lib/sales/company";
 import {
@@ -142,14 +142,14 @@ export function EditPaymentDialog({
 
                 {editing === p.seq && (
                   <div className="mt-2 space-y-2 border-t border-line pt-2">
-                    <select value={method} onChange={(e) => setMethod(e.target.value)} className="w-full rounded-lg border border-line p-2 outline-none focus:border-brand">
+                    <Select value={method} onChange={(e) => setMethod(e.target.value)}>
                       {PAY_METHODS.map((m) => <option key={m}>{m}</option>)}
-                    </select>
+                    </Select>
                     {method === "เช็ค" && (
                       <div className="space-y-2 rounded border border-line bg-raised p-2">
                         <TextInput placeholder="ธนาคาร (เช่น กสิกรไทย)" value={bank} onChange={(e) => setBank(e.target.value)} />
                         <TextInput placeholder="เลขที่เช็ค" value={chequeNo} onChange={(e) => setChequeNo(e.target.value)} />
-                        <input type="date" value={chequeDate} onChange={(e) => setChequeDate(e.target.value)} className="w-full rounded-lg border border-line p-2 text-sm" />
+                        <TextInput type="date" value={chequeDate} onChange={(e) => setChequeDate(e.target.value)} />
                       </div>
                     )}
                     {chequeMissing && <p className="text-xs text-warn">ยังกรอกไม่ครบ: ธนาคาร · เลขที่เช็ค</p>}

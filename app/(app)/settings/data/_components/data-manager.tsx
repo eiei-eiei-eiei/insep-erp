@@ -2,7 +2,8 @@
 
 import { showToast } from "@/lib/shared/toast";
 import { useState, useTransition } from "react";
-import { Help, Modal, ModalCancel } from "@/lib/shared/ui";
+import { Modal, ModalCancel, TextInput } from "@/lib/shared/ui";
+import { SettingsCard } from "@/lib/shared/settings";
 import { downloadBlob, MIME } from "@/lib/shared/download";
 import { tableLabel } from "@/lib/shared/tenantTables";
 import {
@@ -88,16 +89,8 @@ export function DataManager() {
   const rows = result ? EXPORT_TABLES.filter((t) => (result.counts[t] ?? 0) > 0) : [];
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <h2 className="mb-4 flex items-center gap-1.5 text-xl font-bold text-ink">
-        ดาวน์โหลดข้อมูลไปเก็บไว้เอง
-        <Help>
-          ดึงข้อมูลทั้งหมดของกิจการออกมาเป็นไฟล์เดียว เก็บไว้ในเครื่องหรือไดรฟ์ของคุณเอง ·
-          เฉพาะเจ้าของกิจการ (main) และต้องยืนยันด้วยรหัสผ่าน
-        </Help>
-      </h2>
-
-      <div className="mb-4 rounded-lg bg-warn-bg px-4 py-3 text-sm text-warn">
+    <div className="space-y-4">
+      <div className="rounded-lg bg-warn-bg px-4 py-3 text-sm text-warn">
         <div className="font-medium">อ่านก่อนใช้</div>
         <ul className="mt-1 list-disc space-y-1 pl-5 text-xs">
           <li>
@@ -111,7 +104,11 @@ export function DataManager() {
         </ul>
       </div>
 
-      <div className="mb-6 grid gap-3 sm:grid-cols-2">
+      <SettingsCard
+        title="ดาวน์โหลดข้อมูลไปเก็บไว้เอง"
+        help="ดึงข้อมูลทั้งหมดของกิจการออกมาเป็นไฟล์เดียว เก็บไว้ในเครื่องหรือไดรฟ์ของคุณเอง · เฉพาะเจ้าของกิจการ (main) และต้องยืนยันด้วยรหัสผ่าน"
+      >
+      <div className="grid grid-cols-1 gap-3 py-2 sm:grid-cols-2">
         <button
           onClick={() => open("json")}
           disabled={pending}
@@ -136,12 +133,14 @@ export function DataManager() {
           </div>
         </button>
       </div>
+      </SettingsCard>
 
       {result && (
-        <div className="rounded-lg border border-line bg-card p-4">
-          <div className="mb-3 font-semibold text-muted">
-            ข้อมูลที่อยู่ในไฟล์ล่าสุด — รวม {totalRows(result.counts).toLocaleString("th-TH")} แถว
-          </div>
+        <SettingsCard
+          title="ข้อมูลที่อยู่ในไฟล์ล่าสุด"
+          count={totalRows(result.counts)}
+          unit="แถว"
+        >
           <div className="overflow-x-auto">
             <table className="tbl">
               <thead>
@@ -160,7 +159,7 @@ export function DataManager() {
           <p className="mt-2 text-xs text-faint">
             ตารางที่ไม่มีข้อมูลเลยจะไม่ขึ้นในรายการนี้ แต่ยังมีอยู่ในไฟล์ (เป็นรายการว่าง)
           </p>
-        </div>
+        </SettingsCard>
       )}
 
       {ask && (
@@ -187,13 +186,12 @@ export function DataManager() {
             </p>
 
             <label className="mb-1 block text-sm text-muted">รหัสผ่านของคุณ</label>
-            <input
+            {/* TextInput ตัวกลางมี bg-input + text-ink อยู่แล้ว (โหมดมืดไม่จม) */}
+            <TextInput
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && password && submit()}
-              // ★ ต้องมี bg-input + text-ink — ไม่งั้นโหมดมืดได้สีปริยายของเบราว์เซอร์ (พื้นจม อ่านไม่ออก)
-              className="w-full rounded-lg border border-line bg-input px-3 py-2 text-ink outline-none focus:border-brand"
             />
         </Modal>
       )}

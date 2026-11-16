@@ -123,13 +123,7 @@ function PendingOrders({ canWrite, company, active, txt }: { canWrite: boolean; 
             <p className="text-sm text-muted">{txt.shipConfirm}</p>
             <label className="mt-3 block text-sm">
               <span className="mb-1 block font-bold text-muted">วันที่ส่งของ</span>
-              <input
-                type="date"
-                value={shipDate}
-                max={todayISO()}
-                onChange={(e) => setShipDate(e.target.value)}
-                className="w-full rounded-lg border border-line p-2 outline-none focus:border-brand"
-              />
+              <TextInput type="date" value={shipDate} max={todayISO()} onChange={(e) => setShipDate(e.target.value)} />
             </label>
             {shipErr && <p className="mt-1 text-xs text-crit">{shipErr}</p>}
             {shipNote && <p className="mt-1 text-xs text-warn">{shipNote}</p>}

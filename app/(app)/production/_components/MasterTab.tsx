@@ -3,7 +3,9 @@
 import { useConfirm } from "@/lib/shared/ui";
 import { useState } from "react";
 import { upsertMaster, deleteMaster, type MasterTable } from "../master-actions";
-import { Card, useSaver } from "./ui";
+import { SettingsCard, SettingsShell } from "@/lib/shared/settings";
+import { IconEdit, IconTrash } from "@/lib/shared/icons";
+import { IconBtn, NumInput, Select, TextInput, useSaver } from "./ui";
 import type { Container, Material, Product } from "./types";
 import { LIQUOR_PROCESS } from "@/lib/production/calc";
 
@@ -27,7 +29,9 @@ type Field = {
   warn?: (v: string) => string | null;
 };
 
-const inputCls = "w-full rounded border border-line px-2 py-1 text-sm";
+// ช่องในตารางแก้ตรง ๆ — ตัวกลางมี px-3 py-2 · ใช้ `!` ให้ชนะเพื่อคงแถวกะทัดรัดเหมือนเดิม
+// min-w: ช่องในตารางไม่ถูกบีบจนอ่านไม่ออกบนจอแคบ (ตารางเลื่อนแนวนอนได้อยู่แล้ว)
+const cellCls = "px-2! py-1! text-sm min-w-[5.5rem]";
 
 /**
  * ขนาดขวดที่ดูเหมือนกรอกเป็นมิลลิลิตร (D80)
@@ -102,7 +106,7 @@ function CrudSection({
   }
 
   return (
-    <Card title={title}>
+    <SettingsCard title={title} count={rows.length}>
       {confirmNode}
       <div className="overflow-x-auto">
         <table className="tbl">
@@ -118,24 +122,31 @@ function CrudSection({
               {fields.map((f) => (
                 <td key={f.key}>
                   {f.options ? (
-                    <select
-                      className={inputCls}
+                    <Select
+                      className={cellCls}
                       value={draft[f.key] ?? ""}
                       onChange={(e) => setDraft({ ...draft, [f.key]: e.target.value })}
                     >
                       <option value="">— เลือก —</option>
                       {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
-                    </select>
+                    </Select>
                   ) : (
                     <>
-                      <input
-                        className={inputCls}
-                        type={f.num ? "number" : "text"}
-                        step={f.num ? "any" : undefined}
-                        placeholder={f.label}
-                        value={draft[f.key] ?? ""}
-                        onChange={(e) => setDraft({ ...draft, [f.key]: e.target.value })}
-                      />
+                      {f.num ? (
+                        <NumInput
+                          className={cellCls}
+                          placeholder={f.label}
+                          value={draft[f.key] ?? ""}
+                          onChange={(e) => setDraft({ ...draft, [f.key]: e.target.value })}
+                        />
+                      ) : (
+                        <TextInput
+                          className={cellCls}
+                          placeholder={f.label}
+                          value={draft[f.key] ?? ""}
+                          onChange={(e) => setDraft({ ...draft, [f.key]: e.target.value })}
+                        />
+                      )}
                       <FieldWarn text={f.warn?.(draft[f.key] ?? "") ?? null} />
                     </>
                   )}
@@ -157,8 +168,8 @@ function CrudSection({
                   {fields.map((f) => (
                     <td key={f.key}>
                       {editing && f.options ? (
-                        <select
-                          className={inputCls}
+                        <Select
+                          className={cellCls}
                           disabled={f.pk}
                           title={f.pk ? "รหัสเป็นกุญแจของแถว แก้ไม่ได้ — ถ้าพิมพ์ผิด ให้ลบแถวนี้แล้วสร้างใหม่" : undefined}
                           value={editRow[f.key] ?? ""}
@@ -170,18 +181,26 @@ function CrudSection({
                             <option value={editRow[f.key]}>{editRow[f.key]} (ค่าเดิม)</option>
                           )}
                           {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
-                        </select>
+                        </Select>
                       ) : editing ? (
                         <>
-                          <input
-                            className={inputCls}
-                            type={f.num ? "number" : "text"}
-                            step={f.num ? "any" : undefined}
-                            disabled={f.pk}
-                            title={f.pk ? "รหัสเป็นกุญแจของแถว แก้ไม่ได้ — ถ้าพิมพ์ผิด ให้ลบแถวนี้แล้วสร้างใหม่" : undefined}
-                            value={editRow[f.key] ?? ""}
-                            onChange={(e) => setEditRow({ ...editRow, [f.key]: e.target.value })}
-                          />
+                          {f.num ? (
+                            <NumInput
+                              className={cellCls}
+                              disabled={f.pk}
+                              title={f.pk ? "รหัสเป็นกุญแจของแถว แก้ไม่ได้ — ถ้าพิมพ์ผิด ให้ลบแถวนี้แล้วสร้างใหม่" : undefined}
+                              value={editRow[f.key] ?? ""}
+                              onChange={(e) => setEditRow({ ...editRow, [f.key]: e.target.value })}
+                            />
+                          ) : (
+                            <TextInput
+                              className={cellCls}
+                              disabled={f.pk}
+                              title={f.pk ? "รหัสเป็นกุญแจของแถว แก้ไม่ได้ — ถ้าพิมพ์ผิด ให้ลบแถวนี้แล้วสร้างใหม่" : undefined}
+                              value={editRow[f.key] ?? ""}
+                              onChange={(e) => setEditRow({ ...editRow, [f.key]: e.target.value })}
+                            />
+                          )}
                           <FieldWarn text={f.warn?.(editRow[f.key] ?? "") ?? null} />
                         </>
                       ) : (
@@ -201,14 +220,17 @@ function CrudSection({
                       </>
                     ) : (
                       <>
-                        <button onClick={() => startEdit(row)} className="mr-1 rounded border border-line px-2 py-1 text-muted hover:bg-raised">แก้</button>
-                        <button
+                        <IconBtn onClick={() => startEdit(row)} title="แก้ไข" aria-label={`แก้ไข ${id}`} className="inline-grid"><IconEdit size={16} /></IconBtn>
+                        <IconBtn
+                          tone="red"
                           disabled={pending}
                           onClick={async () => { if (await ask({ title: `ลบ "${id}" ?`, confirmText: "ลบ", danger: true })) run(() => deleteMaster(table, id), "ลบแล้ว"); }}
-                          className="rounded border border-crit-line px-2 py-1 text-crit hover:bg-crit-bg"
+                          title="ลบ"
+                          aria-label={`ลบ ${id}`}
+                          className="ml-1 inline-grid"
                         >
-                          ลบ
-                        </button>
+                          <IconTrash size={16} />
+                        </IconBtn>
                       </>
                     )}
                   </td>
@@ -221,7 +243,7 @@ function CrudSection({
           </tbody>
         </table>
       </div>
-    </Card>
+    </SettingsCard>
   );
 }
 
@@ -234,28 +256,14 @@ export function MasterTab({
   containers: Container[];
   products: Product[];
 }) {
-  const [sub, setSub] = useState<"materials" | "containers" | "products">("materials");
-  const subTabs: { key: typeof sub; label: string }[] = [
-    { key: "materials", label: "วัตถุดิบ" },
-    { key: "containers", label: "ภาชนะ" },
-    { key: "products", label: "สินค้า (สุรา)" },
-  ];
-
   return (
-    <div>
-      <div className="mb-4 flex gap-1">
-        {subTabs.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setSub(t.key)}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium ${sub === t.key ? "bg-line text-ink" : "text-faint hover:bg-raised"}`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {sub === "materials" && (
+    <SettingsShell
+      sections={[
+        {
+          key: "materials",
+          label: "วัตถุดิบ",
+          count: materials.length,
+          body: (
         <CrudSection
           title="วัตถุดิบ (materials)"
           table="materials"
@@ -266,8 +274,13 @@ export function MasterTab({
           ]}
           rows={materials as unknown as Record<string, unknown>[]}
         />
-      )}
-      {sub === "containers" && (
+          ),
+        },
+        {
+          key: "containers",
+          label: "ภาชนะ",
+          count: containers.length,
+          body: (
         <CrudSection
           title="ภาชนะ (containers)"
           table="containers"
@@ -278,8 +291,13 @@ export function MasterTab({
           ]}
           rows={containers as unknown as Record<string, unknown>[]}
         />
-      )}
-      {sub === "products" && (
+          ),
+        },
+        {
+          key: "products",
+          label: "สินค้า (สุรา)",
+          count: products.length,
+          body: (
         <CrudSection
           title="สินค้า / สุรา (products)"
           table="products"
@@ -295,7 +313,9 @@ export function MasterTab({
           ]}
           rows={products as unknown as Record<string, unknown>[]}
         />
-      )}
-    </div>
+          ),
+        },
+      ]}
+    />
   );
 }

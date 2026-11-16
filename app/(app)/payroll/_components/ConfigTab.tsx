@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, Field, NumBox, SaveButton, Select, SuggestInput, TextInput, useSaver, Empty, Modal, ModalCancel, useConfirm } from "@/lib/shared/ui";
+import { Field, IconBtn, NumBox, SaveButton, Select, SuggestInput, TextInput, useSaver, Modal, ModalCancel, useConfirm } from "@/lib/shared/ui";
+import { ListEmpty, ListRow, SettingsCard, SettingsList, SettingsShell } from "@/lib/shared/settings";
+import { IconEdit, IconPlus, IconTrash } from "@/lib/shared/icons";
 import type {
   LegAmountSource,
   PayComponent,
@@ -151,15 +153,30 @@ function AccountSelect({
 
 export function ConfigTab({ config, employees }: { config: PayrollConfig; employees: EmployeeRow[] }) {
   return (
-    <div className="space-y-4">
-      <BasicSettings config={config} />
-      <WorkDays config={config} />
-      <Groups config={config} />
-      <Inputs config={config} />
-      <Formulas config={config} employees={employees} />
-      <PostLegs config={config} />
-      <Rates config={config} />
-    </div>
+    <SettingsShell
+      sections={[
+        {
+          key: "basic",
+          label: "ค่าตั้งพื้นฐาน",
+          body: (
+            <div className="space-y-4">
+              <BasicSettings config={config} />
+              <WorkDays config={config} />
+            </div>
+          ),
+        },
+        { key: "groups", label: "กลุ่มพนักงาน", count: config.groups.length, body: <Groups config={config} /> },
+        { key: "inputs", label: "ช่องกรอกต่อคน", count: config.inputs.length, body: <Inputs config={config} /> },
+        {
+          key: "formulas",
+          label: "สูตรและรายการคำนวณ",
+          count: config.variables.length + config.components.length,
+          body: <Formulas config={config} employees={employees} />,
+        },
+        { key: "legs", label: "ขาลงบัญชี", count: config.legs.length, body: <PostLegs config={config} /> },
+        { key: "rates", label: "ชุดอัตราตามกฎหมาย", count: config.rates.length, body: <Rates config={config} /> },
+      ]}
+    />
   );
 }
 
@@ -186,8 +203,8 @@ function BasicSettings({ config }: { config: PayrollConfig }) {
   }
 
   return (
-    <Card title="ค่าตั้งพื้นฐาน">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+    <SettingsCard title="ค่าตั้งพื้นฐาน">
+      <div className="grid grid-cols-1 gap-3 py-2 sm:grid-cols-3">
         <Field label="ชั่วโมงทำงานต่อวัน">
           <NumBox value={hours} onChange={(v) => setHours(v === "" ? 0 : v)} />
         </Field>
@@ -205,8 +222,8 @@ function BasicSettings({ config }: { config: PayrollConfig }) {
           <AccountSelect value={pay} onChange={setPay} accounts={config.bankAccounts} />
         </Field>
       </div>
-      <div className="mt-3"><SaveButton pending={pending} onClick={saveAll}>บันทึกค่าตั้ง</SaveButton></div>
-    </Card>
+      <div className="mt-1 pb-2"><SaveButton pending={pending} onClick={saveAll}>บันทึกค่าตั้ง</SaveButton></div>
+    </SettingsCard>
   );
 }
 
@@ -215,35 +232,22 @@ function Groups({ config }: { config: PayrollConfig }) {
   const router = useRouter();
   const { pending, run } = useSaver();
   const { confirmNode, askDelete } = useAskDelete();
-  const [val, setVal] = useState("");
 
   return (
-    <Card
-      title="กลุ่มพนักงาน"
-      help={<>ใช้คุมว่ารายการไหนให้ใครบ้าง — เช่นตั้ง 2 กลุ่มแล้วให้ค่าล่วงเวลาคนละตัวคูณ
-        (สร้างรายการ 2 แถว แถวละกลุ่ม)</>}
-    >
+    <>
       {confirmNode}
-      <div className="mb-2 flex flex-wrap gap-2">
-        {config.groups.length === 0 && <span className="text-sm text-faint">— ยังไม่มี —</span>}
-        {config.groups.map((g) => (
-          <span key={g} className="inline-flex items-center gap-1 rounded-full bg-raised px-3 py-1 text-sm text-muted">
-            {g}
-            <button
-              disabled={pending}
-              onClick={() => askDelete(`กลุ่ม "${g}"`, () => run(() => deletePayGroupAction(g), "ลบแล้ว", () => router.refresh()))}
-              className="text-faint hover:text-crit"
-            >✕</button>
-          </span>
-        ))}
-      </div>
-      <div className="flex gap-2">
-        <TextInput value={val} onChange={(e) => setVal(e.target.value)} placeholder="เช่น รายวัน / หัวหน้างาน" />
-        <SaveButton pending={pending} onClick={() => run(() => addPayGroupAction(val), "เพิ่มแล้ว", () => { setVal(""); router.refresh(); })}>
-          เพิ่ม
-        </SaveButton>
-      </div>
-    </Card>
+      <SettingsList
+        title="กลุ่มพนักงาน"
+        help={<>ใช้คุมว่ารายการไหนให้ใครบ้าง — เช่นตั้ง 2 กลุ่มแล้วให้ค่าล่วงเวลาคนละตัวคูณ
+          (สร้างรายการ 2 แถว แถวละกลุ่ม)</>}
+        items={config.groups}
+        pending={pending}
+        placeholder="เช่น รายวัน / หัวหน้างาน แล้วกด Enter"
+        emptyHint="— ยังไม่มี —"
+        onAdd={(v) => run(() => addPayGroupAction(v), "เพิ่มแล้ว", () => router.refresh())}
+        onDelete={(g) => askDelete(`กลุ่ม "${g}"`, () => run(() => deletePayGroupAction(g), "ลบแล้ว", () => router.refresh()))}
+      />
+    </>
   );
 }
 
@@ -274,8 +278,10 @@ function Inputs({ config }: { config: PayrollConfig }) {
   }
 
   return (
-    <Card
+    <SettingsCard
       title="ช่องที่ต้องกรอกต่อคนต่องวด"
+      count={rows.length}
+      unit="ช่อง"
       help={<>
         คอลัมน์ในตารางงวดจ่ายมาจากที่นี่ — เช่น ชั่วโมง OT · วันลาป่วย · จำนวนครั้งที่มาสาย
         (รหัสเป็นภาษาอังกฤษเพราะใช้เป็นคีย์ของข้อมูล ส่วนชื่อที่แสดงเป็นไทยได้)
@@ -286,61 +292,56 @@ function Inputs({ config }: { config: PayrollConfig }) {
       </>}
     >
       {confirmNode}
-      <div className="overflow-x-auto">
-        <table className="tbl">
-          <thead>
-            <tr className="text-left text-faint">
-              <th>ลำดับ</th><th>ชื่อที่แสดง</th><th>หน่วย</th><th>จำค่าจากงวดก่อน</th><th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((i, idx) => (
-              <tr key={i.code}>
-                {/* ★ ลำดับที่นี่ = ลำดับคอลัมน์ในตารางงวดจ่าย — ย้ายได้โดยไม่ต้องลบแล้วสร้างใหม่
-                    (ลบช่องที่มีข้อมูลกรอกไว้แล้ว = ค่าที่คีย์ไปหายทั้งงวด) */}
-                <td className="whitespace-nowrap">
-                  <button
-                    disabled={pending || idx === 0}
-                    onClick={() => move(idx, -1)}
-                    aria-label={`ย้าย ${i.label} ขึ้น`}
-                    className="px-1 text-muted hover:text-ink disabled:opacity-30"
-                  >▲</button>
-                  <button
-                    disabled={pending || idx === rows.length - 1}
-                    onClick={() => move(idx, 1)}
-                    aria-label={`ย้าย ${i.label} ลง`}
-                    className="px-1 text-muted hover:text-ink disabled:opacity-30"
-                  >▼</button>
-                </td>
-                <td>{i.label}</td>
-                <td>{i.unit ?? "—"}</td>
-                <td>
-                  <input
-                    type="checkbox"
-                    disabled={pending}
-                    checked={i.carryForward}
-                    aria-label={`จำค่า ${i.label} จากงวดก่อน`}
-                    onChange={(e) => run(
-                      () => savePayInputAction({ ...i, unit: i.unit ?? "", carryForward: e.target.checked }),
-                      "บันทึกแล้ว",
-                      () => router.refresh(),
-                    )}
-                  />
-                </td>
-                <td>
-                  <button
-                    disabled={pending}
-                    onClick={() => askDelete(`ช่อง "${i.label}"`, () => run(() => deletePayInputAction(i.code), "ลบแล้ว", () => { setOrder(null); router.refresh(); }))}
-                    className="text-crit hover:underline"
-                  >ลบ</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {rows.length === 0 && <Empty />}
-      </div>
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+      {rows.length === 0 && <ListEmpty />}
+      {rows.map((i, idx) => (
+        <ListRow
+          key={i.code}
+          title={i.label}
+          sub={i.unit ? `หน่วย: ${i.unit}` : undefined}
+          meta={
+            <label className="flex items-center gap-2 text-xs text-muted">
+              <input
+                type="checkbox"
+                disabled={pending}
+                checked={i.carryForward}
+                aria-label={`จำค่า ${i.label} จากงวดก่อน`}
+                onChange={(e) => run(
+                  () => savePayInputAction({ ...i, unit: i.unit ?? "", carryForward: e.target.checked }),
+                  "บันทึกแล้ว",
+                  () => router.refresh(),
+                )}
+              />
+              จำค่าจากงวดก่อน
+            </label>
+          }
+          actions={
+            <>
+              {/* ★ ลำดับที่นี่ = ลำดับคอลัมน์ในตารางงวดจ่าย — ย้ายได้โดยไม่ต้องลบแล้วสร้างใหม่
+                  (ลบช่องที่มีข้อมูลกรอกไว้แล้ว = ค่าที่คีย์ไปหายทั้งงวด) */}
+              <IconBtn
+                disabled={pending || idx === 0}
+                onClick={() => move(idx, -1)}
+                aria-label={`ย้าย ${i.label} ขึ้น`}
+                title="ย้ายขึ้น"
+              >▲</IconBtn>
+              <IconBtn
+                disabled={pending || idx === rows.length - 1}
+                onClick={() => move(idx, 1)}
+                aria-label={`ย้าย ${i.label} ลง`}
+                title="ย้ายลง"
+              >▼</IconBtn>
+              <IconBtn
+                tone="red"
+                disabled={pending}
+                onClick={() => askDelete(`ช่อง "${i.label}"`, () => run(() => deletePayInputAction(i.code), "ลบแล้ว", () => { setOrder(null); router.refresh(); }))}
+                aria-label={`ลบ ${i.label}`}
+                title="ลบช่องนี้"
+              ><IconTrash size={16} /></IconBtn>
+            </>
+          }
+        />
+      ))}
+      <div className="mt-1 grid grid-cols-1 gap-3 border-t border-line-soft py-3 sm:grid-cols-3">
         <Field label="ชื่อที่แสดง"><TextInput value={label} onChange={(e) => setLabel(e.target.value)} placeholder="OT วันทำงาน" /></Field>
         <Field label="หน่วย"><TextInput value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="ชั่วโมง" /></Field>
         <div className="flex items-end">
@@ -354,7 +355,7 @@ function Inputs({ config }: { config: PayrollConfig }) {
           >เพิ่มช่อง</SaveButton>
         </div>
       </div>
-    </Card>
+    </SettingsCard>
   );
 }
 
@@ -458,10 +459,12 @@ function TierEditor({
             <NumBox value={t.amount} blankZero onChange={(v) => patch(i, { amount: v === "" ? 0 : v })} />
           </div>
           <span className="text-sm text-faint">บาท</span>
-          <button
+          <IconBtn
+            tone="red"
             onClick={() => onChange(rows.filter((_, idx) => idx !== i))}
-            className="text-xs text-crit hover:underline"
-          >ลบ</button>
+            aria-label={`ลบเงื่อนไขที่ ${i + 1}`}
+            title="ลบเงื่อนไขนี้"
+          ><IconTrash size={16} /></IconBtn>
         </div>
       ))}
       <button
@@ -504,30 +507,28 @@ function WorkDays({ config }: { config: PayrollConfig }) {
   }
 
   return (
-    <Card
+    <SettingsCard
       title="ค่าจ้างและวันทำงาน"
       help={<>ค่าตั้งต้นของตารางงวด — วันทำงานในตารางคิดจากสูตรนี้ แล้วแก้รายคนได้ในตาราง ·
         เปลี่ยนสูตรแล้วมีผลกับงวดร่าง ส่วนงวดที่ลงบัญชีแล้วไม่ขยับ</>}
     >
-      <div className="overflow-x-auto">
-        <table className="tbl">
-          <thead>
-            <tr className="text-left text-faint"><th>วิธีคิดค่าจ้าง</th><th>ค่าจ้างฐาน</th><th>วันทำงาน</th><th></th></tr>
-          </thead>
-          <tbody>
-            {WAGE_TYPES.map((w) => (
-              <tr key={w}>
-                <td>{WAGE_LABEL[w]}</td>
-                <td className="text-xs text-muted">{wageBaseText(w)}</td>
-                <td className="text-xs text-muted">{workDayRuleText(w, config.workDayRules, inputLabels)}</td>
-                <td>
-                  {w !== "monthly" && <button onClick={() => open(w)} className="text-muted hover:underline">แก้</button>}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {WAGE_TYPES.map((w) => (
+        <ListRow
+          key={w}
+          title={WAGE_LABEL[w]}
+          sub={
+            <>
+              <span className="block">ค่าจ้างฐาน: {wageBaseText(w)}</span>
+              <span className="block">วันทำงาน: {workDayRuleText(w, config.workDayRules, inputLabels)}</span>
+            </>
+          }
+          actions={
+            w !== "monthly" ? (
+              <IconBtn onClick={() => open(w)} aria-label={`แก้ไขวันทำงาน ${WAGE_LABEL[w]}`} title="แก้ไข"><IconEdit size={16} /></IconBtn>
+            ) : undefined
+          }
+        />
+      ))}
 
       {edit && (
         <Modal
@@ -555,7 +556,7 @@ function WorkDays({ config }: { config: PayrollConfig }) {
             </p>
         </Modal>
       )}
-    </Card>
+    </SettingsCard>
   );
 }
 
@@ -606,27 +607,28 @@ function Formulas({ config, employees }: { config: PayrollConfig; employees: Emp
   }
 
   return (
-    <Card
+    <SettingsCard
       title="สูตรและรายการคำนวณ"
+      count={config.variables.length + config.components.length}
       help={<>ที่นี่มี 2 อย่าง — <b>ตัวแปร</b> คือค่ากลางที่คำนวณไว้ให้เอาไปใช้ต่อ (เช่นอัตราต่อชั่วโมง)
         และ <b>รายการเพิ่ม/หัก</b> คือเงินที่ขึ้นบนสลิปจริง</>}
-    >
-      {confirmNode}
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <p className="text-xs text-faint">
-          🚨 <b>ตัวแปรถูกคิดก่อนรายการเสมอ</b> → รายการอ้างตัวแปรได้ แต่<b>ตัวแปรอ้างรายการไม่ได้</b>
-        </p>
-        <div className="flex shrink-0 gap-2">
+      action={
+        <>
           <button
             onClick={() => setEdit({ type: "var", v: blankVariable(), isNew: true })}
-            className="rounded-lg border border-brand-line px-3 py-2 text-sm text-brand"
-          >+ ตัวแปร</button>
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-brand-line px-3 py-2 text-sm font-medium text-brand"
+          ><IconPlus size={16} /> ตัวแปร</button>
           <button
             onClick={() => setEdit({ type: "comp", c: blankComponent(), isNew: true })}
-            className="rounded-lg bg-brand px-4 py-2 text-sm text-on-brand"
-          >+ รายการเพิ่ม/หัก</button>
-        </div>
-      </div>
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-brand px-3 py-2 text-sm font-medium text-on-brand"
+          ><IconPlus size={16} /> รายการเพิ่ม/หัก</button>
+        </>
+      }
+    >
+      {confirmNode}
+      <p className="py-2 text-xs text-faint">
+        🚨 <b>ตัวแปรถูกคิดก่อนรายการเสมอ</b> → รายการอ้างตัวแปรได้ แต่<b>ตัวแปรอ้างรายการไม่ได้</b>
+      </p>
 
       {dailyWarn.length > 0 && (
         <div className="mb-3 rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">
@@ -656,67 +658,75 @@ function Formulas({ config, employees }: { config: PayrollConfig; employees: Emp
       <div className="mb-1 mt-2 text-[10px] font-medium uppercase tracking-widest text-muted">
         ตัวแปร — คิดก่อน
       </div>
-      <div className="overflow-x-auto">
-        <table className="tbl">
-          <thead><tr className="text-left text-faint"><th>ชื่อ</th><th>สูตรที่ใช้จริง</th><th></th></tr></thead>
-          <tbody>
-            {config.variables.map((v) => (
-              <tr key={v.code}>
-                <td>{v.name}{v.active === false && <span className="ml-1 text-xs text-faint">(ปิดอยู่)</span>}</td>
-                <td className="text-xs text-muted">{variableFormulaText(v, inputLabels)}</td>
-                <td className="whitespace-nowrap">
-                  <button onClick={() => setEdit({ type: "var", v, isNew: false })} className="text-muted hover:underline">แก้</button>
-                  <button
-                    disabled={pending}
-                    onClick={() => askDelete(`ตัวแปร "${v.name}"`, () => run(() => deletePayVariableAction(v.code), "ลบแล้ว", () => router.refresh()))}
-                    className="ml-2 text-crit hover:underline"
-                  >ลบ</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {config.variables.length === 0 && <Empty>— ยังไม่มีตัวแปร (ต้องมีก่อนถ้าจะคิดค่าล่วงเวลา) —</Empty>}
-      </div>
+      {config.variables.length === 0 && <ListEmpty>— ยังไม่มีตัวแปร (ต้องมีก่อนถ้าจะคิดค่าล่วงเวลา) —</ListEmpty>}
+      {config.variables.map((v) => (
+        <ListRow
+          key={v.code}
+          dim={v.active === false}
+          title={<>{v.name}{v.active === false && <span className="ml-1 text-xs text-faint">(ปิดอยู่)</span>}</>}
+          sub={variableFormulaText(v, inputLabels)}
+          actions={
+            <>
+              <IconBtn onClick={() => setEdit({ type: "var", v, isNew: false })} aria-label={`แก้ไข ${v.name}`} title="แก้ไข"><IconEdit size={16} /></IconBtn>
+              <IconBtn
+                tone="red"
+                disabled={pending}
+                onClick={() => askDelete(`ตัวแปร "${v.name}"`, () => run(() => deletePayVariableAction(v.code), "ลบแล้ว", () => router.refresh()))}
+                aria-label={`ลบ ${v.name}`}
+                title="ลบตัวแปรนี้"
+              ><IconTrash size={16} /></IconBtn>
+            </>
+          }
+        />
+      ))}
 
       {/* ── รายการเพิ่ม/หัก (คิดทีหลัง) ── */}
       <div className="mb-1 mt-5 text-[10px] font-medium uppercase tracking-widest text-muted">
         รายการเพิ่ม / หัก — คิดทีหลัง
       </div>
-      <div className="overflow-x-auto">
-        <table className="tbl">
-          <thead>
-            <tr className="text-left text-faint">
-              <th>ชื่อ</th><th>ประเภท</th><th>สูตรที่ใช้จริง</th><th>กลุ่ม</th><th>ใช้กับ</th>
-              <th>ภาษี</th><th>ปกส.</th><th>ฐานตัวแปร</th><th>prorate</th><th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {shownComps.map((c) => (
-              <tr key={c.code}>
-                <td>{c.name}{c.active === false && <span className="ml-1 text-xs text-faint">(ปิดอยู่)</span>}</td>
-                <td>{c.kind === "earning" ? "เพิ่ม" : "หัก"}</td>
-                <td className="text-xs text-muted">{componentFormulaText(c, { inputLabels, variableNames })}</td>
-                <td className="text-xs">{(c.groupCodes ?? []).join(", ") || "ทุกกลุ่ม"}</td>
-                <td className="text-xs">{wageTypesText(c)}</td>
-                <td>{c.taxable ? "✓" : "—"}</td>
-                <td>{c.ssoBase ? "✓" : "—"}</td>
-                <td>{c.otBase ? "✓" : "—"}</td>
-                <td>{c.prorateBase ? "✓" : "—"}</td>
-                <td className="whitespace-nowrap">
-                  <button onClick={() => setEdit({ type: "comp", c, isNew: false })} className="text-muted hover:underline">แก้</button>
-                  <button
-                    disabled={pending}
-                    onClick={() => askDelete(`รายการ "${c.name}"`, () => run(() => deletePayComponentAction(c.code), "ลบแล้ว", () => router.refresh()))}
-                    className="ml-2 text-crit hover:underline"
-                  >ลบ</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {shownComps.length === 0 && <Empty>— ยังไม่มีรายการ —</Empty>}
-      </div>
+      {shownComps.length === 0 && <ListEmpty>— ยังไม่มีรายการ —</ListEmpty>}
+      {shownComps.map((c) => {
+        // เข้าฐานไหนบ้าง — ข้อมูลเดิม 4 คอลัมน์ ✓/— ย้ายมารวมบรรทัดเดียว (ภาษีกับ ปกส. ไม่เท่ากัน จึงต้องเห็นครบ)
+        const bases = [
+          c.taxable ? "ภาษี" : null,
+          c.ssoBase ? "ปกส." : null,
+          c.otBase ? "ฐานตัวแปร" : null,
+          c.prorateBase ? "prorate" : null,
+        ].filter(Boolean).join(", ");
+        return (
+          <ListRow
+            key={c.code}
+            dim={c.active === false}
+            title={
+              <>
+                {c.name}
+                <span className="ml-1.5 text-xs text-muted">({c.kind === "earning" ? "เพิ่ม" : "หัก"})</span>
+                {c.active === false && <span className="ml-1 text-xs text-faint">(ปิดอยู่)</span>}
+              </>
+            }
+            sub={
+              <>
+                <span className="block">{componentFormulaText(c, { inputLabels, variableNames })}</span>
+                <span className="block">
+                  กลุ่ม: {(c.groupCodes ?? []).join(", ") || "ทุกกลุ่ม"} · ใช้กับ: {wageTypesText(c)} · เข้าฐาน: {bases || "—"}
+                </span>
+              </>
+            }
+            actions={
+              <>
+                <IconBtn onClick={() => setEdit({ type: "comp", c, isNew: false })} aria-label={`แก้ไข ${c.name}`} title="แก้ไข"><IconEdit size={16} /></IconBtn>
+                <IconBtn
+                  tone="red"
+                  disabled={pending}
+                  onClick={() => askDelete(`รายการ "${c.name}"`, () => run(() => deletePayComponentAction(c.code), "ลบแล้ว", () => router.refresh()))}
+                  aria-label={`ลบ ${c.name}`}
+                  title="ลบรายการนี้"
+                ><IconTrash size={16} /></IconBtn>
+              </>
+            }
+          />
+        );
+      })}
 
       {edit && (
         <Modal
@@ -766,7 +776,7 @@ function Formulas({ config, employees }: { config: PayrollConfig; employees: Emp
 
         </Modal>
       )}
-    </Card>
+    </SettingsCard>
   );
 }
 
@@ -828,10 +838,12 @@ function VarForm({
                     onValue={(x) => setStep(idx, { value: x })}
                     onInput={(k) => setStep(idx, { inputKey: k })}
                   />
-                  <button
+                  <IconBtn
+                    tone="red"
                     onClick={() => set("steps", steps.filter((_, i) => i !== idx))}
-                    className="text-xs text-crit hover:underline"
-                  >เอาออก</button>
+                    aria-label={`เอาขั้นที่ ${idx + 1} ออก`}
+                    title="เอาขั้นนี้ออก"
+                  ><IconTrash size={16} /></IconBtn>
                 </>
               ) : (
                 <button
@@ -1039,58 +1051,59 @@ function PostLegs({ config }: { config: PayrollConfig }) {
     setEdit((p) => (p ? { ...p, [k]: v } : p));
 
   return (
-    <Card
+    <SettingsCard
       title="ขาลงบัญชี"
+      count={config.legs.length}
+      unit="ขา"
       help={<>กำหนดว่าเงินเดือนไปเป็นรายจ่ายในบัญชีเป็นกี่ก้อน — ตั้งกี่ขาก็ได้ ·
         หมวดรายจ่ายพิมพ์เอง ไม่ต้องมีในรายการหมวดเดิม</>}
+      action={
+        <button
+          onClick={() => setEdit(blankLeg())}
+          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-brand px-3 py-2 text-sm font-medium text-on-brand"
+        ><IconPlus size={16} /> เพิ่มขา</button>
+      }
     >
       {confirmNode}
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <p className="text-xs text-faint">
-          🚨 <b>ขาที่ยอดซ้อนกัน = ลงรายจ่ายซ้ำ</b> (เช่นตั้งขาโอทีเพิ่มทั้งที่โอทีอยู่ในยอดสุทธิแล้ว) —
-          ตรวจตัวเลขคุมที่แท็บงวดจ่ายก่อนลงบัญชีทุกครั้ง
-        </p>
-        <button onClick={() => setEdit(blankLeg())} className="shrink-0 rounded-lg bg-brand px-4 py-2 text-sm text-on-brand">
-          + เพิ่มขา
-        </button>
-      </div>
+      <p className="py-2 text-xs text-faint">
+        🚨 <b>ขาที่ยอดซ้อนกัน = ลงรายจ่ายซ้ำ</b> (เช่นตั้งขาโอทีเพิ่มทั้งที่โอทีอยู่ในยอดสุทธิแล้ว) —
+        ตรวจตัวเลขคุมที่แท็บงวดจ่ายก่อนลงบัญชีทุกครั้ง
+      </p>
 
-      <div className="overflow-x-auto">
-        <table className="tbl">
-          <thead>
-            <tr className="text-left text-faint">
-              <th>ชื่อขา</th><th>ยอดที่ลง</th><th>แยกรายคน</th><th>หมวดรายจ่าย</th>
-              <th>บัญชีเงิน</th><th>วันที่แนะนำ</th><th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {config.legs.map((l) => (
-              <tr key={l.code}>
-                <td>{l.name}{l.active === false && <span className="ml-1 text-xs text-faint">(ปิดอยู่)</span>}</td>
-                <td className="text-xs">
-                  {LEG_SOURCE_LABEL[l.amountSource]}
-                  {l.amountSource === "component" && ` — ${config.components.find((c) => c.code === l.componentCode)?.name ?? l.componentCode}`}
-                </td>
-                <td>{l.splitByEmployee ? "แยกรายคน" : "ก้อนเดียว"}</td>
-                <td>{l.category}</td>
-                <td className="text-xs">{l.accountName || "(บัญชีหลัก)"}</td>
-                <td className="text-xs">{l.suggestDay ? `สิ้นงวด + ${l.suggestDay} วัน` : "วันจ่ายเงินเดือน"}</td>
-                <td className="whitespace-nowrap">
-                  <button onClick={() => setEdit(l)} className="text-muted hover:underline">แก้</button>
-                  <button
-                    disabled={pending}
-                    onClick={() => askDelete(`ขา "${l.name}"`, () => run(() => deletePayPostLegAction(l.code), "ลบแล้ว", () => router.refresh()))}
-                    className="ml-2 text-crit hover:underline"
-                  >ลบ</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {config.legs.length === 0 && (
-          <Empty>— ยังไม่มีขา (ตั้งอย่างน้อย 1 ขาก่อนถึงจะลงบัญชีได้) —</Empty>
-        )}
-      </div>
+      {config.legs.length === 0 && (
+        <ListEmpty>— ยังไม่มีขา (ตั้งอย่างน้อย 1 ขาก่อนถึงจะลงบัญชีได้) —</ListEmpty>
+      )}
+      {config.legs.map((l) => (
+        <ListRow
+          key={l.code}
+          dim={l.active === false}
+          title={<>{l.name}{l.active === false && <span className="ml-1 text-xs text-faint">(ปิดอยู่)</span>}</>}
+          sub={
+            <>
+              <span className="block">
+                ยอดที่ลง: {LEG_SOURCE_LABEL[l.amountSource]}
+                {l.amountSource === "component" && ` — ${config.components.find((c) => c.code === l.componentCode)?.name ?? l.componentCode}`}
+                {" · "}{l.splitByEmployee ? "แยกรายคน" : "ก้อนเดียว"}
+              </span>
+              <span className="block">
+                หมวด: {l.category || "—"} · บัญชี: {l.accountName || "(บัญชีหลัก)"} · วันที่แนะนำ: {l.suggestDay ? `สิ้นงวด + ${l.suggestDay} วัน` : "วันจ่ายเงินเดือน"}
+              </span>
+            </>
+          }
+          actions={
+            <>
+              <IconBtn onClick={() => setEdit(l)} aria-label={`แก้ไข ${l.name}`} title="แก้ไข"><IconEdit size={16} /></IconBtn>
+              <IconBtn
+                tone="red"
+                disabled={pending}
+                onClick={() => askDelete(`ขา "${l.name}"`, () => run(() => deletePayPostLegAction(l.code), "ลบแล้ว", () => router.refresh()))}
+                aria-label={`ลบ ${l.name}`}
+                title="ลบขานี้"
+              ><IconTrash size={16} /></IconBtn>
+            </>
+          }
+        />
+      ))}
 
       {edit && (
         <Modal
@@ -1167,7 +1180,7 @@ function PostLegs({ config }: { config: PayrollConfig }) {
 
         </Modal>
       )}
-    </Card>
+    </SettingsCard>
   );
 }
 
@@ -1199,7 +1212,7 @@ function Rates({ config }: { config: PayrollConfig }) {
   }
 
   return (
-    <Card title="ชุดอัตราตามกฎหมาย (มีวันเริ่มมีผล)">
+    <SettingsCard title="ชุดอัตราตามกฎหมาย (มีวันเริ่มมีผล)" count={config.rates.length} unit="ชุด">
       {confirmNode}
       <p className="mb-3 text-xs text-faint">
         🚨 อัตราพวกนี้ถูกแก้ด้วยกฎกระทรวงเป็นระยะ — เก็บเป็นชุดที่มีวันเริ่มมีผล
@@ -1220,15 +1233,19 @@ function Rates({ config }: { config: PayrollConfig }) {
                   <td className="num">{r.personalAllowance.toLocaleString()}</td>
                   <td className="num">{(r.pitBrackets ?? []).length} ขั้น</td>
                   <td className="whitespace-nowrap">
-                    <button onClick={() => startEdit(r)} className="text-muted hover:underline">แก้</button>
-                    <button
-                      disabled={pending}
-                      onClick={() => askDelete(
-                        `ชุดอัตราที่เริ่มมีผล ${df.date(r.effectiveFrom)}`,
-                        () => run(() => deletePayRatesAction(r.effectiveFrom), "ลบแล้ว", () => { startNew(); router.refresh(); }),
-                      )}
-                      className="ml-2 text-crit hover:underline"
-                    >ลบ</button>
+                    <div className="flex items-center gap-1">
+                      <IconBtn onClick={() => startEdit(r)} aria-label={`แก้ไขชุดอัตราที่เริ่มมีผล ${df.date(r.effectiveFrom)}`} title="แก้ไข"><IconEdit size={16} /></IconBtn>
+                      <IconBtn
+                        tone="red"
+                        disabled={pending}
+                        onClick={() => askDelete(
+                          `ชุดอัตราที่เริ่มมีผล ${df.date(r.effectiveFrom)}`,
+                          () => run(() => deletePayRatesAction(r.effectiveFrom), "ลบแล้ว", () => { startNew(); router.refresh(); }),
+                        )}
+                        aria-label={`ลบชุดอัตราที่เริ่มมีผล ${df.date(r.effectiveFrom)}`}
+                        title="ลบชุดอัตรานี้"
+                      ><IconTrash size={16} /></IconBtn>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -1304,7 +1321,7 @@ function Rates({ config }: { config: PayrollConfig }) {
           </button>
         )}
       </div>
-    </Card>
+    </SettingsCard>
   );
 }
 
@@ -1352,10 +1369,12 @@ function BracketEditor({
           <span className="text-sm text-muted">อัตรา</span>
           <div className="w-24"><NumBox value={b.rate} onChange={(v) => patch(i, { rate: v === "" ? 0 : v })} /></div>
           <span className="w-14 text-sm text-faint">= {Math.round(Number(b.rate) * 10000) / 100}%</span>
-          <button
+          <IconBtn
+            tone="red"
             onClick={() => onChange(rows.filter((_, idx) => idx !== i))}
-            className="text-xs text-crit hover:underline"
-          >ลบ</button>
+            aria-label={`ลบขั้นที่ ${i + 1}`}
+            title="ลบขั้นนี้"
+          ><IconTrash size={16} /></IconBtn>
         </div>
       ))}
       <button

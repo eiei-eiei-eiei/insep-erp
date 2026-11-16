@@ -38,7 +38,9 @@ import {
   pinnedItems,
   type GarnishDraft,
 } from "@/lib/bar/quickPick";
-import { Card, Select, TextInput, MissingHint, useSaver } from "@/lib/shared/ui";
+import { IconBtn, Select, TextInput, MissingHint, useSaver } from "@/lib/shared/ui";
+import { SettingsCard } from "@/lib/shared/settings";
+import { IconTrash } from "@/lib/shared/icons";
 import { saveGarnishesAction, saveHouseSlotsAction, savePinsAction } from "../actions";
 
 type Reload = () => Promise<void>;
@@ -52,9 +54,9 @@ export function QuickPickSettings({ boot, onReload }: { boot: BarBoot; onReload:
   const { setMsg } = useSaver();
   const notify: Notify = (text) => setMsg({ ok: true, text });
   return (
-    <>
-      <div className="lg:col-span-2">
-        <h3 className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-ink">
+    <div className="space-y-4">
+      <div>
+        <h3 className="flex items-center gap-1.5 text-sm font-semibold text-ink">
           ปุ่มลัดในหน้าสร้างเมนู
         </h3>
         {/* คงไว้บนจอ (D173 เฟส 2b) — ไม่เห็นแล้วกดปุ่มบันทึกด้านบน นึกว่าการ์ดนี้บันทึกแล้ว */}
@@ -70,7 +72,21 @@ export function QuickPickSettings({ boot, onReload }: { boot: BarBoot; onReload:
         onReload={onReload}
         notify={notify}
       />
-    </>
+    </div>
+  );
+}
+
+/** ปุ่ม + เพิ่ม ที่หัวการ์ด (หน้าตาเดียวกับการ์ดตั้งค่าอื่น) */
+function AddBtn({ onClick, disabled, children }: { onClick: () => void; disabled: boolean; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="min-h-[44px] rounded border border-line px-3 py-1.5 text-sm text-ink transition hover:bg-raised disabled:opacity-50 sm:min-h-0"
+    >
+      {children}
+    </button>
   );
 }
 
@@ -104,7 +120,17 @@ function HouseSlotCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Re
   }
 
   return (
-    <Card title="เหล้าประจำบ้าน (House)" help="ตั้งชื่อช่อง แล้วเลือกขวดที่ใช้อยู่ตอนนี้ · สูตรอ้างช่องแทนขวดยี่ห้อได้">
+    <SettingsCard
+      title="เหล้าประจำบ้าน (House)"
+      help="ตั้งชื่อช่อง แล้วเลือกขวดที่ใช้อยู่ตอนนี้ · สูตรอ้างช่องแทนขวดยี่ห้อได้"
+      count={rows.length}
+      unit="ช่อง"
+      action={
+        <AddBtn disabled={busy} onClick={() => setRows((p) => [...p, { slotId: null, name: "", itemId: "" }])}>
+          ＋ เพิ่มช่อง
+        </AddBtn>
+      }
+    >
       <p className="mb-2 text-xs text-muted">
         <b>เปลี่ยนขวด = ทุกเมนูที่อ้างช่องนี้เปลี่ยนทันที</b> (บิลเก่าไม่ขยับ) · ขวดหมดระบบปล่อยติดลบ ไม่สลับขวดให้เอง
       </p>
@@ -142,14 +168,15 @@ function HouseSlotCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Re
                 </Select>
               </div>
               {block ? null : (
-                <button
-                  type="button"
+                <IconBtn
+                  tone="red"
                   disabled={busy}
                   onClick={() => setRows((p) => p.filter((_, j) => j !== i))}
-                  className="text-xs text-crit underline disabled:opacity-50"
+                  aria-label={`ลบช่อง ${r.name || i + 1}`}
+                  title="ลบ"
                 >
-                  ลบ
-                </button>
+                  <IconTrash size={16} />
+                </IconBtn>
               )}
             </div>
             <div className="mt-0.5 text-xs text-faint">
@@ -170,12 +197,10 @@ function HouseSlotCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Re
         dirty={dirty}
         problem={problem}
         canConfig={boot.canConfig}
-        onAdd={() => setRows((p) => [...p, { slotId: null, name: "", itemId: "" }])}
-        addText="＋ เพิ่มช่อง"
         onSave={save}
         onReset={() => setRows(initial)}
       />
-    </Card>
+    </SettingsCard>
   );
 }
 
@@ -202,8 +227,18 @@ function GarnishCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Relo
   }
 
   return (
-    <Card
+    <SettingsCard
       title="ชุดตกแต่ง"
+      count={rows.length}
+      unit="ชุด"
+      action={
+        <AddBtn
+          disabled={busy}
+          onClick={() => setRows((p) => [...p, { garnishId: null, name: "", itemId: "", qtyText: "", qtyUnit: null }])}
+        >
+          ＋ เพิ่มชุดตกแต่ง
+        </AddBtn>
+      }
       help={
         <>
           กดชุดตกแต่งในหน้าสร้างเมนู = <b>เพิ่มเป็นบรรทัดของชุด</b> (กดซ้ำ = เพิ่มจำนวนชุด) · จำนวนพิมพ์เศษส่วนได้ เช่น{" "}
@@ -265,14 +300,15 @@ function GarnishCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Relo
                 </>
               )}
               {block ? null : (
-                <button
-                  type="button"
+                <IconBtn
+                  tone="red"
                   disabled={busy}
                   onClick={() => setRows((p) => p.filter((_, j) => j !== i))}
-                  className="text-xs text-crit underline disabled:opacity-50"
+                  aria-label={`ลบชุด ${r.name || i + 1}`}
+                  title="ลบ"
                 >
-                  ลบ
-                </button>
+                  <IconTrash size={16} />
+                </IconBtn>
               )}
             </div>
             <div className="mt-0.5 text-xs text-faint">
@@ -290,12 +326,10 @@ function GarnishCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Relo
         dirty={dirty}
         problem={problem}
         canConfig={boot.canConfig}
-        onAdd={() => setRows((p) => [...p, { garnishId: null, name: "", itemId: "", qtyText: "", qtyUnit: null }])}
-        addText="＋ เพิ่มชุดตกแต่ง"
         onSave={save}
         onReset={() => setRows(initial)}
       />
-    </Card>
+    </SettingsCard>
   );
 }
 
@@ -325,8 +359,10 @@ function PinCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Reload; 
   }
 
   return (
-    <Card
+    <SettingsCard
       title="วัตถุดิบใช้บ่อย"
+      count={order.length}
+      unit="ตัว"
       help={
         <>
           ขึ้นเป็นปุ่มลัดกลุ่ม <b>ใช้บ่อย</b> ในหน้าสร้างเมนู เรียงตามที่จัดที่นี่ (ไม่เรียงตามยอดใช้ — ปุ่มอยู่ที่เดิมเสมอ)
@@ -387,7 +423,7 @@ function PinCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Reload; 
         onSave={save}
         onReset={() => setOrder(initial)}
       />
-    </Card>
+    </SettingsCard>
   );
 }
 

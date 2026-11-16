@@ -402,12 +402,12 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
                 ? <Select value={type} disabled title="บิลสำรองจ่ายเปลี่ยนประเภทไม่ได้ — ใช้ปุ่ม เคลีย / ตัดเป็นส่วนตัว ในแท็บลูกหนี้-เจ้าหนี้"><option value={ADVANCE_TYPE}>{ADVANCE_TYPE}</option></Select>
                 : <Select value={type} onChange={(e) => setType(e.target.value as "รายรับ" | "รายจ่าย")}><option value="รายจ่าย">รายจ่าย</option><option value="รายรับ">รายรับ</option></Select>}</Field>
               <Field label="หมวดหมู่">
-                <input list="edit-cat-list" value={category} onChange={(e) => setCategory(e.target.value)} className="w-full rounded-lg border border-line px-3 py-2 text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft" />
+                <TextInput list="edit-cat-list" value={category} onChange={(e) => setCategory(e.target.value)} />
                 <datalist id="edit-cat-list">{cats.map((c) => (<option key={c} value={c} />))}{type === "รายจ่าย" && boot.forwardCats.filter((c) => !cats.includes(c)).map((c) => (<option key={c} value={c} />))}</datalist>
               </Field>
               <Field label="บัญชี"><Select value={accountName} onChange={(e) => setAccountName(e.target.value)}><option value="">— เลือก —</option>{accountOptions.map((a) => (<option key={a.account_name} value={a.account_name}>{a.account_name}</option>))}</Select></Field>
               <Field label="คู่ค้า">
-                <input list="edit-contact-list" value={contactName} onChange={(e) => setContactName(e.target.value)} className="w-full rounded-lg border border-line px-3 py-2 text-ink outline-none" />
+                <TextInput list="edit-contact-list" value={contactName} onChange={(e) => setContactName(e.target.value)} />
                 <datalist id="edit-contact-list">{boot.contacts.map((c) => (<option key={c.contact_id} value={c.name} />))}</datalist>
                 {multiBranch && (
                   <Select value={effBranchId} onChange={(e) => setContactId(e.target.value)} className="mt-1">
@@ -456,6 +456,7 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
                 <button type="button" onClick={() => fillAll({ itemCategory: bulkCat.trim() })} disabled={!bulkCat.trim()} title={bulkCat.trim() ? "เติมหมวดหมู่นี้ให้ทุกแถว" : "พิมพ์หมวดหมู่ในช่องซ้ายก่อน (ช่องว่าง = จะไปล้างค่าเดิมทั้งบิล)"} className="rounded border border-line px-2 py-1 text-muted hover:bg-raised disabled:opacity-40">เติม</button>
                 <div className="w-32"><TextInput list="edit-item-jobs" value={bulkJob} onChange={(e) => setBulkJob(e.target.value)} placeholder="งาน" className="py-1 text-sm" /></div>
                 <button type="button" onClick={() => fillAll({ itemJob: bulkJob.trim() })} disabled={!bulkJob.trim()} title={bulkJob.trim() ? "เติมงานนี้ให้ทุกแถว" : "พิมพ์ชื่องานในช่องซ้ายก่อน (ช่องว่าง = จะไปล้างค่าเดิมทั้งบิล)"} className="rounded border border-line px-2 py-1 text-muted hover:bg-raised disabled:opacity-40">เติม</button>
+                <span className="basis-full text-xs text-faint">พิมพ์ในช่องก่อนจึงกด เติม ได้ — ช่องว่างจะไม่ล้างค่าเดิมของบิล</span>
               </div>
             </div>
 

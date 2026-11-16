@@ -5,9 +5,10 @@ import { useState, useTransition } from "react";
 import { ROLE_LABEL, ROLE_HINT, type Role } from "@/lib/shared/roles";
 import { rolesFor } from "@/lib/shared/moduleScope";
 import { PASSWORD_MIN } from "@/lib/shared/password";
+import { SettingsCard, ListRow } from "@/lib/shared/settings";
+import { IconTrash } from "@/lib/shared/icons";
 import {
-  Card,
-  Help,
+  IconBtn,
   Modal,
   ModalCancel,
   MissingHint,
@@ -111,19 +112,13 @@ export function UsersManager({
   const canCreate = createChecks.every((c) => c.ok);
 
   return (
-    <div>
-      <h2 className="mb-6 flex items-center gap-1.5 text-xl font-bold text-ink">
-        จัดการผู้ใช้
-        <Help>
-          สร้างบัญชีด้วย username (ไม่ต้องมีอีเมลจริง) · ให้สิทธิ์ · รีเซ็ตรหัสผ่าน · ลบ —
-          เฉพาะเจ้าของกิจการ (main)
-        </Help>
-      </h2>
-
+    <div className="space-y-4">
       {/* สร้างผู้ใช้ใหม่ */}
-      <Card className="mb-8">
-        <h2 className="mb-3 font-semibold text-ink">+ สร้างผู้ใช้ใหม่</h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <SettingsCard
+        title="สร้างผู้ใช้ใหม่"
+        help="สร้างบัญชีด้วย username (ไม่ต้องมีอีเมลจริง) · ให้สิทธิ์ — เฉพาะเจ้าของกิจการ (main)"
+      >
+        <div className="grid grid-cols-1 gap-3 py-2 sm:grid-cols-2 lg:grid-cols-5">
           <label className="text-sm">
             <span className="mb-1 block text-muted">ชื่อผู้ใช้ (username)</span>
             <TextInput
@@ -186,36 +181,36 @@ export function UsersManager({
             <MissingHint checks={createChecks} />
           </div>
         </div>
-      </Card>
+      </SettingsCard>
 
-      {/* รายชื่อผู้ใช้ */}
-      <div className="overflow-x-auto rounded-lg border border-line bg-card">
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th className="px-4 py-3">username</th>
-              <th className="px-4 py-3">ชื่อแสดงผล</th>
-              <th className="px-4 py-3">สิทธิ์</th>
-              {multiEntity && <th className="px-4 py-3">กิจการที่เห็นได้</th>}
-              <th className="px-4 py-3 num">จัดการ</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => {
-              const isSelf = u.id === currentUserId;
-              return (
-                <tr key={u.id}>
-                  <td className="px-4 py-3 font-medium text-ink">
-                    {u.username}
-                    {isSelf && (
-                      <span className="ml-2 rounded bg-raised px-1.5 py-0.5 text-xs text-faint">
-                        คุณ
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-muted">{u.display_name}</td>
-                  <td className="px-4 py-3">
+      {/* รายชื่อผู้ใช้ — 1 คน = 1 แถว (สิทธิ์ = ดร็อปดาวน์ในแถว เปลี่ยนแล้วบันทึกทันทีเหมือนเดิม) */}
+      <SettingsCard
+        title="ผู้ใช้ในระบบ"
+        count={users.length}
+        unit="คน"
+        help="รีเซ็ตรหัสผ่าน · ลบผู้ใช้ · ให้สิทธิ์ — เฉพาะเจ้าของกิจการ (main)"
+      >
+        {users.map((u) => {
+          const isSelf = u.id === currentUserId;
+          return (
+            <ListRow
+              key={u.id}
+              title={
+                <span className="font-medium">
+                  {u.username}
+                  {isSelf && (
+                    <span className="ml-2 rounded bg-raised px-1.5 py-0.5 text-xs font-normal text-faint">
+                      คุณ
+                    </span>
+                  )}
+                </span>
+              }
+              sub={
+                <div className="space-y-1.5">
+                  {u.display_name && <div>{u.display_name}</div>}
+                  <div className="max-w-xs">
                     <Select
+                      aria-label={`สิทธิ์ของ ${u.username}`}
                       className="py-1"
                       defaultValue={u.role}
                       disabled={pending}
@@ -232,48 +227,51 @@ export function UsersManager({
                         </option>
                       ))}
                     </Select>
-                  </td>
+                  </div>
                   {multiEntity && (
-                    <td className="px-4 py-3">
-                      <div className={u.allowed_entity_ids ? "text-warn" : "text-muted"}>
-                        {entityScopeLabel(u.allowed_entity_ids, entities)}
-                      </div>
-                      {u.role === "main" ? (
-                        <span className="text-xs text-faint">main เห็นทุกกิจการเสมอ</span>
-                      ) : isSelf ? null : (
-                        <RowBtn
-                          className="mt-1"
-                          disabled={pending}
-                          onClick={() => { setScope(u.allowed_entity_ids); setDialog({ kind: "scope", user: u }); }}
-                        >
-                          จำกัดกิจการ
-                        </RowBtn>
-                      )}
-                    </td>
+                    <div>
+                      <span className={u.allowed_entity_ids ? "text-warn" : "text-muted"}>
+                        กิจการที่เห็นได้: {entityScopeLabel(u.allowed_entity_ids, entities)}
+                      </span>
+                      {u.role === "main" && <span className="ml-2 text-faint">main เห็นทุกกิจการเสมอ</span>}
+                    </div>
                   )}
-                  <td className="px-4 py-3 num">
+                  {isSelf && (
+                    <div className="text-faint">ลบบัญชีที่กำลังใช้งานอยู่ไม่ได้ (ให้ผู้ใช้ main อีกคนลบให้)</div>
+                  )}
+                </div>
+              }
+              actions={
+                <>
+                  {multiEntity && u.role !== "main" && !isSelf && (
                     <RowBtn
-                      className="mr-2"
                       disabled={pending}
-                      onClick={() => { setNewPw(""); setDialog({ kind: "reset", user: u }); }}
+                      onClick={() => { setScope(u.allowed_entity_ids); setDialog({ kind: "scope", user: u }); }}
                     >
-                      รีเซ็ตรหัส
+                      จำกัดกิจการ
                     </RowBtn>
-                    <RowBtn
-                      tone="red"
-                      disabled={pending || isSelf}
-                      title={isSelf ? "ลบบัญชีที่กำลังใช้งานอยู่ไม่ได้ (ให้ผู้ใช้ main อีกคนลบให้)" : undefined}
-                      onClick={() => setDialog({ kind: "delete", user: u })}
-                    >
-                      ลบ
-                    </RowBtn>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                  )}
+                  <RowBtn
+                    disabled={pending}
+                    onClick={() => { setNewPw(""); setDialog({ kind: "reset", user: u }); }}
+                  >
+                    รีเซ็ตรหัส
+                  </RowBtn>
+                  <IconBtn
+                    tone="red"
+                    disabled={pending || isSelf}
+                    aria-label={`ลบผู้ใช้ ${u.username}`}
+                    title={isSelf ? "ลบบัญชีที่กำลังใช้งานอยู่ไม่ได้ (ให้ผู้ใช้ main อีกคนลบให้)" : `ลบผู้ใช้ ${u.username}`}
+                    onClick={() => setDialog({ kind: "delete", user: u })}
+                  >
+                    <IconTrash size={16} />
+                  </IconBtn>
+                </>
+              }
+            />
+          );
+        })}
+      </SettingsCard>
 
       {/*
         🚨 ป๊อปอัพในแอป ไม่ใช่ window.prompt/confirm

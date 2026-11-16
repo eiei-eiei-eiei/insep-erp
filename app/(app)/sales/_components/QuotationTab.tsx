@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { SalesBoot, CustomerRow, MenuRow, OrderRow, OrderItem } from "./types";
 import { Card, Combobox, MissingHint, NumBox, Select, TextInput, useSaver, fmt } from "./ui";
-import { Modal, ModalCancel } from "@/lib/shared/ui";
+import { Modal, ModalCancel, NumInput, TextArea } from "@/lib/shared/ui";
 import { quotationTotals, inclFromExVat } from "@/lib/sales/calc";
 import {
   saveQuotationAction,
@@ -323,14 +323,14 @@ export function QuotationTab({
           {isWht && (
             <div className="flex items-center gap-2 rounded border border-brand-line bg-brand-soft p-2 text-xs">
               <span>% หัก:</span>
-              <input type="number" min={0} max={100} value={whtPct} onChange={(e) => setWhtPct(Number(e.target.value) || 0)} className="w-16 rounded border p-1 text-center" />
+              <div className="w-20"><NumInput min={0} max={100} value={whtPct} onChange={(e) => setWhtPct(Number(e.target.value) || 0)} /></div>
               <span className="ml-auto font-bold text-brand">- ฿{fmt(totals.whtAmount)}</span>
             </div>
           )}
 
           <label className="block">
             <span className="mb-1 block text-xs text-faint">หมายเหตุ / เงื่อนไข</span>
-            <textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} rows={2} className="w-full rounded-lg border border-line p-2 text-sm outline-none focus:border-brand" />
+            <TextArea value={remarks} onChange={(e) => setRemarks(e.target.value)} rows={2} />
           </label>
 
           <div className="flex items-center justify-between">
@@ -457,17 +457,19 @@ function CustomItemModal({ onClose, onAdd, isVat }: { onClose: () => void; onAdd
         <div className="space-y-3 text-sm">
           <label className="block">
             <span className="mb-1 block font-bold text-muted">รายละเอียดสินค้า/บริการ</span>
-            <textarea value={name} onChange={(e) => setName(e.target.value)} rows={4} placeholder="ระบุรายละเอียด (ขึ้นบรรทัดใหม่ได้)" className="w-full rounded-lg border border-line p-2 outline-none focus:border-brand" />
+            <TextArea value={name} onChange={(e) => setName(e.target.value)} rows={4} placeholder="ระบุรายละเอียด (ขึ้นบรรทัดใหม่ได้)" />
           </label>
           <div>
             <span className="mb-1 block font-bold text-muted">ราคาต่อหน่วย (บาท)</span>
             <div className="flex gap-2">
               <NumBox value={price} blankZero onChange={(v) => setPrice(v)} className="flex-1" />
               {isVat && (
-                <select value={vatType} onChange={(e) => setVatType(e.target.value as "incl" | "excl")} className="rounded-lg border border-line px-2 outline-none focus:border-brand">
-                  <option value="incl">รวม VAT แล้ว</option>
-                  <option value="excl">ก่อน VAT</option>
-                </select>
+                <div className="w-36 shrink-0">
+                  <Select value={vatType} onChange={(e) => setVatType(e.target.value as "incl" | "excl")}>
+                    <option value="incl">รวม VAT แล้ว</option>
+                    <option value="excl">ก่อน VAT</option>
+                  </Select>
+                </div>
               )}
             </div>
             {isVat && price !== "" && vatType === "excl" && <div className="mt-1 text-xs text-faint">= รวม VAT ฿{fmt(priceIncl)} (จะใส่ราคานี้ลงตะกร้า)</div>}

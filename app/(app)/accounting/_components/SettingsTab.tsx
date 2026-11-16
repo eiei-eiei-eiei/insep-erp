@@ -11,9 +11,9 @@ import {
 } from "../actions";
 import Link from "next/link";
 import { FORWARD_CAT_KIND, DEFAULT_FORWARD_CATS } from "@/lib/accounting/forwardCats";
-import { validateNewCustomer, branchToSave, taxIdToSave, hidesBranch, branchFormOf, type NewCustomerInput } from "@/lib/shared/taxCustomer";
+import { ContactFields, blankContactForm, contactPayload, toContactForm, type ContactForm } from "./ContactFields";
 import type { Bootstrap, Contact } from "./types";
-import { Field, IconBtn, SaveButton, Select, TextInput, useSaver } from "./ui";
+import { IconBtn, SaveButton, TextInput, useSaver } from "./ui";
 import { useConfirm, Modal, ModalCancel } from "@/lib/shared/ui";
 import { ListEmpty, ListRow, SettingsCard, SettingsList, SettingsShell, type ShellSection } from "@/lib/shared/settings";
 import { IconEdit, IconPlus, IconTrash } from "@/lib/shared/icons";
@@ -149,21 +149,7 @@ function CatList({ kind, title, initial, placeholder, emptyHint, help, suffix, o
   );
 }
 
-/** ฟอร์มคู่ค้า — กติกาเลขภาษี/สาขาชุดเดียวกับฟอร์มลูกค้าฝั่งขาย (lib/shared/taxCustomer · S13) */
-type ContactForm = NewCustomerInput & { contactId: string; address: string; contactType: string };
-
-function toForm(c: Contact): ContactForm {
-  return {
-    contactId: c.contact_id,
-    name: c.name,
-    taxId: c.tax_id ?? "",
-    ...branchFormOf(c.branch, c.tax_id),
-    isExport: false,
-    address: c.address ?? "",
-    contactType: c.contact_type || "ทั้งสอง",
-  };
-}
-
+/** คู่ค้า — ฟอร์มอยู่ที่ ContactFields (ชุดเดียวกับป๊อปอัพเพิ่มคู่ค้าในหน้าบันทึก) */
 function Contacts({ initial, onCount }: { initial: Contact[]; onCount: (n: number) => void }) {
   const router = useRouter();
   const { pending, run, setMsg } = useSaver();
@@ -177,17 +163,16 @@ function Contacts({ initial, onCount }: { initial: Contact[]; onCount: (n: numbe
 
   function openNew() {
     setMsg(null); setFormErr(null);
-    setEdit({ contactId: "", name: "", taxId: "", branchMode: "hq", branchNumber: "", noTaxId: false, isExport: false, address: "", contactType: "ทั้งสอง" });
+    setEdit(blankContactForm());
   }
-  function openEdit(c: Contact) { setMsg(null); setFormErr(null); setEdit(toForm(c)); }
+  function openEdit(c: Contact) { setMsg(null); setFormErr(null); setEdit(toContactForm(c)); }
 
   function save(f: ContactForm) {
-    const err = validateNewCustomer(f);
-    if (err) { setFormErr(err.replace("กรอกชื่อลูกค้า", "กรอกชื่อคู่ค้า")); return; }
+    const res = contactPayload(f);
+    if ("error" in res) { setFormErr(res.error); return; }
     setFormErr(null);
-    const taxId = taxIdToSave(f);
-    const branch = branchToSave(f);
-    const payload = { name: f.name.trim(), taxId, branch, address: f.address.trim(), contactType: f.contactType };
+    const { payload } = res;
+    const { taxId, branch } = payload;
     const saved: Contact = { contact_id: f.contactId, name: payload.name, tax_id: taxId, branch, address: payload.address, contact_type: f.contactType, roles: null };
     if (f.contactId) {
       run(() => updateContactAction({ contactId: f.contactId, ...payload }), "แก้ไขแล้ว", () => {
@@ -259,28 +244,7 @@ function Contacts({ initial, onCount }: { initial: Contact[]; onCount: (n: numbe
             </>
           }
         >
-          <div className="space-y-3">
-            <Field label="ชื่อ"><TextInput value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>
-            <label className="flex items-center gap-1.5 text-sm text-muted">
-              <input type="checkbox" checked={edit.noTaxId} onChange={(e) => setEdit({ ...edit, noTaxId: e.target.checked })} />
-              ไม่มีเลขประจำตัวผู้เสียภาษี (บุคคลทั่วไป / ร้านค้าที่ไม่ออกใบกำกับ)
-            </label>
-            {!hidesBranch(edit) && (
-              <>
-                <Field label="เลขประจำตัวผู้เสียภาษี (13 หลัก)"><TextInput value={edit.taxId} inputMode="numeric" onChange={(e) => setEdit({ ...edit, taxId: e.target.value.replace(/\D/g, "").slice(0, 13) })} /></Field>
-                <div className="flex flex-wrap items-end gap-3 text-sm text-ink">
-                  <label className="flex items-center gap-1.5"><input type="radio" checked={edit.branchMode === "hq"} onChange={() => setEdit({ ...edit, branchMode: "hq" })} /> สำนักงานใหญ่</label>
-                  <label className="flex items-center gap-1.5"><input type="radio" checked={edit.branchMode === "branch"} onChange={() => setEdit({ ...edit, branchMode: "branch" })} /> สาขาที่</label>
-                  {edit.branchMode === "branch" && (
-                    <div className="w-28"><TextInput value={edit.branchNumber} inputMode="numeric" placeholder="เช่น 2" onChange={(e) => setEdit({ ...edit, branchNumber: e.target.value.replace(/\D/g, "").slice(0, 5) })} /></div>
-                  )}
-                </div>
-              </>
-            )}
-            <Field label="ที่อยู่ (ใช้ในหนังสือรับรองหัก ณ ที่จ่าย)"><TextInput value={edit.address} onChange={(e) => setEdit({ ...edit, address: e.target.value })} /></Field>
-            <Field label="ประเภท"><Select value={edit.contactType} onChange={(e) => setEdit({ ...edit, contactType: e.target.value })}><option>ทั้งสอง</option><option>ผู้ขาย</option><option>ลูกค้า</option></Select></Field>
-          </div>
-          {formErr && <p className="mt-2 text-sm text-crit">{formErr}</p>}
+          <ContactFields value={edit} onChange={setEdit} error={formErr} />
         </Modal>
       )}
     </SettingsCard>

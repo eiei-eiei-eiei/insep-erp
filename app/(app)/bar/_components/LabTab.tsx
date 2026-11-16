@@ -30,6 +30,7 @@ import {
   Card, TextInput, NumBox, Select, Field, Badge, Empty, Modal, ModalCancel, Combobox, SuggestInput, LoadError,
   fmt, useSaver, useRead, useConfirm,
 } from "@/lib/shared/ui";
+import { SettingsCard } from "@/lib/shared/settings";
 import {
   labDataAction, labRoundAction, labUseAction, labDeleteUseAction, labUpdateUseAction, labUpdateRecipeAction,
   labPromoteAction, labAddCategoryAction, labSaveCategoriesAction,
@@ -446,7 +447,7 @@ function RoundRow({
             </button>
           ) : (
             <span className="text-xs text-faint" title={delBlock}>
-              ลบไม่ได้
+              ลบไม่ได้ — {delBlock}
             </span>
           )}
         </span>
@@ -780,7 +781,7 @@ function UseRow({
         </button>
       ) : (
         <span className="text-xs text-faint" title={block}>
-          ลบไม่ได้
+          ลบไม่ได้ — {block}
         </span>
       )}
       {use.note && <div className="w-full text-xs text-muted">โน้ต: {use.note}</div>}
@@ -825,21 +826,23 @@ function SummaryView({
               {RANGE_LABEL[k]}
             </button>
           ))}
-          <input
-            type="date"
-            value={range.from}
-            onChange={(e) => setRange((r) => ({ ...r, from: e.target.value }))}
-            className="rounded-lg border border-line bg-input px-2 py-1 text-sm text-ink"
-            aria-label="ตั้งแต่"
-          />
+          <div className="w-40">
+            <TextInput
+              type="date"
+              value={range.from}
+              onChange={(e) => setRange((r) => ({ ...r, from: e.target.value }))}
+              aria-label="ตั้งแต่"
+            />
+          </div>
           <span className="text-muted">–</span>
-          <input
-            type="date"
-            value={range.to}
-            onChange={(e) => setRange((r) => ({ ...r, to: e.target.value }))}
-            className="rounded-lg border border-line bg-input px-2 py-1 text-sm text-ink"
-            aria-label="ถึง"
-          />
+          <div className="w-40">
+            <TextInput
+              type="date"
+              value={range.to}
+              onChange={(e) => setRange((r) => ({ ...r, to: e.target.value }))}
+              aria-label="ถึง"
+            />
+          </div>
         </div>
         <p className="mt-3 text-lg text-ink">
           ทุนที่ใช้ไป <b>{fmt(s.total)}</b> บาท <span className="text-sm text-muted">({s.count} รายการ)</span>
@@ -921,8 +924,9 @@ export function LabCategoriesCard({ boot }: { boot: BarBoot }) {
   const ARROW = "grid h-8 w-8 place-items-center rounded text-muted hover:bg-raised hover:text-ink disabled:opacity-30";
 
   return (
-    <Card
+    <SettingsCard
       title="หมวดการใช้ (ห้องทดลอง)"
+      count={cur.length}
       help={<>ใช้แยกทุนในหน้า <b>สรุปต้นทุน</b> · เพิ่มหมวดได้จากแท็บห้องทดลองเลย · การ์ดนี้ไว้เปลี่ยนชื่อ/จัดลำดับ/ลบ</>}
     >
       {cur.map((c, i) => {
@@ -981,6 +985,6 @@ export function LabCategoriesCard({ boot }: { boot: BarBoot }) {
           </>
         )}
       </div>
-    </Card>
+    </SettingsCard>
   );
 }
