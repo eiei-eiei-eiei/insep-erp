@@ -16,7 +16,7 @@ import {
   missingInvoiceWarn,
   type VatMode,
 } from "@/lib/accounting/calc";
-import { taxDateOnNoChange, taxDateOnTxDateChange, shouldRefreshDraftDate, isAddRowKey, ITEM_KEYS_HINT } from "@/lib/accounting/entryForm";
+import { taxDateOnNoChange, taxDateOnTxDateChange, shouldRefreshDraftDate, isAddRowKey, ITEM_KEYS_HINT, sellerHasNoTaxId, NO_TAX_ID_VAT_REASON } from "@/lib/accounting/entryForm";
 // ตรรกะแถวรายการ/ยอดบิล ใช้ร่วมกับฟอร์มแก้บิล (BillsTab → EditBillModal)
 import { qn, emptyItem, makeItemHandlers, buildItemInputs, useBillAmounts, hasContent, type BillItem } from "./billItems";
 import { VatModeCard } from "./VatModeCard";
@@ -92,7 +92,10 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   const [hasVat, setHasVat] = useState(false); // ออโต้ติ๊กเมื่อกรอกเลขใบกำกับ (ผู้ใช้ override เองได้)
   // ★ ปิดช่องติ๊กอย่างเดียวไม่พอ — ค่า hasVat ค้างมาจาก draft ที่บันทึกไว้ได้
   //   ทุกที่ที่คิดเงินต้องใช้ effHasVat ไม่ใช่ hasVat (4.3)
-  const effHasVat = hasVat && entityIsVat;
+  const [contacts, setContacts] = useState<Contact[]>(boot.contacts);
+  // D173 — ผู้ขายไม่มีเลขภาษี = ออกใบกำกับไม่ได้ ⇒ ติ๊ก VAT ไม่ได้ (เฉพาะรายจ่าย · กติกาที่ lib/accounting/entryForm)
+  const noTaxSeller = sellerHasNoTaxId(type, contactName, contacts);
+  const effHasVat = hasVat && entityIsVat && !noTaxSeller;
   const [hasWht, setHasWht] = useState(false);
   const [whtRate, setWhtRate] = useState(0);
   const [items, setItems] = useState<Item[]>([emptyItem()]);
@@ -111,7 +114,6 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   } = amt;
 
   // คู่ค้า (state ท้องถิ่น — เพิ่มใหม่ได้ทันที)
-  const [contacts, setContacts] = useState<Contact[]>(boot.contacts);
   const [showContactModal, setShowContactModal] = useState(false);
   const [branchId, setBranchId] = useState(""); // สาขาที่เลือก (เมื่อชื่อซ้ำหลายสาขา, D30)
 
@@ -532,11 +534,12 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
           </div>
           <div className="mt-2 flex items-center gap-4 text-sm">
             <label className={`flex items-center gap-2 ${entityIsVat ? "" : "opacity-50"}`} title={entityIsVat ? undefined : "กิจการนี้ไม่ได้จดทะเบียน VAT"}>
-              <input type="checkbox" checked={effHasVat} disabled={!entityIsVat} onChange={(e) => setHasVat(e.target.checked)} /> มี VAT 7%
+              <input type="checkbox" checked={effHasVat} disabled={!entityIsVat || noTaxSeller} onChange={(e) => setHasVat(e.target.checked)} /> มี VAT 7%
               {!entityIsVat && <span className="text-xs text-faint">(กิจการนี้ไม่ได้จดทะเบียน VAT)</span>}
             </label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={hasWht} onChange={(e) => setHasWht(e.target.checked)} /> หัก ณ ที่จ่าย</label>
           </div>
+          {noTaxSeller && entityIsVat && <p className="mt-1 text-xs text-warn">ติ๊ก VAT ไม่ได้ — {NO_TAX_ID_VAT_REASON}</p>}
           {/* D124 — บิลซื้อมี VAT ไม่มีเลขใบกำกับ ยังนับเข้า ภพ.30 (ทาง ก) — เตือน ไม่บล็อก */}
           <MissingInvoiceWarn text={missingInvoiceWarn(type, effHasVat, taxInvoiceNo)} />
           {hasWht && (

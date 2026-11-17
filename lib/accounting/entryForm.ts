@@ -48,3 +48,28 @@ export function isAddRowKey(e: { key: string; ctrlKey: boolean; metaKey: boolean
 
 /** คำกำกับคีย์ลัดใต้ตารางรายการ — เฉพาะฟอร์มบันทึก (ฟอร์มแก้บิลไม่มีคีย์ลัดนี้ ห้ามบอก) */
 export const ITEM_KEYS_HINT = "Enter ในแถวรายการ = เพิ่มรายการใหม่ · Ctrl+Enter = บันทึกบิล";
+
+/**
+ * บิล **รายจ่าย** ที่ผู้ขายในทะเบียนคู่ค้า "ไม่มีเลขประจำตัวผู้เสียภาษี" → ติ๊ก VAT ไม่ได้ (D173)
+ * ผู้ขายที่ไม่มีเลขผู้เสียภาษีออกใบกำกับภาษีไม่ได้ ⇒ ไม่มีภาษีซื้อให้ขอคืน
+ *
+ * 🚨 เฉพาะรายจ่าย — ฝั่ง **รายรับ** ห้ามใช้กติกานี้: ขายให้บุคคลทั่วไปที่ไม่มีเลขภาษี
+ *    กิจการที่จด VAT ก็ยังต้องเก็บ VAT และนำส่ง (ปิดช่อง = ภาษีขายหายจาก ภพ.30)
+ * 🪤 ชื่อที่พิมพ์เองและไม่อยู่ในทะเบียน = ไม่รู้ ⇒ ไม่บล็อก (ไม่รู้ ≠ ไม่มี)
+ * 🪤 ชื่อเดียวกันหลายสาขา: บล็อกเมื่อ **ทุกแถว** ไม่มีเลข (มีสักแถวที่มีเลข = ปล่อย)
+ */
+export function sellerHasNoTaxId(
+  type: string,
+  contactName: string,
+  contacts: { name: string; tax_id?: string | null }[],
+): boolean {
+  if (type !== "รายจ่าย") return false;
+  const name = contactName.trim();
+  if (!name) return false;
+  const hits = contacts.filter((c) => c.name.trim() === name);
+  return hits.length > 0 && hits.every((c) => !(c.tax_id ?? "").trim());
+}
+
+export const NO_TAX_ID_VAT_REASON =
+  "คู่ค้ารายนี้ไม่มีเลขประจำตัวผู้เสียภาษี จึงออกใบกำกับภาษีไม่ได้ — ถ้ามีเลขจริง ให้แก้ที่ ตั้งค่า → คู่ค้า";
+
