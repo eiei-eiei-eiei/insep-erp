@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { Route } from "next";
 import { SETTINGS_TABS } from "@/lib/shared/tabs";
+import { usePageTitle } from "@/lib/shared/pageGuardHost";
 
 /**
  * เมนูข้างของหน้าตั้งค่ากลาง (D173 เฟส 4b — หน้าตาแบบ ก) — เป็น **route จริง** ไม่ใช่ state
@@ -20,6 +21,7 @@ export function SettingsTabs({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
   const cur = SETTINGS_TABS.find((t) => isActive(t.href))?.href ?? "";
+  usePageTitle([SETTINGS_TABS.find((t) => t.href === cur)?.label, "ตั้งค่า"]);
 
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-[13rem_minmax(0,1fr)] md:items-start">

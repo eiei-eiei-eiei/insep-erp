@@ -27,6 +27,7 @@ import {
 } from "../actions";
 import { ItemHistoryModal } from "./ItemHistoryModal";
 import { PrepView } from "./PrepTab";
+import { useUnsaved } from "@/lib/shared/pageGuardHost";
 
 /**
  * สต็อกบาร์ (D96 · D103 · D104)
@@ -74,6 +75,7 @@ export function StockTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
     [],
   );
   // 🪤 ต้องคงที่ — การ์ดเรียกใน useEffect (มี cleanup) ถ้าเป็น arrow ใหม่ทุก render = วนตั้ง false/true ไม่จบ
+  useUnsaved(Object.values(dirty).some(Boolean), "สต็อกบาร์ที่กรอกค้างไว้");
   const dirtyItems = useCallback((d: boolean) => markDirty("items", d), [markDirty]);
   const dirtyReceive = useCallback((d: boolean) => markDirty("receive", d), [markDirty]);
   const dirtyCount = useCallback((d: boolean) => markDirty("count", d), [markDirty]);

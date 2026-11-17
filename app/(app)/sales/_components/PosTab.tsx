@@ -11,6 +11,7 @@ import { printSalesDocs, openPrintWindow } from "./print";
 import { IconCart, IconPlus } from "@/lib/shared/icons";
 import { can, toRole } from "@/lib/shared/roles";
 import { todayISO } from "@/lib/shared/ui";
+import { useUnsaved } from "@/lib/shared/pageGuardHost";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { manualNoError, saleDateError, saleDateNote } from "@/lib/sales/backdate";
 
@@ -46,6 +47,9 @@ export function PosTab({ boot, canWrite }: { boot: SalesBoot; canWrite: boolean 
   const [pickCustomer, setPickCustomer] = useState(false);
   const { setMsg } = useSaver();
   const [busy, setBusy] = useState(false);
+
+  // ตะกร้ามีของ — clearBill() ล้าง items หลังขายสำเร็จ → กลับเป็น false เอง
+  useUnsaved(items.length > 0, "บิลหน้าร้านที่กำลังขาย");
 
   const isVat = boot.isVat;
   const customer = customers.find((c) => c.id === custId) ?? null;

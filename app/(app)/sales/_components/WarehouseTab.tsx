@@ -3,7 +3,7 @@
 import { salesProductionText, type SalesProductionText } from "@/lib/sales/productionText";
 import { useEffect, useRef, useState } from "react";
 import type { WarehouseOrder, StockItem } from "./types";
-import { Badge, Card, NumInput, Select, TextInput, fmt, useSaver, LoadError } from "./ui";
+import { Badge, Card, Combobox, NumInput, Select, TextInput, fmt, useSaver, LoadError } from "./ui";
 import { getPendingWarehouseAction, getWarehouseStockAction, confirmFulfillmentAction, manualStockMoveAction } from "../actions";
 import { printSalesDocs, type CompanyInfo, type OrderLike } from "./print";
 import { can, toRole } from "@/lib/shared/roles";
@@ -233,14 +233,12 @@ function StockPanel({ canWrite, active, txt }: { canWrite: boolean; active: bool
       {canWrite && (
         <Card title="ปรับสต็อกทั่วไป (manual)">
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-            <Select value={form.itemCode} onChange={(e) => setForm({ ...form, itemCode: e.target.value })}>
-              <option value="">— เลือกสินค้าทั่วไป —</option>
-              {general.map((s) => (
-                <option key={s.itemCode} value={s.itemCode}>
-                  {s.itemCode} | {s.itemName}
-                </option>
-              ))}
-            </Select>
+            <Combobox
+              options={general.map((s) => ({ value: s.itemCode, label: `${s.itemCode} | ${s.itemName}` }))}
+              value={form.itemCode}
+              onChange={(v) => setForm({ ...form, itemCode: v })}
+              placeholder="— เลือกสินค้าทั่วไป —"
+            />
             <Select value={form.actionType} onChange={(e) => setForm({ ...form, actionType: e.target.value as "IN" | "OUT" | "ADJUST" })}>
               <option value="IN">รับเข้า (IN)</option>
               <option value="OUT">จ่ายออก (OUT)</option>

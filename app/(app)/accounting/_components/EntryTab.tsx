@@ -2,6 +2,7 @@
 
 import { useConfirm } from "@/lib/shared/ui";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
+import { useUnsaved } from "@/lib/shared/pageGuardHost";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   itemTotal,
@@ -324,6 +325,10 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   // ค่ารวมสำหรับดรอปดาวน์รายการสินค้า (ประวัติ + ที่กรอกในบิลปัจจุบัน)
   const itemCatOptions = useMemo(() => [...new Set([...itemHist.itemCategories, ...items.map((it) => it.itemCategory).filter(Boolean)])], [itemHist.itemCategories, items]);
   const itemJobOptions = useMemo(() => [...new Set([...itemHist.itemJobs, ...items.map((it) => it.itemJob).filter(Boolean)])], [itemHist.itemJobs, items]);
+
+  // D173 เฟส 5 — เตือนก่อนออกหน้าตอนบิลที่กรอกยังไม่บันทึก · นับเฉพาะที่ผู้ใช้พิมพ์เอง
+  // (คู่ค้า/หมวด/บัญชี/วันที่ที่คงไว้หลังบันทึกไม่นับ) · resetItems() ล้างทั้งสามอย่างนี้หลังบันทึกสำเร็จ
+  useUnsaved(Boolean(description || taxInvoiceNo || items.some((it) => hasContent(it, effVatMode))), "บิลที่กำลังกรอก");
 
   return (
     <div className="space-y-4" onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); doSave(); } }}>

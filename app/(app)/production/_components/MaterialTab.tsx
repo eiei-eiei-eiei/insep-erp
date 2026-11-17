@@ -1,6 +1,6 @@
 "use client";
 
-import { useConfirm } from "@/lib/shared/ui";
+import { Combobox, useConfirm } from "@/lib/shared/ui";
 import { useEffect, useState } from "react";
 import { saveMaterialAction, getRecentMaterialsAction, deleteMaterialLogAction, updateMaterialLogAction } from "../actions";
 import { Card, Field, MissingHint, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
@@ -93,14 +93,12 @@ export function MaterialTab({ materials }: { materials: Material[] }) {
           </Select>
         </Field>
         <Field label="วัตถุดิบ">
-          <Select value={materialId} onChange={(e) => setMaterialId(e.target.value)}>
-            <option value="">-- เลือกวัตถุดิบ --</option>
-            {materials.map((m) => (
-              <option key={m.material_id} value={m.material_id}>
-                {m.name} {m.unit ? `(${m.unit})` : ""}
-              </option>
-            ))}
-          </Select>
+          <Combobox
+            options={materials.map((m) => ({ value: m.material_id, label: `${m.name} ${m.unit ? `(${m.unit})` : ""}`.trim() }))}
+            value={materialId}
+            onChange={setMaterialId}
+            placeholder="-- เลือกวัตถุดิบ --"
+          />
         </Field>
         <Field label="จำนวน">
           <NumInput value={amount} onChange={(e) => setAmount(e.target.value)} />

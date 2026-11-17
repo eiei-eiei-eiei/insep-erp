@@ -1,9 +1,9 @@
 "use client";
 
-import { useConfirm } from "@/lib/shared/ui";
+import { Combobox, useConfirm } from "@/lib/shared/ui";
 import { useCallback, useEffect, useState } from "react";
 import { getFermentMonitorAction, saveFermentMonitorAction, updateFermentMonitorAction, deleteFermentMonitorAction } from "../actions";
-import { Card, Field, MissingHint, NumInput, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
+import { Card, Field, MissingHint, NumInput, SaveButton, TextInput, todayISO, useSaver } from "./ui";
 import { LineChart } from "./LineChart";
 import { chartColor } from "@/lib/shared/chart";
 import type { PendingBatch } from "./types";
@@ -105,12 +105,12 @@ export function MonitorTab({
         )}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Batch">
-            <Select value={batch} onChange={(e) => setBatch(e.target.value)}>
-              <option value="">-- เลือก batch --</option>
-              {batches.map((b) => (
-                <option key={b.batch} value={b.batch}>{b.batch} ({b.productName})</option>
-              ))}
-            </Select>
+            <Combobox
+              options={batches.map((b) => ({ value: b.batch, label: `${b.batch} (${b.productName})` }))}
+              value={batch}
+              onChange={setBatch}
+              placeholder="-- เลือก batch --"
+            />
           </Field>
           <Field label="วันที่"><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
           <Field label="เวลา"><TextInput type="time" value={time} onChange={(e) => setTime(e.target.value)} /></Field>

@@ -22,6 +22,7 @@ import {
   type OrderView,
 } from "@/lib/bar/menuOrder";
 import { Help, Select } from "@/lib/shared/ui";
+import { useUnsaved } from "@/lib/shared/pageGuardHost";
 import { getMenuSalesAction, reorderMenusAction } from "../actions";
 
 const DAYS = 30;
@@ -57,6 +58,7 @@ export function MenuOrderEditor({
   const ids = draft ?? baseIds;
   const byId = new Map(boot.menus.map((m) => [m.menuId, m]));
   const dirty = draft !== null && draft.join("|") !== baseIds.join("|");
+  useUnsaved(dirty, "ลำดับเมนูบนหน้าขาย");
   const locked = orderLockedReason(view);
   const catName = (id: string) => boot.categories.find((c) => c.categoryId === id)?.name ?? id;
 

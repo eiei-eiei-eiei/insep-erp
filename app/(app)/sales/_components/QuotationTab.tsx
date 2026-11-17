@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { SalesBoot, CustomerRow, MenuRow, OrderRow, OrderItem } from "./types";
 import { Card, Combobox, MissingHint, NumBox, Select, TextInput, useSaver, fmt } from "./ui";
 import { Modal, ModalCancel, NumInput, TextArea } from "@/lib/shared/ui";
+import { useUnsaved } from "@/lib/shared/pageGuardHost";
 import { quotationTotals, inclFromExVat } from "@/lib/sales/calc";
 import {
   saveQuotationAction,
@@ -50,6 +51,9 @@ export function QuotationTab({
   const [showAddCust, setShowAddCust] = useState(false);
   const [showCustom, setShowCustom] = useState(false);
   const { pending, run, setMsg } = useSaver();
+
+  // ตะกร้ามีของ (รวมโหมดแก้ไขใบเดิม) — reset() ล้าง items หลังบันทึก/เลิกแก้ → กลับเป็น false เอง
+  useUnsaved(items.length > 0, editOrder ? `แก้ไขใบเสนอราคา ${editOrder.quNo}` : "ตะกร้าใบเสนอราคา");
 
   const customer = customers.find((c) => c.id === selCustId);
   const catHint = revenueCatHint(boot.revenueCats, category, boot.hasAccounting);

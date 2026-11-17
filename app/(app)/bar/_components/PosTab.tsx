@@ -27,7 +27,7 @@ import { customerLabel } from "@/lib/bar/customerName";
 import { recipeLines, refsOf } from "@/lib/bar/houseSlot";
 import { buildReceipt } from "@/lib/bar/receipt";
 import {
-  Card, TextInput, NumBox, Select, MissingHint, Badge, Empty, Modal, ModalCancel, fmt, useSaver, useConfirm,
+  Card, TextInput, NumBox, Select, Combobox, MissingHint, Badge, Empty, Modal, ModalCancel, fmt, useSaver, useConfirm,
 } from "@/lib/shared/ui";
 import {
   IconPrint, IconTrash, IconClose, IconMoney, IconCheck, IconPlus, IconAlert,
@@ -41,6 +41,7 @@ import { CustomerModal } from "./CustomerModal";
 import { RecipeEditor } from "./RecipeEditor";
 import { BilledLineRow, EditBillCustomer } from "./BilledLines";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
+import { useUnsaved } from "@/lib/shared/pageGuardHost";
 
 // D116 — เหลือ เงินสด · โอน/QR (ไม่รับบัตร · โอนกับ QR เคยทำงานเหมือนกันทุกอย่าง)
 const METHODS: readonly string[] = PAY_METHODS;
@@ -380,6 +381,14 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
   /** ถาดของบิลอื่นที่ยังค้างอยู่ — เอาไปเตือนบนชิปบิล */
   const pendingOf = (no: string) => (trays[no] ?? []).length;
 
+  // เตือนก่อนออกจากหน้า — นับถาดของทุกบิลที่ยังเปิดอยู่ (+ บูธ) · ถาดของบิลที่ปิดไปแล้วไม่นับ
+  useUnsaved(
+    Object.entries(trays).some(
+      ([k, l]) => l.length > 0 && (k === BOOTH || data.openSales.some((s) => s.saleNo === k)),
+    ),
+    "รายการที่ยังไม่ส่งเข้าบิล",
+  );
+
   if (!data.entityId) return null;
 
   return (
@@ -419,14 +428,14 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
                 </div>
                 <div className="flex items-center gap-1">
                   <div className="w-44">
-                    <Select value={boothCustomer} onChange={(e) => setBoothCustomer(e.target.value)}>
-                      <option value="">— ไม่ระบุลูกค้า —</option>
-                      {data.customers.map((c) => (
-                        <option key={c.customerId} value={c.customerId}>
-                          {customerLabel(c)}
-                        </option>
-                      ))}
-                    </Select>
+                    <Combobox
+                      value={boothCustomer}
+                      onChange={setBoothCustomer}
+                      options={[
+                        { value: "", label: "— ไม่ระบุลูกค้า —" },
+                        ...data.customers.map((c) => ({ value: c.customerId, label: customerLabel(c) })),
+                      ]}
+                    />
                   </div>
                   {/* ★ เพิ่มลูกค้าได้จากตรงนี้เลย ไม่ต้องสลับไปแท็บลูกค้ากลางงาน */}
                   <button
@@ -1480,14 +1489,14 @@ function NewTabButton({
       </div>
       {/* 🚨 ลูกค้าเป็นตัวเลือกเสมอ ห้ามบล็อกการขาย — ที่บูธเจอกันครั้งเดียว ไม่มีใครยอมให้เบอร์ */}
       <div className="w-36">
-        <Select value={cust} onChange={(e) => setCust(e.target.value)}>
-          <option value="">— ไม่ระบุลูกค้า —</option>
-          {customers.map((c) => (
-            <option key={c.customerId} value={c.customerId}>
-              {customerLabel(c)}
-            </option>
-          ))}
-        </Select>
+        <Combobox
+          value={cust}
+          onChange={setCust}
+          options={[
+            { value: "", label: "— ไม่ระบุลูกค้า —" },
+            ...customers.map((c) => ({ value: c.customerId, label: customerLabel(c) })),
+          ]}
+        />
       </div>
       <button
         type="button"

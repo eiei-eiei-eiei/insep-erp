@@ -1,6 +1,6 @@
 "use client";
 
-import { useConfirm } from "@/lib/shared/ui";
+import { Combobox, useConfirm } from "@/lib/shared/ui";
 import { useCallback, useEffect, useState } from "react";
 import { correctAbvTo20C } from "@/lib/abv";
 import { closeBatchSummary } from "@/lib/production/calc";
@@ -210,14 +210,12 @@ export function DistillTab({
         )}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Batch ที่จะกลั่น">
-            <Select value={batch} onChange={(e) => setBatch(e.target.value)}>
-              <option value="">-- เลือก batch --</option>
-              {batches.map((b) => (
-                <option key={b.batch} value={b.batch}>
-                  {b.batch} ({b.productName})
-                </option>
-              ))}
-            </Select>
+            <Combobox
+              options={batches.map((b) => ({ value: b.batch, label: `${b.batch} (${b.productName})` }))}
+              value={batch}
+              onChange={setBatch}
+              placeholder="-- เลือก batch --"
+            />
           </Field>
           {/*
             D80 — ช่องนี้เคย "ไม่มีอยู่จริง" สำหรับผู้ใช้: คอลัมน์ `log_distill_run.ferm_charge` มี ·

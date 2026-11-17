@@ -212,6 +212,22 @@ body {
     white-space: nowrap;
     border-bottom: 1px solid var(--color-line);
   }
+/* หัวตารางติดบน (D173 เฟส 5) — ตารางยาวเลื่อนลงแล้วยังรู้ว่าคอลัมน์ไหนคืออะไร
+     กรอบ overflow-x-auto เป็นกล่องเลื่อนของตารางอยู่แล้ว ⇒ sticky ต้องติดกับกรอบนั้น ไม่ใช่กับหน้า
+     จึงจำกัดความสูงกรอบ (เฉพาะตารางที่ยาวเกินจอถึงจะเห็นผล)
+     🚨 เฉพาะจอกว้าง — บนมือถือพื้นที่เลื่อนซ้อนในหน้าที่เลื่อนอยู่แล้วใช้ยาก ปล่อยเลื่อนทั้งหน้าตามเดิม */
+  @media screen and (min-width: 768px) {
+    .overflow-x-auto:has(.tbl) {
+      max-height: calc(100dvh - 7rem);
+      overflow-y: auto;
+    }
+    .tbl thead th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: var(--color-card);
+    }
+  }
   .tbl tbody td {
     padding: 0.4375rem 0.5rem;
     color: var(--color-ink);

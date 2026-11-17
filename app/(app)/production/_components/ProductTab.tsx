@@ -1,6 +1,6 @@
 "use client";
 
-import { useConfirm } from "@/lib/shared/ui";
+import { Combobox, useConfirm } from "@/lib/shared/ui";
 import { useEffect, useState } from "react";
 import { saveProductAction, getRecentProductsAction, deleteProductLogAction, updateProductLogAction } from "../actions";
 import { Card, Field, IconBtn, MissingHint, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
@@ -92,14 +92,15 @@ export function ProductTab({ products }: { products: Product[] }) {
           </Select>
         </Field>
         <Field label="สินค้า">
-          <Select value={productId} onChange={(e) => setProductId(e.target.value)}>
-            <option value="">-- เลือกสินค้า --</option>
-            {products.map((p) => (
-              <option key={p.product_id} value={p.product_id}>
-                {p.name} {p.degree ? `${p.degree}°` : ""} {p.bottle_size_l ? `${p.bottle_size_l}ล.` : ""}
-              </option>
-            ))}
-          </Select>
+          <Combobox
+            options={products.map((p) => ({
+              value: p.product_id,
+              label: `${p.name} ${p.degree ? `${p.degree}°` : ""} ${p.bottle_size_l ? `${p.bottle_size_l}ล.` : ""}`.trim(),
+            }))}
+            value={productId}
+            onChange={setProductId}
+            placeholder="-- เลือกสินค้า --"
+          />
         </Field>
         <Field label="จำนวน (ขวด)">
           <NumInput value={amount} onChange={(e) => setAmount(e.target.value)} />

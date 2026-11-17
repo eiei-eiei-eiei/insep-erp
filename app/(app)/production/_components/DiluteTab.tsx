@@ -1,6 +1,7 @@
 "use client";
 
-import { useConfirm } from "@/lib/shared/ui";
+import { Combobox, useConfirm } from "@/lib/shared/ui";
+import { useUnsaved } from "@/lib/shared/pageGuardHost";
 import { useEffect, useState } from "react";
 import { diluteCalc, isFermented } from "@/lib/production/calc";
 import { getRemainingDistillVolAction, saveDiluteAction, getRecentDilutesAction, deleteDiluteLogAction, updateDiluteLogAction } from "../actions";
@@ -37,6 +38,9 @@ export function DiluteTab({ products }: { products: Product[] }) {
   // D78: ตัดสินค้าประเภท "สุราแช่" ออก — ขั้นปรุงของสุราแช่อยู่ในแท็บ "รินน้ำสุราแช่" แถวเดียวกับการริน
   //   ★ ปล่อยให้ลงที่นี่ด้วย = ปรุงถูกนับ 2 ที่ (log_dilute + log_ferment_draw) ยอดพองโดยไม่มีอะไรฟ้อง
   const productNames = Array.from(new Set(products.filter((p) => !isFermented(p.liquor_type)).map((p) => p.name)));
+
+  // ช่องคำนวณ V1/C1/C2/V2/น้ำ ถูกล้างหลังบันทึกสำเร็จ (onOk ใน submit) → กลับเป็น false เอง
+  useUnsaved(!!(v1 || c1 || c2 || v2 || water), "ปรุง/ปรับดีกรี");
 
   function loadRecent() { getRecentDilutesAction().then((r) => setRecent(r as RecentDilute[])); }
   function refreshRemaining() { if (productName) getRemainingDistillVolAction(productName).then(setRemaining); }
@@ -155,12 +159,12 @@ export function DiluteTab({ products }: { products: Product[] }) {
           <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </Field>
         <Field label="ชื่อสุรา">
-          <Select value={productName} onChange={(e) => setProductName(e.target.value)}>
-            <option value="">-- เลือกชื่อสุรา --</option>
-            {productNames.map((n) => (
-              <option key={n} value={n}>{n}</option>
-            ))}
-          </Select>
+          <Combobox
+            options={productNames.map((n) => ({ value: n, label: n }))}
+            value={productName}
+            onChange={setProductName}
+            placeholder="-- เลือกชื่อสุรา --"
+          />
         </Field>
         <Field label="ขนาดขวด">
           <TextInput value={bottleSize} onChange={(e) => setBottleSize(e.target.value)} />

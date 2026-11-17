@@ -11,7 +11,8 @@ import { RecipeEditor, PriceSuggest } from "./RecipeEditor";
 import { lineCost } from "@/lib/bar/cost";
 import { searchMenus } from "@/lib/bar/menuFilter";
 import { customerLabel } from "@/lib/bar/customerName";
-import { Card, TextInput, TextArea, NumBox, Select, Field, Badge, Empty, Help, Modal, ModalCancel, fmt, useSaver, useConfirm } from "@/lib/shared/ui";
+import { Card, TextInput, TextArea, NumBox, Select, Combobox, Field, Badge, Empty, Help, Modal, ModalCancel, fmt, useSaver, useConfirm } from "@/lib/shared/ui";
+import { useUnsaved } from "@/lib/shared/pageGuardHost";
 import {
   saveMenuAction, saveCategoryAction, deleteCategoryAction, saveCategoriesAction,
   getMenuUsageAction, setMenuActiveAction, deleteMenuAction,
@@ -343,6 +344,7 @@ function CategoryEditor({
   const renamed = categoryNameUpdates(names, new Map(boot.categories.map((c) => [c.categoryId, c.name])));
   const blank = Object.values(names).some((n) => !n.trim());
   const dirty = ids.join("|") !== baseIds.join("|") || renamed.length > 0 || blank;
+  useUnsaved(dirty, "ลำดับ/ชื่อหมวดเมนู");
   const problem = dirty ? categoryEditsError(ids, names, baseIds) : "";
   const reset = () => {
     setOrder(null);
@@ -604,14 +606,14 @@ export function MenuModal({
           label="สร้างให้ลูกค้า"
           help={<>แค่ป้ายบอกที่มา + ใช้กับชิป &quot;ดูเฉพาะเมนูของ…&quot; ในหน้าขาย · ลูกค้าคนอื่นยังสั่งเมนูนี้ได้ตามปกติ</>}
         >
-          <Select value={createdFor} onChange={(e) => setCreatedFor(e.target.value)}>
-            <option value="">— ไม่ได้สร้างให้ใคร —</option>
-            {boot.customers.map((c) => (
-              <option key={c.customerId} value={c.customerId}>
-                {customerLabel(c)}
-              </option>
-            ))}
-          </Select>
+          <Combobox
+            value={createdFor}
+            onChange={setCreatedFor}
+            options={[
+              { value: "", label: "— ไม่ได้สร้างให้ใคร —" },
+              ...boot.customers.map((c) => ({ value: c.customerId, label: customerLabel(c) })),
+            ]}
+          />
         </Field>
         <div className="mt-2">
           <Field label="วิธีชง">

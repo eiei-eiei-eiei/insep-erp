@@ -15,6 +15,7 @@ import {
 } from "@/lib/shared/dateFormat";
 import { Field, SaveButton, Select, useSaver } from "@/lib/shared/ui";
 import { SettingsCard } from "@/lib/shared/settings";
+import { useUnsaved } from "@/lib/shared/pageGuardHost";
 
 /**
  * รูปแบบวันที่ (D161) — หน้าจอกับเอกสารการค้าเลือกแยกกัน
@@ -39,6 +40,7 @@ export function DateFormatCard({
   const [screen, setScreen] = useState<DateFormat>(current.screen);
   const [doc, setDoc] = useState<DateFormat>(current.doc);
   const dirty = screen !== current.screen || doc !== current.doc;
+  useUnsaved(dirty, "รูปแบบวันที่");
 
   function save() {
     run(() => saveDateFormatsAction({ screen, doc }), "บันทึกรูปแบบวันที่แล้ว", () => router.refresh());

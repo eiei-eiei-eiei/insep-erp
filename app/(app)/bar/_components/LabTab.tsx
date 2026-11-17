@@ -31,6 +31,7 @@ import {
   fmt, useSaver, useRead, useConfirm,
 } from "@/lib/shared/ui";
 import { SettingsCard } from "@/lib/shared/settings";
+import { useUnsaved } from "@/lib/shared/pageGuardHost";
 import {
   labDataAction, labRoundAction, labUseAction, labDeleteUseAction, labUpdateUseAction, labUpdateRecipeAction,
   labPromoteAction, labAddCategoryAction, labSaveCategoriesAction,
@@ -581,6 +582,7 @@ function UseView({
   const [rows, setRows] = useState<KeyedDraft[]>([newRow("menu"), newRow("item")]);
   const plan = planUse(rows);
   const pending = plan.menus.length + plan.recipes.length + plan.items.length;
+  useUnsaved(pending > 0, "รายการที่ใช้ทำคอนเทนต์ (ยังไม่ตัดสต็อก)");
   const preview = previewUseCost(plan, boot.menus, boot.items, refsOf(boot), data.uses);
   const events = [...new Set(data.uses.map((u) => u.eventName?.trim()).filter((x): x is string => !!x))];
   const set = (i: number, patch: Partial<UseDraft>) => setRows((p) => p.map((r, j) => (j === i ? { ...r, ...patch } : r)));

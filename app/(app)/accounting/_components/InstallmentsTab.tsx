@@ -4,7 +4,7 @@ import { useConfirm } from "@/lib/shared/ui";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { useEffect, useState } from "react";
 import { getInstallmentGroupAction, listInstallmentGroupsAction, voidTransactionAction } from "../actions";
-import { Card, Field, Select, fmt, useSaver } from "./ui";
+import { Card, Combobox, Field, fmt, useSaver } from "./ui";
 import { IconRefresh } from "@/lib/shared/icons";
 
 type Group = Awaited<ReturnType<typeof getInstallmentGroupAction>>;
@@ -41,14 +41,15 @@ export function InstallmentsTab() {
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[280px] flex-1">
             <Field label="เลือกกลุ่มงวด">
-              <Select value={poId} onChange={(e) => { setPoId(e.target.value); load(e.target.value); }}>
-                <option value="">— เลือกกลุ่มงวด ({list.length}) —</option>
-                {list.map((g) => (
-                  <option key={g.poGroupId} value={g.poGroupId}>
-                    {d.date(g.date)} · {g.contactName || "ไม่ระบุ"} · {g.count} งวด · {fmt(g.total)} {g.description ? `· ${g.description}` : ""}
-                  </option>
-                ))}
-              </Select>
+              <Combobox
+                value={poId}
+                onChange={(v) => { setPoId(v); load(v); }}
+                placeholder={`พิมพ์ค้นกลุ่มงวด (${list.length})…`}
+                options={list.map((g) => ({
+                  value: g.poGroupId,
+                  label: `${d.date(g.date)} · ${g.contactName || "ไม่ระบุ"} · ${g.count} งวด · ${fmt(g.total)} ${g.description ? `· ${g.description}` : ""}`,
+                }))}
+              />
             </Field>
           </div>
           <button onClick={refreshList} className="mb-0.5 rounded-lg border border-line px-3 py-2 text-sm text-muted hover:bg-raised"><IconRefresh size={16} /></button>

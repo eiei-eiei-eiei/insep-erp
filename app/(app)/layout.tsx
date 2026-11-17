@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { ToastHost } from "@/lib/shared/toast";
 import { TouchTitles } from "@/lib/shared/touchTitle";
+import { PageGuards } from "@/lib/shared/pageGuardHost";
 import { createClient } from "@/lib/supabase/server";
 import { workspacesFor } from "@/lib/shared/workspaces";
 import { can, toRole } from "@/lib/shared/roles";
@@ -105,6 +106,7 @@ export default async function AppLayout({
         <ToastHost />
         {/* D173 — จอสัมผัส: แตะของที่มี title (ไม่ใช่ปุ่ม) แล้วเห็นข้อความ */}
         <TouchTitles />
+        <PageGuards />
       </div>
     </DateFormatProvider>
   );

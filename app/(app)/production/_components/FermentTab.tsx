@@ -1,6 +1,7 @@
 "use client";
 
-import { useConfirm } from "@/lib/shared/ui";
+import { Combobox, useConfirm } from "@/lib/shared/ui";
+import { useUnsaved } from "@/lib/shared/pageGuardHost";
 import { useEffect, useState } from "react";
 import { getNextBatchNumberAction, saveFermentAction, getRecentFermentsAction, deleteFermentBatchAction } from "../actions";
 import { Card, Field, MissingHint, NumInput, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
@@ -71,6 +72,8 @@ export function FermentTab({
   }, [date]);
 
   const validRows = rows.filter((r) => r.material_id && r.amount);
+  // หลังบันทึก rows + containerQty ถูกล้าง (onOk ใน submit) → กลับเป็น false เอง
+  useUnsaved(rows.some((r) => r.material_id || r.amount) || containerQty !== "", "ลงหมัก");
 
   function submit() {
     if (!productName || !batch || validRows.length === 0) return;
@@ -107,12 +110,12 @@ export function FermentTab({
           <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </Field>
         <Field label="ชื่อสุรา">
-          <Select value={productName} onChange={(e) => setProductName(e.target.value)}>
-            <option value="">-- เลือกชื่อสุรา --</option>
-            {productNames.map((n) => (
-              <option key={n} value={n}>{n}</option>
-            ))}
-          </Select>
+          <Combobox
+            options={productNames.map((n) => ({ value: n, label: n }))}
+            value={productName}
+            onChange={setProductName}
+            placeholder="-- เลือกชื่อสุรา --"
+          />
         </Field>
         <Field label="รหัส Batch (อัตโนมัติ ปรับได้)">
           <TextInput value={batch} onChange={(e) => setBatch(e.target.value)} />
@@ -161,23 +164,16 @@ export function FermentTab({
           {rows.map((r, i) => (
             <div key={i} className="flex gap-2">
               <div className="flex-1">
-                <Select
+                <Combobox
+                  options={materials.map((m) => ({ value: m.material_id, label: `${m.name} ${m.unit ? `(${m.unit})` : ""}`.trim() }))}
                   value={r.material_id}
-                  onChange={(e) => {
+                  onChange={(v) => {
                     const next = [...rows];
-                    next[i] = { ...next[i], material_id: e.target.value };
+                    next[i] = { ...next[i], material_id: v };
                     setRows(next);
                   }}
-                >
-                  <option value="">
-                    {i === 0 ? "-- วัตถุดิบหลัก --" : "-- วัตถุดิบ --"}
-                  </option>
-                  {materials.map((m) => (
-                    <option key={m.material_id} value={m.material_id}>
-                      {m.name} {m.unit ? `(${m.unit})` : ""}
-                    </option>
-                  ))}
-                </Select>
+                  placeholder={i === 0 ? "-- วัตถุดิบหลัก --" : "-- วัตถุดิบ --"}
+                />
               </div>
               <div className="w-32">
                 <NumInput

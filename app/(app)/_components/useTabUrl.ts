@@ -3,6 +3,8 @@
 import { useEffect, useRef } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { labelFromSlug } from "@/lib/shared/tabs";
+import { WORKSPACES } from "@/lib/shared/workspaces";
+import { usePageTitle } from "@/lib/shared/pageGuardHost";
 
 /**
  * ผูกแท็บของ workspace เข้ากับ `?tab=<slug>` บน URL
@@ -35,6 +37,9 @@ export function useTabUrl(
   const pathname = usePathname();
   const sp = useSearchParams();
   const urlSlug = sp.get("tab");
+
+  // ชื่อแท็บเบราว์เซอร์ = แท็บ · โมดูล (D173 เฟส 5 — เปิดหลายแท็บแล้วแยกออก)
+  usePageTitle([labelFromSlug(workspaceKey, toSlug(tab)), WORKSPACES.find((w) => w.key === workspaceKey)?.label]);
 
   // ★ ต้องจำ slug ล่าสุดที่ "เราเขียนเอง" ไว้ ไม่งั้น effect ทั้งสองจะไล่ตีกันไปมา
   const written = useRef<string | null>(null);

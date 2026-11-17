@@ -1,6 +1,6 @@
 "use client";
 
-import { useConfirm } from "@/lib/shared/ui";
+import { Combobox, useConfirm } from "@/lib/shared/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { correctAbvTo20C } from "@/lib/abv";
 import { closeBatchSummary } from "@/lib/production/calc";
@@ -309,10 +309,12 @@ export function RedistillTab({ products, materials }: { products: Product[]; mat
             <TextInput type="date" value={drawDate} onChange={(e) => setDrawDate(e.target.value)} />
           </Field>
           <Field label="ชื่อสุรา">
-            <Select value={productName} onChange={(e) => setProductName(e.target.value)}>
-              <option value="">-- เลือกสุรา --</option>
-              {productNames.map((p) => <option key={p} value={p}>{p}</option>)}
-            </Select>
+            <Combobox
+              options={productNames.map((p) => ({ value: p, label: p }))}
+              value={productName}
+              onChange={setProductName}
+              placeholder="-- เลือกสุรา --"
+            />
           </Field>
           <Field label="ปริมาณที่ยกออก (ล.)">
             <NumInput value={drawVol} onChange={(e) => setDrawVol(e.target.value)} />
@@ -485,15 +487,12 @@ export function RedistillTab({ products, materials }: { products: Product[]; mat
                   </p>
                   {rMats.map((m, i) => (
                     <div key={i} className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_auto]">
-                      <Select value={m.material_id}
-                        onChange={(e) => setRMats(rMats.map((x, k) => (k === i ? { ...x, material_id: e.target.value } : x)))}>
-                        <option value="">-- เลือกวัตถุดิบ --</option>
-                        {materials.map((mm) => (
-                          <option key={mm.material_id} value={mm.material_id}>
-                            {mm.material_id} — {mm.name}
-                          </option>
-                        ))}
-                      </Select>
+                      <Combobox
+                        options={materials.map((mm) => ({ value: mm.material_id, label: `${mm.material_id} — ${mm.name}` }))}
+                        value={m.material_id}
+                        onChange={(v) => setRMats(rMats.map((x, k) => (k === i ? { ...x, material_id: v } : x)))}
+                        placeholder="-- เลือกวัตถุดิบ --"
+                      />
                       <NumInput value={m.amount} placeholder="จำนวน"
                         onChange={(e) => setRMats(rMats.map((x, k) => (k === i ? { ...x, amount: e.target.value } : x)))} />
                       <RowBtn tone="slate" onClick={() => setRMats(rMats.filter((_, k) => k !== i))}>ลบ</RowBtn>
