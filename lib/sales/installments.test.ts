@@ -318,7 +318,7 @@ describe("S16 หน้าจอ/เอกสาร (D147)", () => {
       expect(at, a).toBeGreaterThan(0);
     }
     // ทุกเงื่อนไขของปุ่มรับเงินแบบเดิมต้องมี !hasPlan(o)
-    const legacyGates = [...src.matchAll(/\{canWrite && o\.status[^\n]*?&& \(\n/g)].map((m) => m[0]);
+    const legacyGates = [...src.matchAll(/\{canWrite && o\.status[^\n]*?&& \(\r?\n/g)].map((m) => m[0]);
     expect(legacyGates.length).toBeGreaterThanOrEqual(5);
     for (const g of legacyGates) expect(g, g).toMatch(/hasPlan\(o\)/);
   });
