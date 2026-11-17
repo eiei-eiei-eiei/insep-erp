@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { EscToClose } from "@/lib/shared/ui";
+import { Modal, ModalCancel } from "@/lib/shared/ui";
 import { showToast } from "@/lib/shared/toast";
-import { fmt, todayISO, useSaver } from "./ui";
+import { fmt, NumInput, TextInput, todayISO, useSaver } from "./ui";
 import type { OrderRow } from "./types";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import {
@@ -168,7 +168,22 @@ function InstallmentInvoiceDialog({
     run(() => issueInstallmentInvoiceAction({ quNo: order.quNo, seq: inst.seq, docDate, dueDate: due }), "", onDone);
   }
   return (
-    <Modal title={`ออกใบแจ้งหนี้งวดที่ ${inst.seq}`} onClose={onClose}>
+    // ออกใบแจ้งหนี้ (เอกสารมีเลข) = ห้ามส่ง onSubmit (กฎข้อ 3)
+    <Modal
+      title={`ออกใบแจ้งหนี้งวดที่ ${inst.seq}`}
+      onClose={onClose}
+      size="md"
+      busy={pending}
+      footer={
+        <>
+          <ModalCancel onClick={onClose} />
+          <button onClick={submit} disabled={pending} className="rounded-lg bg-brand px-4 py-2 font-bold text-on-brand hover:opacity-90 disabled:opacity-50">
+            {pending ? "กำลังบันทึก…" : "ออกใบแจ้งหนี้"}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-3 text-sm">
       <div className="rounded bg-raised p-2 text-muted">
         {order.quNo} · {inst.label} · ยอด <b className="text-brand">฿{fmt(inst.amount)}</b>
         <br />
@@ -176,18 +191,16 @@ function InstallmentInvoiceDialog({
       </div>
       <label className="block">
         <span className="mb-1 block font-bold text-muted">วันที่ออกใบแจ้งหนี้</span>
-        <input type="date" value={docDate} onChange={(e) => setDocDate(e.target.value)} className="w-full rounded-lg border border-line p-2" />
+        <TextInput type="date" value={docDate} onChange={(e) => setDocDate(e.target.value)} />
       </label>
       <label className="block">
         <span className="mb-1 block font-bold text-muted">ครบกำหนดชำระภายใน (วัน)</span>
-        <input type="number" min={0} value={days} onChange={(e) => setDays(Number(e.target.value) || 0)} className="w-full rounded-lg border border-line p-2" />
+        <NumInput min={0} value={days} onChange={(e) => setDays(Number(e.target.value) || 0)} />
       </label>
       {inst.seq === 1 && order.status === "รอคอนเฟิร์ม" && (
         <p className="text-xs text-warn">ออกใบแจ้งหนี้งวดแรกแล้ว จะแก้ใบเสนอราคาไม่ได้อีก (ยกเลิกใบแจ้งหนี้ก่อนจึงแก้ได้)</p>
       )}
-      <button onClick={submit} disabled={pending} className="w-full rounded-lg bg-brand py-2 font-bold text-on-brand hover:opacity-90 disabled:opacity-50">
-        {pending ? "กำลังบันทึก…" : "ออกใบแจ้งหนี้"}
-      </button>
+      </div>
     </Modal>
   );
 }
@@ -208,7 +221,26 @@ function ReplanDialog({ order, onClose, onDone }: { order: OrderRow; onClose: ()
   const { pending, run } = useSaver();
   const err = remain > 0 ? planError(rows, net, remain, sent, ctx) : null;
   return (
-    <Modal title="ปรับงวดที่ยังไม่ได้รับ" onClose={onClose} wide>
+    // ปรับแผนงวดของออเดอร์ที่มีเอกสาร/ยอดเงินผูกอยู่ = ไม่ส่ง onSubmit (กฎข้อ 3)
+    <Modal
+      title="ปรับงวดที่ยังไม่ได้รับ"
+      onClose={onClose}
+      size="md"
+      busy={pending}
+      footer={
+        <>
+          <ModalCancel onClick={onClose} />
+          <button
+            onClick={() => run(() => setOrderPlanAction(order.quNo, rows), "บันทึกแผนงวดแล้ว", onDone)}
+            disabled={pending || !!err || remain <= 0}
+            className="rounded-lg bg-brand px-4 py-2 font-bold text-on-brand hover:opacity-90 disabled:opacity-50"
+          >
+            {pending ? "กำลังบันทึก…" : "บันทึกแผนงวด"}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-3 text-sm">
       <div className="rounded bg-raised p-2 text-xs text-muted">
         {locked.length > 0
           ? <>{startSeq - 1 === 1 ? "งวดที่ 1" : `งวดที่ 1-${startSeq - 1}`} {locked.some((i) => !i.paid) ? "รับแล้วหรือออกใบแจ้งหนี้แล้ว" : "รับแล้ว"} แก้ไม่ได้ · </>
@@ -220,32 +252,7 @@ function ReplanDialog({ order, onClose, onDone }: { order: OrderRow; onClose: ()
       ) : (
         <p className="text-xs text-warn">งวดที่เหลือออกใบแจ้งหนี้ไปแล้วทั้งหมด — ยกเลิกใบแจ้งหนี้ก่อนจึงปรับได้</p>
       )}
-      <button
-        onClick={() => run(() => setOrderPlanAction(order.quNo, rows), "บันทึกแผนงวดแล้ว", onDone)}
-        disabled={pending || !!err || remain <= 0}
-        className="w-full rounded-lg bg-brand py-2 font-bold text-on-brand hover:opacity-90 disabled:opacity-50"
-      >
-        {pending ? "กำลังบันทึก…" : "บันทึกแผนงวด"}
-      </button>
-    </Modal>
-  );
-}
-
-function Modal({ title, onClose, wide, children }: { title: string; onClose: () => void; wide?: boolean; children: React.ReactNode }) {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/50 p-4"
-      // D73 — ปิดเมื่อกดลงที่พื้นหลังเท่านั้น
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <EscToClose onClose={onClose} />
-      <div className={`max-h-[90vh] w-full ${wide ? "max-w-lg" : "max-w-md"} space-y-3 overflow-y-auto rounded-lg bg-card p-5 text-sm`}>
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-ink">{title}</h2>
-          <button onClick={onClose} aria-label="ปิด" className="text-2xl leading-none text-faint hover:text-crit">&times;</button>
-        </div>
-        {children}
       </div>
-    </div>
+    </Modal>
   );
 }

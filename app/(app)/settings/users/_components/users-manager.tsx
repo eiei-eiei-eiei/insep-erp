@@ -5,9 +5,12 @@ import { useState, useTransition } from "react";
 import { ROLE_LABEL, ROLE_HINT, type Role } from "@/lib/shared/roles";
 import { rolesFor } from "@/lib/shared/moduleScope";
 import { PASSWORD_MIN } from "@/lib/shared/password";
+import { SettingsCard, ListRow } from "@/lib/shared/settings";
+import { IconTrash } from "@/lib/shared/icons";
 import {
-  Card,
-  EscToClose,
+  IconBtn,
+  Modal,
+  ModalCancel,
   MissingHint,
   RowBtn,
   SaveButton,
@@ -109,18 +112,13 @@ export function UsersManager({
   const canCreate = createChecks.every((c) => c.ok);
 
   return (
-    <div>
-      <h2 className="mb-1 text-xl font-bold text-ink">จัดการผู้ใช้</h2>
-      <p className="mb-6 text-sm text-faint">
-        สร้างบัญชีด้วย username (ไม่ต้องมีอีเมลจริง) · ให้สิทธิ์ · รีเซ็ตรหัสผ่าน · ลบ —
-        เฉพาะเจ้าของกิจการ (main)
-      </p>
-
-
+    <div className="space-y-4">
       {/* สร้างผู้ใช้ใหม่ */}
-      <Card className="mb-8">
-        <h2 className="mb-3 font-semibold text-ink">+ สร้างผู้ใช้ใหม่</h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <SettingsCard
+        title="สร้างผู้ใช้ใหม่"
+        help="สร้างบัญชีด้วย username (ไม่ต้องมีอีเมลจริง) · ให้สิทธิ์ — เฉพาะเจ้าของกิจการ (main)"
+      >
+        <div className="grid grid-cols-1 gap-3 py-2 sm:grid-cols-2 lg:grid-cols-5">
           <label className="text-sm">
             <span className="mb-1 block text-muted">ชื่อผู้ใช้ (username)</span>
             <TextInput
@@ -183,36 +181,36 @@ export function UsersManager({
             <MissingHint checks={createChecks} />
           </div>
         </div>
-      </Card>
+      </SettingsCard>
 
-      {/* รายชื่อผู้ใช้ */}
-      <div className="overflow-x-auto rounded-lg border border-line bg-card">
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th className="px-4 py-3">username</th>
-              <th className="px-4 py-3">ชื่อแสดงผล</th>
-              <th className="px-4 py-3">สิทธิ์</th>
-              {multiEntity && <th className="px-4 py-3">กิจการที่เห็นได้</th>}
-              <th className="px-4 py-3 num">จัดการ</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => {
-              const isSelf = u.id === currentUserId;
-              return (
-                <tr key={u.id}>
-                  <td className="px-4 py-3 font-medium text-ink">
-                    {u.username}
-                    {isSelf && (
-                      <span className="ml-2 rounded bg-raised px-1.5 py-0.5 text-xs text-faint">
-                        คุณ
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-muted">{u.display_name}</td>
-                  <td className="px-4 py-3">
+      {/* รายชื่อผู้ใช้ — 1 คน = 1 แถว (สิทธิ์ = ดร็อปดาวน์ในแถว เปลี่ยนแล้วบันทึกทันทีเหมือนเดิม) */}
+      <SettingsCard
+        title="ผู้ใช้ในระบบ"
+        count={users.length}
+        unit="คน"
+        help="รีเซ็ตรหัสผ่าน · ลบผู้ใช้ · ให้สิทธิ์ — เฉพาะเจ้าของกิจการ (main)"
+      >
+        {users.map((u) => {
+          const isSelf = u.id === currentUserId;
+          return (
+            <ListRow
+              key={u.id}
+              title={
+                <span className="font-medium">
+                  {u.username}
+                  {isSelf && (
+                    <span className="ml-2 rounded bg-raised px-1.5 py-0.5 text-xs font-normal text-faint">
+                      คุณ
+                    </span>
+                  )}
+                </span>
+              }
+              sub={
+                <div className="space-y-1.5">
+                  {u.display_name && <div>{u.display_name}</div>}
+                  <div className="max-w-xs">
                     <Select
+                      aria-label={`สิทธิ์ของ ${u.username}`}
                       className="py-1"
                       defaultValue={u.role}
                       disabled={pending}
@@ -229,48 +227,51 @@ export function UsersManager({
                         </option>
                       ))}
                     </Select>
-                  </td>
+                  </div>
                   {multiEntity && (
-                    <td className="px-4 py-3">
-                      <div className={u.allowed_entity_ids ? "text-warn" : "text-muted"}>
-                        {entityScopeLabel(u.allowed_entity_ids, entities)}
-                      </div>
-                      {u.role === "main" ? (
-                        <span className="text-xs text-faint">main เห็นทุกกิจการเสมอ</span>
-                      ) : isSelf ? null : (
-                        <RowBtn
-                          className="mt-1"
-                          disabled={pending}
-                          onClick={() => { setScope(u.allowed_entity_ids); setDialog({ kind: "scope", user: u }); }}
-                        >
-                          จำกัดกิจการ
-                        </RowBtn>
-                      )}
-                    </td>
+                    <div>
+                      <span className={u.allowed_entity_ids ? "text-warn" : "text-muted"}>
+                        กิจการที่เห็นได้: {entityScopeLabel(u.allowed_entity_ids, entities)}
+                      </span>
+                      {u.role === "main" && <span className="ml-2 text-faint">main เห็นทุกกิจการเสมอ</span>}
+                    </div>
                   )}
-                  <td className="px-4 py-3 num">
+                  {isSelf && (
+                    <div className="text-faint">ลบบัญชีที่กำลังใช้งานอยู่ไม่ได้ (ให้ผู้ใช้ main อีกคนลบให้)</div>
+                  )}
+                </div>
+              }
+              actions={
+                <>
+                  {multiEntity && u.role !== "main" && !isSelf && (
                     <RowBtn
-                      className="mr-2"
                       disabled={pending}
-                      onClick={() => { setNewPw(""); setDialog({ kind: "reset", user: u }); }}
+                      onClick={() => { setScope(u.allowed_entity_ids); setDialog({ kind: "scope", user: u }); }}
                     >
-                      รีเซ็ตรหัส
+                      จำกัดกิจการ
                     </RowBtn>
-                    <RowBtn
-                      tone="red"
-                      disabled={pending || isSelf}
-                      title={isSelf ? "ลบบัญชีที่กำลังใช้งานอยู่ไม่ได้ (ให้ผู้ใช้ main อีกคนลบให้)" : undefined}
-                      onClick={() => setDialog({ kind: "delete", user: u })}
-                    >
-                      ลบ
-                    </RowBtn>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                  )}
+                  <RowBtn
+                    disabled={pending}
+                    onClick={() => { setNewPw(""); setDialog({ kind: "reset", user: u }); }}
+                  >
+                    รีเซ็ตรหัส
+                  </RowBtn>
+                  <IconBtn
+                    tone="red"
+                    disabled={pending || isSelf}
+                    aria-label={`ลบผู้ใช้ ${u.username}`}
+                    title={isSelf ? "ลบบัญชีที่กำลังใช้งานอยู่ไม่ได้ (ให้ผู้ใช้ main อีกคนลบให้)" : `ลบผู้ใช้ ${u.username}`}
+                    onClick={() => setDialog({ kind: "delete", user: u })}
+                  >
+                    <IconTrash size={16} />
+                  </IconBtn>
+                </>
+              }
+            />
+          );
+        })}
+      </SettingsCard>
 
       {/*
         🚨 ป๊อปอัพในแอป ไม่ใช่ window.prompt/confirm
@@ -280,97 +281,98 @@ export function UsersManager({
            · `confirm()` ก็ถูกกลืนในบางบริบท → กดลบแล้วเหมือนปุ่มเสีย
         🪤 พื้นหลังปิดด้วย onMouseDown ไม่ใช่ onClick (D73 — ลากคลุมข้อความแล้วป๊อปอัพปิดเอง)
       */}
-      {dialog && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40 p-4"
-          onMouseDown={(e) => { if (e.target === e.currentTarget) closeDialog(); }}
-        >
-          <EscToClose onClose={closeDialog} />
-          <div className="w-full max-w-md rounded-lg bg-card p-5 shadow-xl">
-            {dialog.kind === "scope" ? (
-              <ScopeDialog
-                user={dialog.user}
-                entities={entities}
-                scope={scope}
-                setScope={setScope}
+      {dialog?.kind === "scope" && (
+        <ScopeDialog
+          user={dialog.user}
+          entities={entities}
+          scope={scope}
+          setScope={setScope}
+          pending={pending}
+          onCancel={closeDialog}
+          onSave={() =>
+            run(
+              () => updateEntityScopeAction({ id: dialog.user.id, entityIds: scope }),
+              `ตั้งกิจการที่ ${dialog.user.username} เห็นได้แล้ว`,
+              () => setDialog(null),
+            )
+          }
+        />
+      )}
+      {dialog?.kind === "reset" && (
+        <Modal
+          title="รีเซ็ตรหัสผ่าน"
+          onClose={closeDialog}
+          busy={pending}
+          footer={
+            <>
+              <ModalCancel onClick={closeDialog} disabled={pending} />
+              <SaveButton
                 pending={pending}
-                onCancel={closeDialog}
-                onSave={() =>
+                pendingText="กำลังตั้ง…"
+                disabled={newPw.length < PASSWORD_MIN}
+                onClick={() => doReset(dialog.user)}
+              >
+                ตั้งรหัสใหม่
+              </SaveButton>
+            </>
+          }
+        >
+          <p className="mb-3 text-sm text-muted">
+            ตั้งรหัสผ่านใหม่ให้ <b className="text-ink">{dialog.user.username}</b>
+          </p>
+          <p className="mb-3 rounded-lg bg-raised px-3 py-2 text-xs text-faint">
+            ผู้ใช้จะเข้าระบบด้วยรหัสนี้ได้ทันที — บอกเขาให้เปลี่ยนเองหลังเข้าได้แล้ว
+          </p>
+          <label className="mb-1 block text-sm text-muted">
+            รหัสผ่านใหม่ (อย่างน้อย {PASSWORD_MIN} ตัว)
+          </label>
+          <TextInput
+            type="password"
+            value={newPw}
+            onChange={(e) => setNewPw(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && newPw.length >= PASSWORD_MIN) doReset(dialog.user);
+            }}
+          />
+          <MissingHint
+            checks={[
+              { label: `รหัสผ่านอย่างน้อย ${PASSWORD_MIN} ตัว`, ok: newPw.length >= PASSWORD_MIN },
+            ]}
+          />
+        </Modal>
+      )}
+      {dialog?.kind === "delete" && (
+        <Modal
+          title={<span className="text-crit">ลบผู้ใช้ถาวร</span>}
+          onClose={closeDialog}
+          busy={pending}
+          footer={
+            <>
+              <ModalCancel onClick={closeDialog} disabled={pending} />
+              <RowBtn
+                tone="red"
+                disabled={pending}
+                onClick={() =>
                   run(
-                    () => updateEntityScopeAction({ id: dialog.user.id, entityIds: scope }),
-                    `ตั้งกิจการที่ ${dialog.user.username} เห็นได้แล้ว`,
-                    () => setDialog(null),
+                    () => deleteUserAction({ id: dialog.user.id }),
+                    `ลบผู้ใช้ ${dialog.user.username} แล้ว`,
+                    () => { setDialog(null); setNewPw(""); },
                   )
                 }
-              />
-            ) : dialog.kind === "reset" ? (
-              <>
-                <div className="mb-1 text-lg font-bold text-ink">รีเซ็ตรหัสผ่าน</div>
-                <p className="mb-3 text-sm text-muted">
-                  ตั้งรหัสผ่านใหม่ให้ <b className="text-ink">{dialog.user.username}</b>
-                </p>
-                <p className="mb-3 rounded-lg bg-raised px-3 py-2 text-xs text-faint">
-                  ผู้ใช้จะเข้าระบบด้วยรหัสนี้ได้ทันที — บอกเขาให้เปลี่ยนเองหลังเข้าได้แล้ว
-                </p>
-                <label className="mb-1 block text-sm text-muted">
-                  รหัสผ่านใหม่ (อย่างน้อย {PASSWORD_MIN} ตัว)
-                </label>
-                <TextInput
-                  type="password"
-                  value={newPw}
-                  autoFocus
-                  onChange={(e) => setNewPw(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && newPw.length >= PASSWORD_MIN) doReset(dialog.user);
-                  }}
-                />
-                <div className="mt-4 flex justify-end gap-2">
-                  <RowBtn onClick={closeDialog} disabled={pending}>ยกเลิก</RowBtn>
-                  <SaveButton
-                    pending={pending}
-                    pendingText="กำลังตั้ง…"
-                    disabled={newPw.length < PASSWORD_MIN}
-                    onClick={() => doReset(dialog.user)}
-                  >
-                    ตั้งรหัสใหม่
-                  </SaveButton>
-                </div>
-                <MissingHint
-                  checks={[
-                    { label: `รหัสผ่านอย่างน้อย ${PASSWORD_MIN} ตัว`, ok: newPw.length >= PASSWORD_MIN },
-                  ]}
-                />
-              </>
-            ) : (
-              <>
-                <div className="mb-1 text-lg font-bold text-crit">ลบผู้ใช้ถาวร</div>
-                <p className="mb-3 text-sm text-muted">
-                  จะลบบัญชี <b className="text-ink">{dialog.user.username}</b> ออกจากระบบ
-                </p>
-                <p className="mb-4 rounded-lg border border-crit-line bg-crit-bg px-3 py-2 text-xs text-crit">
-                  ลบแล้วเข้าระบบด้วยบัญชีนี้ไม่ได้อีก · ส่วนข้อมูลที่เขาเคยบันทึกไว้ยังอยู่ครบ
-                  (ประวัติการแก้ไขยังเก็บชื่อผู้ใช้ไว้)
-                </p>
-                <div className="flex justify-end gap-2">
-                  <RowBtn onClick={closeDialog} disabled={pending}>ยกเลิก</RowBtn>
-                  <RowBtn
-                    tone="red"
-                    disabled={pending}
-                    onClick={() =>
-                      run(
-                        () => deleteUserAction({ id: dialog.user.id }),
-                        `ลบผู้ใช้ ${dialog.user.username} แล้ว`,
-                        () => { setDialog(null); setNewPw(""); },
-                      )
-                    }
-                  >
-                    {pending ? "กำลังลบ…" : "ลบถาวร"}
-                  </RowBtn>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
+              >
+                {pending ? "กำลังลบ…" : "ลบถาวร"}
+              </RowBtn>
+            </>
+          }
+        >
+          <p className="mb-3 text-sm text-muted">
+            จะลบบัญชี <b className="text-ink">{dialog.user.username}</b> ออกจากระบบ
+          </p>
+          <p className="rounded-lg border border-crit-line bg-crit-bg px-3 py-2 text-xs text-crit">
+            ลบแล้วเข้าระบบด้วยบัญชีนี้ไม่ได้อีก · ส่วนข้อมูลที่เขาเคยบันทึกไว้ยังอยู่ครบ
+            (ประวัติการแก้ไขยังเก็บชื่อผู้ใช้ไว้)
+          </p>
+        </Modal>
       )}
     </div>
   );
@@ -396,8 +398,19 @@ function ScopeDialog({
   const picked = scope ?? [];
   const checks = [{ label: "เลือกอย่างน้อย 1 กิจการ", ok: !limited || picked.length > 0 }];
   return (
-    <>
-      <div className="mb-1 text-lg font-bold text-ink">กิจการที่เห็นได้</div>
+    <Modal
+      title="กิจการที่เห็นได้"
+      onClose={onCancel}
+      busy={pending}
+      footer={
+        <>
+          <ModalCancel onClick={onCancel} disabled={pending} />
+          <SaveButton pending={pending} pendingText="กำลังบันทึก…" disabled={!checks.every((c) => c.ok)} onClick={onSave}>
+            บันทึก
+          </SaveButton>
+        </>
+      }
+    >
       <p className="mb-3 text-sm text-muted">
         ผู้ใช้ <b className="text-ink">{user.username}</b> ({ROLE_LABEL[user.role] ?? user.role})
       </p>
@@ -428,13 +441,7 @@ function ScopeDialog({
         <div className="mt-1 text-warn">ยังไม่ถูกจำกัด: {ENTITY_SCOPE_NOT_COVERED}</div>
         <div className="mt-1 text-faint">มีผลตั้งแต่ผู้ใช้เปิดหน้าถัดไป (ไม่ต้องออกจากระบบ)</div>
       </div>
-      <div className="flex justify-end gap-2">
-        <RowBtn onClick={onCancel} disabled={pending}>ยกเลิก</RowBtn>
-        <SaveButton pending={pending} pendingText="กำลังบันทึก…" disabled={!checks.every((c) => c.ok)} onClick={onSave}>
-          บันทึก
-        </SaveButton>
-      </div>
       <MissingHint checks={checks} />
-    </>
+    </Modal>
   );
 }

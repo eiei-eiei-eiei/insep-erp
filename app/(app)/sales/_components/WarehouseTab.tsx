@@ -3,11 +3,11 @@
 import { salesProductionText, type SalesProductionText } from "@/lib/sales/productionText";
 import { useEffect, useRef, useState } from "react";
 import type { WarehouseOrder, StockItem } from "./types";
-import { Badge, Card, NumInput, Select, TextInput, fmt, useSaver, LoadError } from "./ui";
+import { Badge, Card, Combobox, NumInput, Select, TextInput, fmt, useSaver, LoadError } from "./ui";
 import { getPendingWarehouseAction, getWarehouseStockAction, confirmFulfillmentAction, manualStockMoveAction } from "../actions";
 import { printSalesDocs, type CompanyInfo, type OrderLike } from "./print";
 import { can, toRole } from "@/lib/shared/roles";
-import { EscToClose, todayISO } from "@/lib/shared/ui";
+import { Modal, ModalCancel, todayISO } from "@/lib/shared/ui";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { shipDateError, shipDateNote } from "@/lib/sales/backdate";
 
@@ -99,42 +99,36 @@ function PendingOrders({ canWrite, company, active, txt }: { canWrite: boolean; 
   return (
     <div className="space-y-3">
       {ask && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40 p-4"
-          onMouseDown={(e) => { if (e.target === e.currentTarget) setAsk(null); }}
-        >
-          <EscToClose onClose={() => setAsk(null)} />
-          <div className="w-full max-w-sm rounded-lg bg-card p-5 shadow-xl">
-            <div className="text-base font-bold text-ink">ยืนยันจัดส่ง {ask.orderNo}?</div>
-            <p className="mt-1 text-sm text-muted">{txt.shipConfirm}</p>
-            <label className="mt-3 block text-sm">
-              <span className="mb-1 block font-bold text-muted">วันที่ส่งของ</span>
-              <input
-                type="date"
-                value={shipDate}
-                max={todayISO()}
-                onChange={(e) => setShipDate(e.target.value)}
-                className="w-full rounded-lg border border-line p-2 outline-none focus:border-brand"
-              />
-            </label>
-            {shipErr && <p className="mt-1 text-xs text-crit">{shipErr}</p>}
-            {shipNote && <p className="mt-1 text-xs text-warn">{shipNote}</p>}
-            <div className="mt-4 flex gap-2">
+        // ยืนยันจัดส่ง = ตัดสต็อก (+ลงฟอร์ม ภส.) ห้ามส่ง onSubmit (กฎข้อ 3)
+        <Modal
+          title={<>ยืนยันจัดส่ง {ask.orderNo}?</>}
+          onClose={() => setAsk(null)}
+          size="sm"
+          footer={
+            <>
+              <ModalCancel onClick={() => setAsk(null)} />
               <button
                 type="button"
-                autoFocus
+                data-autofocus
                 disabled={!!shipErr}
                 onClick={() => confirmShip(ask, shipDate)}
-                className="flex-1 rounded-lg bg-brand px-3 py-2 text-sm font-medium text-on-brand disabled:opacity-50"
+                className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-on-brand disabled:opacity-50"
               >
                 ยืนยันจัดส่ง &amp; ตัดสต็อก
               </button>
-              <button type="button" onClick={() => setAsk(null)} className="rounded-lg border border-line bg-card px-3 py-2 text-sm text-ink">
-                ยกเลิก
-              </button>
-            </div>
+            </>
+          }
+        >
+          <div>
+            <p className="text-sm text-muted">{txt.shipConfirm}</p>
+            <label className="mt-3 block text-sm">
+              <span className="mb-1 block font-bold text-muted">วันที่ส่งของ</span>
+              <TextInput type="date" value={shipDate} max={todayISO()} onChange={(e) => setShipDate(e.target.value)} />
+            </label>
+            {shipErr && <p className="mt-1 text-xs text-crit">{shipErr}</p>}
+            {shipNote && <p className="mt-1 text-xs text-warn">{shipNote}</p>}
           </div>
-        </div>
+        </Modal>
       )}
       {orders.length === 0 && <div className="rounded-lg bg-raised py-8 text-center text-sm text-faint">ไม่มีออเดอร์รอจัดส่ง</div>}
       {orders.map((o) => (
@@ -239,14 +233,12 @@ function StockPanel({ canWrite, active, txt }: { canWrite: boolean; active: bool
       {canWrite && (
         <Card title="ปรับสต็อกทั่วไป (manual)">
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-            <Select value={form.itemCode} onChange={(e) => setForm({ ...form, itemCode: e.target.value })}>
-              <option value="">— เลือกสินค้าทั่วไป —</option>
-              {general.map((s) => (
-                <option key={s.itemCode} value={s.itemCode}>
-                  {s.itemCode} | {s.itemName}
-                </option>
-              ))}
-            </Select>
+            <Combobox
+              options={general.map((s) => ({ value: s.itemCode, label: `${s.itemCode} | ${s.itemName}` }))}
+              value={form.itemCode}
+              onChange={(v) => setForm({ ...form, itemCode: v })}
+              placeholder="— เลือกสินค้าทั่วไป —"
+            />
             <Select value={form.actionType} onChange={(e) => setForm({ ...form, actionType: e.target.value as "IN" | "OUT" | "ADJUST" })}>
               <option value="IN">รับเข้า (IN)</option>
               <option value="OUT">จ่ายออก (OUT)</option>

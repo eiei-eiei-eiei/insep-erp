@@ -21,7 +21,8 @@ import {
   salesHint,
   type OrderView,
 } from "@/lib/bar/menuOrder";
-import { Select } from "@/lib/shared/ui";
+import { Help, Select } from "@/lib/shared/ui";
+import { useUnsaved } from "@/lib/shared/pageGuardHost";
 import { getMenuSalesAction, reorderMenusAction } from "../actions";
 
 const DAYS = 30;
@@ -57,6 +58,7 @@ export function MenuOrderEditor({
   const ids = draft ?? baseIds;
   const byId = new Map(boot.menus.map((m) => [m.menuId, m]));
   const dirty = draft !== null && draft.join("|") !== baseIds.join("|");
+  useUnsaved(dirty, "ลำดับเมนูบนหน้าขาย");
   const locked = orderLockedReason(view);
   const catName = (id: string) => boot.categories.find((c) => c.categoryId === id)?.name ?? id;
 
@@ -65,10 +67,12 @@ export function MenuOrderEditor({
 
   return (
     <div className="mb-3 rounded-lg bg-raised p-3">
-      <div className="mb-1 text-sm font-medium text-ink">จัดลำดับเมนูบนหน้าขาย</div>
-      <div className="mb-2 text-xs text-muted">
-        เลือกหน้า แล้วใช้ ▲▼ หรือ ⤒ (ขึ้นบนสุด) · กด <b>บันทึกลำดับ</b> เมื่อเสร็จ ·{" "}
-        <b>แต่ละหน้าตั้งแยกกัน</b> — จัดหน้า &quot;ทั้งหมด&quot; ไม่มีผลกับหน้าหมวด · เมนูใหม่จะต่อท้ายเอง
+      <div className="mb-2 flex items-center gap-1.5 text-sm font-medium text-ink">
+        จัดลำดับเมนูบนหน้าขาย
+        <Help>
+          เลือกหน้า แล้วใช้ ▲▼ หรือ ⤒ (ขึ้นบนสุด) · กด <b>บันทึกลำดับ</b> เมื่อเสร็จ ·{" "}
+          <b>แต่ละหน้าตั้งแยกกัน</b> — จัดหน้า &quot;ทั้งหมด&quot; ไม่มีผลกับหน้าหมวด · เมนูใหม่จะต่อท้ายเอง
+        </Help>
       </div>
 
       <div className="mb-2 w-60">

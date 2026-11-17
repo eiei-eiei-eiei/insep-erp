@@ -16,7 +16,10 @@ export function AbvCalcCard({ onUse }: { onUse?: (abv20: string) => void }) {
   const abv20 = filled ? correctAbvTo20C(abvObs, temp) : null;
 
   return (
-    <Card title="เครื่องคิดเลขดีกรี@20°C (ปรับตามอุณหภูมิ)">
+    <Card
+      title="เครื่องคิดเลขดีกรี@20°C (ปรับตามอุณหภูมิ)"
+      help="ใช้ตารางเดียวกับแท็บกลั่น · อุณหภูมิ 0–40°C · ดีกรี 0–100% · คำนวณอย่างเดียว ไม่บันทึกลงระบบ"
+    >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Field label="ดีกรีที่อ่าน (%)">
           <NumInput value={abvObs} onChange={(e) => setAbvObs(e.target.value)} />
@@ -30,17 +33,14 @@ export function AbvCalcCard({ onUse }: { onUse?: (abv20: string) => void }) {
           </div>
         </Field>
       </div>
-      <div className="mt-3 flex flex-wrap items-center gap-3">
-        {onUse && (
+      {onUse && (
+        <div className="mt-3 flex flex-wrap items-center gap-3">
           <RowBtn onClick={() => abv20 !== null && onUse(abv20.toFixed(2))} disabled={abv20 === null}
             title={abv20 === null ? "กรอกดีกรีที่อ่านและอุณหภูมิก่อน" : "เติมค่านี้ลงช่อง ดีกรีตั้งต้น C1 ด้านล่าง"}>
             ใช้เป็นดีกรีตั้งต้น C1
           </RowBtn>
-        )}
-        <p className="text-xs text-faint">
-          ใช้ตารางเดียวกับแท็บกลั่น · อุณหภูมิ 0–40°C · ดีกรี 0–100% · คำนวณอย่างเดียว ไม่บันทึกลงระบบ
-        </p>
-      </div>
+        </div>
+      )}
     </Card>
   );
 }

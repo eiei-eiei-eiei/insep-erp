@@ -27,9 +27,11 @@ import {
   type LabCategory, type LabRecipe, type LabUse, type LabStatus, type RecipeFilter, type UseDraft,
 } from "@/lib/bar/lab";
 import {
-  Card, TextInput, NumBox, Select, Field, Badge, Empty, EscToClose, Combobox, SuggestInput, LoadError,
+  Card, TextInput, NumBox, Select, Field, Badge, Empty, Modal, ModalCancel, Combobox, SuggestInput, LoadError,
   fmt, useSaver, useRead, useConfirm,
 } from "@/lib/shared/ui";
+import { SettingsCard } from "@/lib/shared/settings";
+import { useUnsaved } from "@/lib/shared/pageGuardHost";
 import {
   labDataAction, labRoundAction, labUseAction, labDeleteUseAction, labUpdateUseAction, labUpdateRecipeAction,
   labPromoteAction, labAddCategoryAction, labSaveCategoriesAction,
@@ -446,7 +448,7 @@ function RoundRow({
             </button>
           ) : (
             <span className="text-xs text-faint" title={delBlock}>
-              ลบไม่ได้
+              ลบไม่ได้ — {delBlock}
             </span>
           )}
         </span>
@@ -499,13 +501,26 @@ function RoundModal({
   ];
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-overlay/40 p-4"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    <Modal
+      title={isNew ? "ลองสูตรใหม่" : `ลองรอบใหม่ — ${target.name}`}
+      onClose={onClose}
+      busy={busy}
+      size="md"
+      footer={
+        <>
+          <ModalCancel onClick={onClose} />
+          <button
+            type="button"
+            disabled={busy || missing.length > 0}
+            onClick={() => onSubmit({ name, glasses: glasses as number, recipe, note })}
+            className="rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
+          >
+            {busy ? "กำลังบันทึก…" : "ชงแล้ว — ตัดสต็อก"}
+          </button>
+        </>
+      }
     >
-      <EscToClose onClose={onClose} />
-      <div className="w-full max-w-lg rounded-lg bg-card p-5">
-        <h3 className="mb-3 text-lg font-bold text-ink">{isNew ? "ลองสูตรใหม่" : `ลองรอบใหม่ — ${target.name}`}</h3>
+      <div>
         {isNew && (
           <Field label="ชื่อสูตร (ชื่อชั่วคราวก็ได้)">
             <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="ฟักทอง Negroni ตัวที่ 1" />
@@ -538,21 +553,8 @@ function RoundModal({
           กดแล้ว<b>ตัดสต็อกทันที</b> (ทุกแก้ว) และจำสูตร+ทุนของรอบนี้ไว้ · ขวดไม่พอก็ตัดได้ (ติดลบ) เหมือนตอนขาย
         </p>
         {missing.length > 0 && <p className="mt-1 text-xs text-warn">ยังกรอกไม่ครบ: {missing.join(" · ")}</p>}
-        <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            disabled={busy || missing.length > 0}
-            onClick={() => onSubmit({ name, glasses: glasses as number, recipe, note })}
-            className="flex-1 rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
-          >
-            {busy ? "กำลังบันทึก…" : "ชงแล้ว — ตัดสต็อก"}
-          </button>
-          <button type="button" onClick={onClose} className="rounded-lg bg-raised px-3 py-2 text-sm text-ink">
-            ยกเลิก
-          </button>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -580,6 +582,7 @@ function UseView({
   const [rows, setRows] = useState<KeyedDraft[]>([newRow("menu"), newRow("item")]);
   const plan = planUse(rows);
   const pending = plan.menus.length + plan.recipes.length + plan.items.length;
+  useUnsaved(pending > 0, "รายการที่ใช้ทำคอนเทนต์ (ยังไม่ตัดสต็อก)");
   const preview = previewUseCost(plan, boot.menus, boot.items, refsOf(boot), data.uses);
   const events = [...new Set(data.uses.map((u) => u.eventName?.trim()).filter((x): x is string => !!x))];
   const set = (i: number, patch: Partial<UseDraft>) => setRows((p) => p.map((r, j) => (j === i ? { ...r, ...patch } : r)));
@@ -780,7 +783,7 @@ function UseRow({
         </button>
       ) : (
         <span className="text-xs text-faint" title={block}>
-          ลบไม่ได้
+          ลบไม่ได้ — {block}
         </span>
       )}
       {use.note && <div className="w-full text-xs text-muted">โน้ต: {use.note}</div>}
@@ -825,21 +828,23 @@ function SummaryView({
               {RANGE_LABEL[k]}
             </button>
           ))}
-          <input
-            type="date"
-            value={range.from}
-            onChange={(e) => setRange((r) => ({ ...r, from: e.target.value }))}
-            className="rounded-lg border border-line bg-input px-2 py-1 text-sm text-ink"
-            aria-label="ตั้งแต่"
-          />
+          <div className="w-40">
+            <TextInput
+              type="date"
+              value={range.from}
+              onChange={(e) => setRange((r) => ({ ...r, from: e.target.value }))}
+              aria-label="ตั้งแต่"
+            />
+          </div>
           <span className="text-muted">–</span>
-          <input
-            type="date"
-            value={range.to}
-            onChange={(e) => setRange((r) => ({ ...r, to: e.target.value }))}
-            className="rounded-lg border border-line bg-input px-2 py-1 text-sm text-ink"
-            aria-label="ถึง"
-          />
+          <div className="w-40">
+            <TextInput
+              type="date"
+              value={range.to}
+              onChange={(e) => setRange((r) => ({ ...r, to: e.target.value }))}
+              aria-label="ถึง"
+            />
+          </div>
         </div>
         <p className="mt-3 text-lg text-ink">
           ทุนที่ใช้ไป <b>{fmt(s.total)}</b> บาท <span className="text-sm text-muted">({s.count} รายการ)</span>
@@ -921,10 +926,11 @@ export function LabCategoriesCard({ boot }: { boot: BarBoot }) {
   const ARROW = "grid h-8 w-8 place-items-center rounded text-muted hover:bg-raised hover:text-ink disabled:opacity-30";
 
   return (
-    <Card title="หมวดการใช้ (ห้องทดลอง)">
-      <p className="mb-2 text-xs text-muted">
-        ใช้แยกทุนในหน้า <b>สรุปต้นทุน</b> · เพิ่มหมวดได้จากแท็บห้องทดลองเลย · การ์ดนี้ไว้เปลี่ยนชื่อ/จัดลำดับ/ลบ
-      </p>
+    <SettingsCard
+      title="หมวดการใช้ (ห้องทดลอง)"
+      count={cur.length}
+      help={<>ใช้แยกทุนในหน้า <b>สรุปต้นทุน</b> · เพิ่มหมวดได้จากแท็บห้องทดลองเลย · การ์ดนี้ไว้เปลี่ยนชื่อ/จัดลำดับ/ลบ</>}
+    >
       {cur.map((c, i) => {
         const n = used(c.categoryId);
         return (
@@ -981,6 +987,6 @@ export function LabCategoriesCard({ boot }: { boot: BarBoot }) {
           </>
         )}
       </div>
-    </Card>
+    </SettingsCard>
   );
 }

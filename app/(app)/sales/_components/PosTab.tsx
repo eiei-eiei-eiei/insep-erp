@@ -3,7 +3,7 @@
 import { salesProductionText } from "@/lib/sales/productionText";
 import { useMemo, useState } from "react";
 import type { SalesBoot, CustomerRow, MenuRow, OrderItem } from "./types";
-import { Card, Combobox, MissingHint, Select, fmt, useSaver } from "./ui";
+import { Card, Combobox, MissingHint, NumInput, Select, TextInput, fmt, useSaver } from "./ui";
 import { AddCustomerModal } from "./CustomerFields";
 import { posTotals, stockShortages, mergeCart, POS_METHODS } from "@/lib/sales/pos";
 import { posSaleAction, savePosWalkinContactAction, getSalesBootstrapAction } from "../actions";
@@ -11,6 +11,7 @@ import { printSalesDocs, openPrintWindow } from "./print";
 import { IconCart, IconPlus } from "@/lib/shared/icons";
 import { can, toRole } from "@/lib/shared/roles";
 import { todayISO } from "@/lib/shared/ui";
+import { useUnsaved } from "@/lib/shared/pageGuardHost";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { manualNoError, saleDateError, saleDateNote } from "@/lib/sales/backdate";
 
@@ -46,6 +47,9 @@ export function PosTab({ boot, canWrite }: { boot: SalesBoot; canWrite: boolean 
   const [pickCustomer, setPickCustomer] = useState(false);
   const { setMsg } = useSaver();
   const [busy, setBusy] = useState(false);
+
+  // ตะกร้ามีของ — clearBill() ล้าง items หลังขายสำเร็จ → กลับเป็น false เอง
+  useUnsaved(items.length > 0, "บิลหน้าร้านที่กำลังขาย");
 
   const isVat = boot.isVat;
   const customer = customers.find((c) => c.id === custId) ?? null;
@@ -185,12 +189,9 @@ export function PosTab({ boot, canWrite }: { boot: SalesBoot; canWrite: boolean 
       <Card>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-semibold text-ink">สินค้า{isVat ? " (ราคารวม VAT)" : ""}</h2>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="ค้นหาสินค้า…"
-            className="w-44 rounded-lg border border-line bg-card p-2 text-sm outline-none focus:border-brand"
-          />
+          <div className="w-44">
+            <TextInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาสินค้า…" />
+          </div>
         </div>
 
         {hiddenCount > 0 && (
@@ -305,6 +306,7 @@ export function PosTab({ boot, canWrite }: { boot: SalesBoot; canWrite: boolean 
               )}
             </div>
             {canConfig && <MissingHint checks={[{ label: "ลูกค้าที่จะตั้งเป็นลูกค้าทั่วไป", ok: !!custId }]} prefix="ยังไม่ได้เลือก" />}
+            {canConfig && custId && custId === walkinId && <p className="mt-1 text-xs text-muted">รายนี้เป็นลูกค้าทั่วไปอยู่แล้ว</p>}
           </div>
         )}
 
@@ -366,14 +368,7 @@ export function PosTab({ boot, canWrite }: { boot: SalesBoot; canWrite: boolean 
             <span className="mb-1 block text-xs font-bold text-muted">
               ส่วนลดท้ายบิล (บาท{isVat ? " รวม VAT" : ""})
             </span>
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              value={discount || ""}
-              onChange={(e) => setDiscount(Number(e.target.value) || 0)}
-              className="w-full rounded-lg border border-line p-2 text-sm outline-none focus:border-brand"
-            />
+            <NumInput min={0} step="0.01" value={discount || ""} onChange={(e) => setDiscount(Number(e.target.value) || 0)} />
           </label>
           <label className="block">
             <span className="mb-1 block text-xs font-bold text-muted">ช่องทางชำระ</span>
@@ -394,24 +389,13 @@ export function PosTab({ boot, canWrite }: { boot: SalesBoot; canWrite: boolean 
               <div className="mt-2 space-y-2">
                 <label className="block">
                   <span className="mb-1 block text-xs font-bold text-muted">วันที่ขาย</span>
-                  <input
-                    type="date"
-                    value={saleDate}
-                    max={todayISO()}
-                    onChange={(e) => setSaleDate(e.target.value)}
-                    className="w-full rounded-lg border border-line p-2 text-sm outline-none focus:border-brand"
-                  />
+                  <TextInput type="date" value={saleDate} max={todayISO()} onChange={(e) => setSaleDate(e.target.value)} />
                 </label>
                 {dateErr && <p className="text-xs text-crit">{dateErr}</p>}
                 {dateNote && <p className="text-xs text-warn">{dateNote}</p>}
                 <label className="block">
                   <span className="mb-1 block text-xs font-bold text-muted">เลขใบเสร็จที่เขียนไปแล้ว (ว่าง = ให้ระบบออก)</span>
-                  <input
-                    value={paperNo}
-                    disabled={!canConfig}
-                    onChange={(e) => setPaperNo(e.target.value)}
-                    className="w-full rounded-lg border border-line p-2 text-sm outline-none focus:border-brand disabled:opacity-50"
-                  />
+                  <TextInput value={paperNo} disabled={!canConfig} onChange={(e) => setPaperNo(e.target.value)} className="disabled:opacity-50" />
                 </label>
                 {!canConfig && <p className="text-xs text-faint">กรอกเลขเอกสารเองได้เฉพาะหัวหน้าฝ่ายขาย</p>}
                 {paperErr && <p className="text-xs text-crit">{paperErr}</p>}

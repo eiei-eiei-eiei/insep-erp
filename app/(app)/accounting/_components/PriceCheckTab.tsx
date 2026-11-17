@@ -46,7 +46,7 @@ export function PriceCheckTab({ boot, entityId }: { boot: Bootstrap; entityId: s
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <Field label="วันที่"><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
         <Field label="คู่ค้า/ร้าน">
-          <input list="pc-contact" value={contact} onChange={(e) => setContact(e.target.value)} className="w-full rounded-lg border border-line px-3 py-2 outline-none" />
+          <TextInput list="pc-contact" value={contact} onChange={(e) => setContact(e.target.value)} />
           <datalist id="pc-contact">{boot.contacts.map((c) => <option key={c.contact_id} value={c.name} />)}</datalist>
         </Field>
         <Field label="หมายเหตุ"><TextInput value={note} onChange={(e) => setNote(e.target.value)} /></Field>

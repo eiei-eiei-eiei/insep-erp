@@ -333,13 +333,15 @@ export function PeriodTab({
           </Field>
           <Field label="ปี (ค.ศ.)"><NumBox value={year} onChange={(v) => setYear(v === "" ? now.getFullYear() : v)} /></Field>
           <Field label="เดือน"><NumBox value={month} onChange={(v) => setMonth(v === "" ? 1 : v)} /></Field>
-          <Field label="วันทำงานมาตรฐาน"><NumBox value={workDaysStd} onChange={(v) => setWorkDaysStd(v === "" ? 0 : v)} /></Field>
+          <Field
+            label="วันทำงานมาตรฐาน"
+            help={<>&ldquo;วันทำงานมาตรฐาน&rdquo; คือตัวหารของพนักงานแบบลดตามวันมาทำงาน — ตกลงกันภายในว่าจะใช้ 30 วัน
+              หรือจำนวนวันจริงของเดือนนั้น</>}
+          >
+            <NumBox value={workDaysStd} onChange={(v) => setWorkDaysStd(v === "" ? 0 : v)} />
+          </Field>
           <Field label="วันจ่ายเงินเดือน"><TextInput type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} /></Field>
         </div>
-        <p className="mt-2 text-xs text-faint">
-          &ldquo;วันทำงานมาตรฐาน&rdquo; คือตัวหารของพนักงานแบบลดตามวันมาทำงาน — ตกลงกันภายในว่าจะใช้ 30 วัน
-          หรือจำนวนวันจริงของเดือนนั้น
-        </p>
         {stdChanging && (
           <p className="mt-2 text-xs text-warn">
             งวด {formPeriod.periodId} จะเปลี่ยนวันทำงานมาตรฐานจาก {formPeriod.workDaysStd} เป็น {workDaysStd} วัน ·
@@ -551,11 +553,7 @@ export function PeriodTab({
             </div>
           </Card>
 
-          <Card title="ลงบัญชี">
-            <p className="mb-3 text-xs text-faint">
-              ขาลงบัญชีตั้งได้เองที่แท็บ &ldquo;ตั้งค่าการคำนวณ&rdquo; — ลงกี่ก้อนก็ได้
-            </p>
-
+          <Card title="ลงบัญชี" help={<>ขาลงบัญชีตั้งได้เองที่แท็บ &ldquo;ตั้งค่าการคำนวณ&rdquo; — ลงกี่ก้อนก็ได้</>}>
             {/* 🚨 ตัวเลขคุม: ขาที่ตั้งไว้ต้องครอบเงินที่บริษัทจ่ายจริงพอดี
                 เกิน = ลงรายจ่ายซ้ำ · ขาด = รายจ่ายตกหล่น · เตือนไม่บล็อก */}
             <div className={`mb-3 rounded-lg px-3 py-2 text-sm ${coverage.ok ? "bg-ok-bg text-ok" : "bg-warn-bg text-warn"}`}>

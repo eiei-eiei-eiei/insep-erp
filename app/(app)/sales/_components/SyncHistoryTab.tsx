@@ -40,13 +40,13 @@ export function SyncHistoryTab({ active }: { active: boolean }) {
   }, [active]);
 
   return (
-    <Card title="ประวัติเชื่อมระบบ (แทนหน้าคิว sync เดิม)">
+    <Card
+      title="ประวัติเชื่อมระบบ (แทนหน้าคิว sync เดิม)"
+      help="การรับเงิน/จัดส่ง = ลงบัญชี/ตัดสต็อกทันทีใน DB เดียวกัน (ไม่มีคิวให้ยิงเองอีก) — หน้านี้ไว้ตรวจย้อนหลัง"
+    >
       <div className="mb-3 flex items-center gap-2">
         <button onClick={refresh} className="rounded border border-line px-2.5 py-1.5 text-sm text-muted hover:bg-raised"><IconRefresh size={15} className="mr-1 inline align-[-2px]" />รีเฟรช
         </button>
-        <span className="text-xs text-faint">
-          การรับเงิน/จัดส่ง = ลงบัญชี/ตัดสต็อกทันทีใน DB เดียวกัน (ไม่มีคิวให้ยิงเองอีก) — หน้านี้ไว้ตรวจย้อนหลัง
-        </span>
       </div>
       {loading ? (
         <div className="py-8 text-center text-faint">กำลังโหลด…</div>

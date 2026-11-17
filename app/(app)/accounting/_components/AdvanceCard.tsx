@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { getAdvancesAction, clearAdvancesAction, unclearAdvancesAction, advanceToPersonalAction } from "../actions";
 import type { Bootstrap } from "./types";
-import { Card, Field, Select, TextInput, fmt, todayISO, useSaver, useRead, LoadError } from "./ui";
+import { Card, Field, RowBtn, Select, TextInput, fmt, todayISO, useSaver, useRead, LoadError } from "./ui";
 import { useConfirm } from "@/lib/shared/ui";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { can, toRole } from "@/lib/shared/roles";
@@ -136,15 +136,17 @@ export function AdvanceCard({ boot, entityId, active }: { boot: Bootstrap; entit
                     <td className="num">{fmt(b.total)}</td>
                     <td className="act">
                       {canWrite && (
-                        <button
-                          type="button"
-                          onClick={() => unclear(b)}
-                          disabled={pending || !canUnclear}
-                          title={canUnclear ? "ยกเลิกบิลของกิจการปลายทาง + รายการรับคืน แล้วให้บิลสำรองจ่ายกลับไปรอเบิกคืน" : "ถอนการเคลียได้เฉพาะหัวหน้าบัญชีขึ้นไป"}
-                          className="rounded border border-line px-2 py-1 text-sm text-muted hover:bg-raised disabled:opacity-40"
-                        >
-                          ถอนการเคลีย
-                        </button>
+                        <>
+                          <RowBtn
+                            type="button"
+                            onClick={() => unclear(b)}
+                            disabled={pending || !canUnclear}
+                            title={canUnclear ? "ยกเลิกบิลของกิจการปลายทาง + รายการรับคืน แล้วให้บิลสำรองจ่ายกลับไปรอเบิกคืน" : "ถอนการเคลียได้เฉพาะหัวหน้าบัญชีขึ้นไป"}
+                          >
+                            ถอนการเคลีย
+                          </RowBtn>
+                          {!canUnclear && <p className="mt-1 text-xs text-faint">ถอนได้เฉพาะหัวหน้าบัญชีขึ้นไป</p>}
+                        </>
                       )}
                     </td>
                   </tr>
@@ -220,9 +222,9 @@ function AdvanceGroupBlock({
                 <td className="num">{fmt(r.netAmount)}</td>
                 {canWrite && (
                   <td className="act">
-                    <button type="button" onClick={() => onToPersonal(r)} disabled={pending} title="บริษัทไม่คืนเงินแล้ว — เปลี่ยนเป็นรายจ่ายของกิจการที่จ่าย" className="text-sm text-muted hover:underline disabled:opacity-40">
+                    <RowBtn type="button" onClick={() => onToPersonal(r)} disabled={pending} title="บริษัทไม่คืนเงินแล้ว — เปลี่ยนเป็นรายจ่ายของกิจการที่จ่าย">
                       ตัดเป็นส่วนตัว
-                    </button>
+                    </RowBtn>
                   </td>
                 )}
               </tr>

@@ -2,6 +2,7 @@
 
 import { useConfirm } from "@/lib/shared/ui";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
+import { useUnsaved } from "@/lib/shared/pageGuardHost";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   itemTotal,
@@ -15,7 +16,7 @@ import {
   missingInvoiceWarn,
   type VatMode,
 } from "@/lib/accounting/calc";
-import { taxDateOnNoChange, taxDateOnTxDateChange, shouldRefreshDraftDate, isAddRowKey, ITEM_KEYS_HINT } from "@/lib/accounting/entryForm";
+import { taxDateOnNoChange, taxDateOnTxDateChange, shouldRefreshDraftDate, isAddRowKey, ITEM_KEYS_HINT, sellerHasNoTaxId, NO_TAX_ID_VAT_REASON } from "@/lib/accounting/entryForm";
 // ตรรกะแถวรายการ/ยอดบิล ใช้ร่วมกับฟอร์มแก้บิล (BillsTab → EditBillModal)
 import { qn, emptyItem, makeItemHandlers, buildItemInputs, useBillAmounts, hasContent, type BillItem } from "./billItems";
 import { VatModeCard } from "./VatModeCard";
@@ -29,7 +30,9 @@ import {
   getItemHistoryAction,
 } from "../actions";
 import type { Bootstrap, Contact } from "./types";
-import { Card, Field, NumBox, NumInput, SaveButton, Select, TextInput, cleanTaxId13, fmt, todayISO, useSaver, EscToClose } from "./ui";
+import { Card, Field, NumBox, NumInput, SaveButton, Select, TextInput, fmt, todayISO, useSaver } from "./ui";
+import { ContactFields, blankContactForm, contactPayload, type ContactForm } from "./ContactFields";
+import { Modal, ModalCancel } from "@/lib/shared/ui";
 import { IconTrash } from "@/lib/shared/icons";
 import { isForwardCat } from "@/lib/accounting/forwardCats";
 import { ADVANCE_TYPE, advanceTargets } from "@/lib/accounting/advance";
@@ -89,7 +92,10 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   const [hasVat, setHasVat] = useState(false); // ออโต้ติ๊กเมื่อกรอกเลขใบกำกับ (ผู้ใช้ override เองได้)
   // ★ ปิดช่องติ๊กอย่างเดียวไม่พอ — ค่า hasVat ค้างมาจาก draft ที่บันทึกไว้ได้
   //   ทุกที่ที่คิดเงินต้องใช้ effHasVat ไม่ใช่ hasVat (4.3)
-  const effHasVat = hasVat && entityIsVat;
+  const [contacts, setContacts] = useState<Contact[]>(boot.contacts);
+  // D173 — ผู้ขายไม่มีเลขภาษี = ออกใบกำกับไม่ได้ ⇒ ติ๊ก VAT ไม่ได้ (เฉพาะรายจ่าย · กติกาที่ lib/accounting/entryForm)
+  const noTaxSeller = sellerHasNoTaxId(type, contactName, contacts);
+  const effHasVat = hasVat && entityIsVat && !noTaxSeller;
   const [hasWht, setHasWht] = useState(false);
   const [whtRate, setWhtRate] = useState(0);
   const [items, setItems] = useState<Item[]>([emptyItem()]);
@@ -108,7 +114,6 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   } = amt;
 
   // คู่ค้า (state ท้องถิ่น — เพิ่มใหม่ได้ทันที)
-  const [contacts, setContacts] = useState<Contact[]>(boot.contacts);
   const [showContactModal, setShowContactModal] = useState(false);
   const [branchId, setBranchId] = useState(""); // สาขาที่เลือก (เมื่อชื่อซ้ำหลายสาขา, D30)
 
@@ -323,6 +328,10 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   const itemCatOptions = useMemo(() => [...new Set([...itemHist.itemCategories, ...items.map((it) => it.itemCategory).filter(Boolean)])], [itemHist.itemCategories, items]);
   const itemJobOptions = useMemo(() => [...new Set([...itemHist.itemJobs, ...items.map((it) => it.itemJob).filter(Boolean)])], [itemHist.itemJobs, items]);
 
+  // D173 เฟส 5 — เตือนก่อนออกหน้าตอนบิลที่กรอกยังไม่บันทึก · นับเฉพาะที่ผู้ใช้พิมพ์เอง
+  // (คู่ค้า/หมวด/บัญชี/วันที่ที่คงไว้หลังบันทึกไม่นับ) · resetItems() ล้างทั้งสามอย่างนี้หลังบันทึกสำเร็จ
+  useUnsaved(Boolean(description || taxInvoiceNo || items.some((it) => hasContent(it, effVatMode))), "บิลที่กำลังกรอก");
+
   return (
     <div className="space-y-4" onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); doSave(); } }}>
       {confirmNode}
@@ -383,7 +392,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
           </Field>
           <Field label="คู่ค้า">
             <div className="flex gap-1">
-              <input list="contact-list" value={contactName} onChange={(e) => setContactName(e.target.value)} className="w-full rounded-lg border border-line px-3 py-2 text-ink outline-none" />
+              <TextInput list="contact-list" value={contactName} onChange={(e) => setContactName(e.target.value)} />
               <button type="button" onClick={() => setShowContactModal(true)} title="เพิ่มคู่ค้าใหม่" className="rounded-lg border border-line px-2 text-muted hover:bg-raised">＋</button>
             </div>
             <datalist id="contact-list">{contactOptions.map((c) => (<option key={c.contact_id} value={c.name} />))}</datalist>
@@ -433,7 +442,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
       </div>
 
       <div ref={itemsCardRef} onKeyDown={onItemsKeyDown}>
-      <Card title="รายการสินค้า">
+      <Card title="รายการสินค้า" help={ITEM_KEYS_HINT}>
         <VatModeCard mode={vatMode} effMode={effVatMode} hasVat={effHasVat} onChange={changeVatMode} />
         {/* Desktop: ตาราง */}
         <div className="hidden overflow-x-auto md:block">
@@ -512,7 +521,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
         <datalist id="hist-item-cats">{itemCatOptions.map((v) => (<option key={v} value={v} />))}</datalist>
         <datalist id="hist-item-jobs">{itemJobOptions.map((v) => (<option key={v} value={v} />))}</datalist>
         <button type="button" onClick={addItem} className="mt-2 text-sm text-muted hover:text-ink">+ เพิ่มรายการ</button>
-        <p className="mt-1 text-xs text-faint">{itemsHintText(effVatMode)} · {ITEM_KEYS_HINT}</p>
+        <p className="mt-1 text-xs text-faint">{itemsHintText(effVatMode)}</p>
       </Card>
       </div>
 
@@ -525,11 +534,12 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
           </div>
           <div className="mt-2 flex items-center gap-4 text-sm">
             <label className={`flex items-center gap-2 ${entityIsVat ? "" : "opacity-50"}`} title={entityIsVat ? undefined : "กิจการนี้ไม่ได้จดทะเบียน VAT"}>
-              <input type="checkbox" checked={effHasVat} disabled={!entityIsVat} onChange={(e) => setHasVat(e.target.checked)} /> มี VAT 7%
+              <input type="checkbox" checked={effHasVat} disabled={!entityIsVat || noTaxSeller} onChange={(e) => setHasVat(e.target.checked)} /> มี VAT 7%
               {!entityIsVat && <span className="text-xs text-faint">(กิจการนี้ไม่ได้จดทะเบียน VAT)</span>}
             </label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={hasWht} onChange={(e) => setHasWht(e.target.checked)} /> หัก ณ ที่จ่าย</label>
           </div>
+          {noTaxSeller && entityIsVat && <p className="mt-1 text-xs text-warn">ติ๊ก VAT ไม่ได้ — {NO_TAX_ID_VAT_REASON}</p>}
           {/* D124 — บิลซื้อมี VAT ไม่มีเลขใบกำกับ ยังนับเข้า ภพ.30 (ทาง ก) — เตือน ไม่บล็อก */}
           <MissingInvoiceWarn text={missingInvoiceWarn(type, effHasVat, taxInvoiceNo)} />
           {hasWht && (
@@ -621,43 +631,39 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
 }
 
 function ContactModal({ defaultName, onClose, onSaved }: { defaultName: string; onClose: () => void; onSaved: (c: Contact) => void }) {
-  const { pending, run, setMsg } = useSaver();
-  const [name, setName] = useState(defaultName);
-  const [taxId, setTaxId] = useState("");
-  const [branch, setBranch] = useState("สำนักงานใหญ่");
-  const [address, setAddress] = useState("");
-  const [contactType, setContactType] = useState("ทั้งสอง");
+  const { pending, run } = useSaver();
+  const [form, setForm] = useState<ContactForm>(() => blankContactForm(defaultName));
+  const [formErr, setFormErr] = useState<string | null>(null);
 
+  // กติกาเดียวกับหน้า ตั้งค่า → คู่ค้า (ติ๊ก "ไม่มีเลขผู้เสียภาษี" ได้ · D173)
   function save() {
-    if (!name.trim()) { setMsg({ ok: false, text: "กรุณากรอกชื่อคู่ค้า" }); return; }
-    const tax = cleanTaxId13(taxId);
-    if (!tax) { setMsg({ ok: false, text: "เลขประจำตัวผู้เสียภาษีต้องมี 13 หลัก" }); return; }
-    run(() => addContactAction({ name: name.trim(), taxId: tax, branch, address, contactType }), "เพิ่มคู่ค้าเรียบร้อย", (data) => {
+    const res = contactPayload(form);
+    if ("error" in res) { setFormErr(res.error); return; }
+    setFormErr(null);
+    const p = res.payload;
+    run(() => addContactAction(p), "เพิ่มคู่ค้าเรียบร้อย", (data) => {
       const id = (data as { contactId: string }).contactId;
-      onSaved({ contact_id: id, name: name.trim(), tax_id: tax, branch, address, contact_type: contactType, roles: [] });
+      onSaved({ contact_id: id, name: p.name, tax_id: p.taxId, branch: p.branch, address: p.address, contact_type: p.contactType, roles: [] });
     });
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <EscToClose onClose={() => { onClose(); }} />
-      <div className="w-full max-w-md rounded-lg bg-card p-5" onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-3 font-semibold text-ink">เพิ่มคู่ค้าใหม่</h3>
-        <div className="space-y-3">
-          <Field label="ชื่อคู่ค้า"><TextInput value={name} onChange={(e) => setName(e.target.value)} /></Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="เลขภาษี (13 หลัก)"><TextInput value={taxId} onChange={(e) => setTaxId(e.target.value)} inputMode="numeric" placeholder="เลข 13 หลัก" /></Field>
-            <Field label="สาขา"><TextInput value={branch} onChange={(e) => setBranch(e.target.value)} /></Field>
-          </div>
-          <Field label="ที่อยู่"><TextInput value={address} onChange={(e) => setAddress(e.target.value)} /></Field>
-          <Field label="ประเภท"><Select value={contactType} onChange={(e) => setContactType(e.target.value)}><option>ทั้งสอง</option><option>ผู้ขาย</option><option>ลูกค้า</option></Select></Field>
-        </div>
-        <p className="mt-1 text-xs text-faint">“ทั้งสอง” = เป็นได้ทั้งผู้ขายและลูกค้า → โผล่ทั้งรายรับและรายจ่าย</p>
-        <div className="mt-3 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-lg border border-line px-4 py-2 text-sm">ยกเลิก</button>
+    // ป๊อปอัพนี้ render อยู่ใต้กล่องฟอร์มบันทึกที่ดัก Ctrl+Enter = บันทึกบิล —
+    // Modal กันปุ่มที่กดข้างในไม่ให้ไหลขึ้นไปถึงหน้าหลังแล้ว (Enter ในนี้ = เพิ่มคู่ค้าอย่างเดียว)
+    <Modal
+      title="เพิ่มคู่ค้าใหม่"
+      onClose={onClose}
+      onSubmit={save}
+      size="md"
+      busy={pending}
+      footer={
+        <>
+          <ModalCancel onClick={onClose} />
           <SaveButton pending={pending} onClick={save}>เพิ่ม</SaveButton>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <ContactFields value={form} onChange={setForm} error={formErr} />
+    </Modal>
   );
 }

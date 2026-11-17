@@ -27,7 +27,7 @@ import { customerLabel } from "@/lib/bar/customerName";
 import { recipeLines, refsOf } from "@/lib/bar/houseSlot";
 import { buildReceipt } from "@/lib/bar/receipt";
 import {
-  Card, TextInput, NumBox, Select, MissingHint, Badge, Empty, fmt, useSaver, useConfirm,
+  Card, TextInput, NumBox, Select, Combobox, MissingHint, Badge, Empty, Modal, ModalCancel, fmt, useSaver, useConfirm,
 } from "@/lib/shared/ui";
 import {
   IconPrint, IconTrash, IconClose, IconMoney, IconCheck, IconPlus, IconAlert,
@@ -41,6 +41,7 @@ import { CustomerModal } from "./CustomerModal";
 import { RecipeEditor } from "./RecipeEditor";
 import { BilledLineRow, EditBillCustomer } from "./BilledLines";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
+import { useUnsaved } from "@/lib/shared/pageGuardHost";
 
 // D116 — เหลือ เงินสด · โอน/QR (ไม่รับบัตร · โอนกับ QR เคยทำงานเหมือนกันทุกอย่าง)
 const METHODS: readonly string[] = PAY_METHODS;
@@ -380,6 +381,14 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
   /** ถาดของบิลอื่นที่ยังค้างอยู่ — เอาไปเตือนบนชิปบิล */
   const pendingOf = (no: string) => (trays[no] ?? []).length;
 
+  // เตือนก่อนออกจากหน้า — นับถาดของทุกบิลที่ยังเปิดอยู่ (+ บูธ) · ถาดของบิลที่ปิดไปแล้วไม่นับ
+  useUnsaved(
+    Object.entries(trays).some(
+      ([k, l]) => l.length > 0 && (k === BOOTH || data.openSales.some((s) => s.saleNo === k)),
+    ),
+    "รายการที่ยังไม่ส่งเข้าบิล",
+  );
+
   if (!data.entityId) return null;
 
   return (
@@ -419,14 +428,14 @@ export function PosTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
                 </div>
                 <div className="flex items-center gap-1">
                   <div className="w-44">
-                    <Select value={boothCustomer} onChange={(e) => setBoothCustomer(e.target.value)}>
-                      <option value="">— ไม่ระบุลูกค้า —</option>
-                      {data.customers.map((c) => (
-                        <option key={c.customerId} value={c.customerId}>
-                          {customerLabel(c)}
-                        </option>
-                      ))}
-                    </Select>
+                    <Combobox
+                      value={boothCustomer}
+                      onChange={setBoothCustomer}
+                      options={[
+                        { value: "", label: "— ไม่ระบุลูกค้า —" },
+                        ...data.customers.map((c) => ({ value: c.customerId, label: customerLabel(c) })),
+                      ]}
+                    />
                   </div>
                   {/* ★ เพิ่มลูกค้าได้จากตรงนี้เลย ไม่ต้องสลับไปแท็บลูกค้ากลางงาน */}
                   <button
@@ -1207,22 +1216,28 @@ function PayScreen({
   const stuck = !booth && tray.length > 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4">
-      <div className="w-full max-w-md rounded-xl bg-card p-5">
-        <div className="mb-3 flex items-center gap-2">
-          <h3 className="text-lg font-bold text-ink">
-            เก็บเงิน {booth ? "(บูธ)" : sale ? sale.tabName || sale.saleNo : ""}
-          </h3>
+    // 🚨 จอรับเงิน — ไม่ส่ง onSubmit (Enter ห้ามปิดบิล) · กดพื้นหลังไม่ปิด (เหมือนเดิม) · Esc/✕ ปิดได้ (ยังไม่มีเงินถูกรับ)
+    <Modal
+      title={<>เก็บเงิน {booth ? "(บูธ)" : sale ? sale.tabName || sale.saleNo : ""}</>}
+      onClose={onClose}
+      busy={busy}
+      size="md"
+      backdropClose={false}
+      footer={
+        <>
+          <ModalCancel onClick={onClose}>ปิด</ModalCancel>
           <button
             type="button"
-            onClick={onClose}
-            aria-label="ปิด"
-            className="ml-auto grid h-8 w-8 place-items-center rounded text-muted hover:bg-raised hover:text-ink"
+            disabled={busy || stuck || Boolean(dayChoice && !pickDay)}
+            onClick={() => onConfirm(method, dayChoice ? pickDay : null)}
+            className="flex items-center justify-center gap-2 rounded-lg bg-brand px-3 py-2.5 text-sm font-medium text-on-brand disabled:opacity-50"
           >
-            <IconClose size={16} />
+            <IconCheck size={17} /> ยืนยันรับเงินแล้ว → {booth ? "ขายเลย" : "ปิดบิล"}
           </button>
-        </div>
-
+        </>
+      }
+    >
+      <div>
         {stuck && (
           <div className="mb-3 rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">
             ยังมี <b>{tray.length} รายการ</b> ที่ยังไม่ได้ส่งเข้าบิล — ปิดบิลตอนนี้รายการพวกนั้นจะหายไป
@@ -1336,14 +1351,6 @@ function PayScreen({
           </div>
         )}
 
-        <button
-          type="button"
-          disabled={busy || stuck || Boolean(dayChoice && !pickDay)}
-          onClick={() => onConfirm(method, dayChoice ? pickDay : null)}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-3 py-2.5 text-sm font-medium text-on-brand disabled:opacity-50"
-        >
-          <IconCheck size={17} /> ยืนยันรับเงินแล้ว → {booth ? "ขายเลย" : "ปิดบิล"}
-        </button>
         {dayChoice && <MissingHint checks={[{ ok: Boolean(pickDay), label: "ลงยอดเข้าวันไหน" }]} />}
 
         {/* 🚨 ระบบไม่ได้ตรวจการชำระเงินให้ — PromptPay ไม่มี callback */}
@@ -1354,7 +1361,7 @@ function PayScreen({
           <p className="mt-1 text-xs text-warn">ยังไม่ได้ตั้งกิจการของบาร์ — พิมพ์เอกสารไม่ได้</p>
         )}
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1482,14 +1489,14 @@ function NewTabButton({
       </div>
       {/* 🚨 ลูกค้าเป็นตัวเลือกเสมอ ห้ามบล็อกการขาย — ที่บูธเจอกันครั้งเดียว ไม่มีใครยอมให้เบอร์ */}
       <div className="w-36">
-        <Select value={cust} onChange={(e) => setCust(e.target.value)}>
-          <option value="">— ไม่ระบุลูกค้า —</option>
-          {customers.map((c) => (
-            <option key={c.customerId} value={c.customerId}>
-              {customerLabel(c)}
-            </option>
-          ))}
-        </Select>
+        <Combobox
+          value={cust}
+          onChange={setCust}
+          options={[
+            { value: "", label: "— ไม่ระบุลูกค้า —" },
+            ...customers.map((c) => ({ value: c.customerId, label: customerLabel(c) })),
+          ]}
+        />
       </div>
       <button
         type="button"
@@ -1538,13 +1545,41 @@ function NewMenuModal({
   const [rows, setRows] = useState<RecipeDraftRow[]>([blankRecipeRow(), blankRecipeRow(), blankRecipeRow()]);
   const recipe = cleanRecipe(rows);
 
+  const save = () => {
+    if (busy || !name.trim()) return;
+    onSave({
+      name,
+      price: price === "" ? 0 : price,
+      glass,
+      method,
+      note,
+      createdFor: customerId,
+      recipe,
+    });
+  };
+
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    <Modal
+      title="เมนูใหม่"
+      onClose={onClose}
+      onSubmit={save}
+      busy={busy}
+      size="md"
+      footer={
+        <>
+          <ModalCancel onClick={onClose} />
+          <button
+            type="button"
+            disabled={busy || !name.trim()}
+            onClick={save}
+            className="rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
+          >
+            บันทึกแล้วใส่ลงถาด
+          </button>
+        </>
+      }
     >
-      <div className="w-full max-w-lg rounded-xl bg-card p-5">
-        <h3 className="mb-3 text-lg font-bold text-ink">เมนูใหม่</h3>
+      <div>
         <div className="grid gap-2 sm:grid-cols-2">
           <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="ชื่อเมนู" />
           <NumBox value={price} onChange={setPrice} blankZero placeholder="ราคา" />
@@ -1578,32 +1613,7 @@ function NewMenuModal({
           placeholder="วิธีชง เช่น shake 12 วิ · double strain"
           className="mt-2 w-full"
         />
-
-
-        <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            disabled={busy || !name.trim()}
-            onClick={() =>
-              onSave({
-                name,
-                price: price === "" ? 0 : price,
-                glass,
-                method,
-                note,
-                createdFor: customerId,
-                recipe,
-              })
-            }
-            className="flex-1 rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
-          >
-            บันทึกแล้วใส่ลงถาด
-          </button>
-          <button type="button" onClick={onClose} className="rounded-lg border border-line bg-card px-3 py-2 text-sm text-ink">
-            ยกเลิก
-          </button>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }

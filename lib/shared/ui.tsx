@@ -11,10 +11,16 @@
  *   ห้ามเขียน bg-slate-800 / text-red-500 ตรง ๆ — ดู docs/DESIGN_SYSTEM.md
  */
 
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useId, useRef, useState, useTransition } from "react";
 import { showToast } from "./toast";
 
 import { missingText, type FieldCheck } from "./forms";
+import { comboKey } from "./keyboard";
+import { Modal, ModalCancel } from "./modal";
+import { Help } from "./help";
+
+export { Modal, ModalCancel, type ModalProps } from "./modal";
+export { Help, type HelpProps } from "./help";
 
 export type SaveResultLike = { ok: boolean; error?: string; data?: unknown };
 
@@ -179,19 +185,33 @@ export function LoadError({ err, onRetry, what }: { err: boolean; onRetry?: () =
  *   🚨 อย่าเอาแถบในการ์ดกลับมา — ผู้ใช้สั่งเอาออกเอง (ค้างทั้งที่เริ่มงานถัดไปแล้ว)
  */
 
-export function Field({ label, children }: { label: string; children: React.ReactNode }) {
+/**
+ * `help` = คำอธิบายที่ซ่อนอยู่หลังปุ่ม ⓘ ข้างป้าย (D173) — แทนโน้ตตัวเล็กใต้ช่อง
+ * 🚨 คำเตือนเงิน/ภาษี/ราชการ และข้อความตามสถานะ ห้ามใส่ที่นี่ (DESIGN_SYSTEM "คำอธิบาย ⓘ")
+ */
+export function Field({ label, help, children }: { label: string; help?: React.ReactNode; children: React.ReactNode }) {
   return (
     <label className="block text-sm">
-      <span className="mb-1 block text-xs font-medium tracking-wide text-muted">{label}</span>
+      <span className="mb-1 flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted">
+        {label}
+        {help && <Help>{help}</Help>}
+      </span>
       {children}
     </label>
   );
 }
 
-export function Card({ title, children, className }: { title?: string; children: React.ReactNode; className?: string }) {
+export function Card({
+  title, help, children, className,
+}: { title?: string; help?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
     <div className={`rounded-lg border border-line bg-card p-4 sm:p-5 ${className ?? ""}`}>
-      {title && <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-ink">{title}</h2>}
+      {title && (
+        <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-ink">
+          {title}
+          {help && <Help>{help}</Help>}
+        </h2>
+      )}
       {children}
     </div>
   );
@@ -291,22 +311,35 @@ export function NumBox({
   );
 }
 
-/** dropdown พิมพ์ค้นหาได้ (combobox) — สำหรับรายการยาว เช่น ลูกค้า/คู่ค้าหลายราย */
+/**
+ * dropdown พิมพ์ค้นหาได้ (combobox) — สำหรับรายการยาว เช่น ลูกค้า/คู่ค้าหลายราย
+ *
+ * คีย์บอร์ด (กติกาอยู่ที่ `comboKey` ใน keyboard.ts · มีเทสคุม):
+ *   พิมพ์ = กรอง · ↓ ↑ เลื่อนไฮไลต์ (รายการเลื่อนตาม) · Enter = เลือกแล้วอยู่ช่องเดิม ·
+ *   Tab = เลือกแล้วไปช่องถัดไป (เฉพาะเมื่อพิมพ์/กดลูกศรแล้ว) · Esc = ปิดรายการ
+ */
 export function Combobox({
   options,
   value,
   onChange,
   placeholder,
+  autoFocus,
 }: {
   options: { value: string; label: string }[];
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  /** ให้ป๊อปอัพ (`Modal`) วางเคอร์เซอร์ที่ช่องนี้ตอนเปิด */
+  autoFocus?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [hi, setHi] = useState(0);
+  // ผู้ใช้พิมพ์ค้นหรือกดลูกศรไปแล้ว — Tab จะเลือกให้เฉพาะกรณีนี้ (ไม่งั้น Tab ผ่านช่องเฉย ๆ ค่าเปลี่ยนเอง)
+  const [touched, setTouched] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const listId = useId();
   const selected = options.find((o) => o.value === value);
 
   useEffect(() => {
@@ -320,46 +353,96 @@ export function Combobox({
   const q = query.trim().toLowerCase();
   const filtered = q ? options.filter((o) => o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q)) : options;
 
-  function pick(v: string) {
-    onChange(v);
+  // รายการยาวกว่ากรอบ — เลื่อนให้เห็นตัวที่ไฮไลต์เสมอ (เดิมกดลูกศรลงแล้วไฮไลต์หายใต้ขอบ)
+  useEffect(() => {
+    if (!open) return;
+    listRef.current?.querySelector<HTMLElement>(`[data-i="${hi}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [hi, open]);
+
+  function openList() {
+    setOpen(true);
+    setQuery("");
+    setTouched(false);
+    // เปิดมาให้ไฮไลต์อยู่ที่ค่าที่เลือกไว้ — กดลูกศรต่อจากตรงนั้นได้เลย
+    setHi(Math.max(0, options.findIndex((o) => o.value === value)));
+  }
+  function close() {
     setOpen(false);
     setQuery("");
+    setTouched(false);
+  }
+  function pick(v: string) {
+    onChange(v);
+    close();
   }
 
   return (
-    <div className="relative" ref={ref}>
+    <div
+      className="relative"
+      ref={ref}
+      onBlur={(e) => {
+        // โฟกัสออกจากช่องนี้ (เช่น กด Tab) = ปิดรายการ · เดิมค้างเปิดบังช่องถัดไป
+        if (!ref.current?.contains(e.relatedTarget as Node | null)) close();
+      }}
+    >
       <input
         className={inputCls}
+        role="combobox"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-autocomplete="list"
+        aria-activedescendant={open && filtered[hi] ? `${listId}-${hi}` : undefined}
+        autoComplete="off"
+        data-autofocus={autoFocus ? "" : undefined}
         value={open ? query : selected?.label ?? ""}
-        placeholder={placeholder ?? "พิมพ์ค้นหา…"}
-        onFocus={() => { setOpen(true); setQuery(""); setHi(0); }}
-        onChange={(e) => { setQuery(e.target.value); setOpen(true); setHi(0); }}
+        placeholder={open && selected ? selected.label : placeholder ?? "พิมพ์ค้นหา…"}
+        onFocus={openList}
+        onMouseDown={() => { if (!open) openList(); }}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); setHi(0); setTouched(true); }}
         onKeyDown={(e) => {
-          if (e.key === "ArrowDown") {
+          const act = comboKey(e.key, { open, hi, count: filtered.length, touched });
+          if (!act) return;
+          if (act.type === "open") {
             e.preventDefault();
-            setHi((h) => Math.min(h + 1, filtered.length - 1));
-          } else if (e.key === "ArrowUp") {
+            openList();
+          } else if (act.type === "move") {
             e.preventDefault();
-            setHi((h) => Math.max(h - 1, 0));
-          } else if (e.key === "Enter" && open && filtered[hi]) {
-            e.preventDefault();
-            pick(filtered[hi].value);
-          } else if (e.key === "Escape") {
-            setOpen(false);
+            setHi(act.hi);
+            setTouched(true);
+          } else if (act.type === "pick") {
+            // Enter: อยู่ช่องเดิม (กันฟอร์ม/ป๊อปอัพรับ Enter ไปบันทึก) · Tab: ปล่อยให้โฟกัสเดินต่อ
+            if (act.stay) e.preventDefault();
+            pick(filtered[act.index].value);
+          } else {
+            // Esc ปิดแค่รายการ — ไม่ให้ไหลไปปิดป๊อปอัพที่ครอบอยู่
+            if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); }
+            close();
           }
         }}
       />
       {open && (
-        <div className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-line bg-card shadow-lg">
+        <div
+          ref={listRef}
+          id={listId}
+          role="listbox"
+          className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-line bg-card shadow-lg"
+        >
           {filtered.length === 0 && <div className="px-3 py-2 text-sm text-faint">ไม่พบ</div>}
           {filtered.map((o, i) => (
             <button
               key={o.value}
+              id={`${listId}-${i}`}
+              data-i={i}
               type="button"
+              role="option"
+              aria-selected={o.value === value}
+              tabIndex={-1}
+              // กดเมาส์ที่รายการต้องไม่ดึงโฟกัสออกจากช่องพิมพ์ (ไม่งั้น onBlur ปิดรายการก่อน click ทำงาน)
+              onMouseDown={(e) => e.preventDefault()}
               onMouseEnter={() => setHi(i)}
               onClick={() => pick(o.value)}
-              className={`block w-full px-3 py-2 text-left text-sm hover:bg-raised ${i === hi ? "bg-raised" : ""} ${
-                o.value === value ? "font-semibold text-brand" : "text-muted"
+              className={`block min-h-[44px] w-full px-3 py-2 text-left text-sm sm:min-h-0 ${i === hi ? "bg-raised" : ""} ${
+                o.value === value ? "font-semibold text-brand" : "text-ink"
               }`}
             >
               {o.label}
@@ -522,23 +605,10 @@ export function SuggestInput({
   );
 }
 
-/**
- * กด Esc เพื่อปิดป๊อปอัพ — วางไว้**ในป๊อปอัพ** จะได้ผูก/ถอด listener ตามการเปิดปิดเอง
- *
- * 🚨 ใช้คู่กับพื้นหลังที่ปิดด้วย `onMouseDown` + เช็ค `e.target === e.currentTarget` เท่านั้น
- *    **ห้ามใช้ `onClick` ปิดพื้นหลัง** — ลากคลุมข้อความในช่องกรอกแล้วปล่อยเมาส์นอกช่อง
- *    เบราว์เซอร์จะยิง click ไปที่บรรพบุรุษร่วม (= พื้นหลัง) แล้วป๊อปอัพปิดเองกลางคัน
+/*
+ * ★ D173 — `EscToClose` ถูกลบแล้ว · ป๊อปอัพทุกตัวใช้ `<Modal>` (lib/shared/modal.tsx) ซึ่งจัดการ Esc/Tab/โฟกัส/ล็อกหน้าหลังเอง
+ *   🚨 อย่าเขียนฉากหลัง `fixed inset-0` เองอีก — มีเทสล็อก (keyboard.test.ts)
  */
-export function EscToClose({ onClose }: { onClose: () => void }) {
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-  return null;
-}
 
 /**
  * ข้อความใต้ปุ่มที่ถูก disable — บอกว่า "ยังขาดอะไร"
@@ -611,37 +681,29 @@ export function useConfirm() {
   }, []);
 
   const confirmNode = opts ? (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-overlay p-4"
-      onMouseDown={(e) => e.target === e.currentTarget && done(false)}
-    >
-      <EscToClose onClose={() => done(false)} />
-      <div className="w-full max-w-sm rounded-xl border border-line bg-card p-5 shadow-xl">
-        <div className="text-base font-bold text-ink">{opts.title}</div>
-        {opts.detail && <p className="mt-1 whitespace-pre-line text-sm text-muted">{opts.detail}</p>}
-        <div className="mt-4 flex gap-2">
+    <Modal
+      top
+      size="sm"
+      title={opts.title}
+      onClose={() => done(false)}
+      footer={
+        <>
+          <ModalCancel onClick={() => done(false)}>{opts.cancelText ?? "ยกเลิก"}</ModalCancel>
           <button
             type="button"
-            autoFocus
+            data-autofocus
             onClick={() => done(true)}
-            className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium ${
-              opts.danger
-                ? "border border-crit-line bg-crit-bg text-crit"
-                : "bg-brand text-on-brand"
+            className={`min-h-[44px] rounded px-4 text-sm font-semibold transition hover:opacity-90 sm:min-h-0 sm:py-2 ${
+              opts.danger ? "border border-crit-line bg-crit-bg text-crit" : "bg-brand text-on-brand"
             }`}
           >
             {opts.confirmText ?? "ยืนยัน"}
           </button>
-          <button
-            type="button"
-            onClick={() => done(false)}
-            className="rounded-lg border border-line bg-card px-3 py-2 text-sm text-ink"
-          >
-            {opts.cancelText ?? "ยกเลิก"}
-          </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      {opts.detail && <p className="whitespace-pre-line text-sm text-muted">{opts.detail}</p>}
+    </Modal>
   ) : null;
 
   return { confirmNode, ask };

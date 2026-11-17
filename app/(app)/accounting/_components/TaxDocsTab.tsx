@@ -30,7 +30,8 @@ import { ReportChecklist } from "../../_components/ReportChecklist";
 import { TaxPayCard } from "./TaxPayCard";
 import { dueDateOf } from "@/lib/accounting/taxPay";
 import type { AccountRow, Contact } from "./types";
-import { Field, Select, TextInput, fmt, todayISO, useSaver, LoadError } from "./ui";
+import { IconEdit, IconTrash } from "@/lib/shared/icons";
+import { Field, Help, IconBtn, RowBtn, Select, TextInput, fmt, todayISO, useSaver, LoadError } from "./ui";
 
 /** ★ กำหนดยื่นเติมตอน render (ขึ้นกับเดือนที่เลือก) — ดู `dueDateOf` ใน lib/accounting/taxPay */
 const TAX_CHECKLIST = [
@@ -241,8 +242,7 @@ export function TaxDocsTab({
           </div>
         )}
         <div className={box}>
-          <h3 className="mb-1 font-semibold text-ink">ภงด.3 / ภงด.53</h3>
-          <p className="mb-2 text-sm text-faint">แยกบุคคล/นิติบุคคลอัตโนมัติ</p>
+          <h3 className="mb-2 flex items-center gap-1.5 font-semibold text-ink">ภงด.3 / ภงด.53<Help>แยกบุคคล/นิติบุคคลอัตโนมัติ</Help></h3>
           <button onClick={genPnd} disabled={busy} className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-on-brand disabled:opacity-50">สร้าง ภงด.3/53</button>
         </div>
       </div>
@@ -275,13 +275,13 @@ export function TaxDocsTab({
                     <td className="num">{fmt(s.forwarded_vat_in as number)}</td>
                     <td className="num">{fmt(s.net_payable as number)}</td>
                     <td className="num">{fmt(s.forwarded_vat_out as number)}</td>
-                    <td><button onClick={async () => {
+                    <td><IconBtn tone="red" aria-label={`ลบสรุปภาษีแถวที่ ${s.id}`} title="ลบแถวนี้" onClick={async () => {
                       if (!(await ask({ title: "ลบแถวนี้?", confirmText: "ลบ", danger: true }))) return;
                       // D134 — เดิมลบแล้วโหลดใหม่เงียบ ๆ ไม่บอกผล (ลบไม่สำเร็จก็ไม่รู้)
                       const r = await deleteTaxSummaryAction(s.id as number);
                       setMsg(r.ok ? { ok: true, text: "ลบแถวแล้ว" } : { ok: false, text: r.error ?? "ลบไม่สำเร็จ" });
                       reload();
-                    }} className="text-crit hover:underline">ลบ</button></td>
+                    }}><IconTrash size={16} /></IconBtn></td>
                   </tr>
                 ))}
               </tbody>
@@ -415,7 +415,7 @@ function EditRow({ h, entityId, onSaved, onReprint, busy }: {
     <>
       <tr>
         <td>{h.docNo}</td><td className="whitespace-nowrap">{d.date(h.issueDate)}</td><td>{h.contactName}</td><td>{h.pndType}</td><td className="num">{fmt(h.whtAmount)}</td>
-        <td className="whitespace-nowrap"><button onClick={onReprint} disabled={busy} className="text-muted hover:underline">พิมพ์ซ้ำ</button><button onClick={() => setEdit((v) => !v)} className="ml-2 text-muted hover:underline">แก้</button></td>
+        <td className="whitespace-nowrap"><RowBtn onClick={onReprint} disabled={busy}>พิมพ์ซ้ำ</RowBtn><IconBtn aria-label={`แก้ไขใบ 50ทวิ เลขที่ ${h.docNo}`} title="แก้" onClick={() => setEdit((v) => !v)} className="ml-2 inline-grid align-middle"><IconEdit size={16} /></IconBtn></td>
       </tr>
       {edit && (
         <tr className="bg-raised"><td colSpan={6}>

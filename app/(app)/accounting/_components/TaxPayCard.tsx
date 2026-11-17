@@ -11,7 +11,7 @@
  *    ที่นี่แค่วาด — server action ตรวจซ้ำด้วยฟังก์ชันตัวเดียวกันก่อนเรียก RPC
  */
 
-import { useConfirm } from "@/lib/shared/ui";
+import { Modal, ModalCancel, useConfirm } from "@/lib/shared/ui";
 import { useState } from "react";
 import { accountsFor } from "@/lib/accounting/bankAccounts";
 import {
@@ -43,7 +43,6 @@ import {
 import type { AccountRow, Contact } from "./types";
 import {
   Badge,
-  EscToClose,
   Field,
   fmt,
   MissingHint,
@@ -337,6 +336,9 @@ function TaxRow({
           </RowBtn>
         )}
       </div>
+      {!canConfig && (row.submitted || canUnpay(row)) && (
+        <p className="mt-1 text-xs text-faint">ปุ่มถอนใช้ได้เฉพาะผู้ที่ตั้งค่าหน้าบัญชีได้ (หัวหน้าบัญชี/เจ้าของกิจการ)</p>
+      )}
       {/* คำอธิบายว่าทำไมปุ่มเทา — ไม่ใช่ตัวตัดสิน (D83) */}
       {/* คำอธิบายว่าทำไมปุ่มเทา — ไม่ใช่ตัวตัดสิน (D83)
           ★ จ่ายแล้วไม่ต้องขึ้นอะไร ป้าย "จ่ายแล้ว" บอกครบแล้ว (ขึ้นอีกบรรทัดว่า
@@ -417,13 +419,19 @@ function PayModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-overlay/30 p-0 sm:p-4"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    // ไม่ส่ง onSubmit — บันทึกจ่ายภาษี = เงินออก ต้องกดปุ่มเอง (Enter ไม่ทำอะไร)
+    <Modal
+      title={`บันทึกจ่าย ${TAX_KIND_FULL[row.kind]}`}
+      onClose={onClose}
+      size="lg"
+      busy={pending}
+      footer={
+        <>
+          <ModalCancel onClick={onClose} disabled={pending}>ปิด</ModalCancel>
+          <SaveButton pending={pending} disabled={!ready} onClick={submit}>บันทึกจ่าย</SaveButton>
+        </>
+      }
     >
-      <EscToClose onClose={onClose} />
-      <div className="min-h-dvh w-full bg-card p-5 sm:my-8 sm:min-h-0 sm:max-w-2xl sm:rounded-lg" onClick={(e) => e.stopPropagation()}>
-        <h3 className="font-semibold text-ink">บันทึกจ่าย {TAX_KIND_FULL[row.kind]}</h3>
         <p className="mb-3 text-xs text-faint">
           {taxTxDescription(row.kind, row.period)} · กำหนดยื่น {d.date(row.due.paper)} (ออนไลน์ถึง {d.date(row.due.efiling)})
         </p>
@@ -486,12 +494,7 @@ function PayModal({
           </p>
         )}
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <SaveButton pending={pending} disabled={!ready} onClick={submit}>บันทึกจ่าย</SaveButton>
-          <RowBtn onClick={onClose} disabled={pending}>ปิด</RowBtn>
-        </div>
         <MissingHint checks={checks} />
-      </div>
-    </div>
+    </Modal>
   );
 }

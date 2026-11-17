@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { noticeLevel } from "@/lib/platform/billing";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { IconAlert, IconClose } from "@/lib/shared/icons";
+import { Modal } from "@/lib/shared/ui";
 
 /**
  * แจ้งเตือนค่าบริการในแอปของลูกค้า (0037 · เฟส 2)
@@ -51,32 +52,37 @@ export function BillingNotice({ dueOn, todayISO }: { dueOn: string | null; today
   // ── เลยกำหนด: ป๊อปอัพ ──
   if (level === "overdue") {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40 p-4">
-        <div className="w-full max-w-sm rounded-lg border border-crit-line bg-card p-5 shadow-lg">
-          <div className="flex items-start gap-2">
-            <IconAlert size={20} className="mt-0.5 shrink-0 text-crit" />
-            <div>
-              <h2 className="text-base font-bold text-crit">ค่าบริการเลยกำหนดชำระแล้ว</h2>
-              <p className="mt-2 text-sm text-muted">
-                ครบกำหนดเมื่อ <strong className="text-ink">{dateText}</strong> —
-                กรุณาติดต่อผู้ดูแลระบบเพื่อชำระค่าบริการ
-              </p>
-              {/* โทนเดียวกับหน้า /suspended — คนที่จ่ายแล้วต้องรู้ว่าทำอะไรต่อ
-                  ไม่ใช่ถูกบอกให้ "ข้ามข้อความนี้" ซึ่งอ่านเหมือนระบบไม่สนใจ */}
-              <p className="mt-2 text-xs text-faint">
-                ถ้าชำระแล้ว อาจเป็นเพราะยังบันทึกรายการไม่ทัน — แจ้งผู้ดูแลระบบพร้อมหลักฐานการโอนได้
-              </p>
-            </div>
-          </div>
+      // ปิดได้ทางเดียวคือปุ่ม "รับทราบ" — เดิมไม่มีตัวปิดที่พื้นหลัง/Esc (ต้องอ่านให้จบ)
+      <Modal
+        title={
+          <span className="flex items-start gap-2 text-crit">
+            <IconAlert size={20} className="mt-0.5 shrink-0" />
+            ค่าบริการเลยกำหนดชำระแล้ว
+          </span>
+        }
+        onClose={dismiss}
+        dismissable={false}
+        size="sm"
+        footer={
           <button
             type="button"
             onClick={dismiss}
-            className="mt-5 min-h-[44px] w-full rounded bg-brand text-sm font-semibold text-on-brand transition hover:opacity-90 sm:py-2"
+            className="min-h-[44px] w-full rounded bg-brand text-sm font-semibold text-on-brand transition hover:opacity-90 sm:py-2"
           >
             รับทราบ
           </button>
-        </div>
-      </div>
+        }
+      >
+        <p className="text-sm text-muted">
+          ครบกำหนดเมื่อ <strong className="text-ink">{dateText}</strong> —
+          กรุณาติดต่อผู้ดูแลระบบเพื่อชำระค่าบริการ
+        </p>
+        {/* โทนเดียวกับหน้า /suspended — คนที่จ่ายแล้วต้องรู้ว่าทำอะไรต่อ
+            ไม่ใช่ถูกบอกให้ "ข้ามข้อความนี้" ซึ่งอ่านเหมือนระบบไม่สนใจ */}
+        <p className="mt-2 text-xs text-faint">
+          ถ้าชำระแล้ว อาจเป็นเพราะยังบันทึกรายการไม่ทัน — แจ้งผู้ดูแลระบบพร้อมหลักฐานการโอนได้
+        </p>
+      </Modal>
     );
   }
 

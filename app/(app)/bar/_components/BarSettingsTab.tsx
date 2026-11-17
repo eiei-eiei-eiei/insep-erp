@@ -4,7 +4,8 @@ import { useState } from "react";
 import type { BarBoot } from "../data";
 import { promptPayError, promptPayPayload } from "@/lib/bar/promptpay";
 import { hasSaleWindow } from "@/lib/bar/businessDate";
-import { Card, Field, TextInput, Select, useSaver, MissingHint, SuggestInput } from "@/lib/shared/ui";
+import { Field, TextInput, TextArea, Select, useSaver, MissingHint, SuggestInput } from "@/lib/shared/ui";
+import { SettingsCard, SettingsShell } from "@/lib/shared/settings";
 import { saveBarSettingsAction } from "../actions";
 import { ReceiptLayoutCard } from "./ReceiptLayoutCard";
 import { QuickPickSettings } from "./QuickPickSettings";
@@ -92,9 +93,10 @@ export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: ()
     setPreview(await qrSvg(payload));
   }
 
-  return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <Card title="กิจการของบาร์">
+  // ── หัวข้อ 1: กิจการ + รอบขาย + อื่น ๆ ─────────────────────────────────────
+  const generalBody = (
+    <div className="space-y-4">
+      <SettingsCard title="กิจการของบาร์">
         <Field label="รายได้บาร์เข้ากิจการไหน">
           <Select value={entityId} onChange={(e) => setEntityId(e.target.value)}>
             <option value="">— ยังไม่ได้ตั้ง —</option>
@@ -115,9 +117,54 @@ export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: ()
             {data.seller.isVat ? " (จด VAT)" : " (ไม่จด VAT — ออกใบเสร็จรับเงิน)"}
           </p>
         )}
-      </Card>
+      </SettingsCard>
 
-      <Card title="พร้อมเพย์ (QR รับเงิน)">
+      <SettingsCard title="รอบขาย (วันขายของบิลที่ข้ามเที่ยงคืน)">
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="เริ่มรอบ">
+            <TextInput value={dayStart} onChange={(e) => setDayStart(e.target.value)} placeholder="18:00" />
+          </Field>
+          <Field label="ปิดรอบ">
+            <TextInput value={dayEnd} onChange={(e) => setDayEnd(e.target.value)} placeholder="03:00" />
+          </Field>
+        </div>
+        <p className="mt-1 text-xs text-faint">
+          {hasSaleWindow({ start: dayStart, end: dayEnd })
+            ? "บิลที่ปิดในรอบจะนับเป็นวันที่รอบเริ่ม · บิลนอกรอบ (เช่น ออกบูธกลางวัน) ใช้วันตามปฏิทินและขายได้ตามปกติ"
+            : "เวลาเริ่มเท่ากับเวลาปิด = ไม่ได้ตั้งรอบ → ใช้วันตามปฏิทินเสมอ"}
+        </p>
+      </SettingsCard>
+
+      <SettingsCard title="อื่น ๆ">
+        <Field label="ป้ายช่องทาง/งาน (บรรทัดละ 1 ชื่อ)" help="ใช้ดูรายงานว่างานไหนคุ้ม — 🚫 ไม่พิมพ์ลงบิลของลูกค้า">
+          <TextArea
+            value={channels}
+            onChange={(e) => setChannels(e.target.value)}
+            rows={4}
+            placeholder={"บูธ Craft Fest\nงานวันเกิดพี่โอ๊ต"}
+          />
+        </Field>
+
+        <label className="mt-3 flex items-center gap-2 text-sm text-ink">
+          <input type="checkbox" checked={roundCash} onChange={(e) => setRoundCash(e.target.checked)} />
+          ปัดเศษยอดสุทธิเป็นจำนวนเต็มบาท
+        </label>
+        <label className="mt-1 flex items-center gap-2 text-sm text-ink">
+          <input type="checkbox" checked={blockNegative} onChange={(e) => setBlockNegative(e.target.checked)} />
+          บล็อกการขายเมื่อของไม่พอ (ปริยาย: เตือนอย่างเดียว)
+        </label>
+
+        <Field label="ข้อความท้ายสลิป">
+          <TextInput value={footer} onChange={(e) => setFooter(e.target.value)} placeholder="ขอบคุณครับ" />
+        </Field>
+      </SettingsCard>
+    </div>
+  );
+
+  // ── หัวข้อ 2: รับเงิน (พร้อมเพย์ + ลงบัญชี) ─────────────────────────────────
+  const moneyBody = (
+    <div className="space-y-4">
+      <SettingsCard title="พร้อมเพย์ (QR รับเงิน)">
         <Field label="ปลายทาง">
           <Select value={ppType} onChange={(e) => setPpType(e.target.value)}>
             {PP_TYPES.map((t) => (
@@ -150,49 +197,7 @@ export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: ()
         {preview && (
           <div className="mt-3 w-48 bg-white p-3" dangerouslySetInnerHTML={{ __html: preview }} />
         )}
-      </Card>
-
-      <Card title="รอบขาย (วันขายของบิลที่ข้ามเที่ยงคืน)">
-        <div className="grid grid-cols-2 gap-2">
-          <Field label="เริ่มรอบ">
-            <TextInput value={dayStart} onChange={(e) => setDayStart(e.target.value)} placeholder="18:00" />
-          </Field>
-          <Field label="ปิดรอบ">
-            <TextInput value={dayEnd} onChange={(e) => setDayEnd(e.target.value)} placeholder="03:00" />
-          </Field>
-        </div>
-        <p className="mt-1 text-xs text-faint">
-          {hasSaleWindow({ start: dayStart, end: dayEnd })
-            ? "บิลที่ปิดในรอบจะนับเป็นวันที่รอบเริ่ม · บิลนอกรอบ (เช่น ออกบูธกลางวัน) ใช้วันตามปฏิทินและขายได้ตามปกติ"
-            : "เวลาเริ่มเท่ากับเวลาปิด = ไม่ได้ตั้งรอบ → ใช้วันตามปฏิทินเสมอ"}
-        </p>
-      </Card>
-
-      <Card title="อื่น ๆ">
-        <Field label="ป้ายช่องทาง/งาน (บรรทัดละ 1 ชื่อ)">
-          <textarea
-            value={channels}
-            onChange={(e) => setChannels(e.target.value)}
-            rows={4}
-            placeholder={"บูธ Craft Fest\nงานวันเกิดพี่โอ๊ต"}
-            className="w-full rounded-lg border border-line bg-card px-3 py-2 text-sm text-ink"
-          />
-        </Field>
-        <p className="mt-1 text-xs text-faint">ใช้ดูรายงานว่างานไหนคุ้ม — 🚫 ไม่พิมพ์ลงบิลของลูกค้า</p>
-
-        <label className="mt-3 flex items-center gap-2 text-sm text-ink">
-          <input type="checkbox" checked={roundCash} onChange={(e) => setRoundCash(e.target.checked)} />
-          ปัดเศษยอดสุทธิเป็นจำนวนเต็มบาท
-        </label>
-        <label className="mt-1 flex items-center gap-2 text-sm text-ink">
-          <input type="checkbox" checked={blockNegative} onChange={(e) => setBlockNegative(e.target.checked)} />
-          บล็อกการขายเมื่อของไม่พอ (ปริยาย: เตือนอย่างเดียว)
-        </label>
-
-        <Field label="ข้อความท้ายสลิป">
-          <TextInput value={footer} onChange={(e) => setFooter(e.target.value)} placeholder="ขอบคุณครับ" />
-        </Field>
-      </Card>
+      </SettingsCard>
 
       {/**
         * 🐛 **B-3 — บั๊กที่ทำให้ปุ่มลงบัญชีรายวันกดยังไงก็ไม่ผ่าน (D96)**
@@ -205,7 +210,7 @@ export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: ()
         * 🚨 การ์ดนี้หายไปทั้งใบเมื่อไม่ได้ซื้อโมดูลบัญชี — **บาร์ต้องขายแยกได้** (แผนข้อ 8)
         */}
       {data.hasAccounting && (
-        <Card title="ลงบัญชียอดขายบาร์">
+        <SettingsCard title="ลงบัญชียอดขายบาร์">
           <Field label="บัญชีที่รายได้บาร์เข้า (โอน/QR)">
             <Select value={revenueAccount} onChange={(e) => setRevenueAccount(e.target.value)}>
               <option value="">— ยังไม่ได้ตั้ง —</option>
@@ -223,7 +228,10 @@ export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: ()
           )}
 
           {/* D116 — เงินสดเก็บหมุนในร้าน ไม่ได้ฝากธนาคาร → ลงบัญชีแยกได้ */}
-          <Field label="บัญชีที่ยอดเงินสดเข้า">
+          <Field
+            label="บัญชีที่ยอดเงินสดเข้า"
+            help="ถ้าเงินสดเก็บไว้หมุนในร้าน ให้เลือกบัญชีเงินสด (เช่น เงินสดในร้าน) — ยอดในบัญชีธนาคารของแอปจะตรงกับเงินที่เข้าธนาคารจริง"
+          >
             <Select value={cashAccount} onChange={(e) => setCashAccount(e.target.value)}>
               <option value="">— ใช้บัญชีเดียวกับข้างบน —</option>
               {data.bankAccounts.map((b) => (
@@ -233,11 +241,16 @@ export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: ()
               ))}
             </Select>
           </Field>
-          <p className="mt-1 text-xs text-faint">
-            ถ้าเงินสดเก็บไว้หมุนในร้าน ให้เลือกบัญชีเงินสด (เช่น เงินสดในร้าน) — ยอดในบัญชีธนาคารของแอปจะตรงกับเงินที่เข้าธนาคารจริง
-          </p>
 
-          <Field label="หมวดรายรับ">
+          <Field
+            label="หมวดรายรับ"
+            help={
+              <>
+                ไม่กรอก = ใช้ <b>รายได้บาร์</b> · บิลบัญชีจะถูกสร้าง <b>1 ใบต่อ 1 วิธีรับเงินต่อวัน</b>
+                (เงินสด กับ โอน/QR แยกใบ)
+              </>
+            }
+          >
             <SuggestInput
               value={incomeCat}
               onChange={setIncomeCat}
@@ -246,40 +259,54 @@ export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: ()
               listId="bar-income-cat"
             />
           </Field>
-          <p className="mt-1 text-xs text-faint">
-            ไม่กรอก = ใช้ <b>รายได้บาร์</b> · บิลบัญชีจะถูกสร้าง <b>1 ใบต่อ 1 วิธีรับเงินต่อวัน</b>
-            (เงินสด กับ โอน/QR แยกใบ)
-          </p>
-        </Card>
-      )}
-
-      <ReceiptLayoutCard boot={data} value={layout} onChange={setLayout} />
-
-      <div className="lg:col-span-2">
-        <button
-          type="button"
-          disabled={busy || !data.canConfig}
-          onClick={save}
-          className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-on-brand disabled:opacity-50"
-        >
-          บันทึกการตั้งค่า
-        </button>
-        <MissingHint checks={[{ ok: data.canConfig, label: "สิทธิ์ตั้งค่าบาร์" }]} />
-      </div>
-
-      {/* D127 — เหล้าประจำบ้าน · ชุดตกแต่ง · ใช้บ่อย (บันทึกแยกทีละการ์ด) · ต้องตั้งกิจการก่อน (ของผูกกิจการ) */}
-      {s.entityId ? (
-        <>
-          <QuickPickSettings boot={data} onReload={onReload} />
-          {/* D129 — หมวดการใช้ของห้องทดลอง */}
-          <LabCategoriesCard boot={data} />
-        </>
-      ) : (
-        <p className="text-xs text-faint lg:col-span-2">
-          ตั้ง <b>กิจการของบาร์</b> แล้วกดบันทึกก่อน ถึงจะตั้งเหล้าประจำบ้าน/ชุดตกแต่ง/วัตถุดิบใช้บ่อยได้
-        </p>
+        </SettingsCard>
       )}
     </div>
+  );
+
+  // ── หัวข้อ 3: รูปแบบบิล ───────────────────────────────────────────────────
+  const receiptBody = <ReceiptLayoutCard boot={data} value={layout} onChange={setLayout} />;
+
+  // ── หัวข้อ 4: เมนูและสต็อก (บันทึกแยกทีละการ์ด) ────────────────────────────
+  // D127 — เหล้าประจำบ้าน · ชุดตกแต่ง · ใช้บ่อย · ต้องตั้งกิจการก่อน (ของผูกกิจการ)
+  const quickBody = s.entityId ? (
+    <div className="space-y-4">
+      <QuickPickSettings boot={data} onReload={onReload} />
+      {/* D129 — หมวดการใช้ของห้องทดลอง */}
+      <LabCategoriesCard boot={data} />
+    </div>
+  ) : (
+    <p className="text-xs text-faint">
+      ตั้ง <b>กิจการของบาร์</b> แล้วกดบันทึกก่อน ถึงจะตั้งเหล้าประจำบ้าน/ชุดตกแต่ง/วัตถุดิบใช้บ่อยได้
+    </p>
+  );
+
+  return (
+    <SettingsShell
+      intro={
+        // ปุ่มนี้อยู่เหนือทุกหัวข้อ — บันทึกค่าของหัวข้อ ทั่วไป · รับเงิน · รูปแบบบิล ทีเดียว (ไม่รวมการ์ดใน เมนูและสต็อก)
+        <div className="rounded-lg border border-line bg-card p-3 sm:p-4">
+          <button
+            type="button"
+            disabled={busy || !data.canConfig}
+            onClick={save}
+            className="min-h-[44px] rounded-lg bg-brand px-4 py-2 text-sm font-medium text-on-brand disabled:opacity-50 sm:min-h-0"
+          >
+            บันทึกการตั้งค่า
+          </button>
+          <p className="mt-1 text-xs text-muted">
+            ปุ่มนี้บันทึกหัวข้อ <b>ทั่วไป · รับเงิน · รูปแบบบิล</b> พร้อมกัน — การ์ดในหัวข้อ <b>เมนูและสต็อก</b> มีปุ่มบันทึกของตัวเอง
+          </p>
+          <MissingHint checks={[{ ok: data.canConfig, label: "สิทธิ์ตั้งค่าบาร์" }]} />
+        </div>
+      }
+      sections={[
+        { key: "general", label: "ทั่วไป", body: generalBody },
+        { key: "money", label: "รับเงิน", body: moneyBody },
+        { key: "receipt", label: "รูปแบบบิล", body: receiptBody },
+        { key: "quick", label: "เมนูและสต็อก", body: quickBody },
+      ]}
+    />
   );
 }
 

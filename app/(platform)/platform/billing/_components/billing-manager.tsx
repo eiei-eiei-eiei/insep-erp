@@ -6,6 +6,7 @@ import {
   Card,
   Empty,
   Field,
+  Help,
   NumBox,
   RowBtn,
   SaveButton,
@@ -276,13 +277,11 @@ function BillingPanel({
                   </tbody>
                 </table>
               </TableWrap>
-              <div className="mt-3">
+              <div className="mt-3 flex items-center gap-2">
                 <RowBtn type="button" tone="red" disabled={pending} onClick={onVoid}>
                   ย้อนรายการล่าสุด
                 </RowBtn>
-                <span className="ml-2 text-xs text-faint">
-                  ย้อนได้เฉพาะรายการบนสุด (ย้อนอันกลางแล้วเลขรอบกับประวัติจะไม่ตรงกันอีก)
-                </span>
+                <Help>ย้อนได้เฉพาะรายการบนสุด (ย้อนอันกลางแล้วเลขรอบกับประวัติจะไม่ตรงกันอีก)</Help>
               </div>
             </>
           )}
@@ -335,12 +334,10 @@ export function BillingManager({ rows, todayISO }: { rows: BillingRow[]; todayIS
   return (
     <div className="space-y-5">
       {confirmNode}
-      <div>
-        <h1 className="text-2xl font-bold text-ink">ค่างวดลูกค้า</h1>
-        <p className="text-sm text-faint">
-          เรียงตามครบกำหนดเร็วสุดก่อน · ตัดรอบตามวันที่ลูกค้าแต่ละรายเริ่มใช้บริการ
-        </p>
-      </div>
+      <h1 className="flex items-center gap-1.5 text-2xl font-bold text-ink">
+        ค่างวดลูกค้า
+        <Help>เรียงตามครบกำหนดเร็วสุดก่อน · ตัดรอบตามวันที่ลูกค้าแต่ละรายเริ่มใช้บริการ</Help>
+      </h1>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Stat label="เลยกำหนด" value={`${overdue.length} ราย`} tone={overdue.length ? "red" : "slate"} />

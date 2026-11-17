@@ -11,7 +11,8 @@ import { RecipeEditor, PriceSuggest } from "./RecipeEditor";
 import { lineCost } from "@/lib/bar/cost";
 import { searchMenus } from "@/lib/bar/menuFilter";
 import { customerLabel } from "@/lib/bar/customerName";
-import { Card, TextInput, NumBox, Select, Field, Badge, Empty, fmt, useSaver, useConfirm } from "@/lib/shared/ui";
+import { Card, TextInput, TextArea, NumBox, Select, Combobox, Field, Badge, Empty, Help, Modal, ModalCancel, fmt, useSaver, useConfirm } from "@/lib/shared/ui";
+import { useUnsaved } from "@/lib/shared/pageGuardHost";
 import {
   saveMenuAction, saveCategoryAction, deleteCategoryAction, saveCategoriesAction,
   getMenuUsageAction, setMenuActiveAction, deleteMenuAction,
@@ -286,6 +287,9 @@ export function MenuTab({ boot, onReload }: { boot: BarBoot; onReload: () => Pro
                           ลบ
                         </button>
                       )}
+                      {rm.showDelete && rm.deleteBlocked !== null && (
+                        <div className="ml-auto max-w-56 whitespace-normal text-xs text-faint">ลบไม่ได้ — {rm.deleteBlocked}</div>
+                      )}
                     </td>
                   </tr>
                 );
@@ -340,6 +344,7 @@ function CategoryEditor({
   const renamed = categoryNameUpdates(names, new Map(boot.categories.map((c) => [c.categoryId, c.name])));
   const blank = Object.values(names).some((n) => !n.trim());
   const dirty = ids.join("|") !== baseIds.join("|") || renamed.length > 0 || blank;
+  useUnsaved(dirty, "ลำดับ/ชื่อหมวดเมนู");
   const problem = dirty ? categoryEditsError(ids, names, baseIds) : "";
   const reset = () => {
     setOrder(null);
@@ -352,9 +357,11 @@ function CategoryEditor({
   return (
     <div className="mb-3 rounded-lg bg-raised p-3">
       {confirmNode}
-      <div className="mb-1 text-sm font-medium text-ink">หมวดเมนู (เรียงตามลำดับที่โชว์ในหน้าขาย)</div>
-      <div className="mb-2 text-xs text-muted">
-        ▲▼ เลื่อนลำดับ · แก้ชื่อในช่อง · เสร็จแล้วกด <b>บันทึก</b> ทีเดียว
+      <div className="mb-2 flex items-center gap-1.5 text-sm font-medium text-ink">
+        หมวดเมนู (เรียงตามลำดับที่โชว์ในหน้าขาย)
+        <Help>
+          ▲▼ เลื่อนลำดับ · แก้ชื่อในช่อง · เสร็จแล้วกด <b>บันทึก</b> ทีเดียว
+        </Help>
       </div>
       {ids.map((id, i) => {
         const c = byId.get(id);
@@ -495,14 +502,44 @@ export function MenuModal({
   const nPrice = price === "" ? 0 : price;
   const isVat = boot.seller?.isVat ?? false;
 
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div className="w-full max-w-lg rounded-xl bg-card p-5">
-        <h3 className="mb-3 text-lg font-bold text-ink">{title ?? (cur ? "แก้เมนู" : "เมนูใหม่")}</h3>
+  const save = () => {
+    if (busy || !name.trim()) return;
+    onSave({
+      menuId,
+      name,
+      price: nPrice,
+      categoryId,
+      fixedCost: useFixed ? (fixedCost === "" ? 0 : fixedCost) : null,
+      glass,
+      method,
+      note,
+      createdFor: createdFor || null,
+      recipe: useFixed ? [] : recipe,
+    });
+  };
 
+  return (
+    <Modal
+      title={title ?? (cur ? "แก้เมนู" : "เมนูใหม่")}
+      onClose={onClose}
+      onSubmit={save}
+      busy={busy}
+      size="md"
+      footer={
+        <>
+          <ModalCancel onClick={onClose} />
+          <button
+            type="button"
+            disabled={busy || !name.trim()}
+            onClick={save}
+            className="rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
+          >
+            บันทึก
+          </button>
+        </>
+      }
+    >
+      <div>
         <div className="grid gap-2 sm:grid-cols-3">
           <Field label="ชื่อเมนู">
             <TextInput value={name} onChange={(e) => setName(e.target.value)} />
@@ -565,56 +602,30 @@ export function MenuModal({
             <TextInput value={note} onChange={(e) => setNote(e.target.value)} placeholder="ของพี่โอ๊ต — ลดเวอร์มุท" />
           </Field>
         </div>
-        <Field label="สร้างให้ลูกค้า">
-          <Select value={createdFor} onChange={(e) => setCreatedFor(e.target.value)}>
-            <option value="">— ไม่ได้สร้างให้ใคร —</option>
-            {boot.customers.map((c) => (
-              <option key={c.customerId} value={c.customerId}>
-                {customerLabel(c)}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <p className="-mt-1 text-xs text-faint">
-          แค่ป้ายบอกที่มา + ใช้กับชิป &quot;ดูเฉพาะเมนูของ…&quot; ในหน้าขาย · ลูกค้าคนอื่นยังสั่งเมนูนี้ได้ตามปกติ
-        </p>
-        <Field label="วิธีชง">
-          <textarea
-            value={method}
-            onChange={(e) => setMethod(e.target.value)}
-            rows={2}
-            placeholder="shake 12 วิ · double strain · เหล้าบ๊วยลอยหน้า"
-            className="w-full rounded-lg border border-line bg-card px-3 py-2 text-sm text-ink"
+        <Field
+          label="สร้างให้ลูกค้า"
+          help={<>แค่ป้ายบอกที่มา + ใช้กับชิป &quot;ดูเฉพาะเมนูของ…&quot; ในหน้าขาย · ลูกค้าคนอื่นยังสั่งเมนูนี้ได้ตามปกติ</>}
+        >
+          <Combobox
+            value={createdFor}
+            onChange={setCreatedFor}
+            options={[
+              { value: "", label: "— ไม่ได้สร้างให้ใคร —" },
+              ...boot.customers.map((c) => ({ value: c.customerId, label: customerLabel(c) })),
+            ]}
           />
         </Field>
-
-        <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            disabled={busy || !name.trim()}
-            onClick={() =>
-              onSave({
-                menuId,
-                name,
-                price: nPrice,
-                categoryId,
-                fixedCost: useFixed ? (fixedCost === "" ? 0 : fixedCost) : null,
-                glass,
-                method,
-                note,
-                createdFor: createdFor || null,
-                recipe: useFixed ? [] : recipe,
-              })
-            }
-            className="flex-1 rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
-          >
-            บันทึก
-          </button>
-          <button type="button" onClick={onClose} className="rounded-lg bg-raised px-3 py-2 text-sm text-ink">
-            ยกเลิก
-          </button>
+        <div className="mt-2">
+          <Field label="วิธีชง">
+            <TextArea
+              value={method}
+              onChange={(e) => setMethod(e.target.value)}
+              rows={2}
+              placeholder="shake 12 วิ · double strain · เหล้าบ๊วยลอยหน้า"
+            />
+          </Field>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

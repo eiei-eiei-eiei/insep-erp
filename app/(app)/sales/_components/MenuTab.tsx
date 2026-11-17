@@ -2,7 +2,8 @@
 
 import { useConfirm } from "@/lib/shared/ui";
 import { useEffect, useRef, useState } from "react";
-import { Card, NumBox, NumInput, Select, TextInput, useSaver, fmt, LoadError } from "./ui";
+import { Card, Help, IconBtn, NumBox, NumInput, Select, TextInput, useSaver, fmt, LoadError } from "./ui";
+import { IconEdit, IconTrash } from "@/lib/shared/icons";
 import { getSaleMenuAction, getMenuLinkOptionsAction, saveSaleMenuAction, deleteSaleMenuAction } from "../actions";
 import type { SaleMenuRow } from "../data";
 
@@ -101,12 +102,10 @@ export function MenuTab({ active, hasProduction }: { active: boolean; hasProduct
                     <td className="font-mono text-xs text-faint">{r.productId || "-"}</td>
                     <td className="text-center">{r.multiplier}</td>
                     <td className="num">
-                      <button onClick={() => edit(r)} className="mr-1 rounded border border-line px-2 py-1 text-xs hover:bg-raised">
-                        แก้ไข
-                      </button>
-                      <button onClick={() => del(r)} className="rounded border border-crit-line px-2 py-1 text-xs text-crit hover:bg-crit-bg">
-                        ลบ
-                      </button>
+                      <div className="flex justify-end gap-1">
+                        <IconBtn onClick={() => edit(r)} aria-label={`แก้ไข ${r.menuName}`} title="แก้ไข"><IconEdit size={16} /></IconBtn>
+                        <IconBtn tone="red" onClick={() => del(r)} aria-label={`ลบ ${r.menuName}`} title="ลบเมนูนี้"><IconTrash size={16} /></IconBtn>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -130,9 +129,11 @@ export function MenuTab({ active, hasProduction }: { active: boolean; hasProduct
             <TextInput value={form.menuName} onChange={(e) => setForm({ ...form, menuName: e.target.value })} />
           </label>
           <label className="block">
-            <span className="mb-1 block text-muted">ราคาขายต่อหน่วย (รวม VAT แล้ว)</span>
+            <span className="mb-1 flex items-center gap-1.5 text-muted">
+              ราคาขายต่อหน่วย (รวม VAT แล้ว)
+              <Help>ใส่ราคาที่ลูกค้าจ่ายจริง เช่น 210 → ระบบถอด VAT ให้เอง (196.26 + 13.74)</Help>
+            </span>
             <NumBox value={form.price} blankZero onChange={(v) => setForm({ ...form, price: v === "" ? 0 : v })} />
-            <span className="mt-1 block text-xs text-faint">ใส่ราคาที่ลูกค้าจ่ายจริง เช่น 210 → ระบบถอด VAT ให้เอง (196.26 + 13.74)</span>
           </label>
           <label className="block">
             <span className="mb-1 block text-muted">ประเภท</span>

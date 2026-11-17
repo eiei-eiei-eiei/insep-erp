@@ -4,6 +4,7 @@ import { salesProductionText } from "@/lib/sales/productionText";
 import { useState } from "react";
 import type { CustomerRow } from "./types";
 import { NumInput, TextInput, useSaver } from "./ui";
+import { Modal, ModalCancel, TextArea } from "@/lib/shared/ui";
 import { saveCustomerAction } from "../actions";
 import { IconPlus } from "@/lib/shared/icons";
 import { validateNewCustomer, branchToSave, taxIdToSave, hidesBranch } from "@/lib/sales/customer";
@@ -47,17 +48,26 @@ export function AddCustomerModal({ onClose, onAdded, hasProduction }: { onClose:
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/50 p-4">
-      <div className="w-full max-w-lg rounded-lg bg-card p-5">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-ink"><IconPlus size={15} className="mr-1 inline align-[-2px]" />เพิ่มลูกค้าใหม่</h2>
-          <button onClick={onClose} className="text-2xl leading-none text-faint hover:text-crit">
-            &times;
+    <Modal
+      title={<><IconPlus size={15} className="mr-1 inline align-[-2px]" />เพิ่มลูกค้าใหม่</>}
+      onClose={onClose}
+      backdropClose={false}
+      size="md"
+      busy={pending}
+      onSubmit={save}
+      footer={
+        <>
+          <ModalCancel onClick={onClose} />
+          <button onClick={save} disabled={pending} className="rounded-lg bg-brand px-4 py-2 font-bold text-on-brand hover:opacity-90 disabled:opacity-50">
+            {pending ? "กำลังบันทึก…" : "บันทึกข้อมูลลูกค้า"}
           </button>
-        </div>
+        </>
+      }
+    >
+      <div>
         <div className="space-y-3">
           <TextInput placeholder="ชื่อบริษัท / ลูกค้า *" value={name} onChange={(e) => setName(e.target.value)} />
-          <textarea placeholder="ที่อยู่จดทะเบียน *" value={address} onChange={(e) => setAddress(e.target.value)} rows={2} className="w-full rounded-lg border border-line p-2 text-sm outline-none focus:border-brand" />
+          <TextArea placeholder="ที่อยู่จดทะเบียน *" value={address} onChange={(e) => setAddress(e.target.value)} rows={2} />
           {/* D86 — ลูกค้าขาจรหน้าร้านไม่มีเลขประจำตัวผู้เสียภาษี · ติ๊กแล้วซ่อนทั้งเลขภาษีและสาขา
               (สาขาว่าง = ไม่พิมพ์วงเล็บสาขาบนเอกสาร ซึ่งถูกกว่าการพิมพ์ "(สำนักงานใหญ่)" ให้คนเดินเข้ามาซื้อ) */}
           <label className="flex items-center gap-3 rounded-lg border border-line bg-raised p-3 text-sm">
@@ -97,11 +107,8 @@ export function AddCustomerModal({ onClose, onAdded, hasProduction }: { onClose:
               )}
             </span>
           </label>
-          <button onClick={save} disabled={pending} className="w-full rounded-lg bg-brand py-2 font-bold text-on-brand hover:opacity-90 disabled:opacity-50">
-            {pending ? "กำลังบันทึก…" : "บันทึกข้อมูลลูกค้า"}
-          </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { EscToClose } from "@/lib/shared/ui";
+import { Modal, ModalCancel } from "@/lib/shared/ui";
 import { showToast } from "@/lib/shared/toast";
-import { fmt, TextInput, useSaver, LoadError } from "./ui";
+import { fmt, Select, TextInput, useSaver, LoadError } from "./ui";
 import type { OrderRow } from "./types";
 import type { CompanyInfo } from "@/lib/sales/company";
 import {
@@ -98,17 +98,9 @@ export function EditPaymentDialog({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/50 p-4"
-      // D73 — ปิดเมื่อกดลงที่พื้นหลังเท่านั้น (ลากคลุมข้อความแล้วปล่อยนอกกล่องต้องไม่ปิด)
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <EscToClose onClose={onClose} />
-      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-lg bg-card p-5">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-ink">แก้วิธีชำระ</h2>
-          <button onClick={onClose} aria-label="ปิด" className="text-2xl leading-none text-faint hover:text-crit">&times;</button>
-        </div>
+    // เปลี่ยนวิธีรับเงิน/บัญชี = ห้ามส่ง onSubmit (กฎข้อ 3) · ปุ่มบันทึกอยู่ในแต่ละแถวที่กำลังแก้
+    <Modal title="แก้วิธีชำระ" onClose={onClose} size="md" busy={pending} footer={<ModalCancel onClick={onClose}>ปิด</ModalCancel>}>
+      <div>
         <div className="mb-3 rounded bg-raised p-2 text-sm text-muted">
           {order.quNo} · {order.customerName}
           <br />
@@ -150,14 +142,14 @@ export function EditPaymentDialog({
 
                 {editing === p.seq && (
                   <div className="mt-2 space-y-2 border-t border-line pt-2">
-                    <select value={method} onChange={(e) => setMethod(e.target.value)} className="w-full rounded-lg border border-line p-2 outline-none focus:border-brand">
+                    <Select value={method} onChange={(e) => setMethod(e.target.value)}>
                       {PAY_METHODS.map((m) => <option key={m}>{m}</option>)}
-                    </select>
+                    </Select>
                     {method === "เช็ค" && (
                       <div className="space-y-2 rounded border border-line bg-raised p-2">
                         <TextInput placeholder="ธนาคาร (เช่น กสิกรไทย)" value={bank} onChange={(e) => setBank(e.target.value)} />
                         <TextInput placeholder="เลขที่เช็ค" value={chequeNo} onChange={(e) => setChequeNo(e.target.value)} />
-                        <input type="date" value={chequeDate} onChange={(e) => setChequeDate(e.target.value)} className="w-full rounded-lg border border-line p-2 text-sm" />
+                        <TextInput type="date" value={chequeDate} onChange={(e) => setChequeDate(e.target.value)} />
                       </div>
                     )}
                     {chequeMissing && <p className="text-xs text-warn">ยังกรอกไม่ครบ: ธนาคาร · เลขที่เช็ค</p>}
@@ -180,6 +172,6 @@ export function EditPaymentDialog({
           </div>
         )}
       </div>
-    </div>
+    </Modal>
   );
 }

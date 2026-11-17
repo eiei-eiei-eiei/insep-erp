@@ -32,8 +32,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
         <IconSettings size={24} className="text-brand" />
         <h1 className="text-2xl font-bold text-ink">ตั้งค่า</h1>
       </div>
-      <SettingsTabs />
-      {children}
+      <SettingsTabs>{children}</SettingsTabs>
     </div>
   );
 }

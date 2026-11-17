@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { EscToClose } from "@/lib/shared/ui";
+import { Modal, ModalCancel } from "@/lib/shared/ui";
 import { showToast } from "@/lib/shared/toast";
 import { fmt, Field, Select, TextInput, LoadError } from "./ui";
 import type { OrderRow } from "./types";
@@ -82,17 +82,27 @@ export function CancelOrderDialog({
     onClose();
   }
 
+  // ปุ่มท้ายป๊อปอัพ — ตามสถานะของเนื้อหา (ยกเลิกออเดอร์ = ห้ามส่ง onSubmit · กฎข้อ 3)
+  const footer = plan?.partialBlocked
+    ? <ModalCancel onClick={onClose}>กลับ</ModalCancel>
+    : plan && !err
+      ? (
+        <>
+          <ModalCancel onClick={onClose} disabled={busy}>กลับ</ModalCancel>
+          <button
+            onClick={submit}
+            disabled={busy || !!inputErr}
+            className="rounded bg-crit px-3 py-2 text-sm font-semibold text-on-brand hover:opacity-90 disabled:opacity-50"
+          >
+            {busy ? "กำลังทำ…" : credit ? "ยกเลิก + ออกใบลดหนี้" : "ยกเลิกออเดอร์"}
+          </button>
+        </>
+      )
+      : undefined;
+
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/50 p-4"
-      onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}
-    >
-      <EscToClose onClose={() => { if (!busy) onClose(); }} />
-      <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-lg bg-card p-5">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-ink">ยกเลิกออเดอร์ {order.quNo}</h2>
-          <button onClick={onClose} disabled={busy} aria-label="ปิด" className="text-2xl leading-none text-faint hover:text-crit">&times;</button>
-        </div>
+    <Modal title={<>ยกเลิกออเดอร์ {order.quNo}</>} onClose={onClose} size="lg" busy={busy} footer={footer}>
+      <div>
         {err ? (
           <LoadError err onRetry={load} what="ข้อมูลใบกำกับของออเดอร์" />
         ) : !plan ? (
@@ -101,7 +111,6 @@ export function CancelOrderDialog({
           // D160 — มีใบลดหนี้บางส่วนแล้ว: ยกเลิกทั้งออเดอร์ไม่ได้ (RPC บังคับซ้ำ) · บอกว่าต้องกดอะไรแทน
           <div className="space-y-3 text-sm">
             <div className="rounded border border-warn-line bg-warn-bg p-2 text-warn">{plan.partialBlocked}</div>
-            <div className="flex justify-end"><button onClick={onClose} className="rounded border border-line px-3 py-2 text-sm text-ink hover:bg-raised">กลับ</button></div>
           </div>
         ) : (
           <div className="space-y-3 text-sm">
@@ -173,19 +182,9 @@ export function CancelOrderDialog({
 
             {error && <div className="rounded border border-crit-line bg-crit-bg p-2 text-crit">{error}</div>}
             {inputErr && <div className="text-xs text-warn">ยังกรอกไม่ครบ: {inputErr}</div>}
-            <div className="flex justify-end gap-2 pt-1">
-              <button onClick={onClose} disabled={busy} className="rounded border border-line px-3 py-2 text-sm text-ink hover:bg-raised">กลับ</button>
-              <button
-                onClick={submit}
-                disabled={busy || !!inputErr}
-                className="rounded bg-crit px-3 py-2 text-sm font-semibold text-on-brand hover:opacity-90 disabled:opacity-50"
-              >
-                {busy ? "กำลังทำ…" : credit ? "ยกเลิก + ออกใบลดหนี้" : "ยกเลิกออเดอร์"}
-              </button>
-            </div>
           </div>
         )}
       </div>
-    </div>
+    </Modal>
   );
 }

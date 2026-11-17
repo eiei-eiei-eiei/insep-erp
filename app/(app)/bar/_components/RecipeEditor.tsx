@@ -36,7 +36,7 @@ import {
 import { garnishContent, resolveRecipe, slotOption } from "@/lib/bar/houseSlot";
 import { garnishOption } from "@/lib/bar/menuPricing";
 import { applyPick, quickChips, type QuickChip, type QuickPick } from "@/lib/bar/quickPick";
-import { NumBox, TextInput, fmt } from "@/lib/shared/ui";
+import { Help, NumBox, TextInput, fmt } from "@/lib/shared/ui";
 
 const TARGET_KEY = "bar:targetCostPct";
 
@@ -396,7 +396,13 @@ export function PriceSuggest({
             }}
           />
         </div>
-        <span className="text-muted">% ของราคาขาย →</span>
+        <span className="inline-flex items-center gap-1.5 text-muted">
+          % ของราคาขาย →
+          <Help>
+            ปัดขึ้นหลัก 10
+            {isVat ? " · ร้านจด VAT: คิด % จากยอดก่อน VAT แล้วบวก VAT 7% กลับเข้าราคาป้าย" : ""}
+          </Help>
+        </span>
         {suggest !== null ? (
           <>
             <span className="text-ink">
@@ -414,10 +420,6 @@ export function PriceSuggest({
         ) : (
           <span className="text-muted">— (ยังไม่มีต้นทุนให้คิด)</span>
         )}
-      </div>
-      <div className="mt-1 text-xs text-faint">
-        ปัดขึ้นหลัก 10
-        {isVat ? " · ร้านจด VAT: คิด % จากยอดก่อน VAT แล้วบวก VAT 7% กลับเข้าราคาป้าย" : ""}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useConfirm } from "@/lib/shared/ui";
+import { Combobox, useConfirm } from "@/lib/shared/ui";
 import { useEffect, useState } from "react";
 import { saveMaterialAction, getRecentMaterialsAction, deleteMaterialLogAction, updateMaterialLogAction } from "../actions";
 import { Card, Field, MissingHint, NumInput, RowBtn, SaveButton, Select, TextInput, todayISO, useSaver } from "./ui";
@@ -93,14 +93,12 @@ export function MaterialTab({ materials }: { materials: Material[] }) {
           </Select>
         </Field>
         <Field label="วัตถุดิบ">
-          <Select value={materialId} onChange={(e) => setMaterialId(e.target.value)}>
-            <option value="">-- เลือกวัตถุดิบ --</option>
-            {materials.map((m) => (
-              <option key={m.material_id} value={m.material_id}>
-                {m.name} {m.unit ? `(${m.unit})` : ""}
-              </option>
-            ))}
-          </Select>
+          <Combobox
+            options={materials.map((m) => ({ value: m.material_id, label: `${m.name} ${m.unit ? `(${m.unit})` : ""}`.trim() }))}
+            value={materialId}
+            onChange={setMaterialId}
+            placeholder="-- เลือกวัตถุดิบ --"
+          />
         </Field>
         <Field label="จำนวน">
           <NumInput value={amount} onChange={(e) => setAmount(e.target.value)} />
@@ -120,7 +118,7 @@ export function MaterialTab({ materials }: { materials: Material[] }) {
       </div>
     </Card>
 
-    <Card title="รายการล่าสุด (แก้ไข / ลบ ได้จากแอป)">
+    <Card title="รายการล่าสุด (แก้ไข / ลบ ได้จากแอป)" help="แสดง 30 รายการล่าสุด · แก้/ลบแล้วสต็อกวัตถุดิบปรับให้อัตโนมัติ">
       {recent.length === 0 ? <p className="text-sm text-faint">— ยังไม่มีรายการ —</p> : (
         <div className="overflow-x-auto">
           <table className="tbl">
@@ -155,7 +153,6 @@ export function MaterialTab({ materials }: { materials: Material[] }) {
               ))}
             </tbody>
           </table>
-          <p className="mt-1 text-xs text-faint">แสดง 30 รายการล่าสุด · แก้/ลบแล้วสต็อกวัตถุดิบปรับให้อัตโนมัติ</p>
         </div>
       )}
     </Card>

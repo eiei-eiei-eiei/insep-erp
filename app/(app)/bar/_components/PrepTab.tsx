@@ -22,7 +22,7 @@ import {
 } from "@/lib/bar/prep";
 import { stockText, numText } from "@/lib/bar/units";
 import {
-  Card, TextInput, NumBox, Field, Badge, Empty, EscToClose, SuggestInput, LoadError,
+  Card, TextInput, NumBox, Field, Badge, Empty, Help, Modal, ModalCancel, SuggestInput, LoadError,
   fmt, useSaver, useRead, useConfirm,
 } from "@/lib/shared/ui";
 import {
@@ -140,12 +140,16 @@ export function PrepView({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
         </Card>
       )}
 
-      <Card title="ของทำเองในร้าน">
-        <p className="mb-3 text-xs text-muted">
-          ไซรัป · infused · cordial — ตั้งสูตรต่อ 1 ล็อตไว้ แล้วกด <b>ทำล็อต</b> ทุกครั้งที่ทำ (ทำทีละน้อยได้ เช่น 0.3 ล็อต)
-          · ระบบตัดวัตถุดิบ แล้วเอาของทำเองเข้าสต็อก คิดทุนต่อหน่วยจากของที่ใช้จริง · ใช้ในสูตรเมนูได้เหมือนวัตถุดิบทั่วไป
-          · ไม่นับค่าแรง/ค่าแก๊ส
-        </p>
+      <Card
+        title="ของทำเองในร้าน"
+        help={
+          <>
+            ไซรัป · infused · cordial — ตั้งสูตรต่อ 1 ล็อตไว้ แล้วกด <b>ทำล็อต</b> ทุกครั้งที่ทำ (ทำทีละน้อยได้ เช่น 0.3 ล็อต)
+            · ระบบตัดวัตถุดิบ แล้วเอาของทำเองเข้าสต็อก คิดทุนต่อหน่วยจากของที่ใช้จริง · ใช้ในสูตรเมนูได้เหมือนวัตถุดิบทั่วไป
+            · ไม่นับค่าแรง/ค่าแก๊ส
+          </>
+        }
+      >
         <button
           type="button"
           disabled={busy || !boot.canWrite}
@@ -345,8 +349,8 @@ function BatchHistory({
                         ยกเลิก
                       </button>
                     ) : (
-                      <span className="text-xs text-faint" title={block}>
-                        ยกเลิกไม่ได้
+                      <span className="block max-w-56 whitespace-normal text-xs text-faint" title={block}>
+                        ยกเลิกไม่ได้ — {block}
                       </span>
                     ))}
                 </td>
@@ -384,14 +388,40 @@ function PrepModal({
   const pv = batchPreview(rows, boot.items, stdYield, undefined);
   const u = cur?.unit ?? unit;
 
+  const save = () => {
+    if (busy || err !== "") return;
+    onSave({
+      itemId: def?.itemId ?? null,
+      name,
+      unit,
+      stdYield: stdYield as number,
+      inputs: cleanRecipe(rows).flatMap((r) => (r.itemId !== undefined ? [{ itemId: r.itemId, qty: r.qty }] : [])),
+      note,
+    });
+  };
+
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-overlay/40 p-4"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    <Modal
+      title={def ? `แก้สูตร — ${cur?.name ?? ""}` : "ของทำเองใหม่"}
+      onClose={onClose}
+      onSubmit={save}
+      busy={busy}
+      size="md"
+      footer={
+        <>
+          <ModalCancel onClick={onClose} />
+          <button
+            type="button"
+            disabled={busy || err !== ""}
+            onClick={save}
+            className="rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
+          >
+            บันทึก
+          </button>
+        </>
+      }
     >
-      <EscToClose onClose={onClose} />
-      <div className="w-full max-w-lg rounded-lg bg-card p-5">
-        <h3 className="mb-3 text-lg font-bold text-ink">{def ? `แก้สูตร — ${cur?.name ?? ""}` : "ของทำเองใหม่"}</h3>
+      <div>
         <div className="grid gap-2 sm:grid-cols-3">
           <div className="sm:col-span-2">
             <Field label="ชื่อ">
@@ -402,13 +432,17 @@ function PrepModal({
             {def ? (
               <div className="py-2 text-sm text-muted" title="เปลี่ยนหน่วยได้ที่ส่วน วัตถุดิบ → แก้ไข (ตอนยอดเป็น 0 และไม่มีสูตรเมนูใช้)">
                 {u}
+                <p className="text-xs text-faint">เปลี่ยนหน่วยได้ที่ส่วน วัตถุดิบ → แก้ไข (ตอนยอดเป็น 0 และไม่มีสูตรเมนูใช้)</p>
               </div>
             ) : (
               <SuggestInput value={unit} onChange={setUnit} options={UNITS} listId="prep-units" />
             )}
           </Field>
         </div>
-        <div className="mt-2 text-sm font-medium text-muted">วัตถุดิบต่อ 1 ล็อต</div>
+        <div className="mt-2 flex items-center gap-1.5 text-sm font-medium text-muted">
+          วัตถุดิบต่อ 1 ล็อต
+          {def && <Help tone="warn">แก้สูตรแล้วมีผลกับล็อตถัดไปเท่านั้น — ล็อตที่ทำไปแล้วไม่ขยับ</Help>}
+        </div>
         <RecipeEditor
           mode="prep"
           items={items}
@@ -438,32 +472,9 @@ function PrepModal({
             {pv.missing > 0 && <span className="text-warn"> · มี {pv.missing} วัตถุดิบที่ยังไม่มีทุน</span>}
           </p>
         )}
-        {def && <p className="mt-1 text-xs text-faint">แก้สูตรแล้วมีผลกับล็อตถัดไปเท่านั้น — ล็อตที่ทำไปแล้วไม่ขยับ</p>}
         {err && <p className="mt-1 text-xs text-warn">{err}</p>}
-        <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            disabled={busy || err !== ""}
-            onClick={() =>
-              onSave({
-                itemId: def?.itemId ?? null,
-                name,
-                unit,
-                stdYield: stdYield as number,
-                inputs: cleanRecipe(rows).flatMap((r) => (r.itemId !== undefined ? [{ itemId: r.itemId, qty: r.qty }] : [])),
-                note,
-              })
-            }
-            className="flex-1 rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
-          >
-            บันทึก
-          </button>
-          <button type="button" onClick={onClose} className="rounded-lg bg-raised px-3 py-2 text-sm text-ink">
-            ยกเลิก
-          </button>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -501,18 +512,40 @@ function BatchModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-overlay/40 p-4"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    <Modal
+      title={<>ทำล็อต — {item.name}</>}
+      onClose={onClose}
+      busy={busy}
+      size="md"
+      footer={
+        <>
+          <ModalCancel onClick={onClose} />
+          <button
+            type="button"
+            disabled={busy || errSoak !== ""}
+            onClick={() => onSubmit({ multiplier: mult as number, inputs, yieldQty: null, note })}
+            className="min-h-[44px] rounded-lg border border-line bg-card px-3 py-2 text-sm text-ink disabled:opacity-50 sm:min-h-0"
+          >
+            เริ่มแช่ — ยังไม่ได้ของ
+          </button>
+          <button
+            type="button"
+            disabled={busy || errNow !== ""}
+            title={errNow || undefined}
+            onClick={() => onSubmit({ multiplier: mult as number, inputs, yieldQty: yieldQty as number, note })}
+            className="min-h-[44px] rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50 sm:min-h-0"
+          >
+            ทำเสร็จแล้ว — เข้าสต็อกเลย
+          </button>
+        </>
+      }
     >
-      <EscToClose onClose={onClose} />
-      <div className="w-full max-w-lg rounded-lg bg-card p-5">
-        <h3 className="mb-3 text-lg font-bold text-ink">ทำล็อต — {item.name}</h3>
+      <div>
         <div className="grid gap-2 sm:grid-cols-3">
-          <Field label="กี่ล็อต">
+          <Field label="กี่ล็อต" help="ทำทีละน้อยใส่ 0.3 ได้">
             <NumBox value={mult} onChange={changeMult} blankZero placeholder="1" />
           </Field>
-          <p className="self-end pb-2 text-xs text-faint sm:col-span-2">ทำทีละน้อยใส่ 0.3 ได้ · เปลี่ยนตัวเลขนี้แล้วปริมาณข้างล่างคิดใหม่จากสูตร</p>
+          <p className="self-end pb-2 text-xs text-faint sm:col-span-2">เปลี่ยนตัวเลขนี้แล้วปริมาณข้างล่างคิดใหม่จากสูตร</p>
         </div>
         <div className="mt-2 text-sm font-medium text-muted">วัตถุดิบที่ใช้จริง (แก้ได้ถ้าวันนี้ใส่ต่างไป)</div>
         <RecipeEditor
@@ -555,30 +588,9 @@ function BatchModal({
           ของยังไม่เข้า — กรองเสร็จแล้วค่อยกด เสร็จแล้ว ที่กล่องกำลังแช่ · ขวดไม่พอก็ตัดได้ (ติดลบ)
         </p>
         {errSoak && <p className="mt-1 text-xs text-warn">{errSoak}</p>}
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={busy || errNow !== ""}
-            title={errNow || undefined}
-            onClick={() => onSubmit({ multiplier: mult as number, inputs, yieldQty: yieldQty as number, note })}
-            className="min-h-[44px] flex-1 rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50 sm:min-h-0"
-          >
-            ทำเสร็จแล้ว — เข้าสต็อกเลย
-          </button>
-          <button
-            type="button"
-            disabled={busy || errSoak !== ""}
-            onClick={() => onSubmit({ multiplier: mult as number, inputs, yieldQty: null, note })}
-            className="min-h-[44px] flex-1 rounded-lg border border-line bg-card px-3 py-2 text-sm text-ink disabled:opacity-50 sm:min-h-0"
-          >
-            เริ่มแช่ — ยังไม่ได้ของ
-          </button>
-          <button type="button" onClick={onClose} className="rounded-lg bg-raised px-3 py-2 text-sm text-ink">
-            ยกเลิก
-          </button>
-        </div>
+        {errNow && errNow !== errSoak && <p className="mt-1 text-xs text-warn">ทำเสร็จแล้วไม่ได้: {errNow}</p>}
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -600,13 +612,26 @@ function FinishModal({
   const pu = yieldQty !== "" && yieldQty > 0 ? Math.round((batch.costTotal / yieldQty) * 10000) / 10000 : null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-overlay/40 p-4"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    <Modal
+      title={<>แช่เสร็จแล้ว — {item?.name ?? batch.itemId}</>}
+      onClose={onClose}
+      busy={busy}
+      size="sm"
+      footer={
+        <>
+          <ModalCancel onClick={onClose} />
+          <button
+            type="button"
+            disabled={busy || yieldQty === "" || !(yieldQty > 0)}
+            onClick={() => onSubmit(yieldQty as number)}
+            className="rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
+          >
+            เสร็จแล้ว — เข้าสต็อก
+          </button>
+        </>
+      }
     >
-      <EscToClose onClose={onClose} />
-      <div className="w-full max-w-sm rounded-lg bg-card p-5">
-        <h3 className="mb-1 text-lg font-bold text-ink">แช่เสร็จแล้ว — {item?.name ?? batch.itemId}</h3>
+      <div>
         <p className="mb-3 text-xs text-muted">
           {batch.batchId} · เริ่ม {df.date(batch.startDate)} · {numText(batch.multiplier)} ล็อต
         </p>
@@ -618,20 +643,7 @@ function FinishModal({
             ทุนล็อต {fmt(batch.costTotal)} บาท{pu !== null && ` · ${perUnitText(pu)} บาท/${unit}`}
           </p>
         )}
-        <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            disabled={busy || yieldQty === "" || !(yieldQty > 0)}
-            onClick={() => onSubmit(yieldQty as number)}
-            className="flex-1 rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
-          >
-            เสร็จแล้ว — เข้าสต็อก
-          </button>
-          <button type="button" onClick={onClose} className="rounded-lg bg-raised px-3 py-2 text-sm text-ink">
-            ยกเลิก
-          </button>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }

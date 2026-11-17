@@ -8,7 +8,7 @@
  * · ลบได้เฉพาะบัญชีที่ไม่มีอะไรอ้างถึง — นอกนั้นปุ่มเทา + บอกเหตุผล (ซ่อนปุ่มแย่กว่าปุ่มเทา D86)
  * ★ ประโยค/เงื่อนไขทุกตัวตัดสินใน lib/accounting/bankAccounts (มีเทส A25)
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   getBankAccountAdminAction,
@@ -18,8 +18,10 @@ import {
 } from "../actions";
 import type { BankAccountAdminRow } from "../data";
 import type { Bootstrap } from "./types";
-import { Badge, Card, Field, NumBox, SaveButton, TextInput, fmt, useSaver, useRead, LoadError, EscToClose } from "./ui";
-import { SuggestInput, useConfirm } from "@/lib/shared/ui";
+import { Badge, Field, IconBtn, NumBox, RowBtn, SaveButton, TextInput, fmt, useSaver, useRead, LoadError } from "./ui";
+import { ListEmpty, ListRow, SettingsCard } from "@/lib/shared/settings";
+import { IconEdit, IconPlus, IconTrash } from "@/lib/shared/icons";
+import { Modal, ModalCancel, SuggestInput, useConfirm } from "@/lib/shared/ui";
 import {
   accountNameError,
   usageText,
@@ -41,7 +43,7 @@ type Form = {
   ents: string[];
 };
 
-export function BankAccountsCard({ boot }: { boot: Bootstrap }) {
+export function BankAccountsCard({ boot, onCount }: { boot: Bootstrap; onCount?: (n: number | null) => void }) {
   const router = useRouter();
   const { pending, run, setMsg } = useSaver();
   const { ask, confirmNode } = useConfirm();
@@ -55,6 +57,8 @@ export function BankAccountsCard({ boot }: { boot: Bootstrap }) {
   const rows = data ?? [];
   const inactiveCount = rows.filter((r) => !r.active).length;
   const shown = rows.filter((r) => showInactive || r.active);
+  const activeCount = data ? rows.filter((r) => r.active).length : null;
+  useEffect(() => { onCount?.(activeCount); }, [activeCount, onCount]);
 
   /** บันทึกสำเร็จ → โหลดการ์ดนี้ใหม่ + ให้แท็บอื่น (ช่องเลือกบัญชี) เห็นค่าใหม่ทันที */
   function refreshAll() {
@@ -118,64 +122,77 @@ export function BankAccountsCard({ boot }: { boot: Bootstrap }) {
   const renaming = !!form?.accountId && form.name.trim() !== form.originalName;
 
   return (
-    <Card title={`บัญชีเงิน (${rows.filter((r) => r.active).length})`}>
+    <SettingsCard
+      title="บัญชีเงิน"
+      count={activeCount}
+      unit="บัญชี"
+      help={<>คงเหลือ = ยอดยกมา + เงินเข้า − เงินออก ถึงวันนี้ (ตัวเดียวกับแท็บ บัญชี &amp; เงินสด)</>}
+      action={
+        <button onClick={openNew} className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-brand px-3 py-2 text-sm font-medium text-on-brand">
+          <IconPlus size={16} /> เพิ่มบัญชี
+        </button>
+      }
+    >
       {confirmNode}
-      <div className="mb-2 flex flex-wrap items-center gap-3">
-        <button onClick={openNew} className="rounded-lg bg-brand px-4 py-2 text-sm text-on-brand">+ เพิ่มบัญชี</button>
-        {inactiveCount > 0 && (
-          <label className="flex items-center gap-1.5 text-sm text-muted">
-            <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
-            แสดงบัญชีที่ปิดใช้ ({inactiveCount})
-          </label>
-        )}
-      </div>
       <LoadError err={err} onRetry={reload} what="บัญชีเงิน" />
-      {!data ? <p className="text-sm text-faint">{err ? "— โหลดไม่สำเร็จ —" : "กำลังโหลด…"}</p> : rows.length === 0 ? (
-        <p className="text-sm text-faint">ยังไม่มีบัญชีเงิน — กด + เพิ่มบัญชี (บิลทุกใบต้องเลือกบัญชีที่เงินเข้า/ออก)</p>
+      {!data ? <ListEmpty>{err ? "— โหลดไม่สำเร็จ —" : "กำลังโหลด…"}</ListEmpty> : rows.length === 0 ? (
+        <ListEmpty>ยังไม่มีบัญชีเงิน — กด เพิ่มบัญชี (บิลทุกใบต้องเลือกบัญชีที่เงินเข้า/ออก)</ListEmpty>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="tbl">
-            <thead>
-              <tr className="text-left text-faint">
-                <th>ชื่อบัญชี</th><th>ประเภท</th>{multiEntity && <th>กิจการที่ใช้</th>}
-                <th className="num">ยอดยกมา</th><th className="num">คงเหลือ</th><th>การใช้งาน</th><th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map((r) => {
-                const block = deleteBlockReason(r.usage);
-                return (
-                  <tr key={r.accountId} className={r.active ? "" : "opacity-60"}>
-                    <td>{r.accountName}{!r.active && <Badge tone="neutral" className="ml-1">ปิดใช้</Badge>}</td>
-                    <td>{r.kind || "-"}</td>
-                    {multiEntity && <td className="text-xs">{r.entityIds.length ? r.entityIds.map(entName).join(", ") : "ทุกกิจการ"}</td>}
-                    <td className="num">{fmt(r.openingBalance)}</td>
-                    <td className="num">{r.balance == null ? "—" : fmt(r.balance)}</td>
-                    <td className="text-xs text-muted">{usageText(r.usage)}</td>
-                    <td className="whitespace-nowrap">
-                      <button onClick={() => openEdit(r)} className="text-sm text-muted hover:underline">แก้ไข</button>
-                      <button onClick={() => toggleActive(r)} disabled={pending} className="ml-2 text-sm text-muted hover:underline disabled:opacity-40">
-                        {r.active ? "ปิดใช้" : "เปิดใช้"}
-                      </button>
-                      <button onClick={() => del(r)} disabled={pending || !!block} title={block ?? "ลบบัญชีนี้"} className="ml-2 text-sm text-crit hover:underline disabled:cursor-not-allowed disabled:text-faint disabled:no-underline">ลบ</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <p className="mt-1 text-xs text-faint">
-            คงเหลือ = ยอดยกมา + เงินเข้า − เงินออก ถึงวันนี้ (ตัวเดียวกับแท็บ บัญชี &amp; เงินสด) ·
-            บัญชีที่มีรายการแล้วลบไม่ได้ ให้กด ปิดใช้ แทน (ประวัติยังอยู่ครบ)
-          </p>
-        </div>
+        <>
+          {shown.map((r) => {
+            const block = deleteBlockReason(r.usage);
+            return (
+              <ListRow
+                key={r.accountId}
+                dim={!r.active}
+                title={<>{r.accountName}{!r.active && <Badge tone="neutral" className="ml-1.5">ปิดใช้</Badge>}</>}
+                sub={[
+                  r.kind || null,
+                  multiEntity ? (r.entityIds.length ? r.entityIds.map(entName).join(", ") : "ทุกกิจการ") : null,
+                  usageText(r.usage),
+                ].filter(Boolean).join(" · ")}
+                meta={
+                  <span className="tnum">
+                    <span className="font-semibold text-ink">{r.balance == null ? "—" : fmt(r.balance)}</span>
+                    <span className="ml-2 text-xs text-faint sm:ml-0 sm:block">ยกมา {fmt(r.openingBalance)}</span>
+                  </span>
+                }
+                actions={
+                  <>
+                    <RowBtn onClick={() => toggleActive(r)} disabled={pending}>{r.active ? "ปิดใช้" : "เปิดใช้"}</RowBtn>
+                    <IconBtn onClick={() => openEdit(r)} aria-label={`แก้ไข ${r.accountName}`} title="แก้ไข"><IconEdit size={16} /></IconBtn>
+                    <IconBtn tone="red" onClick={() => del(r)} disabled={pending || !!block} aria-label={`ลบ ${r.accountName}`} title={block ?? "ลบบัญชีนี้"}><IconTrash size={16} /></IconBtn>
+                  </>
+                }
+              />
+            );
+          })}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line-soft py-2 text-xs text-muted">
+            <span>บัญชีที่มีรายการแล้วลบไม่ได้ ให้กด ปิดใช้ แทน (ประวัติยังอยู่ครบ)</span>
+            {inactiveCount > 0 && (
+              <label className="ml-auto flex items-center gap-1.5">
+                <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
+                แสดงบัญชีที่ปิดใช้ ({inactiveCount})
+              </label>
+            )}
+          </div>
+        </>
       )}
 
       {form && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/30 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setForm(null); }}>
-          <EscToClose onClose={() => setForm(null)} />
-          <div className="w-full max-w-md rounded-lg bg-card p-5">
-            <h3 className="mb-3 font-semibold text-ink">{form.accountId ? "แก้ไขบัญชีเงิน" : "เพิ่มบัญชีเงิน"}</h3>
+        <Modal
+          title={form.accountId ? "แก้ไขบัญชีเงิน" : "เพิ่มบัญชีเงิน"}
+          onClose={() => setForm(null)}
+          size="md"
+          busy={pending}
+          onSubmit={save}
+          footer={
+            <>
+              <ModalCancel onClick={() => setForm(null)} />
+              <SaveButton pending={pending} onClick={save}>บันทึก</SaveButton>
+            </>
+          }
+        >
             <div className="space-y-3">
               <Field label="ชื่อบัญชี"><TextInput value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="เช่น กสิกร ออมทรัพย์ 123-4" /></Field>
               {renaming && <p className="text-xs text-warn">⚠️ {renameWarnText(form.originalName, editing?.usage)}</p>}
@@ -201,13 +218,8 @@ export function BankAccountsCard({ boot }: { boot: Bootstrap }) {
               ) : null}
             </div>
             {formErr && <p className="mt-2 text-sm text-crit">{formErr}</p>}
-            <div className="mt-3 flex justify-end gap-2">
-              <button onClick={() => setForm(null)} className="rounded-lg border border-line px-4 py-2 text-sm">ยกเลิก</button>
-              <SaveButton pending={pending} onClick={save}>บันทึก</SaveButton>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
-    </Card>
+    </SettingsCard>
   );
 }

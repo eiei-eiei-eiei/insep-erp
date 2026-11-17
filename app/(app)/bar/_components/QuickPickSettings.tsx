@@ -12,6 +12,7 @@
  * ★ การ์ดถูก remount ด้วย key จากข้อมูลที่บันทึกแล้ว ⇒ บันทึกสำเร็จแล้วฉบับร่างเริ่มใหม่จากของจริงเสมอ
  */
 import { useState } from "react";
+import { useUnsaved } from "@/lib/shared/pageGuardHost";
 import type { BarBoot } from "../data";
 import type { BarItem } from "@/lib/bar/types";
 import {
@@ -38,7 +39,9 @@ import {
   pinnedItems,
   type GarnishDraft,
 } from "@/lib/bar/quickPick";
-import { Card, Select, TextInput, MissingHint, useSaver } from "@/lib/shared/ui";
+import { IconBtn, Combobox, TextInput, MissingHint, useSaver } from "@/lib/shared/ui";
+import { SettingsCard } from "@/lib/shared/settings";
+import { IconTrash } from "@/lib/shared/icons";
 import { saveGarnishesAction, saveHouseSlotsAction, savePinsAction } from "../actions";
 
 type Reload = () => Promise<void>;
@@ -52,9 +55,12 @@ export function QuickPickSettings({ boot, onReload }: { boot: BarBoot; onReload:
   const { setMsg } = useSaver();
   const notify: Notify = (text) => setMsg({ ok: true, text });
   return (
-    <>
-      <div className="lg:col-span-2">
-        <h3 className="mt-2 text-sm font-semibold text-ink">ปุ่มลัดในหน้าสร้างเมนู</h3>
+    <div className="space-y-4">
+      <div>
+        <h3 className="flex items-center gap-1.5 text-sm font-semibold text-ink">
+          ปุ่มลัดในหน้าสร้างเมนู
+        </h3>
+        {/* คงไว้บนจอ (D173 เฟส 2b) — ไม่เห็นแล้วกดปุ่มบันทึกด้านบน นึกว่าการ์ดนี้บันทึกแล้ว */}
         <p className="text-xs text-muted">
           3 การ์ดนี้ <b>บันทึกแยกทีละการ์ด</b> ด้วยปุ่มในการ์ดเอง (ไม่เกี่ยวกับปุ่ม บันทึกการตั้งค่า ด้านบน)
         </p>
@@ -67,7 +73,21 @@ export function QuickPickSettings({ boot, onReload }: { boot: BarBoot; onReload:
         onReload={onReload}
         notify={notify}
       />
-    </>
+    </div>
+  );
+}
+
+/** ปุ่ม + เพิ่ม ที่หัวการ์ด (หน้าตาเดียวกับการ์ดตั้งค่าอื่น) */
+function AddBtn({ onClick, disabled, children }: { onClick: () => void; disabled: boolean; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="min-h-[44px] rounded border border-line px-3 py-1.5 text-sm text-ink transition hover:bg-raised disabled:opacity-50 sm:min-h-0"
+    >
+      {children}
+    </button>
   );
 }
 
@@ -85,6 +105,7 @@ function HouseSlotCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Re
   const [rows, setRows] = useState<SlotDraft[]>(initial);
   const set = (i: number, patch: Partial<SlotDraft>) => setRows((p) => p.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const dirty = JSON.stringify(rows) !== JSON.stringify(initial);
+  useUnsaved(dirty, "เหล้าประจำบ้าน");
   const problem = dirty ? slotEditsError(rows, boot.houseSlots, boot.items, boot.menus) : "";
 
   async function save() {
@@ -101,9 +122,18 @@ function HouseSlotCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Re
   }
 
   return (
-    <Card title="เหล้าประจำบ้าน (House)">
+    <SettingsCard
+      title="เหล้าประจำบ้าน (House)"
+      help="ตั้งชื่อช่อง แล้วเลือกขวดที่ใช้อยู่ตอนนี้ · สูตรอ้างช่องแทนขวดยี่ห้อได้"
+      count={rows.length}
+      unit="ช่อง"
+      action={
+        <AddBtn disabled={busy} onClick={() => setRows((p) => [...p, { slotId: null, name: "", itemId: "" }])}>
+          ＋ เพิ่มช่อง
+        </AddBtn>
+      }
+    >
       <p className="mb-2 text-xs text-muted">
-        ตั้งชื่อช่อง แล้วเลือกขวดที่ใช้อยู่ตอนนี้ · สูตรอ้างช่องแทนขวดยี่ห้อได้ ·{" "}
         <b>เปลี่ยนขวด = ทุกเมนูที่อ้างช่องนี้เปลี่ยนทันที</b> (บิลเก่าไม่ขยับ) · ขวดหมดระบบปล่อยติดลบ ไม่สลับขวดให้เอง
       </p>
       {rows.length === 0 && <p className="text-xs text-faint">— ยังไม่มีช่อง —</p>}
@@ -130,24 +160,25 @@ function HouseSlotCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Re
               </div>
               <span className="text-faint">→</span>
               <div className="min-w-40 flex-1">
-                <Select value={r.itemId} onChange={(e) => set(i, { itemId: e.target.value })}>
-                  <option value="">— เลือกขวด —</option>
-                  {choices.map((it) => (
-                    <option key={it.itemId} value={it.itemId}>
-                      {optLabel(it)}
-                    </option>
-                  ))}
-                </Select>
+                <Combobox
+                  value={r.itemId}
+                  onChange={(v) => set(i, { itemId: v })}
+                  options={[
+                    { value: "", label: "— เลือกขวด —" },
+                    ...choices.map((it) => ({ value: it.itemId, label: optLabel(it) })),
+                  ]}
+                />
               </div>
               {block ? null : (
-                <button
-                  type="button"
+                <IconBtn
+                  tone="red"
                   disabled={busy}
                   onClick={() => setRows((p) => p.filter((_, j) => j !== i))}
-                  className="text-xs text-crit underline disabled:opacity-50"
+                  aria-label={`ลบช่อง ${r.name || i + 1}`}
+                  title="ลบ"
                 >
-                  ลบ
-                </button>
+                  <IconTrash size={16} />
+                </IconBtn>
               )}
             </div>
             <div className="mt-0.5 text-xs text-faint">
@@ -168,12 +199,10 @@ function HouseSlotCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Re
         dirty={dirty}
         problem={problem}
         canConfig={boot.canConfig}
-        onAdd={() => setRows((p) => [...p, { slotId: null, name: "", itemId: "" }])}
-        addText="＋ เพิ่มช่อง"
         onSave={save}
         onReset={() => setRows(initial)}
       />
-    </Card>
+    </SettingsCard>
   );
 }
 
@@ -184,6 +213,7 @@ function GarnishCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Relo
   const [rows, setRows] = useState<GarnishDraft[]>(initial);
   const setRow = (i: number, fn: (r: GarnishDraft) => GarnishDraft) => setRows((p) => p.map((r, j) => (j === i ? fn(r) : r)));
   const dirty = JSON.stringify(rows) !== JSON.stringify(initial);
+  useUnsaved(dirty, "ชุดตกแต่ง");
   const problem = dirty ? garnishEditsError(rows, boot.items, boot.garnishes, boot.menus) : "";
 
   async function save() {
@@ -200,11 +230,27 @@ function GarnishCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Relo
   }
 
   return (
-    <Card title="ชุดตกแต่ง">
+    <SettingsCard
+      title="ชุดตกแต่ง"
+      count={rows.length}
+      unit="ชุด"
+      action={
+        <AddBtn
+          disabled={busy}
+          onClick={() => setRows((p) => [...p, { garnishId: null, name: "", itemId: "", qtyText: "", qtyUnit: null }])}
+        >
+          ＋ เพิ่มชุดตกแต่ง
+        </AddBtn>
+      }
+      help={
+        <>
+          กดชุดตกแต่งในหน้าสร้างเมนู = <b>เพิ่มเป็นบรรทัดของชุด</b> (กดซ้ำ = เพิ่มจำนวนชุด) · จำนวนพิมพ์เศษส่วนได้ เช่น{" "}
+          <b>1/7</b> (มะนาว 1 ลูกฝานได้ 7 แว่น) · ไม่เลือกวัตถุดิบ = ชุดที่ไม่ตัดสต็อก
+        </>
+      }
+    >
       <p className="mb-2 text-xs text-muted">
-        กดชุดตกแต่งในหน้าสร้างเมนู = <b>เพิ่มเป็นบรรทัดของชุด</b> (กดซ้ำ = เพิ่มจำนวนชุด) ·{" "}
-        <b>แก้ชุดที่นี่ = ทุกเมนูที่ใช้ชุดนี้เปลี่ยนตาม</b> (แก้วที่ขายไปแล้วไม่ขยับ) · จำนวนพิมพ์เศษส่วนได้ เช่น{" "}
-        <b>1/7</b> (มะนาว 1 ลูกฝานได้ 7 แว่น) · ไม่เลือกวัตถุดิบ = ชุดที่ไม่ตัดสต็อก
+        <b>แก้ชุดที่นี่ = ทุกเมนูที่ใช้ชุดนี้เปลี่ยนตาม</b> (แก้วที่ขายไปแล้วไม่ขยับ)
       </p>
       {rows.length === 0 && <p className="text-xs text-faint">— ยังไม่มีชุดตกแต่ง —</p>}
       {rows.map((r, i) => {
@@ -228,18 +274,14 @@ function GarnishCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Relo
                 <TextInput value={r.name} onChange={(e) => setRow(i, (x) => ({ ...x, name: e.target.value }))} placeholder="Lime Wheel" />
               </div>
               <div className="min-w-36 flex-1">
-                <Select
+                <Combobox
                   value={r.itemId}
-                  aria-label="วัตถุดิบของชุด"
-                  onChange={(e) => setRow(i, (x) => garnishPickItem(x, e.target.value, boot.items, used))}
-                >
-                  <option value="">— ไม่ตัดสต็อก —</option>
-                  {choices.map((x) => (
-                    <option key={x.itemId} value={x.itemId}>
-                      {optLabel(x)}
-                    </option>
-                  ))}
-                </Select>
+                  onChange={(v) => setRow(i, (x) => garnishPickItem(x, v, boot.items, used))}
+                  options={[
+                    { value: "", label: "— ไม่ตัดสต็อก —" },
+                    ...choices.map((x) => ({ value: x.itemId, label: optLabel(x) })),
+                  ]}
+                />
               </div>
               {r.itemId && (
                 <>
@@ -257,14 +299,15 @@ function GarnishCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Relo
                 </>
               )}
               {block ? null : (
-                <button
-                  type="button"
+                <IconBtn
+                  tone="red"
                   disabled={busy}
                   onClick={() => setRows((p) => p.filter((_, j) => j !== i))}
-                  className="text-xs text-crit underline disabled:opacity-50"
+                  aria-label={`ลบชุด ${r.name || i + 1}`}
+                  title="ลบ"
                 >
-                  ลบ
-                </button>
+                  <IconTrash size={16} />
+                </IconBtn>
               )}
             </div>
             <div className="mt-0.5 text-xs text-faint">
@@ -282,12 +325,10 @@ function GarnishCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Relo
         dirty={dirty}
         problem={problem}
         canConfig={boot.canConfig}
-        onAdd={() => setRows((p) => [...p, { garnishId: null, name: "", itemId: "", qtyText: "", qtyUnit: null }])}
-        addText="＋ เพิ่มชุดตกแต่ง"
         onSave={save}
         onReset={() => setRows(initial)}
       />
-    </Card>
+    </SettingsCard>
   );
 }
 
@@ -301,6 +342,7 @@ function PinCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Reload; 
   const byId = new Map(boot.items.map((i) => [i.itemId, i]));
   // 🪤 เทียบกับลิสต์ตั้งต้น ไม่ใช่ pinPlan — ตัวที่ปักไว้แต่ปิดใช้ทำให้ pinPlan มีงานค้างตั้งแต่เปิดหน้า
   const dirty = order.join("|") !== initial.join("|");
+  useUnsaved(dirty, "ลำดับปุ่มลัด");
   const addable = boot.items.filter((i) => i.active !== false && !order.includes(i.itemId));
 
   async function save() {
@@ -317,10 +359,16 @@ function PinCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Reload; 
   }
 
   return (
-    <Card title="วัตถุดิบใช้บ่อย">
-      <p className="mb-2 text-xs text-muted">
-        ขึ้นเป็นปุ่มลัดกลุ่ม <b>ใช้บ่อย</b> ในหน้าสร้างเมนู เรียงตามที่จัดที่นี่ (ไม่เรียงตามยอดใช้ — ปุ่มอยู่ที่เดิมเสมอ)
-      </p>
+    <SettingsCard
+      title="วัตถุดิบใช้บ่อย"
+      count={order.length}
+      unit="ตัว"
+      help={
+        <>
+          ขึ้นเป็นปุ่มลัดกลุ่ม <b>ใช้บ่อย</b> ในหน้าสร้างเมนู เรียงตามที่จัดที่นี่ (ไม่เรียงตามยอดใช้ — ปุ่มอยู่ที่เดิมเสมอ)
+        </>
+      }
+    >
       {order.length === 0 && <p className="text-xs text-faint">— ยังไม่ได้ปักหมุด —</p>}
       {order.map((id, i) => {
         const it = byId.get(id);
@@ -346,14 +394,14 @@ function PinCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Reload; 
       })}
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <div className="min-w-40 flex-1">
-          <Select value={adding} onChange={(e) => setAdding(e.target.value)}>
-            <option value="">— เลือกวัตถุดิบที่จะปักหมุด —</option>
-            {addable.map((x) => (
-              <option key={x.itemId} value={x.itemId}>
-                {optLabel(x)}
-              </option>
-            ))}
-          </Select>
+          <Combobox
+            value={adding}
+            onChange={setAdding}
+            options={[
+              { value: "", label: "— เลือกวัตถุดิบที่จะปักหมุด —" },
+              ...addable.map((x) => ({ value: x.itemId, label: optLabel(x) })),
+            ]}
+          />
         </div>
         <button
           type="button"
@@ -375,7 +423,7 @@ function PinCard({ boot, onReload, notify }: { boot: BarBoot; onReload: Reload; 
         onSave={save}
         onReset={() => setOrder(initial)}
       />
-    </Card>
+    </SettingsCard>
   );
 }
 

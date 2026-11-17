@@ -1,6 +1,6 @@
 "use client";
 
-import { useConfirm } from "@/lib/shared/ui";
+import { Combobox, useConfirm } from "@/lib/shared/ui";
 import { useEffect, useState } from "react";
 import { diluteCalc, isFermented } from "@/lib/production/calc";
 import {
@@ -200,18 +200,20 @@ export function DrawTab({
             <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </Field>
           <Field label="ชื่อสุรา (ประเภทสุราแช่)">
-            <Select value={productName} onChange={(e) => { setProductName(e.target.value); onBatchChange(""); }}>
-              <option value="">-- เลือกชื่อสุรา --</option>
-              {fermentedNames.map((n) => <option key={n} value={n}>{n}</option>)}
-            </Select>
+            <Combobox
+              options={fermentedNames.map((n) => ({ value: n, label: n }))}
+              value={productName}
+              onChange={(v) => { setProductName(v); onBatchChange(""); }}
+              placeholder="-- เลือกชื่อสุรา --"
+            />
           </Field>
           <Field label="ครั้งที่หมัก (ที่ยังไม่ริน)">
-            <Select value={batch} onChange={(e) => onBatchChange(e.target.value)}>
-              <option value="">-- เลือกครั้งที่หมัก --</option>
-              {batchOptions.map((b) => (
-                <option key={b.batch} value={b.batch}>{b.batch} · น้ำหมัก {b.fermVol} ล.</option>
-              ))}
-            </Select>
+            <Combobox
+              options={batchOptions.map((b) => ({ value: b.batch, label: `${b.batch} · น้ำหมัก ${b.fermVol} ล.` }))}
+              value={batch}
+              onChange={onBatchChange}
+              placeholder="-- เลือกครั้งที่หมัก --"
+            />
           </Field>
 
           <Field label="ปริมาณน้ำสุราแช่ที่รินได้ (ล.)">

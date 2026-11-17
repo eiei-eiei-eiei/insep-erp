@@ -48,7 +48,10 @@ export function BoardTab({
     .filter((r) => (!q ? true : (r.batch + " " + r.productName).toLowerCase().includes(q.toLowerCase())));
 
   return (
-    <Card title="กระดาน batch — ทุก batch อยู่ขั้นไหน ทำอะไรต่อ">
+    <Card
+      title="กระดาน batch — ทุก batch อยู่ขั้นไหน ทำอะไรต่อ"
+      help="กดปุ่มในการ์ด = เปลี่ยนแท็บพร้อมเลือก batch นี้ให้อัตโนมัติ (ไม่ต้องเลือกซ้ำในแต่ละแท็บ)"
+    >
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <TextInput placeholder="batch / ชื่อสุรา" value={q} onChange={(e) => setQ(e.target.value)} className="w-56" />
         <label className="flex items-center gap-2 text-sm text-muted">
@@ -125,7 +128,6 @@ export function BoardTab({
           })}
         </div>
       )}
-      <p className="mt-3 text-xs text-faint">กดปุ่มในการ์ด = เปลี่ยนแท็บพร้อมเลือก batch นี้ให้อัตโนมัติ (ไม่ต้องเลือกซ้ำในแต่ละแท็บ)</p>
     </Card>
   );
 }

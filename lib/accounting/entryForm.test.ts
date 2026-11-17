@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { taxDateOnNoChange, taxDateOnTxDateChange, shouldRefreshDraftDate } from "./entryForm";
+import { taxDateOnNoChange, taxDateOnTxDateChange, shouldRefreshDraftDate, sellerHasNoTaxId } from "./entryForm";
 
 describe("D114 — วันที่ใบกำกับตามเลขที่ใบกำกับ", () => {
   it("กรอกเลข ขณะวันที่ว่าง → ใช้วันที่รายการ", () => {
@@ -48,3 +48,29 @@ describe("D117 — Enter เพิ่มรายการ", () => {
     expect(itemsHintText("in")).not.toContain("Enter");
   });
 });
+
+describe("sellerHasNoTaxId — ผู้ขายไม่มีเลขภาษี ติ๊ก VAT ไม่ได้ (D173)", () => {
+  const cs = [
+    { name: "ป้าศรี", tax_id: "" },
+    { name: "บจก. เอ", tax_id: "0105558123456" },
+    { name: "ร้านสองสาขา", tax_id: null },
+    { name: "ร้านสองสาขา", tax_id: "0105558123456" },
+  ];
+  it("รายจ่าย + คู่ค้าในทะเบียนไม่มีเลข → บล็อก", () => {
+    expect(sellerHasNoTaxId("รายจ่าย", "ป้าศรี", cs)).toBe(true);
+    expect(sellerHasNoTaxId("รายจ่าย", " ป้าศรี ", cs)).toBe(true);
+  });
+  it("มีเลข / มีสักสาขาที่มีเลข → ไม่บล็อก", () => {
+    expect(sellerHasNoTaxId("รายจ่าย", "บจก. เอ", cs)).toBe(false);
+    expect(sellerHasNoTaxId("รายจ่าย", "ร้านสองสาขา", cs)).toBe(false);
+  });
+  it("🪤 ชื่อที่ไม่อยู่ในทะเบียน / ยังไม่เลือก = ไม่รู้ → ไม่บล็อก", () => {
+    expect(sellerHasNoTaxId("รายจ่าย", "ร้านใหม่", cs)).toBe(false);
+    expect(sellerHasNoTaxId("รายจ่าย", "", cs)).toBe(false);
+  });
+  it("🚨 รายรับ ห้ามบล็อก — ขายให้คนไม่มีเลขภาษีก็ยังต้องเก็บ VAT", () => {
+    expect(sellerHasNoTaxId("รายรับ", "ป้าศรี", cs)).toBe(false);
+    expect(sellerHasNoTaxId("สำรองจ่าย", "ป้าศรี", cs)).toBe(false);
+  });
+});
+
