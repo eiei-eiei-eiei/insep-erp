@@ -98,6 +98,21 @@ describe("ด่านเข้า + เครื่องมือตามส�
   });
 });
 
+describe("D174 — หมวดสินค้าของ Claude มาจากประวัติเต็ม", () => {
+  it("lookup_options คืนหมวด/งานจากรายการในบิล (query แบ่งหน้าบน DB จริง)", async () => {
+    const ins = await admin().from("transaction_items").insert({
+      tenant_id: T.tenantId, item_id: `${T.txId}-01`, tx_id: T.txId, item_name: "ของทดสอบ", item_category: "หมวดทดสอบ", item_job: "งานทดสอบ",
+    });
+    expect(ins.error, ins.error?.message).toBeNull();
+    const { client } = await connect("general_staff");
+    const r = await call(client, "lookup_options", { entity_id: T.entityId, type: "รายจ่าย" });
+    expect(r.isError, textOf(r)).toBeFalsy();
+    const j = JSON.parse(textOf(r));
+    expect(j.item_categories).toContain("หมวดทดสอบ");
+    expect(j.jobs).toContain("งานทดสอบ");
+  });
+});
+
 describe("อ่านข้อมูลขาย", () => {
   it("sales_menu เห็นเมนูพร้อมสต็อก", async () => {
     const { client } = await connect("general_staff");

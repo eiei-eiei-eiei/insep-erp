@@ -6,6 +6,7 @@
  * ★ ประโยคบนการ์ดตัดสินที่นี่ (มีเทสคุม) ไม่ใช่ในตัวการ์ด (D84/D91)
  */
 import type { BillDraft, Computed, Mismatch } from "./bill";
+import type { NewName } from "./jobs";
 
 /** คู่ค้าของบิล: มีในทะเบียน · ใหม่ (จะเพิ่มตอนบันทึก) · ไม่ผูก */
 export type CardContact =
@@ -44,6 +45,8 @@ export type CardData = {
   errors: string[];
   warnings: string[];
   possible_duplicates: { tx_id: string; transaction_date: string; net_amount: number; tax_invoice_no: string | null }[];
+  /** D174 — หมวดสินค้า/งานในบิลที่ยังไม่เคยใช้ (jobs.newNames) · การ์ดโชว์ป้าย ใหม่ + ปุ่มใช้ชื่อเดิม */
+  new_names: NewName[];
 };
 
 export const CATEGORY_CHIPS = 3;

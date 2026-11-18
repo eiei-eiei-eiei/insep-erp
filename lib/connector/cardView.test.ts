@@ -29,7 +29,7 @@ function card(d: BillDraft & { confirm_not_duplicate?: boolean }, dup = false): 
   const mmText = r.mismatch && !r.usedBillAmounts ? r.errors.find((e) => e.startsWith("ยอดที่คิดได้")) : undefined;
   const ent = ctx.entities.find((e) => e.entity_id === d.entity_id);
   return {
-    v: 1, tenant_slug: "t", tenant_name: "T", draft: d, entities: ctx.entities, category_chips: [], categories_all: [], accounts: ctx.accounts, jobs: [], jobs_required: false, item_categories: [], contact: { kind: "none" },
+    v: 1, tenant_slug: "t", tenant_name: "T", draft: d, entities: ctx.entities, category_chips: [], categories_all: [], accounts: ctx.accounts, jobs: [], jobs_required: false, item_categories: [], contact: { kind: "none" }, new_names: [],
     vat_effective: Boolean(d.has_vat && ent?.is_vat),
     computed: r.computed, mismatch: r.mismatch, used_bill_amounts: r.usedBillAmounts,
     errors: r.errors.filter((e) => e !== mmText), warnings: r.warnings,
@@ -156,7 +156,7 @@ describe("C6 — รอบ 8: การ์ด VAT แยกไม่ตรง + 
 
   const base = (over: Partial<CardData>): CardData => ({
     v: 1, tenant_slug: "t", tenant_name: "T", entities: [], category_chips: [], categories_all: [], accounts: [], jobs: [],
-    jobs_required: false, item_categories: [], contact: { kind: "none" }, vat_effective: true,
+    jobs_required: false, item_categories: [], contact: { kind: "none" }, vat_effective: true, new_names: [],
     computed: { base_amount: 1121.5, amount_after_discount: 1121.5, vat_amount: 78.5, wht_rate: 0, wht_amount: 0, net_amount: 1200, gross_total: 1200 },
     mismatch: null, used_bill_amounts: false, errors: [], warnings: [], possible_duplicates: [],
     draft: { entity_id: "EID01", type: "รายจ่าย", transaction_date: "2026-10-27", category: "x", price_mode: "in", has_vat: true, items: [], total_on_bill: 1200 },

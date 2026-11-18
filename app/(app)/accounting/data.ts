@@ -17,6 +17,7 @@ import {
 } from "@/lib/accounting/ledger";
 import { ADVANCE_TYPE, ADVANCE_REFUND_TYPE, type AdvanceRow } from "@/lib/accounting/advance";
 import { TX_COLS, fetchAllTransactions, loadContactMap, statementFor, taxReportBundleFor, missingInvoicesFor } from "@/lib/accounting/reportLoaders";
+import { itemHistoryFor } from "@/lib/accounting/itemHistory";
 import { mustRead } from "@/lib/shared/dbError";
 import { getTenantPlan } from "@/lib/shared/tenant-plan";
 import { hasModule } from "@/lib/shared/workspaces";
@@ -388,30 +389,9 @@ export type RecentBill = {
   txId: string; date: string; type: string; category: string; description: string; netAmount: number; items: RecentBillItem[];
 };
 
-/** รายการค่าไม่ซ้ำจากประวัติ (ชื่อสินค้า/หมวดหมู่/งาน) → เติมดรอปดาวน์หน้าบันทึก */
+/** รายการค่าไม่ซ้ำจากประวัติ (ชื่อสินค้า/หมวดหมู่/งาน) → เติมดรอปดาวน์หน้าบันทึก — ตัวจริงอยู่ lib/accounting/itemHistory (D174) */
 export async function getItemHistory(entityId?: string) {
-  const supabase = await db();
-  let q = supabase
-    .from("transaction_items")
-    .select("item_name, item_category, item_job, transactions!inner(entity_id, status)")
-    .limit(5000);
-  if (entityId && entityId !== "ALL") q = q.eq("transactions.entity_id", entityId);
-  const data = mustRead(await q, "ประวัติชื่อรายการ");
-  const names = new Set<string>();
-  const cats = new Set<string>();
-  const jobs = new Set<string>();
-  for (const r of (data ?? []) as unknown as { item_name: string | null; item_category: string | null; item_job: string | null; transactions: { status: string } | null }[]) {
-    if (r.transactions && r.transactions.status !== "ปกติ") continue;
-    if (r.item_name?.trim()) names.add(r.item_name.trim());
-    if (r.item_category?.trim()) cats.add(r.item_category.trim());
-    if (r.item_job?.trim()) jobs.add(r.item_job.trim());
-  }
-  const sortTh = (a: string, b: string) => a.localeCompare(b, "th");
-  return {
-    itemNames: [...names].sort(sortTh),
-    itemCategories: [...cats].sort(sortTh),
-    itemJobs: [...jobs].sort(sortTh),
-  };
+  return itemHistoryFor(await db(), entityId);
 }
 
 /** รายละเอียดบิล + items */

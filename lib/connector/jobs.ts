@@ -61,3 +61,48 @@ export function jobSummary(items: { job?: string; job_none?: boolean }[]): JobSu
   if (set.size === 1) return val[0] === "\u0000none" ? { kind: "no_job" } : { kind: "single", job: val[0] };
   return { kind: "multi", count: [...set].filter((v) => v !== "\u0000none").length };
 }
+
+/**
+ * ชื่อหมวดสินค้า/งานในบิลที่ "ยังไม่เคยใช้" (D174) — ใช้ทั้ง server (บอก Claude) และการ์ด (ป้าย ใหม่ + ปุ่มใช้ชื่อเดิม)
+ *
+ * ★ ชื่อใหม่ไม่ใช่ความผิด (หมวดใหม่ตั้งได้ · ทุกอย่างเป็นข้อความอิสระ) — **เตือนให้เห็น ไม่บล็อก**
+ *   ที่กันคือหมวดซ้ำซ้อนเงียบ ๆ ("วัสดุสิ้นเปลือง" กับ "วัสดุ สิ้นเปลือง") ที่ทำให้สรุปตามหมวดแตกเป็นหลายก้อน
+ * ★ รวมแถวที่ใช้ชื่อใหม่เดียวกันเป็นข้อเดียว (ปุ่ม "ใช้ชื่อเดิม" เปลี่ยนให้ทุกแถวนั้นทีเดียว)
+ * ★ ไม่ระบุงาน (`job_none`) / ค่าว่าง = ไม่ใช่ชื่อใหม่
+ */
+export type NewName = {
+  field: "category" | "job";
+  name: string;
+  /** แถวที่ใช้ชื่อนี้ (เริ่ม 0) */
+  rows: number[];
+  /** ชื่อเดิมที่ใกล้กัน · null = ไม่มีที่ใกล้ (เป็นหมวด/งานใหม่จริง) */
+  similar: string | null;
+};
+
+export function newNames(
+  items: { category?: string; job?: string; job_none?: boolean }[],
+  known: { categories: string[]; jobs: string[] },
+): NewName[] {
+  const out: NewName[] = [];
+  const add = (field: NewName["field"], raw: string | undefined, i: number, list: string[]) => {
+    const name = String(raw ?? "").trim();
+    if (!name || list.some((x) => x.trim() === name)) return;
+    const hit = out.find((n) => n.field === field && n.name === name);
+    if (hit) hit.rows.push(i);
+    else out.push({ field, name, rows: [i], similar: similarJob(name, list) });
+  };
+  items.forEach((it, i) => {
+    add("category", it.category, i, known.categories);
+    if (!it.job_none) add("job", it.job, i, known.jobs);
+  });
+  return out;
+}
+
+/** ข้อความของชื่อใหม่ 1 ข้อ — การ์ดกับคำตอบของ preview_bill ใช้ประโยคเดียวกัน */
+export function newNameText(n: NewName): string {
+  const what = n.field === "category" ? "หมวดสินค้า" : "งาน";
+  const rows = `รายการที่ ${n.rows.map((r) => r + 1).join(", ")}`;
+  return n.similar
+    ? `${rows}: ${what} "${n.name}" ยังไม่เคยใช้ — มี "${n.similar}" อยู่แล้ว ใช่อันนี้ไหม`
+    : `${rows}: ${what}ใหม่ "${n.name}" (ยังไม่เคยใช้ — บันทึกแล้วจะเป็นตัวเลือกของบิลถัดไป)`;
+}

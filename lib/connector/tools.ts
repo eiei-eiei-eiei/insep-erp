@@ -13,7 +13,8 @@ import { monthArg, dateArg, matchesAmount, STATEMENT_ROW_CAP, SEARCH_ROW_CAP, mo
 import { checkBill, mismatchText, previewSummary, taxIdValid, normalizeTaxId, CONNECTOR_TYPES, type BillDraft, type BillContext, type CheckResult, type ConnectorType } from "./bill";
 import { categoryChips, type CardContact, type CardData, type ContactCardData } from "./cardView";
 import { newContactRow, findExistingContact, ilikeExact, type ContactRow, type ExistingContact } from "./contact";
-import { rankJobs } from "./jobs";
+import { rankJobs, newNames, newNameText } from "./jobs";
+import { itemHistoryFor } from "@/lib/accounting/itemHistory";
 import { BILL_CARD_HTML } from "./card/billCard.generated";
 import type { ConnectorMe } from "./session";
 import { accessSummary, type ConnectorAccess } from "./access";
@@ -43,10 +44,17 @@ Workflow for every bill image the user sends:
    Several bills from the same unregistered seller: send the SAME new_contact (same name/tax ID) on every preview_bill
    and show all cards at once. The first card saved adds the seller; every later card is re-checked at save time and
    links to that contact automatically. Do NOT split the bills into rounds or ask the user to save one first.
-4. Call lookup_options for exact category names, money accounts and jobs (jobs_required tells whether every line needs a job).
+4. Call lookup_options for exact category names, money accounts, jobs and item categories (jobs_required tells whether every
+   line needs a job).
+   Item category of EVERY line (items[].category): pick from lookup_options.item_categories, following how this seller's items
+   were categorised in recent_bills_of_contact. Use the exact existing spelling. Only if nothing fits, use a short new name
+   and tell the user it is a new category. Never invent a near-duplicate of an existing name.
 5. BEFORE preview_bill, ask the user in ONE message only what you are unsure of: which business (if several), paid from which
-   account or unpaid, category, and the job of each line when jobs_required (one bill can have different jobs per line;
-   a new job name is fine; "no job" means job_none = true and is stored empty). Skip questions whose answer is obvious.
+   account or unpaid, category, the job of each line when jobs_required (one bill can have different jobs per line;
+   a new job name is fine; "no job" means job_none = true and is stored empty), and the item category of a line when two
+   existing categories fit equally or you plan a new one. Skip questions whose answer is obvious.
+   preview_bill returns new_names (item categories/jobs never used before): tell the user; one that is close to an existing
+   name is probably a slip — suggest the existing name (the card has a button for it).
 6. Call preview_bill with the answers. total_on_bill = the grand total printed on the bill (incl. VAT, before withholding tax),
    read independently from the lines. price_mode "in" when unit prices include VAT, "ex" when VAT is added below.
    If the bill prints a subtotal before VAT and a VAT amount, ALWAYS send bill_before_vat and bill_vat: the card compares
@@ -128,7 +136,16 @@ async function loadJobs({ db }: Ctx, entityId: string, contact: { id?: string; n
     .limit(JOB_HISTORY_BILLS);
   if (tx.error) return "อ่านประวัติงานไม่สำเร็จ: " + mapDbError(tx.error);
   const bills = tx.data ?? [];
-  if (!bills.length) return { jobs: [], required: false, itemCats: [] };
+  // D174 — ลิสต์เต็มจากแหล่งเดียวกับดร็อปดาวน์หน้าบันทึกบิลในแอป (ไม่ใช่แค่ 200 บิลล่าสุด)
+  //   ไม่งั้นหมวด/งานที่ไม่ได้ใช้นาน ๆ หายจากลิสต์ แล้ว Claude ตั้งชื่อใหม่ซ้ำซ้อนกับของเดิม
+  let hist: Awaited<ReturnType<typeof itemHistoryFor>>;
+  try {
+    hist = await itemHistoryFor(db, entityId);
+  } catch (e) {
+    return "อ่านประวัติหมวด/งานไม่สำเร็จ: " + (e as Error).message;
+  }
+  const withAll = (ranked: string[], all: string[]) => [...ranked, ...all.filter((x) => !ranked.includes(x))];
+  if (!bills.length) return { jobs: hist.itemJobs, required: false, itemCats: hist.itemCategories };
   const its = await db.from("transaction_items").select("tx_id, item_job, item_category").in("tx_id", bills.map((b) => b.tx_id));
   if (its.error) return "อ่านประวัติงานไม่สำเร็จ: " + mapDbError(its.error);
   const isContact = (b: { contact_id: string | null; contact_name: string | null }) =>
@@ -139,7 +156,9 @@ async function loadJobs({ db }: Ctx, entityId: string, contact: { id?: string; n
     return rankJobs(bills.filter(isContact).flatMap((b) => byTx.get(b.tx_id) ?? []), bills.flatMap((b) => byTx.get(b.tx_id) ?? []));
   };
   const jobs = rank("item_job");
-  return { jobs, required: jobs.length > 0, itemCats: rank("item_category") };
+  // ★ บังคับเลือกงาน ยังตัดสินจาก 200 บิลล่าสุดเหมือนเดิม (กิจการที่เลิกใช้งานไปนานแล้วไม่ถูกบังคับ)
+  //   ลำดับ: ของคู่ค้าเจ้านี้ → ใช้บ่อยช่วงหลัง → ที่เหลือในประวัติทั้งหมด
+  return { jobs: withAll(jobs, hist.itemJobs), required: jobs.length > 0, itemCats: withAll(rank("item_category"), hist.itemCategories) };
 }
 
 /** บิลที่น่าจะซ้ำ (บันทึกไปแล้ว) — เลขใบกำกับเดียวกัน หรือ วันที่ + ยอดสุทธิ + คู่ค้าเดียวกัน */
@@ -306,6 +325,8 @@ async function previewCard(ctx: Ctx, input: BillDraft): Promise<{ card: CardData
     jobs,
     jobs_required: Boolean(c.jobsRequired),
     item_categories: itemCats,
+    // D174 — หมวด/งานที่ยังไม่เคยใช้ (ป้าย ใหม่ + ปุ่มใช้ชื่อเดิมในการ์ด)
+    new_names: newNames(d.items, { categories: itemCats, jobs }),
     contact: resolved.contact,
     vat_effective: Boolean(d.has_vat && ent?.is_vat),
     computed: check.computed,
@@ -473,6 +494,8 @@ function registerAccountingTools(server: McpServer, ctx: Ctx): void {
           warnings: card.warnings,
           contact: card.contact,
           possible_duplicates: card.possible_duplicates,
+          // D174 — ชื่อหมวด/งานที่ยังไม่เคยใช้: บอกผู้ใช้ในแชทว่าเป็นชื่อใหม่ (ใกล้ของเดิม = ถามว่าใช่ตัวเดิมไหม)
+          new_names: card.new_names.map(newNameText),
           summary: check.computed && ent ? previewSummary(d, ent.name, me.tenantName, check.computed) : null,
           computed: check.computed,
           card: "แสดงการ์ดให้ผู้ใช้แล้ว — ผู้ใช้ตรวจ/แก้/กดบันทึกในการ์ดเอง (Claude บันทึกเองไม่ได้)",

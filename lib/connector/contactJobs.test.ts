@@ -3,7 +3,8 @@
  */
 import { describe, it, expect } from "vitest";
 import { newContactRow, findExistingContact, CONTACT_TYPE_OF, nameKey, ilikeExact } from "./contact";
-import { rankJobs, similarJob, jobSummary } from "./jobs";
+import { rankJobs, similarJob, jobSummary, newNames, newNameText } from "./jobs";
+import { readFileSync } from "node:fs";
 import { checkBill, type BillDraft, type BillContext } from "./bill";
 
 describe("C7 — คู่ค้าใหม่", () => {
@@ -129,5 +130,57 @@ describe("C8 — รอบ 7: หลายบิลของร้านเด�
     expect(ilikeExact("50%_off")).toBe(String.raw`50\%\_off`);
     expect(ilikeExact(String.raw`a\b`)).toBe(String.raw`a\\b`);
     expect(ilikeExact(" ร้านป้าแดง ")).toBe("ร้านป้าแดง");
+  });
+});
+
+describe("C10 — D174: หมวดสินค้า/งานที่ยังไม่เคยใช้", () => {
+  const known = { categories: ["วัสดุสิ้นเปลือง", "ค่าขนส่ง"], jobs: ["บาร์ค็อกเทล"] };
+
+  it("ชื่อเดิมเป๊ะ (ตัดช่องว่างหัวท้าย) = ไม่ใช่ชื่อใหม่ · ค่าว่าง/ไม่ระบุงาน = ไม่ใช่", () => {
+    expect(newNames([{ category: " วัสดุสิ้นเปลือง ", job: "บาร์ค็อกเทล" }, { category: "", job: "x", job_none: true }], known)).toEqual([]);
+  });
+
+  it("ชื่อใหม่จริง → similar = null · ใกล้ของเดิม → บอกชื่อเดิม", () => {
+    expect(newNames([{ category: "อุปกรณ์ไฟฟ้า" }], known)).toEqual([{ field: "category", name: "อุปกรณ์ไฟฟ้า", rows: [0], similar: null }]);
+    expect(newNames([{ category: "วัสดุ สิ้นเปลือง" }], known)[0].similar).toBe("วัสดุสิ้นเปลือง");
+    expect(newNames([{ job: "บาร์" }], known)[0]).toMatchObject({ field: "job", similar: "บาร์ค็อกเทล" });
+  });
+
+  it("หลายแถวใช้ชื่อใหม่เดียวกัน = ข้อเดียว (ปุ่มเปลี่ยนให้ทุกแถวทีเดียว)", () => {
+    expect(newNames([{ category: "ใหม่ก" }, { category: "วัสดุสิ้นเปลือง" }, { category: "ใหม่ก" }], known)).toEqual([
+      { field: "category", name: "ใหม่ก", rows: [0, 2], similar: null },
+    ]);
+  });
+
+  it("ข้อความบอกแถว · ใหม่จริง vs ใกล้ของเดิม", () => {
+    expect(newNameText({ field: "category", name: "วัสดุ สิ้นเปลือง", rows: [0, 2], similar: "วัสดุสิ้นเปลือง" }))
+      .toBe('รายการที่ 1, 3: หมวดสินค้า "วัสดุ สิ้นเปลือง" ยังไม่เคยใช้ — มี "วัสดุสิ้นเปลือง" อยู่แล้ว ใช่อันนี้ไหม');
+    expect(newNameText({ field: "job", name: "บ่อปลา", rows: [1], similar: null })).toMatch(/^รายการที่ 2: งานใหม่ "บ่อปลา"/);
+  });
+});
+
+describe("C10 — D174: อ่านซอร์ส", () => {
+  const read = (rel: string) => readFileSync(rel, "utf8").replace(/\r\n/g, "\n");
+  it("🚨 ลิสต์หมวด/งานของ Claude มาจากแหล่งเดียวกับดร็อปดาวน์หน้าบันทึกบิล", () => {
+    expect(read("lib/connector/tools.ts")).toMatch(/itemHistoryFor\(db, entityId\)/);
+    const data = read("app/(app)/accounting/data.ts");
+    expect(data).toMatch(/return itemHistoryFor\(await db\(\), entityId\)/);
+    expect(data).not.toMatch(/limit\(5000\)/);
+  });
+  it("🔴 ประวัติอ่านครบด้วย fetchAllRows (PostgREST ตัดที่ 1,000 แถวเงียบ ๆ)", () => {
+    // 🪤 ตัดคอมเมนต์ก่อน — คอมเมนต์อธิบายบั๊กเดิมมีคำว่า .limit(5000) (กับดัก D92/D95)
+    const s = read("lib/accounting/itemHistory.ts").replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, "");
+    expect(s).toMatch(/fetchAllRows</);
+    expect(s).toMatch(/\.range\(from, to\)/);
+    expect(s).not.toMatch(/\.limit\(/);
+  });
+  it("preview_bill ส่ง new_names ให้ Claude · การ์ดมีป้ายใหม่ + ปุ่มใช้ชื่อเดิม · คำแนะนำสั่งให้ลงหมวดทุกแถว", () => {
+    const t = read("lib/connector/tools.ts");
+    expect(t).toMatch(/new_names: newNames\(d\.items, \{ categories: itemCats, jobs \}\)/);
+    expect(t).toMatch(/new_names: card\.new_names\.map\(newNameText\)/);
+    expect(t).toMatch(/Item category of EVERY line/);
+    const c = read("lib/connector/card/billCard.ts");
+    expect(c).toMatch(/\+ newNamesHtml\(d\)/);
+    expect(c).toMatch(/case "use-old": return applyOld\(/);
   });
 });

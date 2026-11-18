@@ -16,7 +16,7 @@ import {
 } from "../cardView";
 import type { NewContactInput } from "../contact";
 import type { DraftItem } from "../bill";
-import { jobSummary, similarJob, JOB_CHIPS } from "../jobs";
+import { jobSummary, similarJob, newNameText, JOB_CHIPS } from "../jobs";
 import { isPosCard, posPrimary, type PosCardData } from "../pos";
 
 const app = new App({ name: "Insep ERP bill card", version: "1.0.0" }, { availableDisplayModes: ["inline", "fullscreen"] });
@@ -269,9 +269,18 @@ function jobSelect(d: CardData, it: DraftItem, i: number): string {
   return `<select class="job" data-row-job="${i}" aria-label="งานของรายการ ${i + 1}">${opts}</select>`;
 }
 
-/** "หมวด X · งาน Y" ใต้ชื่อรายการ (ไม่มีทั้งคู่ = ไม่แสดง) */
-function tagLine(it: DraftItem): string {
-  const parts = [it.category ? `หมวด ${esc(it.category)}` : "", it.job && !it.job_none ? `งาน ${esc(it.job)}` : ""].filter(Boolean);
+/** D174 — แถวนี้ใช้ชื่อหมวด/งานที่ยังไม่เคยใช้ไหม (server ตัดสินด้วย jobs.newNames) */
+function isNewName(d: CardData, field: "category" | "job", i: number): boolean {
+  return (d.new_names ?? []).some((n) => n.field === field && n.rows.includes(i));
+}
+const NEW_BADGE = ` <b class="newb">ใหม่</b>`;
+
+/** "หมวด X · งาน Y" ใต้ชื่อรายการ (ไม่มีทั้งคู่ = ไม่แสดง) · ชื่อที่ยังไม่เคยใช้ติดป้าย ใหม่ (D174) */
+function tagLine(d: CardData, it: DraftItem, i: number): string {
+  const parts = [
+    it.category ? `หมวด ${esc(it.category)}${isNewName(d, "category", i) ? NEW_BADGE : ""}` : "",
+    it.job && !it.job_none ? `งาน ${esc(it.job)}${isNewName(d, "job", i) ? NEW_BADGE : ""}` : "",
+  ].filter(Boolean);
   return parts.length ? `<br><span class="mu">${parts.join(" · ")}</span>` : "";
 }
 
@@ -279,7 +288,7 @@ function itemsInlineHtml(d: CardData): string {
   const sus = suspectSet(d);
   const items = d.draft.items;
   const rows = items.slice(0, INLINE_ITEMS).map((it, i) =>
-    `<div class="li${sus.has(i) ? " sus" : ""}"><span>${esc(it.name)}${tagLine(it)}</span><span class="num">${it.quantity} × ${baht(it.unit_price)}</span></div>`).join("");
+    `<div class="li${sus.has(i) ? " sus" : ""}"><span>${esc(it.name)}${tagLine(d, it, i)}</span><span class="num">${it.quantity} × ${baht(it.unit_price)}</span></div>`).join("");
   const more = items.length > INLINE_ITEMS ? `<div class="mu">+ อีก ${items.length - INLINE_ITEMS} รายการ</div>` : "";
   const hidden = [...sus].some((i) => i >= INLINE_ITEMS) ? `<div class="bad">แถวที่น่าจะผิดอยู่ในรายการที่ซ่อนไว้</div>` : "";
   return `<div class="row"><div class="lab">รายการ ${items.length} รายการ · ราคา${d.draft.price_mode === "in" ? "รวม" : "ไม่รวม"} VAT</div>${rows}${more}${hidden}
@@ -341,7 +350,27 @@ function amountEditHtml(d: CardData): string {
 }
 
 function warningsHtml(d: CardData): string {
-  return d.warnings.map((w) => `<div class="warn">${esc(w)}</div>`).join("");
+  return d.warnings.map((w) => `<div class="warn">${esc(w)}</div>`).join("") + newNamesHtml(d);
+}
+
+/**
+ * D174 — หมวด/งานที่ยังไม่เคยใช้ · ใกล้ของเดิม = ปุ่มเปลี่ยนเป็นชื่อเดิมทุกแถวที่ใช้ชื่อนั้นทีเดียว
+ * ★ เตือนอย่างเดียว — ชื่อใหม่จริงบันทึกได้ (เป็นตัวเลือกของบิลถัดไปเอง)
+ */
+function newNamesHtml(d: CardData): string {
+  if (saved) return "";
+  return (d.new_names ?? []).map((n) => `<div class="${n.similar ? "warn" : "mu"}">${esc(newNameText(n))}${
+    n.similar ? ` <button class="link" data-act="use-old" data-field="${n.field}" data-rows="${n.rows.join(",")}" data-val="${esc(n.similar)}">ใช้ "${esc(n.similar)}"</button>` : ""}</div>`).join("");
+}
+
+/** เปลี่ยนชื่อหมวด/งานของหลายแถวทีเดียว (ปุ่ม ใช้ชื่อเดิม) — คิดใหม่ครั้งเดียว */
+function applyOld(field: string, rows: number[], val: string) {
+  if (!data) return;
+  const items = data.draft.items.map((it, i) =>
+    !rows.includes(i) ? it : field === "category" ? { ...it, category: val } : { ...it, job: val, job_none: false });
+  data = { ...data, draft: { ...data.draft, items } };
+  render();
+  void recalc({ items });
 }
 
 function actionsHtml(d: CardData): string {
@@ -421,6 +450,7 @@ root.addEventListener("click", (e) => {
       render();
       return applyNew(v, row);
     }
+    case "use-old": return applyOld(b.dataset.field ?? "", (b.dataset.rows ?? "").split(",").map(Number), val);
     case "chat": return ask("ขอแก้บิลนี้: ");
     case "edit": return void setFull(true);
     case "done-edit": return void setFull(false);
