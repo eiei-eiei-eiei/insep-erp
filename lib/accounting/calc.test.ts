@@ -471,6 +471,23 @@ describe("A23 — บิลค้างที่ออกใบกำกับ�
     expect(nov.whtPending[0].transactionDateISO).toBe("2026-11-05");
   });
 
+  it("🚩 D175 — ใบกำกับปลายเดือนก่อน จ่ายเดือนนี้: 50ทวิ ค้างออกอยู่เดือนที่จ่าย ไม่ใช่เดือนใบกำกับ", () => {
+    const p: Tx = {
+      ...apOpen, tx_id: "WHT-LATE", ap_ar_status: null, settled_on: null,
+      transaction_date: "2026-11-03", tax_invoice_no: "IV-31", tax_invoice_date: "2026-10-31",
+    };
+    const oct = dashboardData("2026-10", EID, [p], new Set());
+    expect(oct.whtPending).toHaveLength(0);
+    expect(oct.dash.expense).toBe(2000); // ยอดแดชบอร์ดยังตามใบกำกับ (คงเดิม)
+    const nov = dashboardData("2026-11", EID, [p], new Set());
+    expect(nov.whtPending.map((x) => x.transactionId)).toEqual(["WHT-LATE"]);
+    expect(nov.whtPending[0].pendDateISO).toBe("2026-11-03");
+    expect(nov.whtPending[0].transactionDateISO).toBe("2026-11-03");
+    // ภงด.3/53 เดือนเดียวกันกับคิว 50ทวิ
+    expect(whtReport("2026-11", EID, [p], {}).pnd53).toHaveLength(1);
+    expect(whtReport("2026-10", EID, [p], {}).pnd53).toHaveLength(0);
+  });
+
 });
 
 // ── A24 (D124) — ภาษีตัดสินจากกิจการ + เอกสาร ไม่ใช่บัญชีที่เงินเข้า/ออก ─────────────────

@@ -711,6 +711,7 @@ export type DashboardData = {
  * A11 — Dashboard สรุปรายเดือน + WHT ค้างออก 50ทวิ
  * ⚠️ filter เดือนด้วย tax_invoice_date ก่อน (fallback transaction_date) — ต่างจาก ภพ.30 (จงใจ)
  * pending WHT = รายจ่ายมี wht ที่ tx_id ยังไม่อยู่ใน issuedTxIds (จาก wht_certificates.tx_ids)
+ *   ★ D175: pending แยกเดือนด้วยวันที่จ่ายจริง (cashDateOf) ไม่ใช่วันที่ใบกำกับ — ต่างจากระบบเดิม (ผู้ใช้สั่ง)
  */
 export function dashboardData(
   period: string,
@@ -730,8 +731,10 @@ export function dashboardData(
     if (!passesTaxGuard(tx, entityId)) continue;
     const filterDate = tx.tax_invoice_date || tx.transaction_date;
     if (!filterDate) continue;
-    // D123 — 50ทวิ ค้างออกของบิลค้างที่เคลียแล้ว อยู่เดือนที่จ่ายจริง · ยอดแดชบอร์ดคงเดิม (filterDate)
-    const pendDate = tx.settled_on || filterDate;
+    // D175 — 50ทวิ ค้างออก = เดือนที่จ่ายเงินจริง (cashDateOf: settled_on → transaction_date)
+    //   ไม่ใช่เดือนของใบกำกับ: ใบกำกับลงปลายเดือนก่อน แต่จ่าย+หักเดือนนี้ → ต้องออก 50ทวิ เดือนนี้
+    //   ตรงกับ ภงด.3/53 (whtReport) ที่ใช้ cashDateOf อยู่แล้ว · ยอดแดชบอร์ดคงเดิม (filterDate)
+    const pendDate = cashDateOf(tx) || filterDate;
     const inDash = monthOf(filterDate) === period;
     const inPend = monthOf(pendDate) === period;
     if (!inDash && !inPend) continue;
