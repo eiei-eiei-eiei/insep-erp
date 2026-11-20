@@ -22,6 +22,8 @@ import {
   DEFAULT_TAX_PAYEE,
   TAX_KIND_FULL,
   taxTxDescription,
+  taxPayBillDescription,
+  paidAmountText,
   type TaxDueRow,
   type TaxKind,
 } from "@/lib/accounting/taxPay";
@@ -294,11 +296,15 @@ function TaxRow({
         )}
         {done && p && (
           <span className="text-muted">
-            จ่าย {d.date(p.pay_date)} · บิล {p.tx_id}
+            จ่าย {d.date(p.pay_date)} · {paidAmountText(p)} · บิล {p.tx_id}
             {p.surcharge > 0 ? ` · เบี้ยปรับ ${fmt(p.surcharge)}` : ""}
           </span>
         )}
       </div>
+      {/* D176 — หมายเหตุที่พิมพ์ตอนจ่าย เดิมเก็บแล้วไม่มีที่ไหนโชว์ */}
+      {p?.note && (
+        <p className="mt-1 text-xs text-muted">หมายเหตุ: {p.note}</p>
+      )}
 
       {row.billVoided && (
         <p className="mt-1 text-xs text-crit">
@@ -470,6 +476,11 @@ function PayModal({
           </Field>
         </div>
 
+        {/* D176 — บอกตรง ๆ ว่าบิลจะขึ้นคำอธิบายว่าอะไร (หมายเหตุไปอยู่ตรงนี้ด้วย ค้นบิลแล้วเจอ) */}
+        <p className="mt-3 text-xs text-faint">
+          คำอธิบายบนบิล: {taxPayBillDescription(row.kind as TaxKind, row.period, { note, amount: amt, computed: row.amount })}
+        </p>
+
         {/* datalist: id ต้องไม่ซ้ำกับแท็บอื่นที่ mount ค้างอยู่ (บทเรียน D77) */}
         <datalist id="taxpay-cat">
           {[...new Set([DEFAULT_TAX_CAT[row.kind], DEFAULT_SURCHARGE_CAT, ...expenseCats])].map((c) => (
@@ -490,7 +501,8 @@ function PayModal({
         )}
         {Math.abs(amt - row.amount) >= 0.005 && amt > 0 && (
           <p className="mt-3 rounded-lg bg-warn-bg px-3 py-2 text-xs text-warn">
-            ยอดที่กรอกต่างจากยอดที่ระบบคำนวณไว้ ({fmt(row.amount)} บาท) — บันทึกได้ แต่ระบบจะเก็บยอดที่คำนวณไว้ด้วยเพื่อให้ย้อนตรวจได้
+            ยอดที่กรอกต่างจากยอดที่ระบบคำนวณไว้ ({fmt(row.amount)} บาท) — บันทึกได้ ·
+            ยอดที่คำนวณจะต่อท้ายคำอธิบายบิล และการ์ดนี้จะแสดงทั้งยอดที่จ่ายจริงกับยอดที่คำนวณ ให้ย้อนตรวจได้
           </p>
         )}
 

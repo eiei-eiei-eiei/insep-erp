@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { previousVat, type InstallmentRow, type TaxReport, type TaxSummaryRow } from "@/lib/accounting/calc";
 import { mapDbError, mustRead } from "@/lib/shared/dbError";
-import { canPay, taxTxDescription, surchargeTxDescription, type TaxKind } from "@/lib/accounting/taxPay";
+import { canPay, taxPayBillDescription, surchargeTxDescription, type TaxKind } from "@/lib/accounting/taxPay";
 import {
   getDashboard,
   getApAr,
@@ -613,7 +613,12 @@ export async function payTaxAction(input: PayTaxInput): Promise<SaveResult> {
       contactId: input.contactId ?? "",
       note: input.note ?? "",
       computedAmount: String(row.amount),
-      description: taxTxDescription(input.kind, input.period),
+      // D176 — หมายเหตุ + ยอดที่ระบบคำนวณ (ถ้าจ่ายไม่เท่า) ไปอยู่บนบิลด้วย ค้นบิลแล้วเห็น
+      description: taxPayBillDescription(input.kind, input.period, {
+        note: input.note,
+        amount: input.amount,
+        computed: row.amount,
+      }),
       surchargeDescription: surchargeTxDescription(input.kind, input.period),
     },
   });

@@ -125,6 +125,8 @@ export type TaxPaymentRow = {
   account_name: string | null;
   category: string | null;
   contact_name: string | null;
+  /** หมายเหตุที่พิมพ์ตอนบันทึกจ่าย (D176 — โชว์บนการ์ด + อยู่ในคำอธิบายบิล) */
+  note?: string | null;
   status: string;
   /** สถานะจริงของบิลใน `transactions` (null = หาไม่เจอ) — ดูหมายเหตุที่ `billVoided` */
   tx_status?: string | null;
@@ -332,4 +334,47 @@ export function canUnpay(r: TaxDueRow): boolean {
 
 export function canPay(r: TaxDueRow): boolean {
   return r.blocked === null && r.payment === null;
+}
+
+// ── D176 — หมายเหตุ + ยอดที่ระบบคำนวณ ต้องเห็นได้ ─────────────────────────────
+// เดิมทั้ง 2 อย่างไปอยู่แค่ใน `tax_payments` ซึ่งไม่มีหน้าจอไหนอ่าน ⇒ พิมพ์หมายเหตุแล้วหาไม่เจอ
+// และข้อความเตือน "เก็บยอดที่คำนวณไว้ให้ย้อนตรวจได้" ไม่มีที่ให้ตรวจจริง
+
+/**
+ * ส่วนต่าง จ่ายจริง − ยอดที่ระบบคำนวณ (ปัด 2 ตำแหน่ง)
+ * null = ไม่ต่าง หรือไม่รู้ยอดที่คำนวณ (แถวเก่า) — ★ ไม่รู้ ≠ ไม่ต่าง แต่ไม่มีอะไรให้โชว์
+ */
+export function payDiff(amount: number, computed: number | null | undefined): number | null {
+  if (computed === null || computed === undefined || !Number.isFinite(Number(computed))) return null;
+  const diff = Math.round((Number(amount) - Number(computed)) * 100) / 100;
+  return Math.abs(diff) < 0.005 ? null : diff;
+}
+
+/**
+ * คำอธิบายบนบิลรายจ่ายของการจ่ายภาษี — ตัวที่ผู้ใช้เห็นตอนค้นบิล
+ *   "ภพ.30 งวด ต.ค. 2569 · <หมายเหตุ> (ระบบคำนวณ 123.34)"
+ * ★ วงเล็บยอดที่คำนวณขึ้นเฉพาะตอนจ่ายไม่เท่ายอดที่คำนวณ (เช่น สรรพากรปัดเศษสตางค์)
+ *   คนเปิดบิลทีหลังจะรู้ว่าทำไมยอดบิลไม่ตรงกับแบบที่ยื่น
+ */
+export function taxPayBillDescription(
+  kind: TaxKind,
+  period: string,
+  o: { note?: string | null; amount: number; computed: number | null | undefined },
+): string {
+  let s = taxTxDescription(kind, period);
+  const note = String(o.note ?? "").replace(/\s+/g, " ").trim();
+  if (note) s += ` · ${note}`;
+  if (payDiff(o.amount, o.computed) !== null) s += ` (ระบบคำนวณ ${fmtNum(Number(o.computed))})`;
+  return s;
+}
+
+/**
+ * บรรทัดยอดเงินบนการ์ดหลังจ่ายแล้ว — "จ่ายจริง 123.00 · ระบบคำนวณ 123.34 (ต่าง −0.34)"
+ * ★ ยอดเท่ากัน = "จ่ายจริง 123.34" อย่างเดียว (ไม่ต้องให้ผู้ใช้เทียบเลขซ้ำ 2 ตัว)
+ */
+export function paidAmountText(p: { amount: number; computed_amount: number | null | undefined }): string {
+  const diff = payDiff(p.amount, p.computed_amount);
+  if (diff === null) return `จ่ายจริง ${fmtNum(p.amount)}`;
+  const sign = diff > 0 ? "+" : "−";
+  return `จ่ายจริง ${fmtNum(p.amount)} · ระบบคำนวณ ${fmtNum(Number(p.computed_amount))} (ต่าง ${sign}${fmtNum(Math.abs(diff))})`;
 }

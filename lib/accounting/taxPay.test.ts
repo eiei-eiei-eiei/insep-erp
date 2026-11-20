@@ -17,6 +17,9 @@ import {
   taxDueBoard,
   canPay,
   canUnpay,
+  payDiff,
+  taxPayBillDescription,
+  paidAmountText,
   type TaxBoardInput,
   type TaxPaymentRow,
 } from "./taxPay";
@@ -328,5 +331,41 @@ describe("จ่ายแล้ว / ถอน / บิลถูกยกเล�
     );
     expect(find(rows, "pnd3").payment).not.toBeNull();
     expect(find(rows, "pnd53").payment).toBeNull();
+  });
+});
+
+describe("D176 — หมายเหตุ + ยอดที่ระบบคำนวณ ต้องเห็นได้ (บิล + การ์ด)", () => {
+  it("payDiff: ต่าง = ค่าจริง (ปัด 2 ตำแหน่ง) · เท่า/ไม่รู้ = null", () => {
+    expect(payDiff(123, 123.34)).toBe(-0.34);
+    expect(payDiff(123.34, 123.34)).toBeNull();
+    expect(payDiff(123.34, 123.344)).toBeNull();
+    expect(payDiff(123, null)).toBeNull();
+    expect(payDiff(123, undefined)).toBeNull();
+  });
+
+  it("คำอธิบายบิล: ไม่มีหมายเหตุ + ยอดเท่า = คำเดิมทุกตัวอักษร (บิลเก่ากับใหม่หน้าตาเหมือนกัน)", () => {
+    expect(taxPayBillDescription("vat", "2026-10", { note: "", amount: 123.34, computed: 123.34 })).toBe(
+      taxTxDescription("vat", "2026-10"),
+    );
+  });
+
+  it("🚩 คำอธิบายบิล: หมายเหตุไปอยู่บนบิล (ค้นบิลแล้วเจอ)", () => {
+    const s = taxPayBillDescription("vat", "2026-10", { note: "  อ้างอิง  ABC123 ", amount: 123.34, computed: 123.34 });
+    expect(s).toBe(`${taxTxDescription("vat", "2026-10")} · อ้างอิง ABC123`);
+  });
+
+  it("🚩 คำอธิบายบิล: จ่ายไม่เท่ายอดคำนวณ → ต่อท้ายยอดที่ระบบคำนวณ", () => {
+    const s = taxPayBillDescription("vat", "2026-10", { note: "ปัดเศษ", amount: 123, computed: 123.34 });
+    expect(s).toBe(`${taxTxDescription("vat", "2026-10")} · ปัดเศษ (ระบบคำนวณ 123.34)`);
+    expect(taxPayBillDescription("pnd53", "2026-10", { amount: 1000, computed: 1234.5 })).toBe(
+      `${taxTxDescription("pnd53", "2026-10")} (ระบบคำนวณ 1,234.50)`,
+    );
+  });
+
+  it("บรรทัดยอดบนการ์ด: เท่า = ยอดเดียว · ต่าง = ทั้งสองยอด + ส่วนต่างมีเครื่องหมาย", () => {
+    expect(paidAmountText({ amount: 123.34, computed_amount: 123.34 })).toBe("จ่ายจริง 123.34");
+    expect(paidAmountText({ amount: 123, computed_amount: 123.34 })).toBe("จ่ายจริง 123.00 · ระบบคำนวณ 123.34 (ต่าง −0.34)");
+    expect(paidAmountText({ amount: 124, computed_amount: 123.34 })).toBe("จ่ายจริง 124.00 · ระบบคำนวณ 123.34 (ต่าง +0.66)");
+    expect(paidAmountText({ amount: 500, computed_amount: null })).toBe("จ่ายจริง 500.00");
   });
 });
