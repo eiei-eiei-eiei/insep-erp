@@ -106,3 +106,28 @@ export function newNameText(n: NewName): string {
     ? `${rows}: ${what} "${n.name}" ยังไม่เคยใช้ — มี "${n.similar}" อยู่แล้ว ใช่อันนี้ไหม`
     : `${rows}: ${what}ใหม่ "${n.name}" (ยังไม่เคยใช้ — บันทึกแล้วจะเป็นตัวเลือกของบิลถัดไป)`;
 }
+
+/** หมวด/งานที่ lookup_options ส่งให้ Claude ต่อครั้ง (D177) */
+export const LOOKUP_LIST_MAX = 30;
+
+/**
+ * ตัดลิสต์หมวด/งานก่อนส่งเข้าแชท (D177)
+ *
+ * 🔴 D174 ส่งประวัติทั้งหมดทุกครั้งที่เรียก lookup_options (หลายร้อยชื่อ × ทุกบิล) ⇒ บทสนทนาหนัก ช้า โควตาหมดเร็ว
+ * ★ ส่งแค่ที่เกี่ยวที่สุด (ลิสต์มาเรียงแล้ว: ของร้านนี้ → ใช้บ่อย → ที่เหลือ) + จำนวนทั้งหมด
+ *   ค้นตัวอื่นได้ด้วย `search` · ★ ด่านกันชื่อซ้ำซ้อน (newNames) ยังเทียบกับลิสต์เต็มฝั่ง server
+ *   ⇒ Claude ไม่เห็นครบก็ไม่ทำให้เกิดหมวดซ้ำเงียบ ๆ
+ */
+export function trimList(list: string[], search?: string, max = LOOKUP_LIST_MAX): { items: string[]; total: number; more: number } {
+  const q = norm(search ?? "");
+  const hit = q ? list.filter((x) => norm(x).includes(q)) : list;
+  return { items: hit.slice(0, max), total: list.length, more: Math.max(0, hit.length - max) };
+}
+
+/**
+ * บิลประเภทนี้ลงหมวดสินค้ารายแถวไหม (D178 · ผู้ใช้สั่ง) — **รายรับ (รวมค้างรับ) ไม่ลง**
+ * ★ หมวดสินค้ามีไว้แยกของที่ซื้อ · ฝั่งรายรับไม่ใช้ ⇒ Claude ไม่ใส่ · การ์ดไม่โชว์ช่อง/ป้ายใหม่
+ */
+export function itemCategoryUsed(type: string): boolean {
+  return type !== "รายรับ";
+}

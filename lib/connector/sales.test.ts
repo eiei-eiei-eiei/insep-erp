@@ -221,3 +221,13 @@ describe("C9 — 🚨 กติกาอ่านซอร์ส", () => {
     expect(sales).toMatch(/use pos_preview — NOT preview_bill with type รายรับ/);
   });
 });
+
+describe("C9 — D177: เวลาเปิดการ์ดขายใช้นาฬิกา DB", () => {
+  it("🔴 previewed_at มาจาก rpc ping (นาฬิกาเดียวกับ created_at) ไม่ใช่ new Date() ของ server แอป", () => {
+    const s = code("lib/connector/salesTools.ts");
+    const b = s.slice(s.indexOf("async function buildPosCard"), s.indexOf("const posItemShape"));
+    expect(b).toMatch(/rpc\("ping"\)/);
+    expect(b).toMatch(/previewed_at: openedAt/);
+    expect(b).not.toMatch(/new Date\(\)\.toISOString\(\)/);
+  });
+});

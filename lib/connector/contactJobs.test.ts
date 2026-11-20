@@ -3,7 +3,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { newContactRow, findExistingContact, CONTACT_TYPE_OF, nameKey, ilikeExact } from "./contact";
-import { rankJobs, similarJob, jobSummary, newNames, newNameText } from "./jobs";
+import { rankJobs, similarJob, jobSummary, newNames, newNameText, trimList, LOOKUP_LIST_MAX, itemCategoryUsed } from "./jobs";
 import { readFileSync } from "node:fs";
 import { checkBill, type BillDraft, type BillContext } from "./bill";
 
@@ -176,11 +176,49 @@ describe("C10 — D174: อ่านซอร์ส", () => {
   });
   it("preview_bill ส่ง new_names ให้ Claude · การ์ดมีป้ายใหม่ + ปุ่มใช้ชื่อเดิม · คำแนะนำสั่งให้ลงหมวดทุกแถว", () => {
     const t = read("lib/connector/tools.ts");
-    expect(t).toMatch(/new_names: newNames\(d\.items, \{ categories: itemCats, jobs \}\)/);
+    expect(t).toMatch(/new_names: newNames\([^\n]*\{ categories: itemCats, jobs \}\)/);
     expect(t).toMatch(/new_names: card\.new_names\.map\(newNameText\)/);
     expect(t).toMatch(/Item category of EVERY line/);
     const c = read("lib/connector/card/billCard.ts");
     expect(c).toMatch(/\+ newNamesHtml\(d\)/);
     expect(c).toMatch(/case "use-old": return applyOld\(/);
+  });
+});
+
+describe("C11 — D177: lookup_options ไม่ส่งลิสต์ยาวเข้าแชท", () => {
+  const list = Array.from({ length: 120 }, (_, i) => `หมวด ${i + 1}`);
+  it("ไม่ค้น = ตัวแรก ๆ ตามลำดับที่จัดไว้แล้ว + จำนวนทั้งหมด", () => {
+    const t = trimList(list);
+    expect(t.items.length).toBe(LOOKUP_LIST_MAX);
+    expect(t.items[0]).toBe("หมวด 1");
+    expect(t).toMatchObject({ total: 120, more: 90 });
+  });
+  it("ค้น = เฉพาะที่มีคำนั้น (ไม่สนช่องว่าง/ตัวพิมพ์) · ไม่เจอ = ว่าง", () => {
+    expect(trimList(["บรรจุภัณฑ์", "วัสดุสิ้นเปลือง", "ค่าขนส่ง"], "บรรจุ ").items).toEqual(["บรรจุภัณฑ์"]);
+    expect(trimList(["Packaging", "Fuel"], "pack").items).toEqual(["Packaging"]);
+    expect(trimList(list, "ไม่มีคำนี้")).toMatchObject({ items: [], more: 0, total: 120 });
+  });
+  it("🚨 lookup_options ส่งลิสต์ที่ตัดแล้ว · ด่านชื่อใหม่ยังเทียบลิสต์เต็ม", () => {
+    const s = readFileSync("lib/connector/tools.ts", "utf8").replace(/\r\n/g, "\n");
+    const b = s.slice(s.indexOf('"lookup_options",'), s.indexOf('"preview_bill",'));
+    expect(b).toMatch(/item_categories: trimList\(j\.itemCats, search\)\.items/);
+    expect(b).toMatch(/jobs: trimList\(j\.jobs, search\)\.items/);
+    expect(b).not.toMatch(/item_categories: j\.itemCats,/);
+    expect(s).toMatch(/new_names: newNames\([^\n]*\{ categories: itemCats, jobs \}\)/);
+  });
+});
+
+describe("C11 — D178: รายรับ (รวมค้างรับ) ไม่ลงหมวดสินค้า", () => {
+  it("itemCategoryUsed: รายจ่ายลง · รายรับไม่ลง", () => {
+    expect(itemCategoryUsed("รายจ่าย")).toBe(true);
+    expect(itemCategoryUsed("รายรับ")).toBe(false);
+  });
+  it("🚨 คำแนะนำ + ด่านชื่อใหม่ + การ์ด ใช้กติกาเดียวกัน", () => {
+    const t = readFileSync("lib/connector/tools.ts", "utf8").replace(/\r\n/g, "\n");
+    expect(t).toMatch(/รายรับ bills \(including ค้างรับ \/ unpaid income\): do NOT set item categories/);
+    expect(t).toMatch(/newNames\(itemCategoryUsed\(d\.type\) \? d\.items :/);
+    const c = readFileSync("lib/connector/card/billCard.ts", "utf8").replace(/\r\n/g, "\n");
+    expect(c).toMatch(/itemCategoryUsed\(d\.draft\.type\) \? catSelect\(d, it, i\) : ""/);
+    expect(c).toMatch(/itemCategoryUsed\(d\.draft\.type\) \? chip\("\+ หมวดสินค้าใหม่"/);
   });
 });

@@ -13,7 +13,7 @@ import { monthArg, dateArg, matchesAmount, STATEMENT_ROW_CAP, SEARCH_ROW_CAP, mo
 import { checkBill, mismatchText, previewSummary, taxIdValid, normalizeTaxId, CONNECTOR_TYPES, type BillDraft, type BillContext, type CheckResult, type ConnectorType } from "./bill";
 import { categoryChips, type CardContact, type CardData, type ContactCardData } from "./cardView";
 import { newContactRow, findExistingContact, ilikeExact, type ContactRow, type ExistingContact } from "./contact";
-import { rankJobs, newNames, newNameText } from "./jobs";
+import { rankJobs, newNames, newNameText, trimList, itemCategoryUsed } from "./jobs";
 import { itemHistoryFor } from "@/lib/accounting/itemHistory";
 import { BILL_CARD_HTML } from "./card/billCard.generated";
 import type { ConnectorMe } from "./session";
@@ -46,9 +46,12 @@ Workflow for every bill image the user sends:
    links to that contact automatically. Do NOT split the bills into rounds or ask the user to save one first.
 4. Call lookup_options for exact category names, money accounts, jobs and item categories (jobs_required tells whether every
    line needs a job).
-   Item category of EVERY line (items[].category): pick from lookup_options.item_categories, following how this seller's items
-   were categorised in recent_bills_of_contact. Use the exact existing spelling. Only if nothing fits, use a short new name
-   and tell the user it is a new category. Never invent a near-duplicate of an existing name.
+   Item category of EVERY line of a รายจ่าย bill (items[].category): pick from lookup_options.item_categories, following how this seller's items
+   were categorised in recent_bills_of_contact. Use the exact existing spelling. The list holds only the most relevant names:
+   if nothing fits, call lookup_options again with search (a key word of the item) before using a short new name, and tell
+   the user it is a new category. Never invent a near-duplicate of an existing name. Call lookup_options once per entity
+   and seller in a conversation; reuse the answer for later bills instead of calling it again.
+   รายรับ bills (including ค้างรับ / unpaid income): do NOT set item categories — leave items[].category empty and do not ask.
 5. BEFORE preview_bill, ask the user in ONE message only what you are unsure of: which business (if several), paid from which
    account or unpaid, category, the job of each line when jobs_required (one bill can have different jobs per line;
    a new job name is fine; "no job" means job_none = true and is stored empty), and the item category of a line when two
@@ -115,6 +118,17 @@ async function loadContext({ db, me }: Ctx, entityId: string): Promise<BillConte
     categories: { รายจ่าย: [...expense, ...forwardCats.filter((c) => !expense.includes(c))], รายรับ: byKind("income_cat") },
     today: bangkokDateISO(),
   };
+}
+
+/** บอก Claude ว่าลิสต์ถูกตัด และค้นต่อได้อย่างไร (D177) */
+function listNote(cats: ReturnType<typeof trimList>, jobs: ReturnType<typeof trimList>, search?: string): string {
+  const part = (what: string, t: ReturnType<typeof trimList>) =>
+    t.more > 0 || t.items.length < t.total ? `${what} แสดง ${t.items.length} จาก ${t.total}` : "";
+  const shown = [part("หมวดสินค้า", cats), part("งาน", jobs)].filter(Boolean).join(" · ");
+  if (!shown) return "";
+  return search?.trim()
+    ? `ค้นด้วย "${search.trim()}": ${shown}`
+    : `${shown} (ของร้านนี้และที่ใช้บ่อยก่อน) — ไม่เข้าหมวดไหน ให้เรียก lookup_options อีกครั้งพร้อม search ก่อนตั้งชื่อใหม่`;
 }
 
 /** บิลล่าสุดของกิจการที่เอามาดูประวัติงาน — พอให้จัดอันดับ และไม่ทำ URL ยาวเกิน (in() ของ tx_id) */
@@ -326,7 +340,8 @@ async function previewCard(ctx: Ctx, input: BillDraft): Promise<{ card: CardData
     jobs_required: Boolean(c.jobsRequired),
     item_categories: itemCats,
     // D174 — หมวด/งานที่ยังไม่เคยใช้ (ป้าย ใหม่ + ปุ่มใช้ชื่อเดิมในการ์ด)
-    new_names: newNames(d.items, { categories: itemCats, jobs }),
+    // D178 — รายรับ (รวมค้างรับ) ไม่ลงหมวดสินค้า ⇒ ไม่ตรวจชื่อหมวดใหม่ (งานยังตรวจ)
+    new_names: newNames(itemCategoryUsed(d.type) ? d.items : d.items.map((x) => ({ ...x, category: "" })), { categories: itemCats, jobs }),
     contact: resolved.contact,
     vat_effective: Boolean(d.has_vat && ent?.is_vat),
     computed: check.computed,
@@ -423,16 +438,17 @@ function registerAccountingTools(server: McpServer, ctx: Ctx): void {
     "lookup_options",
     {
       title: "ตัวเลือกหมวด/บัญชี/งาน",
-      description: "Exact category names, money accounts, withholding rates, jobs and item categories for an entity (jobs_required = every line needs a job or job_none), plus the last 5 bills of a contact.",
+      description: "Exact category names, money accounts, withholding rates, jobs and item categories for an entity (jobs_required = every line needs a job or job_none), plus the last 5 bills of a contact. Item categories and jobs: only the most relevant ones (this seller's first, then most used); pass search to find others.",
       inputSchema: {
         entity_id: z.string(),
         type: z.enum(CONNECTOR_TYPES),
         contact_id: z.string().optional(),
         contact_name: z.string().optional(),
+        search: z.string().optional().describe("Find item categories / jobs containing this text (when none of the listed ones fits)"),
       },
       annotations: { readOnlyHint: true },
     },
-    async ({ entity_id, type, contact_id, contact_name }) => {
+    async ({ entity_id, type, contact_id, contact_name, search }) => {
       const c = await loadContext(ctx, entity_id);
       if (typeof c === "string") return text(c, true);
       const j = await loadJobs(ctx, entity_id, { id: contact_id, name: contact_name });
@@ -463,9 +479,11 @@ function registerAccountingTools(server: McpServer, ctx: Ctx): void {
         categories: c.categories[type],
         accounts: c.accounts,
         wht_rates: (wht.data ?? []).map((x) => x.value),
-        jobs: j.jobs,
+        // D177 — ตัดลิสต์ก่อนส่งเข้าแชท (D174 เคยส่งหลายร้อยชื่อทุกครั้ง = บทสนทนาหนัก)
+        jobs: trimList(j.jobs, search).items,
         jobs_required: j.required,
-        item_categories: j.itemCats,
+        item_categories: trimList(j.itemCats, search).items,
+        list_note: listNote(trimList(j.itemCats, search), trimList(j.jobs, search), search),
         recent_bills_of_contact: recent,
       });
     },

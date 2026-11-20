@@ -118,10 +118,19 @@ async function buildPosCard(
   if (!c.data) return `ไม่พบลูกค้า ${custId} ในทะเบียน — ใช้ find_customer`;
   const method = a.method ?? "เงินสด";
   const ck = checkPos(a.items, pc.menu, { discount: a.discount, method, isVat: pc.isVat });
+  // 🔴 D177 — เวลาเปิดการ์ดต้องเป็น **นาฬิกาของ DB** ตัวเดียวกับ sales_orders.created_at
+  //    เดิมใช้ new Date() ของ server แอป · นาฬิกาเครื่องเร็วกว่า DB 2 วินาที = ออเดอร์ที่เพิ่งขาย
+  //    มีเวลาก่อน previewed_at ⇒ ด่าน "การ์ดนี้ขายไปแล้ว" มองไม่เห็น = กดการ์ดเดิมแล้วขายซ้ำ (test:tenant จับได้)
+  let openedAt = previewedAt;
+  if (!openedAt) {
+    const t = await ctx.db.rpc("ping");
+    if (t.error || !t.data) return "อ่านเวลาของระบบไม่สำเร็จ — ลองใหม่อีกครั้ง";
+    openedAt = new Date(String(t.data)).toISOString();
+  }
   return {
     card: "pos",
     tenant_slug: ctx.me.tenantSlug,
-    previewed_at: previewedAt ?? new Date().toISOString(),
+    previewed_at: openedAt,
     sale_date: bangkokDateISO(),
     customer: { id: String(c.data.contact_id), name: String(c.data.name ?? "") },
     items: a.items,

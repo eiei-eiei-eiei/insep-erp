@@ -16,7 +16,7 @@ import {
 } from "../cardView";
 import type { NewContactInput } from "../contact";
 import type { DraftItem } from "../bill";
-import { jobSummary, similarJob, newNameText, JOB_CHIPS } from "../jobs";
+import { jobSummary, similarJob, newNameText, itemCategoryUsed, JOB_CHIPS } from "../jobs";
 import { isPosCard, posPrimary, type PosCardData } from "../pos";
 
 const app = new App({ name: "Insep ERP bill card", version: "1.0.0" }, { availableDisplayModes: ["inline", "fullscreen"] });
@@ -318,9 +318,10 @@ function itemsEditHtml(d: CardData): string {
       <input class="q" data-f="quantity" inputmode="decimal" value="${esc(it.quantity)}" aria-label="จำนวน ${i + 1}">
       <input class="p" data-f="unit_price" inputmode="decimal" value="${esc(it.unit_price)}" aria-label="ราคาต่อหน่วย ${i + 1}">
       <button class="x" data-act="del" data-val="${i}" aria-label="ลบรายการ ${i + 1}">✕</button>
-      ${catSelect(d, it, i)}
+      ${itemCategoryUsed(d.draft.type) ? catSelect(d, it, i) : ""}
       ${d.jobs_required || allJobs(d).length ? jobSelect(d, it, i) : ""}</div>`).join("");
-  const jobBar = `<div class="chips row">${chip("+ หมวดสินค้าใหม่", false, "new-cat")}${
+  // D178 — รายรับไม่ลงหมวดสินค้า: ไม่มีช่อง/ปุ่มหมวดในหน้าแก้รายการ
+  const jobBar = `<div class="chips row">${itemCategoryUsed(d.draft.type) ? chip("+ หมวดสินค้าใหม่", false, "new-cat") : ""}${
     d.jobs_required || allJobs(d).length ? chip("+ งานใหม่", false, "new-job") : ""}</div>${newJobHtml()}`;
   return `${contactEditHtml()}<div class="row"><div class="er hd"><span>รายการ</span><span>จำนวน</span><span>ราคา/หน่วย</span><span></span></div>${rows}</div>${jobBar}`;
 }
