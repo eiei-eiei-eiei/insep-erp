@@ -326,6 +326,12 @@ function itemsEditHtml(d: CardData): string {
   return `${contactEditHtml()}<div class="row"><div class="er hd"><span>รายการ</span><span>จำนวน</span><span>ราคา/หน่วย</span><span></span></div>${rows}</div>${jobBar}`;
 }
 
+/** D179 — หักไม่ครบทั้งบิล ต้องเห็นบนการ์ด (ยอดนี้ขึ้นใบ 50ทวิ) · server เก่าที่ไม่ส่ง wht_base = ไม่แสดง */
+function whtPart(c: { wht_base?: number; amount_after_discount: number }): string {
+  if (c.wht_base == null || Math.abs(c.wht_base - c.amount_after_discount) <= 0.005) return "";
+  return ` จากยอด ${baht(c.wht_base)}`;
+}
+
 function totalsHtml(d: CardData): string {
   const c = d.computed;
   const line = (k: string, v: string, cls = "") => `<div class="tl ${cls}"><span>${k}</span><span class="num">${v}</span></div>`;
@@ -333,7 +339,7 @@ function totalsHtml(d: CardData): string {
   const status = st ? `<div class="${st.ok ? "ok" : "bad"}">${esc(st.text)}</div>` : "";
   const disc = billDiscountLine(d);
   return `<div class="tot">${disc && c ? line(esc(disc.label), "−" + baht(disc.amount)) : ""}${c ? line("ก่อน VAT", baht(c.amount_after_discount)) + line("VAT", baht(c.vat_amount)) + line("รวม", baht(c.gross_total), "big") : ""}
-    ${c && c.wht_amount > 0 ? line(`หัก ณ ที่จ่าย ${c.wht_rate}%`, baht(c.wht_amount)) + line("สุทธิ", baht(c.net_amount)) : ""}
+    ${c && c.wht_amount > 0 ? line(`หัก ณ ที่จ่าย ${c.wht_rate}%${whtPart(c)}`, baht(c.wht_amount)) + line("สุทธิ", baht(c.net_amount)) : ""}
     ${status}</div>`;
 }
 

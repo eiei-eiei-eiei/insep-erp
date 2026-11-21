@@ -41,7 +41,7 @@ export function DashboardTab({ period, entityId, active }: { period: string; ent
         ) : (
           <div className="overflow-x-auto">
             <table className="tbl">
-              <thead><tr className="text-left text-faint"><th>วันที่</th><th>คู่ค้า</th><th>หมวดหมู่</th><th className="num">ยอด</th><th className="num">หัก ณ ที่จ่าย</th></tr></thead>
+              <thead><tr className="text-left text-faint"><th>วันที่</th><th>คู่ค้า</th><th>หมวดหมู่</th><th className="num">ยอดที่จ่าย</th><th className="num">หัก ณ ที่จ่าย</th></tr></thead>
               <tbody>
                 {data.whtPending.map((p) => (
                   <tr key={p.transactionId}>

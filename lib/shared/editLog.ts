@@ -115,6 +115,7 @@ export const COLUMN_LABEL_TH: Record<string, string> = {
   vat_amount: "VAT",
   wht_rate: "อัตราหัก ณ ที่จ่าย (%)",
   wht_amount: "ภาษีหัก ณ ที่จ่าย",
+  wht_base: "ยอดที่ใช้คิดหัก ณ ที่จ่าย",
   net_amount: "ยอดสุทธิ",
   tax_invoice_no: "เลขที่ใบกำกับภาษี",
   tax_invoice_date: "วันที่ใบกำกับ",

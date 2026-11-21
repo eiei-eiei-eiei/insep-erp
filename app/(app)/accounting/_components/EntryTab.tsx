@@ -14,6 +14,7 @@ import {
   unitPriceHeader,
   itemsHintText,
   missingInvoiceWarn,
+  WHT_BASE_INST_REASON,
   type VatMode,
 } from "@/lib/accounting/calc";
 import { taxDateOnNoChange, taxDateOnTxDateChange, shouldRefreshDraftDate, isAddRowKey, ITEM_KEYS_HINT, sellerHasNoTaxId, NO_TAX_ID_VAT_REASON } from "@/lib/accounting/entryForm";
@@ -22,6 +23,7 @@ import { qn, emptyItem, makeItemHandlers, buildItemInputs, useBillAmounts, hasCo
 import { VatModeCard } from "./VatModeCard";
 import { accountsFor } from "@/lib/accounting/bankAccounts";
 import { MissingInvoiceWarn } from "./MissingInvoiceWarn";
+import { WhtBaseField } from "./WhtBaseField";
 import {
   saveTransactionAction,
   saveInstallmentsAction,
@@ -50,6 +52,7 @@ type Draft = {
   txDate: string; taxInvoiceNo: string; taxInvoiceDate: string; discount: number; hasVat: boolean; hasWht: boolean;
   whtRate: number; items: Item[]; isApAr: boolean; dueDate: string; isInst: boolean; insts: Inst[]; branchId: string;
   manualAmt: boolean; ovAfterDisc: number; ovVat: number; ovWht: number;
+  whtBaseInput?: number | ""; // D179 — ร่างเก่าไม่มี key นี้ = ตามยอดบิล
   /** D114 — วันที่เก็บร่าง (ใช้ตัดสินว่าวันที่รายการค้างข้ามวันไหม) · ร่างเก่าไม่มี = ถือว่าวันอื่น */
   savedOn?: string;
   /** D98 — ไม่มีใน draft เก่า = "ex" (พฤติกรรมเดิม) */
@@ -106,9 +109,11 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
 
   // ยอดของบิล: ปกติคำนวณอัตโนมัติ · โหมด "แก้ยอดเอง" ล็อกไว้ ต้องกดปลดล็อกก่อนแก้ (กันเผลอ)
   // ตรรกะร่วมกับฟอร์มแก้บิล (billItems.ts) — สูตรจริงยังอยู่ lib/accounting/calc
-  const amt = useBillAmounts({ items, discount, hasVat: effHasVat, hasWht, whtRate });
+  // D179 — แบ่งงวดคิดหักจากยอดเต็มของแต่ละงวด ⇒ สรุปยอดต้องไม่ใช้ฐานที่กรอกไว้ (ไม่งั้นการ์ดโชว์ 300 แต่งวดรวมกันได้ 315)
+  const amt = useBillAmounts({ items, discount, hasVat: effHasVat, hasWht, whtRate, ignoreWhtBase: isInst && !isAdvance });
   const {
     calc, manualAmt, setManualAmt, ovAfterDisc, setOvAfterDisc, ovVat, setOvVat, ovWht, setOvWht,
+    whtBaseInput, setWhtBaseInput, whtBaseSave, whtWarns,
     vatMode, setVatMode, effVatMode,
     effAfterDisc, effVat, effWht, effNet, unlockAmounts, lockAmounts,
   } = amt;
@@ -172,6 +177,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
         if (d.ovAfterDisc != null) setOvAfterDisc(d.ovAfterDisc);
         if (d.ovVat != null) setOvVat(d.ovVat);
         if (d.ovWht != null) setOvWht(d.ovWht);
+        if (d.whtBaseInput != null) setWhtBaseInput(d.whtBaseInput);
       }
     } catch { /* ignore */ }
     setHydrated(true);
@@ -180,16 +186,16 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   }, []);
   useEffect(() => {
     if (!hydrated) return;
-    const draft: Draft = { savedOn: todayISO(), type, category, accountName, contactName, description, txDate, taxInvoiceNo, taxInvoiceDate, discount, hasVat, hasWht, whtRate, items, isApAr, dueDate, isInst, insts, branchId, manualAmt, ovAfterDisc, ovVat, ovWht, vatMode, advanceFor };
+    const draft: Draft = { savedOn: todayISO(), type, category, accountName, contactName, description, txDate, taxInvoiceNo, taxInvoiceDate, discount, hasVat, hasWht, whtRate, items, isApAr, dueDate, isInst, insts, branchId, manualAmt, ovAfterDisc, ovVat, ovWht, whtBaseInput, vatMode, advanceFor };
     try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); } catch { /* ignore */ }
-  }, [hydrated, type, category, accountName, contactName, description, txDate, taxInvoiceNo, taxInvoiceDate, discount, hasVat, hasWht, whtRate, items, isApAr, dueDate, isInst, insts, branchId, manualAmt, ovAfterDisc, ovVat, ovWht, vatMode, advanceFor]);
+  }, [hydrated, type, category, accountName, contactName, description, txDate, taxInvoiceNo, taxInvoiceDate, discount, hasVat, hasWht, whtRate, items, isApAr, dueDate, isInst, insts, branchId, manualAmt, ovAfterDisc, ovVat, ovWht, whtBaseInput, vatMode, advanceFor]);
   function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ } }
   function clearForm() {
     setType("รายจ่าย"); setCategory(""); setAccountName(""); setContactName(""); setDescription("");
     setTxDate(todayISO()); setTaxInvoiceNo(""); setTaxInvoiceDate(""); setDiscount(0); setHasVat(false);
     setHasWht(false); setWhtRate(0); setItems([emptyItem()]); setIsApAr(false); setDueDate("");
     setIsInst(false); setInsts([{ percent: 50, dueDate: "" }, { percent: 50, dueDate: "" }]); setBranchId("");
-    setManualAmt(false); setOvAfterDisc(0); setOvVat(0); setOvWht(0); setVatMode("ex"); setAdvanceFor("");
+    setManualAmt(false); setOvAfterDisc(0); setOvVat(0); setOvWht(0); setWhtBaseInput(""); setVatMode("ex"); setAdvanceFor("");
     setRecentBills([]); setShowRecent(false); clearDraft(); setMsg(null);
   }
 
@@ -287,6 +293,8 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
     const itemInputs = buildItemInputs(items, effVatMode, calc.baseAmount);
 
     if (isInst && !isAdvance) {
+      // D179 — งวดคิดหัก ณ ที่จ่ายจากยอดเต็มของแต่ละงวด (splitInstallments) ไม่รู้จักยอดที่กรอกเอง
+      if (whtBaseSave != null) { setMsg({ ok: false, text: WHT_BASE_INST_REASON }); return; }
       if (Math.abs(instSumPct - 100) > 0.01) { setMsg({ ok: false, text: `ผลรวมงวด = ${instSumPct}% (ต้อง 100%)` }); return; }
       const rows = instRows.map((r) => ({ ...r, description: `${description}${description ? " " : ""}(งวด ${r.installmentNo}/${r.installmentTotal})` }));
       run(() => saveInstallmentsAction({ transaction_date: txDate, type, category, contact_name: contactName, contact_id: resolvedContactId, entity_id: effEntity }, rows, itemInputs), `บันทึก ${rows.length} งวดเรียบร้อย (เป็นหนี้ค้างทั้งหมด)`, () => { resetItems(); refreshItemHist(); });
@@ -296,7 +304,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
       () => saveTransactionAction({
         transaction_date: txDate, type, account_name: isApAr && !isAdvance ? "" : accountName, category, contact_name: contactName, contact_id: resolvedContactId, description,
         base_amount: calc.baseAmount, discount, amount_after_discount: effAfterDisc, vat_amount: effVat,
-        wht_rate: calc.whtRate, wht_amount: effWht, net_amount: effNet,
+        wht_rate: calc.whtRate, wht_amount: effWht, wht_base: whtBaseSave, net_amount: effNet,
         tax_invoice_no: taxInvoiceNo, tax_invoice_date: taxInvoiceDate, entity_id: effEntity,
         ap_ar_status: isApAr && !isAdvance ? (type === "รายรับ" ? "AR" : "AP") : "", due_date: isApAr && !isAdvance ? dueDate : "", forward_material: isCost,
         advance_for_entity: isAdvance ? effAdvanceFor : "",
@@ -320,7 +328,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   function resetItems() {
     setItems([emptyItem()]); setDescription(""); setTaxInvoiceNo(""); setTaxInvoiceDate(""); setHasVat(false);
     setManualAmt(false); setOvAfterDisc(0); setOvVat(0); setOvWht(0); setDiscount(0);
-    setHasWht(false); setWhtRate(0);
+    setHasWht(false); setWhtRate(0); setWhtBaseInput("");
     setIsApAr(false); setDueDate(""); setIsInst(false); setInsts([{ percent: 50, dueDate: "" }, { percent: 50, dueDate: "" }]);
   }
 
@@ -550,6 +558,15 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
               </Select>
             </Field></div>
           )}
+          {hasWht && (
+            <WhtBaseField
+              value={whtBaseInput}
+              onChange={setWhtBaseInput}
+              afterDiscount={effAfterDisc}
+              warns={whtWarns}
+              blockedReason={isInst && !isAdvance ? WHT_BASE_INST_REASON : null}
+            />
+          )}
           <div className="mt-3 flex items-center justify-between">
             <span className="text-xs text-faint">ยอดคำนวณ</span>
             {manualAmt
@@ -616,18 +633,20 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
       )}
     </div>
   );
+}
 
-  function Row({ k, v, bold }: { k: string; v: string; bold?: boolean }) {
-    return <div className={`flex justify-between ${bold ? "border-t border-line pt-1 font-semibold text-ink" : "text-muted"}`}><dt>{k}</dt><dd>{v}</dd></div>;
-  }
-  function RowEdit({ k, value, onChange }: { k: string; value: number; onChange: (n: number) => void }) {
-    return (
-      <div className="flex items-center justify-between gap-2">
-        <dt className="text-muted">{k}</dt>
-        <dd className="w-32"><NumBox value={value} onChange={(v) => onChange(v === "" ? 0 : v)} className="py-1 text-right" /></dd>
-      </div>
-    );
-  }
+// 🪤 D179 — สองตัวนี้ต้องอยู่นอก EntryTab (D71): ประกาศไว้ข้างในแล้ว React เห็นเป็น component ใหม่ทุก render
+//    ⇒ ช่องกรอกถูกถอด-ใส่ใหม่ทุกครั้งที่พิมพ์ = เคอร์เซอร์หลุดหลังพิมพ์ได้ทีละตัว (เทส entry-row-edit.test.ts ล็อกไว้)
+function Row({ k, v, bold }: { k: string; v: string; bold?: boolean }) {
+  return <div className={`flex justify-between ${bold ? "border-t border-line pt-1 font-semibold text-ink" : "text-muted"}`}><dt>{k}</dt><dd>{v}</dd></div>;
+}
+function RowEdit({ k, value, onChange }: { k: string; value: number; onChange: (n: number) => void }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <dt className="text-muted">{k}</dt>
+      <dd className="w-32"><NumBox value={value} onChange={(v) => onChange(v === "" ? 0 : v)} className="py-1 text-right" /></dd>
+    </div>
+  );
 }
 
 function ContactModal({ defaultName, onClose, onSaved }: { defaultName: string; onClose: () => void; onSaved: (c: Contact) => void }) {

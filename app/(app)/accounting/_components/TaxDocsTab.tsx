@@ -376,7 +376,7 @@ function IssueRow({ p, entityId, onIssued, onBuild, setMsg }: {
   return (
     <div className="mb-2 rounded-lg border border-line-soft p-2">
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-        <span>{d.date(p.pendDateISO)} · <b>{p.contactName}</b> · {p.category} · ยอด {fmt(p.amount)} · ภาษี {fmt(p.whtAmount)}</span>
+        <span>{d.date(p.pendDateISO)} · <b>{p.contactName}</b> · {p.category} · ยอดที่จ่าย {fmt(p.amount)} · ภาษี {fmt(p.whtAmount)}</span>
         <button onClick={toggleForm} className="rounded bg-brand px-3 py-1 text-xs text-on-brand">{open ? "ซ่อน" : "ออกหนังสือ"}</button>
       </div>
       {open && (
@@ -387,6 +387,8 @@ function IssueRow({ p, entityId, onIssued, onBuild, setMsg }: {
           <Field label="ระบุประเภทเงินได้ (ถ้าอื่นๆ)"><TextInput value={otherDesc} onChange={(e) => setOtherDesc(e.target.value)} /></Field>
           <Field label="วันที่จ่าย"><TextInput type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} /></Field>
           <Field label="วันที่ออกหนังสือ"><TextInput type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} /></Field>
+          {/* D179 — บอกบนจอว่าใบจะพิมพ์ยอดไหน + แก้ที่ไหน (ยอดอยู่ที่บิล ใบ 50ทวิ กับ ภงด.3/53 ต้องได้เลขเดียวกัน) */}
+          <p className="col-span-2 text-xs text-faint md:col-span-3">จำนวนเงินที่จ่ายบนใบ = <b className="tnum">{fmt(p.amount)}</b> · ภาษีที่หัก <b className="tnum">{fmt(p.whtAmount)}</b> — ถ้ายอดจ่ายไม่ถูก (เช่น หักเฉพาะค่าทำของ ไม่รวมค่าขนส่ง) ให้แก้ช่อง <b>ยอดที่ใช้คิดหัก ณ ที่จ่าย</b> ที่หน้าแก้บิล {p.transactionId} ก่อนออก</p>
           <div className="col-span-2 md:col-span-3"><button onClick={issue} disabled={pending} className="rounded-lg bg-brand px-4 py-2 text-sm text-on-brand disabled:opacity-50">ออก + พิมพ์</button></div>
         </div>
       )}

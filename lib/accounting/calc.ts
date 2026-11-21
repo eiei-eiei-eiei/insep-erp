@@ -188,6 +188,11 @@ export type EntryCalcInput = {
   whtRate: number;
   /** A21 — ผู้ใช้กรอกราคาในช่องไหน · ไม่ส่ง = "ex" (เส้นทางเดิม) */
   vatMode?: VatMode;
+  /**
+   * A22 (D179) — ยอดที่ใช้คิดหัก ณ ที่จ่าย ถ้าไม่ใช่ทั้งบิล (เช่น บิลค่าทำของ + ค่าขนส่ง หักเฉพาะค่าทำของ)
+   * ไม่ส่ง/null = ยอดหลังหักส่วนลด (พฤติกรรมเดิม — golden เดิมไม่ขยับ)
+   */
+  whtBase?: number | null;
 };
 export type EntryCalcResult = {
   baseAmount: number;
@@ -226,7 +231,8 @@ export function entryCalc(input: EntryCalcInput): EntryCalcResult {
   const aad = split ? split.base : subAfter;
   const vat = split ? split.vat : input.hasVat ? round2(aad * 0.07) : 0;
   const rate = input.hasWht ? num(input.whtRate) : 0;
-  const wht = input.hasWht ? round2(aad * (rate / 100)) : 0;
+  const whtOn = input.whtBase == null ? aad : num(input.whtBase);
+  const wht = input.hasWht ? round2(whtOn * (rate / 100)) : 0;
   const net = round2(aad + vat - wht);
   return {
     baseAmount: base,
@@ -314,6 +320,56 @@ export function reverseWht(net: number, rate: number): { base: number; wht: numb
   return { base, wht };
 }
 
+// ── A22 (D179): ยอดที่ใช้คิดหัก ณ ที่จ่าย ─────────────────────────────────────
+/**
+ * A22 — ยอดที่ใช้คิดหัก ณ ที่จ่ายของบิลที่บันทึกแล้ว
+ * 🚨 ทุกที่ที่พิมพ์ "จำนวนเงินที่จ่าย" (50ทวิ · ภงด.3/53 · คิวรอออก) ต้องอ่านผ่านตัวนี้ตัวเดียว
+ *    — ไม่งั้นใบ 50ทวิ กับ ภงด. ที่ยื่นคู่กันจะได้ยอดคนละตัว
+ * wht_base ว่าง = ยอดหลังหักส่วนลดทั้งบิล (บิลเก่าทั้งหมด · พฤติกรรมเดิม)
+ */
+export function whtBaseOf(tx: Pick<Tx, "amount_after_discount" | "wht_base">): number {
+  const b = tx.wht_base;
+  return b == null || b === "" ? num(tx.amount_after_discount) : num(b);
+}
+
+/**
+ * A22 — ค่าที่จะส่งลงคอลัมน์ wht_base ตอนบันทึก
+ * · ไม่หัก ณ ที่จ่าย / ไม่ได้กรอกเอง / กรอกเท่ายอดหลังหักส่วนลด ⇒ null (= ตามยอดบิล)
+ * ★ เก็บ null แทนการก๊อปยอดบิลมาเก็บ: แก้รายการทีหลังแล้วฐานตามไปเอง ไม่ค้างเลขเก่า
+ */
+export function whtBaseForSave(hasWht: boolean, whtBase: number | null | undefined, afterDiscount: number): number | null {
+  if (!hasWht || whtBase == null) return null;
+  const b = round2(num(whtBase));
+  return Math.abs(b - round2(num(afterDiscount))) <= 0.005 ? null : b;
+}
+
+/**
+ * A22 — แบ่งจ่ายหลายงวดใช้ยอดที่กรอกเองไม่ได้: splitInstallments คิดหักจากยอดเต็มของแต่ละงวด
+ * (ทำให้รองรับต้องแบ่งฐานลงทุกงวด + แก้ fn_save_installments — ยังไม่คุ้ม · D179)
+ */
+export const WHT_BASE_INST_REASON =
+  "แบ่งจ่ายหลายงวดใช้ยอดที่กรอกเองไม่ได้ — หัก ณ ที่จ่ายคิดจากยอดเต็มของแต่ละงวด · ถ้ามีส่วนที่ไม่หัก (เช่น ค่าขนส่ง) ให้บันทึกส่วนนั้นแยกบิล หรือกด ใช้ยอดทั้งบิล";
+
+/**
+ * A22 — คำเตือนใต้ช่อง "ยอดที่ใช้คิดหัก ณ ที่จ่าย" (ตัดสินที่นี่ มีเทสคุม · D84/D91)
+ * ไม่บล็อก — บิลจริงมีกรณีแปลก ๆ ได้ แต่ต้องบอกให้เห็นบนจอ
+ * whtBase = ยอดที่มีผลจริง (กรอกเอง หรือ ยอดหลังหักส่วนลด)
+ */
+export function whtBaseWarnings(input: { hasWht: boolean; whtBase: number; afterDiscount: number; whtRate: number; whtAmount: number }): string[] {
+  if (!input.hasWht) return [];
+  const out: string[] = [];
+  const base = round2(num(input.whtBase));
+  const f = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (base > round2(num(input.afterDiscount)) + 0.005)
+    out.push("ยอดที่ใช้คิดหัก ณ ที่จ่าย มากกว่ายอดหลังหักส่วนลดของบิล — ตรวจอีกครั้ง");
+  if (base <= 0) out.push("ยอดที่ใช้คิดหัก ณ ที่จ่าย เป็น 0 — ใบ 50ทวิ จะไม่มียอดเงินที่จ่าย");
+  const rate = num(input.whtRate);
+  const expect = round2((base * rate) / 100);
+  if (rate > 0 && base > 0 && Math.abs(expect - num(input.whtAmount)) > 0.005)
+    out.push(`หัก ณ ที่จ่ายที่กรอก ${f(num(input.whtAmount))} ไม่เท่ากับ ${f(base)} × ${rate}% = ${f(expect)} — ใบ 50ทวิ จะพิมพ์ยอดจ่าย ${f(base)} ถ้ายอดนี้ไม่ใช่ยอดที่ใช้คิดภาษีจริง ให้แก้ช่อง "ยอดที่ใช้คิดหัก ณ ที่จ่าย"`);
+  return out;
+}
+
 // ── A6: แบ่งจ่ายงวด (Installments.js saveTransactionInstallments) ─────────────
 export type InstallmentInput = { percent: number; dueDate: string };
 export type InstallmentRow = {
@@ -386,6 +442,8 @@ export type Tx = {
   vat_amount: number | string;
   wht_rate: number | string;
   wht_amount: number | string;
+  /** D179 — ยอดที่ใช้คิดหัก ณ ที่จ่าย · null = ยอดหลังหักส่วนลดทั้งบิล (อ่านผ่าน whtBaseOf เท่านั้น) */
+  wht_base?: number | string | null;
   net_amount: number | string;
   tax_invoice_no: string | null;
   tax_invoice_date: string | null; // yyyy-MM-dd
@@ -665,7 +723,8 @@ export function whtReport(
       contactName: tx.contact_name ?? "",
       category: tx.category ?? "",
       whtRate: num(tx.wht_rate),
-      amountPaid: num(tx.amount_after_discount),
+      // D179 — ยอดเงินได้ที่จ่าย = ยอดที่ใช้คิดหัก (ไม่ใช่ทั้งบิล) ให้ตรงกับใบ 50ทวิ
+      amountPaid: whtBaseOf(tx),
       whtAmount: num(tx.wht_amount),
       address: cInfo.address ?? "",
     };
@@ -698,6 +757,7 @@ export type DashPending = {
   contactName: string;
   contactId: string; // สาขาที่แน่นอน (multi-branch D30) — "" = ข้อมูลเก่า fallback ชื่อ
   category: string;
+  /** D179 — ยอดที่ใช้คิดหัก ณ ที่จ่าย (whtBaseOf) = "จำนวนเงินที่จ่าย" บนใบ 50ทวิ — ไม่ใช่ยอดทั้งบิลแล้ว */
   amount: number;
   whtAmount: number;
   whtRate: number;
@@ -770,7 +830,7 @@ export function dashboardData(
           contactName: tx.contact_name ?? "",
           contactId: tx.contact_id ?? "",
           category: tx.category ?? "",
-          amount,
+          amount: whtBaseOf(tx),
           whtAmount,
           whtRate: num(tx.wht_rate),
         });

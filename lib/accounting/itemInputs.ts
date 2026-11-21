@@ -36,6 +36,11 @@ export type SaveTxInput = {
   vat_amount: number;
   wht_rate: number;
   wht_amount: number;
+  /**
+   * D179 — ยอดที่ใช้คิดหัก ณ ที่จ่าย (ค่าจาก whtBaseForSave) · null = ยอดหลังหักส่วนลดทั้งบิล
+   * 🪤 ไม่ส่ง key ตอนแก้บิล = RPC คงค่าเดิม (ไม่ล้าง) — หน้าแก้บิลจึงต้องส่งเสมอ แม้เป็น null
+   */
+  wht_base?: number | null;
   net_amount: number;
   tax_invoice_no?: string;
   tax_invoice_date?: string;

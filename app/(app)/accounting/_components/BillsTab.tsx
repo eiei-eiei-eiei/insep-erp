@@ -7,6 +7,7 @@ import { searchBillsAction, getBillDetailAction, voidTransactionAction, updateTr
 import { entryCalc, itemTotal, detectVatMode, unitPriceOf, unitPriceHeader, lineTotalHeader, itemsHintText, missingInvoiceWarn } from "@/lib/accounting/calc";
 import { taxDateOnNoChange, taxDateOnTxDateChange } from "@/lib/accounting/entryForm";
 import { qn, emptyItem, makeItemHandlers, buildItemInputs, useBillAmounts, hasContent, type BillItem } from "./billItems";
+import { WhtBaseField } from "./WhtBaseField";
 import { VatModeCard } from "./VatModeCard";
 import { accountsFor } from "@/lib/accounting/bankAccounts";
 import { MissingInvoiceWarn } from "./MissingInvoiceWarn";
@@ -296,13 +297,16 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
       // ยอดที่บันทึกไว้ (บิลเจ้าอื่นอาจมีทศนิยมไม่ตรงสูตร) — เก็บไว้เป็นค่าแก้เอง
       const sAfter = Number(tx.amount_after_discount) || 0, sVat = Number(tx.vat_amount) || 0, sWht = Number(tx.wht_amount) || 0;
       amtRef.current.setOvAfterDisc(sAfter); amtRef.current.setOvVat(sVat); amtRef.current.setOvWht(sWht);
+      // D179 — ยอดที่ใช้คิดหัก ณ ที่จ่าย (null = ตามยอดบิล) · ต้องเข้า calcIn ด้วย ไม่งั้นบิลที่ตั้งฐานเองถูกมองว่า "ยอดไม่ตรงสูตร"
+      const sBase = tx.wht_base == null || tx.wht_base === "" ? null : Number(tx.wht_base);
+      amtRef.current.setWhtBaseInput(sBase ?? "");
       /**
        * D98 — บิลนี้ถูกกรอกด้วยโหมดไหน: ถามว่า "โหมดไหนคำนวณแล้วได้ยอดที่บันทึกไว้"
        * 🚨 ไม่เดาและไม่ต้องมีคอลัมน์ใหม่ · เสมอกัน/ไม่เข้าเลย → "ex" (พฤติกรรมเดิม)
        * 🪤 ต้องตัดสินโหมด **ก่อน** เช็ค odd ไม่งั้นบิลที่กรอกแบบรวม VAT จะถูกมองว่า
        *    "ยอดไม่ตรงสูตร" แล้วเด้งเข้าโหมดแก้ยอดเองทุกครั้งที่เปิดมาแก้
        */
-      const calcIn = { items: loadedItems.map((it) => ({ quantity: qn(it.quantity), exVat: it.exVat, inVat: it.inVat, discBaht: it.discBaht })), discount: Number(tx.discount) || 0, hasVat: sVat > 0, hasWht: sWht > 0 || (Number(tx.wht_rate) || 0) > 0, whtRate: Number(tx.wht_rate) || 0 };
+      const calcIn = { items: loadedItems.map((it) => ({ quantity: qn(it.quantity), exVat: it.exVat, inVat: it.inVat, discBaht: it.discBaht })), discount: Number(tx.discount) || 0, hasVat: sVat > 0, hasWht: sWht > 0 || (Number(tx.wht_rate) || 0) > 0, whtRate: Number(tx.wht_rate) || 0, whtBase: sBase };
       const mode = detectVatMode(calcIn, { amountAfterDiscount: sAfter, vatAmount: sVat, whtAmount: sWht });
       amtRef.current.setVatMode(mode);
       // ถ้ายอดที่บันทึกต่างจากสูตร (ปัดทศนิยม) → เปิดโหมดแก้เองไว้เลย เพื่อคงเลขเดิม
@@ -363,7 +367,8 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
     run(() => updateTransactionAction(txId, {
       transaction_date: txDate, type, account_name: accountName, category, contact_name: contactName, contact_id: resolvedContactId, description,
       base_amount: calc.baseAmount, discount, amount_after_discount: effAfterDisc, vat_amount: effVat,
-      wht_rate: calc.whtRate, wht_amount: effWht, net_amount: effNet,
+      // 🪤 D179 — ต้องส่ง wht_base เสมอแม้เป็น null: ไม่ส่ง key = RPC คงค่าเดิม (ล้างฐานที่ตั้งไว้ไม่ได้)
+      wht_rate: calc.whtRate, wht_amount: effWht, wht_base: amt.whtBaseSave, net_amount: effNet,
       tax_invoice_no: taxInvoiceNo, tax_invoice_date: taxInvoiceDate, entity_id: entId,
     }, itemInputs), entityMoveSavedText(entId !== origEnt, entName(entId)), onSaved);
   }
@@ -466,6 +471,9 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
               <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={hasWht} onChange={(e) => setHasWht(e.target.checked)} /> หัก ณ ที่จ่าย</label>
               {hasWht && <Field label="อัตรา WHT (%)"><NumBox value={whtRate} blankZero onChange={(v) => setWhtRate(v === "" ? 0 : v)} /></Field>}
             </div>
+            {hasWht && (
+              <WhtBaseField value={amt.whtBaseInput} onChange={amt.setWhtBaseInput} afterDiscount={effAfterDisc} warns={amt.whtWarns} />
+            )}
             {/* D124 — เตือนเหมือนฟอร์มบันทึก (ทาง ก: ยังนับเข้า ภพ.30) */}
             <MissingInvoiceWarn text={missingInvoiceWarn(type, hasVat, taxInvoiceNo)} />
 

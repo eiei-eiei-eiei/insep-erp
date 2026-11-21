@@ -16,7 +16,7 @@ import { mustRead } from "@/lib/shared/dbError";
 
 // คอลัมน์ transactions ที่ใช้ทุกรายงาน
 export const TX_COLS =
-  "tx_id, transaction_date, type, account_name, category, contact_name, contact_id, description, base_amount, discount, amount_after_discount, vat_amount, wht_rate, wht_amount, net_amount, tax_invoice_no, tax_invoice_date, status, entity_id, ap_ar_status, payment_date, settled_on, transfer_id, po_group_id, installment_no, installment_total, due_date, source, receipt_image_url, advance_for_entity, advance_status, advance_clear_id, advance_src_tx";
+  "tx_id, transaction_date, type, account_name, category, contact_name, contact_id, description, base_amount, discount, amount_after_discount, vat_amount, wht_rate, wht_amount, wht_base, net_amount, tax_invoice_no, tax_invoice_date, status, entity_id, ap_ar_status, payment_date, settled_on, transfer_id, po_group_id, installment_no, installment_total, due_date, source, receipt_image_url, advance_for_entity, advance_status, advance_clear_id, advance_src_tx";
 
 export function txBase(supabase: SupabaseClient, withCount = false) {
   return supabase.from("transactions").select(TX_COLS, withCount ? { count: "exact" } : undefined);

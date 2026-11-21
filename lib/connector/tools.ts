@@ -267,6 +267,7 @@ const billShape = {
   has_vat: z.boolean().describe("Bill charges 7% VAT"),
   bill_discount: z.number().optional().describe("Bill-level discount in baht, same VAT basis as prices"),
   wht_rate: z.number().optional().describe("Withholding tax % (usually 0, 1, 3 or 5)"),
+  wht_base: z.number().optional().describe("Only when withholding tax applies to PART of the bill (e.g. the bill has labour + delivery and tax is withheld on the labour only): the before-VAT amount the tax is computed on. Omit = whole before-VAT amount. This amount is printed as the paid amount on the 50ทวิ certificate and ภงด.3/53 — ask the user when unsure which lines are subject to withholding."),
   tax_invoice_no: z.string().optional().describe("Tax invoice number printed on the bill"),
   tax_invoice_date: z.string().optional().describe("Tax invoice date YYYY-MM-DD if different from transaction_date"),
   unpaid: z.boolean().optional().describe("true = record as accounts payable/receivable (not yet paid)"),

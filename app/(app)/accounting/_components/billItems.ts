@@ -22,6 +22,8 @@ import {
   reinterpretPrice,
   unitPriceOf,
   round2,
+  whtBaseForSave,
+  whtBaseWarnings,
   type VatMode,
 } from "@/lib/accounting/calc";
 // D141 — ตัวประกอบ payload ย้ายไป lib (ฝั่ง server ของ Claude connector ใช้ตัวเดียวกัน)
@@ -102,26 +104,40 @@ export function useBillAmounts(input: {
   hasVat: boolean;
   hasWht: boolean;
   whtRate: number;
+  /** D179 — true = คิดยอดเหมือนไม่ได้กรอกฐาน (แบ่งงวด) · ค่าที่กรอกยังเก็บไว้ ให้ด่านตอนบันทึกเห็นและบอกผู้ใช้ */
+  ignoreWhtBase?: boolean;
 }) {
-  const { items, discount, hasVat, hasWht, whtRate } = input;
+  const { items, discount, hasVat, hasWht, whtRate, ignoreWhtBase = false } = input;
   const [manualAmt, setManualAmt] = useState(false);
   const [ovAfterDisc, setOvAfterDisc] = useState(0);
   const [ovVat, setOvVat] = useState(0);
   const [ovWht, setOvWht] = useState(0);
+  /**
+   * D179 — ยอดที่ใช้คิดหัก ณ ที่จ่าย ที่ผู้ใช้กรอกเอง · "" = ตามยอดหลังหักส่วนลด (ค่าปริยาย)
+   * ★ เก็บเป็น "" แทนการก๊อปยอดบิลมาใส่ — แก้รายการแล้วฐานตามไปเอง จนกว่าผู้ใช้จะพิมพ์ทับ
+   */
+  const [whtBaseInput, setWhtBaseInput] = useState<number | "">("");
   /** โหมดที่ผู้ใช้เลือก (ค่าปริยาย ex = พฤติกรรมเดิม) */
   const [vatMode, setVatMode] = useState<VatMode>("ex");
   /** 🚨 โหมดที่มีผลจริง — ไม่ติ๊ก VAT = ไม่มีอะไรให้ถอด ตกกลับ ex เสมอ */
   const effVatMode = effectiveVatMode(vatMode, hasVat);
+  const customBase = whtBaseInput === "" ? null : whtBaseInput;
+  const calcBase = ignoreWhtBase ? null : customBase;
 
   const calc = useMemo(
-    () => entryCalc({ items: items.map((it) => ({ quantity: qn(it.quantity), exVat: it.exVat, inVat: it.inVat, discBaht: it.discBaht })), discount, hasVat, hasWht, whtRate, vatMode }),
-    [items, discount, hasVat, hasWht, whtRate, vatMode],
+    () => entryCalc({ items: items.map((it) => ({ quantity: qn(it.quantity), exVat: it.exVat, inVat: it.inVat, discBaht: it.discBaht })), discount, hasVat, hasWht, whtRate, vatMode, whtBase: calcBase }),
+    [items, discount, hasVat, hasWht, whtRate, vatMode, calcBase],
   );
 
   const effAfterDisc = manualAmt ? ovAfterDisc : calc.amountAfterDiscount;
   const effVat = manualAmt ? ovVat : calc.vatAmount;
   const effWht = manualAmt ? ovWht : calc.whtAmount;
   const effNet = round2(effAfterDisc + effVat - effWht);
+  /** ยอดที่ใช้คิดหัก ณ ที่จ่ายที่มีผลจริง (แสดงบนจอ + ใช้เตือน) */
+  const effWhtBase = customBase ?? effAfterDisc;
+  /** ค่าที่ส่งลง transactions.wht_base (null = ตามยอดบิล) */
+  const whtBaseSave = whtBaseForSave(hasWht, customBase, effAfterDisc);
+  const whtWarns = whtBaseWarnings({ hasWht, whtBase: effWhtBase, afterDiscount: effAfterDisc, whtRate, whtAmount: effWht });
 
   return {
     calc,
@@ -129,6 +145,7 @@ export function useBillAmounts(input: {
     ovAfterDisc, setOvAfterDisc,
     ovVat, setOvVat,
     ovWht, setOvWht,
+    whtBaseInput, setWhtBaseInput, effWhtBase, whtBaseSave, whtWarns,
     vatMode, setVatMode, effVatMode,
     effAfterDisc, effVat, effWht, effNet,
     unlockAmounts: () => { setOvAfterDisc(effAfterDisc); setOvVat(effVat); setOvWht(effWht); setManualAmt(true); },

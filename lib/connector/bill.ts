@@ -10,7 +10,7 @@
  *   ให้ Claude พูดในแชท · ประโยคยังมาจากฟังก์ชันตัวเดิมใน lib/accounting/calc
  * ★ ประโยคทุกตัวตัดสินที่นี่ (มีเทสคุม) ไม่ใช่ในตัว route (D84/D91)
  */
-import { entryCalc, priceFromInput, round2, num, missingInvoiceWarn, type VatMode, type EntryCalcResult } from "../accounting/calc";
+import { entryCalc, priceFromInput, round2, num, missingInvoiceWarn, whtBaseForSave, type VatMode, type EntryCalcResult } from "../accounting/calc";
 import { buildItemInputs, type BillItem, type SaveTxInput, type TxItemInput } from "../accounting/itemInputs";
 import { isForwardCat } from "../accounting/forwardCats";
 import type { NewContactInput } from "./contact";
@@ -62,6 +62,11 @@ export type BillDraft = {
   bill_discount?: number;
   /** % หัก ณ ที่จ่าย · 0/ไม่ส่ง = ไม่หัก */
   wht_rate?: number;
+  /**
+   * D179 — ยอดก่อน VAT ที่ใช้คิดหัก ณ ที่จ่าย เมื่อหักไม่ครบทั้งบิล (เช่น หักค่าทำของ ไม่หักค่าขนส่ง)
+   * ไม่ส่ง = ยอดก่อน VAT ทั้งบิล · ยอดนี้พิมพ์เป็น "จำนวนเงินที่จ่าย" บน 50ทวิ / ภงด.3/53
+   */
+  wht_base?: number;
   tax_invoice_no?: string;
   tax_invoice_date?: string;
   /** ตั้งค้างจ่าย/ค้างรับ (AP/AR) แทนจ่ายสด */
@@ -105,6 +110,8 @@ export type Computed = {
   vat_amount: number;
   wht_rate: number;
   wht_amount: number;
+  /** D179 — ยอดที่ใช้คิดหัก ณ ที่จ่ายที่มีผลจริง (ไม่หัก = 0) */
+  wht_base: number;
   net_amount: number;
   /** ยอดรวมบิล (หลังส่วนลด + VAT · ก่อน WHT) = ตัวที่เทียบกับ total_on_bill */
   gross_total: number;
@@ -234,6 +241,10 @@ export function checkBill(d: BillDraft, ctx: BillContext): CheckResult {
 
   const whtRate = num(d.wht_rate);
   if (whtRate < 0 || whtRate > 15) errors.push(`อัตราหัก ณ ที่จ่าย ${whtRate}% ผิดปกติ (ปกติ 1-5%)`);
+  // D179 — ยอดที่ใช้คิดหัก ณ ที่จ่าย (ถ้าหักไม่ครบทั้งบิล)
+  const whtBaseIn = d.wht_base == null ? null : num(d.wht_base);
+  if (whtBaseIn != null && !(whtRate > 0)) errors.push("ส่ง wht_base ได้เฉพาะบิลที่มี wht_rate (หัก ณ ที่จ่าย)");
+  if (whtBaseIn != null && !(whtBaseIn > 0)) errors.push("wht_base (ยอดที่ใช้คิดหัก ณ ที่จ่าย) ต้องมากกว่า 0 — ไม่ส่งเลย = หักจากยอดก่อน VAT ทั้งบิล");
 
   // 🚨 ด่าน ม.86/13 (D55) — DB trigger บล็อกอยู่แล้ว แต่ตอบเป็นภาษาไทยก่อนถึงตรงนั้น
   const hasVat = Boolean(d.has_vat) && (ent ? ent.is_vat : true);
@@ -257,6 +268,7 @@ export function checkBill(d: BillDraft, ctx: BillContext): CheckResult {
       hasWht: whtRate > 0,
       whtRate,
       vatMode: m,
+      whtBase: whtBaseIn,
     });
   const c = calcFor(mode, billItems);
   const gross = round2(c.amountAfterDiscount + c.vatAmount);
@@ -266,6 +278,7 @@ export function checkBill(d: BillDraft, ctx: BillContext): CheckResult {
     vat_amount: c.vatAmount,
     wht_rate: c.whtRate,
     wht_amount: c.whtAmount,
+    wht_base: whtRate > 0 ? (whtBaseIn ?? c.amountAfterDiscount) : 0,
     net_amount: c.netAmount,
     gross_total: gross,
   };
@@ -276,7 +289,7 @@ export function checkBill(d: BillDraft, ctx: BillContext): CheckResult {
   let usedBillAmounts = false;
   /** บันทึกด้วยยอดก่อน VAT / VAT ที่พิมพ์บนบิล (ด่านอยู่ใน billAmounts) — ใช้ทั้งยอดรวมต่าง และ VAT แยกต่าง */
   const applyBillAmounts = (warning: string) => {
-    const r = billAmounts(d, hasVat, whtRate, onBill);
+    const r = billAmounts(d, hasVat, whtRate, onBill, whtBaseIn);
     if (typeof r === "string") return void errors.push(r);
     usedBillAmounts = true;
     // base_amount ยังเป็นยอดจากรายการ (เหมือนโหมดแก้ยอดเองของฟอร์ม) · ตัวเลขที่เข้าบัญชี/ภาษีเป็นของบิล
@@ -322,6 +335,9 @@ export function checkBill(d: BillDraft, ctx: BillContext): CheckResult {
     }
   }
   if (!(computed.gross_total > 0)) errors.push("ยอดรวมบิลเป็น 0 — ตรวจราคาและจำนวนอีกครั้ง");
+  if (whtBaseIn != null && whtBaseIn > computed.amount_after_discount + 0.005) {
+    errors.push(`wht_base ${baht(whtBaseIn)} มากกว่ายอดก่อน VAT ของบิล ${baht(computed.amount_after_discount)} — ยอดที่ใช้คิดหัก ณ ที่จ่าย ต้องไม่เกินยอดก่อน VAT`);
+  }
 
   const vatWarn = missingInvoiceWarn(d.type, hasVat, d.tax_invoice_no);
   if (vatWarn) warnings.push(vatWarn);
@@ -343,6 +359,7 @@ export function checkBill(d: BillDraft, ctx: BillContext): CheckResult {
     vat_amount: computed.vat_amount,
     wht_rate: computed.wht_rate,
     wht_amount: computed.wht_amount,
+    wht_base: whtBaseForSave(whtRate > 0, whtBaseIn, computed.amount_after_discount),
     net_amount: computed.net_amount,
     tax_invoice_no: String(d.tax_invoice_no ?? "").trim(),
     tax_invoice_date: d.tax_invoice_date || (String(d.tax_invoice_no ?? "").trim() ? d.transaction_date : ""),
@@ -383,8 +400,8 @@ function suspectLinesOf(d: BillDraft, mode: VatMode, gross: number, diff: number
  * 🚨 VAT ต้องใกล้ 7% ของยอดก่อน VAT (คลาดได้แค่ระดับเศษปัดทีละบรรทัด) — ไม่ใกล้ = อ่านผิด ไม่ใช่ปัดเศษ
  * ★ ภาษีคิดด้วย entryCalc ตัวเดิม (ไม่เขียน 7% เอง) · หัก ณ ที่จ่ายคิดบนยอดก่อน VAT ตามบิล
  */
-function billAmounts(d: BillDraft, hasVat: boolean, whtRate: number, onBill: number):
-  | Pick<Computed, "amount_after_discount" | "vat_amount" | "wht_rate" | "wht_amount" | "net_amount">
+function billAmounts(d: BillDraft, hasVat: boolean, whtRate: number, onBill: number, whtBase: number | null):
+  | Pick<Computed, "amount_after_discount" | "vat_amount" | "wht_rate" | "wht_amount" | "wht_base" | "net_amount">
   | string {
   if (hasVat && (d.bill_before_vat == null || d.bill_vat == null)) {
     return "ใช้ยอดตามบิลต้องส่ง bill_before_vat และ bill_vat ที่พิมพ์บนบิลมาด้วย";
@@ -404,8 +421,9 @@ function billAmounts(d: BillDraft, hasVat: boolean, whtRate: number, onBill: num
       return `VAT บนบิล ${baht(vat)} ไม่ใช่ 7% ของยอดก่อน VAT ${baht(before)} (ควรประมาณ ${baht(expected)}) — น่าจะอ่านผิด ไม่ใช่เรื่องปัดเศษ`;
     }
   }
-  const w = one(before);
-  return { amount_after_discount: before, vat_amount: vat, wht_rate: w.whtRate, wht_amount: w.whtAmount, net_amount: round2(before + vat - w.whtAmount) };
+  // D179 — หักจากยอดที่ระบุ (ถ้ามี) ไม่ใช่ยอดก่อน VAT ทั้งบิล
+  const w = entryCalc({ items: [{ quantity: 1, exVat: before, discBaht: 0 }], discount: 0, hasVat, hasWht: whtRate > 0, whtRate, whtBase });
+  return { amount_after_discount: before, vat_amount: vat, wht_rate: w.whtRate, wht_amount: w.whtAmount, wht_base: whtRate > 0 ? (whtBase ?? before) : 0, net_amount: round2(before + vat - w.whtAmount) };
 }
 
 /**
@@ -443,6 +461,12 @@ export function mismatchText(m: Mismatch, items: DraftItem[]): string {
   return `${head} — ${sus ? `น่าจะอ่านจำนวนผิดที่ ${sus} · ` : ""}อ่านรายการ จำนวน ราคา หรือส่วนลดใหม่อีกครั้ง ห้ามปรับตัวเลขให้ยอดตรงเอง`;
 }
 
+/** D179 — หักไม่ครบทั้งบิล ต้องพูดออกมา (ยอดนี้ขึ้นใบ 50ทวิ) · หักทั้งบิล = ไม่ต้องพูด */
+export function whtBaseNote(c: Pick<Computed, "wht_amount" | "wht_base" | "amount_after_discount">): string {
+  if (!(c.wht_amount > 0) || Math.abs(num(c.wht_base) - c.amount_after_discount) <= 0.005) return "";
+  return ` (คิดจากยอด ${baht(c.wht_base)} ไม่ใช่ทั้งบิล)`;
+}
+
 /** สรุปบิลที่ Claude ต้องพูดในแชทก่อนขออนุญาตบันทึก (ประโยคเดียวกันทุกครั้ง) */
 export function previewSummary(d: BillDraft, entityName: string, tenantName: string, c: Computed): string {
   const who = d.contact_name ? ` · ${d.type === "รายรับ" ? "ลูกค้า" : "ผู้ขาย"} ${d.contact_name}` : "";
@@ -451,7 +475,7 @@ export function previewSummary(d: BillDraft, entityName: string, tenantName: str
     `ลงให้ ${tenantName} · กิจการ ${d.entity_id} ${entityName}`,
     `${d.type} ${d.transaction_date} · หมวด ${d.category}${who} · ${pay}`,
     `ก่อน VAT ${baht(c.amount_after_discount)} · VAT ${baht(c.vat_amount)} · รวม ${baht(c.gross_total)}` +
-      (c.wht_amount > 0 ? ` · หัก ณ ที่จ่าย ${c.wht_rate}% ${baht(c.wht_amount)} · สุทธิ ${baht(c.net_amount)}` : ""),
+      (c.wht_amount > 0 ? ` · หัก ณ ที่จ่าย ${c.wht_rate}% ${baht(c.wht_amount)}${whtBaseNote(c)} · สุทธิ ${baht(c.net_amount)}` : ""),
   ];
   return lines.join("\n");
 }
