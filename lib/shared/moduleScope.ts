@@ -71,7 +71,8 @@ export function auditTableModule(t: TenantTable): ModuleKey | null {
   if (t.startsWith("pay_") || t === "payroll_items" || t === "employees") return "payroll";
   if (t.startsWith("sales_")) return "sales";
   if (t === "transactions" || t === "bank_accounts") return "accounting";
-  if (t === "entities" || t === "contacts" || t === "doc_numbering") return null;
+  // D180 — ใบ 50ทวิ ใช้ร่วมบัญชี (คู่ค้า) + เงินเดือน (พนักงาน · D69) ⇒ ของกลาง โชว์เสมอ
+  if (t === "entities" || t === "contacts" || t === "doc_numbering" || t === "wht_certificates") return null;
   throw new Error(`ยังไม่ได้กำหนดโมดูลของตาราง ${t} (lib/shared/moduleScope.ts)`);
 }
 

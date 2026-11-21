@@ -341,6 +341,34 @@ export async function updateWhtAction(input: {
   return { ok: true, data: res };
 }
 
+// ── D180 ยกเลิกใบ 50ทวิ ที่ออกแล้ว (ไม่ลบ · เลขไม่ถูกนำกลับมาใช้ · บิลกลับเข้าคิวรอออก) ──
+/**
+ * `needAck` = ภงด. ของเดือนนั้นยื่นแล้ว และยังไม่ได้ติ๊กรับทราบ (fn_cancel_wht ตอบ need_ack)
+ * — หน้าจอเช็คก่อนอยู่แล้ว ทางนี้เกิดเมื่อมีคนติ๊กยื่นระหว่างที่ป๊อปอัพเปิดค้าง
+ */
+export async function cancelWhtAction(input: {
+  entityId: string;
+  docNo: string;
+  reason: string;
+  ackFiled: boolean;
+}): Promise<SaveResult & { needAck?: boolean; filed?: string }> {
+  if (!input.reason.trim()) return fail("ต้องกรอกเหตุผลที่ยกเลิก");
+  const supabase = await db();
+  const { data, error } = await supabase.rpc("fn_cancel_wht", {
+    p_entity_id: input.entityId,
+    p_doc_no: input.docNo,
+    p_reason: input.reason,
+    p_ack_filed: input.ackFiled,
+  });
+  if (error) return fail(mapDbError(error));
+  const res = data as { ok: boolean; error?: string; need_ack?: boolean; filed?: string | null };
+  if (!res.ok) {
+    return { ...fail(res.error ?? "ยกเลิกไม่สำเร็จ"), needAck: !!res.need_ack, filed: res.filed ?? undefined };
+  }
+  revalidatePath("/accounting");
+  return { ok: true, data: res };
+}
+
 /** ดึงวันที่จ่าย (payment_date) ของ tx สำหรับ reprint 50ทวิ */
 export async function getTxPaymentDateAction(txId: string): Promise<string | null> {
   const supabase = await db();

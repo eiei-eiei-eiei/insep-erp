@@ -71,6 +71,7 @@ export function TaxPayCard({
   canConfig,
   canWrite,
   reloadKey,
+  onFilingChanged,
 }: {
   period: string;
   entityId: string;
@@ -81,6 +82,11 @@ export function TaxPayCard({
   canWrite: boolean;
   /** เปลี่ยนค่าเมื่อกดสร้างแบบในการ์ดข้างบน → โหลดกระดานใหม่ (สถานะ "สร้างแล้ว" เปลี่ยน) */
   reloadKey: number;
+  /**
+   * D180 — ยื่น/ถอนยื่น/จ่าย/ถอนจ่าย สำเร็จ → การ์ดอื่นในหน้าที่อ่านสถานะ "ยื่นแล้ว" ต้องโหลดใหม่
+   * 🪤 เดิมการ์ด 50ทวิ ถือข้อมูลก่อนติ๊กยื่น ⇒ ป๊อปอัพยกเลิกใบไม่เตือนว่า ภงด. ยื่นแล้ว (เทสเบราว์เซอร์ 133.3)
+   */
+  onFilingChanged?: () => void;
 }) {
   const [open, setOpen] = useState<TaxDueRow | null>(null);
   const { pending, run, setMsg } = useSaver();
@@ -94,6 +100,7 @@ export function TaxPayCard({
     [period, entityId, reloadKey],
     { skip: !entityId },
   );
+  const changed = () => { load(); onFilingChanged?.(); };
 
   async function doUnpay(r: TaxDueRow) {
     if (!(await ask({
@@ -104,7 +111,7 @@ export function TaxPayCard({
       danger: true,
     }))) return;
     // ★ D95 — จงใจไม่ถอน "ยื่นแล้ว" ตามไปด้วย: ถอนจ่ายเพราะกรอกยอดผิด ไม่ได้แปลว่าไม่ได้ยื่น
-    run(() => unpayTaxAction(r.kind, r.period, entityId), "ถอนการบันทึกจ่ายแล้ว — บิลถูกยกเลิก", load);
+    run(() => unpayTaxAction(r.kind, r.period, entityId), "ถอนการบันทึกจ่ายแล้ว — บิลถูกยกเลิก", changed);
   }
 
   // ── D95 "ยื่นแล้ว" ── ปุ่มนี้ไม่แตะเงินหรือบิลใด ๆ เป็นการบันทึกเหตุการณ์ล้วน ๆ
@@ -120,7 +127,7 @@ export function TaxPayCard({
     run(
       () => fileTaxAction({ kind: r.kind, period: r.period, entityId, filedOn: todayISO() }),
       "บันทึกว่ายื่นแล้ว — ปิดการเตือนของงวดนี้",
-      load,
+      changed,
     );
   }
   async function doUnfile(r: TaxDueRow) {
@@ -130,7 +137,7 @@ export function TaxPayCard({
       confirmText: "ถอนการบันทึกยื่น",
       cancelText: "กลับ",
     }))) return;
-    run(() => unfileTaxAction(r.kind, r.period, entityId), "ถอนการบันทึกยื่นแล้ว — ระบบจะเตือนงวดนี้อีกครั้ง", load);
+    run(() => unfileTaxAction(r.kind, r.period, entityId), "ถอนการบันทึกยื่นแล้ว — ระบบจะเตือนงวดนี้อีกครั้ง", changed);
   }
 
   const box = "rounded-lg border border-line bg-card p-4";
@@ -224,7 +231,7 @@ export function TaxPayCard({
           contacts={contacts}
           prefs={board?.prefs ?? {}}
           onClose={() => setOpen(null)}
-          onSaved={() => { setOpen(null); load(); }}
+          onSaved={() => { setOpen(null); changed(); }}
         />
       )}
     </div>

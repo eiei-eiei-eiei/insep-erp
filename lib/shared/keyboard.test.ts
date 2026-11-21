@@ -188,6 +188,7 @@ describe("ป๊อปอัพทั้งแอปใช้ Modal ตัวก
       "app/(app)/sales/_components/PlanPanel.tsx",
       "app/(app)/sales/_components/WarehouseTab.tsx",
       "app/(app)/accounting/_components/TaxPayCard.tsx",
+      "app/(app)/accounting/_components/CancelWhtDialog.tsx",
       "app/(app)/payroll/_components/FilingTab.tsx",
       "app/(app)/bar/_components/EditSaleModal.tsx",
       "app/(app)/_components/billing-notice.tsx",

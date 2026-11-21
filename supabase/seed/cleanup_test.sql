@@ -62,7 +62,8 @@ begin
 
   -- 3) บัญชี (Phase 3): certs/summaries/report_runs + items ก่อน transactions (กัน FK)
   delete from tax_payments     where tenant_id = v_tenant and entity_id = 'EID99';   -- D88 ชำระภาษี (ต้องมาก่อน transactions)
-  delete from wht_certificates where tenant_id = v_tenant and entity_id = 'EID99';
+  delete from wht_certificates where tenant_id = v_tenant and entity_id = 'EID99';   -- รวมใบที่ยกเลิกแล้ว (D180)
+  delete from tax_filings      where tenant_id = v_tenant and entity_id = 'EID99';   -- D180 ติ๊ก "ยื่นแล้ว" ตอนเทส 133.3
   delete from tax_summaries    where tenant_id = v_tenant and entity_id = 'EID99';
   delete from report_runs      where tenant_id = v_tenant and entity_id = 'EID99';
   -- D119 สำรองจ่าย: บิลที่เกิดจากการเคลียอยู่ใน **กิจการปลายทาง** (ไม่ใช่ EID99) → ตามด้วย advance_src_tx

@@ -31,7 +31,9 @@ import { TaxPayCard } from "./TaxPayCard";
 import { dueDateOf } from "@/lib/accounting/taxPay";
 import type { AccountRow, Contact } from "./types";
 import { IconEdit, IconTrash } from "@/lib/shared/icons";
-import { Field, Help, IconBtn, RowBtn, Select, TextInput, fmt, todayISO, useSaver, LoadError } from "./ui";
+import { Badge, Field, Help, IconBtn, RowBtn, Select, TextInput, fmt, todayISO, useSaver, LoadError } from "./ui";
+import { whtCertFiledPeriods } from "@/lib/accounting/whtCancel";
+import { CancelWhtDialog } from "./CancelWhtDialog";
 
 /** ★ กำหนดยื่นเติมตอน render (ขึ้นกับเดือนที่เลือก) — ดู `dueDateOf` ใน lib/accounting/taxPay */
 const TAX_CHECKLIST = [
@@ -257,6 +259,8 @@ export function TaxDocsTab({
         canConfig={canConfig}
         canWrite={canWrite}
         reloadKey={payReload}
+        // D180 — ติ๊กยื่น ภงด. แล้วการ์ด 50ทวิ ต้องรู้ทันที (เตือนในป๊อปอัพยกเลิกใบ)
+        onFilingChanged={reload}
       />
 
       {/* tax_summaries management */}
@@ -306,12 +310,18 @@ export function TaxDocsTab({
                 <table className="tbl">
                   <thead><tr className="text-left text-faint"><th>เลขที่</th><th>วันออก</th><th>คู่ค้า</th><th>ประเภท</th><th className="num">ภาษีหัก</th><th></th></tr></thead>
                   <tbody>
-                    {wht.history.map((h) => <EditRow key={h.docNo} h={h} entityId={realEntity} onSaved={reload} onReprint={() => reprint(h)} busy={busy} />)}
+                    {wht.history.map((h) => (
+                      <EditRow
+                        key={h.docNo} h={h} entityId={realEntity} onSaved={reload} onReprint={() => reprint(h)} busy={busy} canWrite={canWrite}
+                        // D180 — ภงด. ที่ยื่นแล้วซึ่งอาจมีบิลของใบนี้ (เตือนในป๊อปอัพยกเลิก · fn_cancel_wht เช็คซ้ำ)
+                        filed={whtCertFiledPeriods(h.txIds, wht.txDates, wht.pndFilings.filter((f) => f.entity_id === (h.entityId || realEntity)), d.month)}
+                      />
+                    ))}
                   </tbody>
                 </table>
               </div>
             )}
-            <p className="mt-2 text-xs text-faint">เลือกประเภทเงินได้ก่อนออก → จำนวนเงิน/ภาษี/วันจ่าย จะลงในแถวประเภทนั้นของฟอร์ม · แก้เลข/วันออก/ประเภทได้ที่รายการที่ออกแล้ว</p>
+            <p className="mt-2 text-xs text-faint">เลือกประเภทเงินได้ก่อนออก → จำนวนเงิน/ภาษี/วันจ่าย จะลงในแถวประเภทนั้นของฟอร์ม · แก้เลข/วันออก/ประเภทได้ที่รายการที่ออกแล้ว · <b>ยอดบนใบผิด</b> ให้กด ยกเลิกใบ แล้วแก้ยอดที่บิล แล้วออกใหม่ (ได้เลขใหม่)</p>
           </>
         )}
       </div>
@@ -397,11 +407,13 @@ function IssueRow({ p, entityId, onIssued, onBuild, setMsg }: {
 }
 
 // ── แถวใบที่ออกแล้ว (แก้ไข + พิมพ์ซ้ำ) ────────────────────────────────────────
-function EditRow({ h, entityId, onSaved, onReprint, busy }: {
+function EditRow({ h, entityId, onSaved, onReprint, busy, canWrite, filed }: {
   h: History; entityId: string; onSaved: () => void; onReprint: () => void; busy: boolean;
+  canWrite: boolean; filed: string[];
 }) {
   const { pending, run } = useSaver();
   const [edit, setEdit] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
   const [docNo, setDocNo] = useState(h.docNo);
   const d = useDateFmt();
   const [issueDate, setIssueDate] = useState(h.issueDate);
@@ -413,12 +425,38 @@ function EditRow({ h, entityId, onSaved, onReprint, busy }: {
     run(() => updateWhtAction({ entityId, oldDocNo: h.docNo, newDocNo: docNo, issueDate, pndType, incomeSeq: seq, incomeType }), "แก้ไขแล้ว", () => { setEdit(false); onSaved(); });
   }
 
+  // D180 — ใบที่ยกเลิกแล้ว: โชว์ไว้พร้อมเหตุผล (เลขยังอยู่ในทะเบียน ไม่ถูกนำกลับมาใช้)
+  //   ไม่มีปุ่มพิมพ์/แก้/ยกเลิก — เอกสารปิดแล้ว (fn_update_wht ปฏิเสธซ้ำ)
+  if (h.cancelled) {
+    return (
+      <tr className="text-faint">
+        <td className="line-through">{h.docNo}</td><td className="whitespace-nowrap">{d.date(h.issueDate)}</td><td>{h.contactName}</td><td>{h.pndType}</td><td className="num line-through">{fmt(h.whtAmount)}</td>
+        <td className="text-xs">
+          <Badge tone="crit">ยกเลิกแล้ว</Badge>
+          <span className="ml-1">{h.cancelledAt ? d.date(h.cancelledAt) : ""}{h.cancelReason ? ` · ${h.cancelReason}` : ""}</span>
+        </td>
+      </tr>
+    );
+  }
+
   return (
     <>
       <tr>
         <td>{h.docNo}</td><td className="whitespace-nowrap">{d.date(h.issueDate)}</td><td>{h.contactName}</td><td>{h.pndType}</td><td className="num">{fmt(h.whtAmount)}</td>
-        <td className="whitespace-nowrap"><RowBtn onClick={onReprint} disabled={busy}>พิมพ์ซ้ำ</RowBtn><IconBtn aria-label={`แก้ไขใบ 50ทวิ เลขที่ ${h.docNo}`} title="แก้" onClick={() => setEdit((v) => !v)} className="ml-2 inline-grid align-middle"><IconEdit size={16} /></IconBtn></td>
+        <td className="whitespace-nowrap">
+          <RowBtn onClick={onReprint} disabled={busy}>พิมพ์ซ้ำ</RowBtn>
+          <IconBtn aria-label={`แก้ไขใบ 50ทวิ เลขที่ ${h.docNo}`} title="แก้" onClick={() => setEdit((v) => !v)} className="ml-2 inline-grid align-middle"><IconEdit size={16} /></IconBtn>
+          {canWrite && <RowBtn tone="red" onClick={() => setCancelOpen(true)} disabled={busy} className="ml-2">ยกเลิกใบ</RowBtn>}
+        </td>
       </tr>
+      {cancelOpen && (
+        <CancelWhtDialog
+          docNo={h.docNo} entityId={h.entityId || entityId} issueDate={h.issueDate} contactName={h.contactName}
+          baseAmount={h.baseAmount} whtAmount={h.whtAmount} billCount={h.txIds.length} filed={filed}
+          onClose={() => setCancelOpen(false)}
+          onDone={() => { setCancelOpen(false); onSaved(); }}
+        />
+      )}
       {edit && (
         <tr className="bg-raised"><td colSpan={6}>
           <div className="grid grid-cols-2 gap-2 md:grid-cols-5">

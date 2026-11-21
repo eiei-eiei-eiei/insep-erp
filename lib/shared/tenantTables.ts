@@ -146,6 +146,8 @@ export const AUDITED_TABLES: readonly TenantTable[] = [
   "bar_prep", "bar_prep_input", "bar_prep_batch",
   // D100 — เปลี่ยนรูปแบบแล้วเลขบนใบกำกับเปลี่ยน ⇒ ต้องตอบได้ว่าใครเปลี่ยนเมื่อไร
   "doc_numbering",
+  // D180 — ออก/แก้/ยกเลิกใบ 50ทวิ (เอกสารที่ให้คู่ค้า + ยื่นสรรพากร) ต้องตอบได้ว่าใครทำเมื่อไร
+  "wht_certificates",
 ];
 
 /**

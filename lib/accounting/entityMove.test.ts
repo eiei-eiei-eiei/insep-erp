@@ -43,6 +43,8 @@ describe("A26 — ย้ายได้ไหม (entityMoveBlock)", () => {
     const r = entityMoveBlock({ source: "ui" }, ["6901", "6903"]);
     expect(r).toContain("6901, 6903");
     expect(r).toContain("50ทวิ");
+    // D180 — บอกทางออกที่ทำได้จริงในแอป (ยกเลิกใบก่อน) ไม่ใช่ให้ลบบิลทิ้ง
+    expect(r).toContain("ยกเลิกใบ 50ทวิ ก่อน");
   });
 
   it("บิลกลุ่มงวด/โอน ย้ายไม่ได้ (หน้านี้แก้ไม่ได้ทั้งบิลอยู่แล้ว)", () => {
@@ -142,6 +144,8 @@ describe("A26 — ด่านใน fn_edit_transaction ต้องตรง�
   it("มีด่าน: เคลียสำรองจ่าย · 50ทวิ · สำรองจ่ายให้ตัวเอง · กิจการมีอยู่จริง", () => {
     expect(body).toMatch(/v_adv_clear is not null or v_adv_src is not null/);
     expect(body).toMatch(/from wht_certificates[^;]*any\(tx_ids\)/);
+    // D180 — ใบที่ยกเลิกแล้วไม่บล็อกการย้าย (ตรงกับ getBillDetail ที่ส่งเฉพาะใบปกติมาให้ entityMoveBlock)
+    expect(body).toMatch(/from wht_certificates[^;]*any\(tx_ids\)\s*and status = 'ปกติ'/);
     expect(body).toMatch(/v_type = 'สำรองจ่าย' and v_adv_for = v_new_entity/);
     expect(body).toMatch(/from entities where tenant_id = v_tenant and entity_id = v_new_entity/);
   });

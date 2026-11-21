@@ -41,7 +41,7 @@ export type MoveTx = {
 
 /**
  * เหตุผลที่ "ย้ายกิจการไม่ได้" — null = ย้ายได้
- * @param whtDocNos เลข 50ทวิ ที่อ้างบิลนี้ (wht_certificates.tx_ids)
+ * @param whtDocNos เลข 50ทวิ **ที่ยังไม่ยกเลิก** ที่อ้างบิลนี้ (wht_certificates.tx_ids · status ปกติ — D180)
  */
 export function entityMoveBlock(tx: MoveTx, whtDocNos: string[]): string | null {
   // กลุ่มงวด/โอน — fn_edit_transaction ปฏิเสธทั้งบิลอยู่แล้ว (หน้านี้แก้ไม่ได้ทุกช่อง)
@@ -53,7 +53,7 @@ export function entityMoveBlock(tx: MoveTx, whtDocNos: string[]): string | null 
     return SOURCE_FIX[src] ?? `บิลนี้ระบบสร้างให้อัตโนมัติ (${src}) — ย้ายกิจการจากหน้านี้ไม่ได้`;
   }
   if (whtDocNos.length > 0) {
-    return `ออกใบ 50ทวิ ไปแล้ว (เลขที่ ${whtDocNos.join(", ")}) ในนามกิจการเดิม — ย้ายบิลไปแล้ว ภงด.3/53 ของสองกิจการจะไม่ตรงกับใบที่ออก · ถ้าลงผิดกิจการจริง ให้ยกเลิกบิลนี้ บันทึกใหม่ในกิจการที่ถูก แล้วออก 50ทวิ ใหม่`;
+    return `ออกใบ 50ทวิ ไปแล้ว (เลขที่ ${whtDocNos.join(", ")}) ในนามกิจการเดิม — ย้ายบิลไปแล้ว ภงด.3/53 ของสองกิจการจะไม่ตรงกับใบที่ออก · ถ้าลงผิดกิจการจริง ให้ยกเลิกใบ 50ทวิ ก่อน (บัญชี → เอกสารสรรพากร) แล้วกลับมาย้ายบิล แล้วออก 50ทวิ ใหม่ในกิจการที่ถูก`;
   }
   return null;
 }

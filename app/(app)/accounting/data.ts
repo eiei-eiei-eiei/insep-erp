@@ -23,6 +23,7 @@ import { getTenantPlan } from "@/lib/shared/tenant-plan";
 import { hasModule } from "@/lib/shared/workspaces";
 import { taxDueBoard } from "@/lib/accounting/taxPay";
 import { toFilingMethod, type TaxFilingRow } from "@/lib/accounting/taxFiling";
+import { issuedTxIdsOf, isActiveCert, type FilingRowLite, type TxDateLite } from "@/lib/accounting/whtCancel";
 
 async function db() {
   return createClient();
@@ -85,11 +86,11 @@ export async function getDashboard(period: string, entityId: string) {
   const supabase = await db();
   const [txAll, wht] = await Promise.all([
     fetchAllTransactions(supabase),
-    supabase.from("wht_certificates").select("tx_ids"),
+    supabase.from("wht_certificates").select("tx_ids, status"),
   ]);
-  const issued = new Set<string>();
   // 🚨 D89 — ว่างเพราะอ่านไม่ได้ = บิลที่ออกใบ 50ทวิ ไปแล้วโผล่ซ้ำในคิว "รอออก 50ทวิ"
-  for (const w of mustRead(wht, "ประวัติใบ 50 ทวิ")) for (const id of (w.tx_ids as string[]) ?? []) if (id) issued.add(id);
+  // ★ D180 — ใบที่ยกเลิกแล้วไม่นับ ⇒ บิลกลับเข้าคิวให้ออกใหม่
+  const issued = issuedTxIdsOf(mustRead(wht, "ประวัติใบ 50 ทวิ") as { tx_ids: string[] | null; status: string | null }[]);
   return dashboardData(period, entityId, txAll as unknown as Tx[], issued);
 }
 
@@ -401,7 +402,8 @@ export async function getBillDetail(txId: string) {
     supabase.from("transactions").select(TX_COLS).eq("tx_id", txId).maybeSingle(),
     supabase.from("transaction_items").select("*").eq("tx_id", txId).order("item_id"),
     // D132 — ใบ 50ทวิ ที่อ้างบิลนี้ (ออกแล้ว = ย้ายกิจการไม่ได้) · อ่านไม่ได้ต้องฟ้อง ไม่ใช่ถือว่าไม่มี (D89)
-    supabase.from("wht_certificates").select("doc_no").contains("tx_ids", [txId]).order("doc_no"),
+    // D180 — นับเฉพาะใบที่ยังไม่ยกเลิก (ตรงกับด่านใน fn_edit_transaction 0113)
+    supabase.from("wht_certificates").select("doc_no").contains("tx_ids", [txId]).eq("status", "ปกติ").order("doc_no"),
   ]);
   const whtDocNos = (mustRead(wht, "ใบ 50ทวิ ของบิล") ?? []).map((r) => r.doc_no as string);
   return { tx: tx.data as unknown as Tx | null, items: items.data ?? [], whtDocNos };
@@ -567,7 +569,7 @@ export async function getWhtBundle(period: string, entityId: string) {
   const certs = mustRead(
     await supabase
     .from("wht_certificates")
-    .select("doc_no, issue_date, contact_name, contact_id, address, wht_amount, pnd_type, income_type, income_seq, base_amount, tx_ids, entity_id")
+    .select("doc_no, issue_date, contact_name, contact_id, address, wht_amount, pnd_type, income_type, income_seq, base_amount, tx_ids, entity_id, status, cancelled_at, cancel_reason")
     .order("doc_no"),
     "ประวัติใบ 50 ทวิ",
   );
@@ -591,10 +593,27 @@ export async function getWhtBundle(period: string, entityId: string) {
       baseAmount: Number(c.base_amount) || 0,
       txIds: (c.tx_ids as string[]) ?? [],
       entityId: (c.entity_id as string) ?? "",
+      // D180 — ใบที่ยกเลิกยังโชว์ในประวัติ (พร้อมเหตุผล) แต่ไม่นับว่าออกแล้ว
+      cancelled: !isActiveCert(c as { status?: string | null }),
+      cancelledAt: (c.cancelled_at as string) ?? "",
+      cancelReason: (c.cancel_reason as string) ?? "",
     }));
   // เลขเอกสารที่มีแล้วของกิจการนี้ (รันเลขแยกต่อกิจการ)
+  // ★ D180 — รวมใบที่ยกเลิกด้วย: เลขที่ยกเลิกแล้วห้ามนำกลับมาใช้
   const existingDocNos = scoped.map((c) => c.doc_no as string);
-  return { pending: dash.whtPending, history, existingDocNos };
+
+  // D180 — ข้อมูลสำหรับเตือนตอนยกเลิก: ภงด. ของเดือนที่จ่ายบิลในใบนี้ "ยื่นแล้ว" หรือยัง
+  //   (ด่านตัวจริงอยู่ใน fn_cancel_wht — ที่นี่แค่ให้หน้าจอบอกก่อนกด) · อ่านไม่ได้ต้องฟ้อง (D89)
+  const billIds = [...new Set(history.filter((h) => !h.cancelled).flatMap((h) => h.txIds))];
+  const [txq, fq] = await Promise.all([
+    billIds.length
+      ? supabase.from("transactions").select("tx_id, transaction_date, settled_on").in("tx_id", billIds)
+      : Promise.resolve({ data: [], error: null }),
+    supabase.from("tax_filings").select("entity_id, kind, period, reopened_at").in("kind", ["pnd3", "pnd53"]).is("reopened_at", null),
+  ]);
+  const txDates = mustRead(txq, "วันที่จ่ายของบิลในใบ 50 ทวิ") as TxDateLite[];
+  const pndFilings = mustRead(fq, "ประวัติการยื่น ภงด.") as (FilingRowLite & { entity_id: string })[];
+  return { pending: dash.whtPending, history, existingDocNos, txDates, pndFilings };
 }
 
 /**

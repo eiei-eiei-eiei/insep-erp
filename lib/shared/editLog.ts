@@ -140,6 +140,17 @@ export const COLUMN_LABEL_TH: Record<string, string> = {
   advance_status: "สถานะสำรองจ่าย",
   advance_clear_id: "เลขที่การเคลียสำรองจ่าย",
   advance_src_tx: "มาจากบิลสำรองจ่าย",
+  // D180 — ใบ 50ทวิ
+  doc_no: "เลขที่เอกสาร",
+  issue_date: "วันออกหนังสือ",
+  pnd_type: "ประเภท ภ.ง.ด.",
+  income_type: "ระบุประเภทเงินได้",
+  income_seq: "ประเภทเงินได้ (ข้อ)",
+  tx_ids: "บิลที่อ้างถึง",
+  tax_year: "ปีภาษี",
+  cancelled_at: "วันเวลาที่ยกเลิก",
+  cancelled_by: "ผู้ยกเลิก",
+  cancel_reason: "เหตุผลที่ยกเลิก",
   // ขาย
   qu_no: "เลขที่ใบเสนอราคา",
   order_no: "เลขที่ออเดอร์",
@@ -178,6 +189,25 @@ export const COLUMN_LABEL_TH: Record<string, string> = {
 
 export const columnLabel = (key: string): string => COLUMN_LABEL_TH[key] ?? key;
 
+/**
+ * ป้ายคอลัมน์ที่ความหมายต่างตามตาราง — ชื่อคอลัมน์เดียวกันแต่คนละเรื่อง
+ * D180: `base_amount` ของบิล = ยอดก่อน VAT · ของใบ 50ทวิ = "จำนวนเงินที่จ่าย" ที่พิมพ์บนใบ (ยอดที่ใช้คิดหัก)
+ */
+const COLUMN_LABEL_BY_TABLE: Record<string, Record<string, string>> = {
+  wht_certificates: {
+    base_amount: "จำนวนเงินที่จ่าย (บนใบ)",
+    wht_amount: "ภาษีที่หัก (บนใบ)",
+  },
+};
+
+/**
+ * คอลัมน์ที่ซ่อนเฉพาะตาราง — ซ้ำกับคอลัมน์ "เมื่อไหร่ / ใครแก้" ของหน้าประวัติอยู่แล้ว
+ * D180: ผู้ยกเลิกเป็น uuid · เวลายกเลิกเป็น ISO ดิบ = อ่านไม่ออก และคือแถวเดียวกับที่ยกเลิก
+ */
+const SKIP_BY_TABLE: Record<string, Set<string>> = {
+  wht_certificates: new Set(["cancelled_by", "cancelled_at"]),
+};
+
 export const ACTION_LABEL_TH: Record<EditAction, string> = {
   insert: "เพิ่ม",
   update: "แก้ไข",
@@ -208,7 +238,11 @@ export function changedFields(
   // แปลงรหัสก่อน fmtVal — ตัวคั่น "" ต้องเป็น "ไม่มีตัวคั่น" ไม่ใช่ "—" (ว่างที่มีความหมาย)
   const show = (key: string, v: unknown) =>
     typeof v === "string" && labels[key]?.[v] !== undefined ? labels[key][v] : fmtVal(v);
-  const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter((k) => !SKIP.has(k));
+  const skipT = SKIP_BY_TABLE[row.tableName ?? ""];
+  const labelT = COLUMN_LABEL_BY_TABLE[row.tableName ?? ""] ?? {};
+  const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter(
+    (k) => !SKIP.has(k) && !skipT?.has(k),
+  );
 
   const out: FieldChange[] = [];
   for (const key of keys) {
@@ -216,7 +250,7 @@ export function changedFields(
     const a = key in after ? show(key, after[key]) : "—";
     if (row.action === "update" && b === a) continue;
     if (row.action !== "update" && b === "—" && a === "—") continue; // แถวใหม่/ที่ลบ ไม่ต้องโชว์ช่องว่าง
-    out.push({ key, label: columnLabel(key), before: b, after: a });
+    out.push({ key, label: labelT[key] ?? columnLabel(key), before: b, after: a });
   }
   return out;
 }

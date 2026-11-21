@@ -18,6 +18,7 @@ import { billTotals, billTotalLabel, billTotalsNote } from "@/lib/accounting/bil
 import { can, toRole } from "@/lib/shared/roles";
 import { ADVANCE_TYPE, ADVANCE_REFUND_TYPE, advanceStatusLabel } from "@/lib/accounting/advance";
 import { entityMoveBlock, entityMoveError, entityMoveWarnings, entityMoveSavedText, type MoveTx } from "@/lib/accounting/entityMove";
+import { whtIssuedEditNote } from "@/lib/accounting/whtCancel";
 
 type Bills = Awaited<ReturnType<typeof searchBillsAction>>;
 type Detail = Awaited<ReturnType<typeof getBillDetailAction>>;
@@ -474,6 +475,8 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
             {hasWht && (
               <WhtBaseField value={amt.whtBaseInput} onChange={amt.setWhtBaseInput} afterDiscount={effAfterDisc} warns={amt.whtWarns} />
             )}
+            {/* D180 — ใบ 50ทวิ แช่ยอดไว้ตอนออก: แก้บิลแล้วใบไม่ตาม ต้องบอกทางยกเลิก-ออกใหม่ */}
+            {whtIssuedEditNote(whtDocNos) && <p className="mt-1 text-xs text-warn">⚠️ {whtIssuedEditNote(whtDocNos)}</p>}
             {/* D124 — เตือนเหมือนฟอร์มบันทึก (ทาง ก: ยังนับเข้า ภพ.30) */}
             <MissingInvoiceWarn text={missingInvoiceWarn(type, hasVat, taxInvoiceNo)} />
 
