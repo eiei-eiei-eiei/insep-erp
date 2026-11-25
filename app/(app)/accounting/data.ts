@@ -19,6 +19,8 @@ import { ADVANCE_TYPE, ADVANCE_REFUND_TYPE, type AdvanceRow } from "@/lib/accoun
 import { TX_COLS, fetchAllTransactions, loadContactMap, statementFor, taxReportBundleFor, missingInvoicesFor } from "@/lib/accounting/reportLoaders";
 import { itemHistoryFor } from "@/lib/accounting/itemHistory";
 import { mustRead } from "@/lib/shared/dbError";
+import { netLine } from "@/lib/accounting/priceHistory";
+import { PRICE_CHECK_TYPE } from "@/lib/accounting/billTotals";
 import { getTenantPlan } from "@/lib/shared/tenant-plan";
 import { hasModule } from "@/lib/shared/workspaces";
 import { taxDueBoard } from "@/lib/accounting/taxPay";
@@ -435,7 +437,7 @@ export async function searchPriceHistory(params: {
     let q = supabase
       .from("transaction_items")
       .select(
-        "item_id, tx_id, item_name, quantity, in_vat, ex_vat, total_price, item_category, item_job, transactions!inner(transaction_date, contact_name, type, status, entity_id, advance_status)",
+        "item_id, tx_id, item_name, quantity, in_vat, ex_vat, total_price, item_category, item_job, transactions!inner(transaction_date, contact_name, type, status, entity_id, advance_status, base_amount, amount_after_discount)",
         from === 0 ? { count: "exact" } : undefined,
       )
       .eq("transactions.status", "ปกติ");
@@ -462,6 +464,7 @@ export async function searchPriceHistory(params: {
   }
 
   type Row = {
+    item_id: number | string;
     item_name: string;
     quantity: number;
     ex_vat: number;
@@ -470,13 +473,14 @@ export async function searchPriceHistory(params: {
     tx_id: string;
     item_category: string | null;
     item_job: string | null;
-    transactions: { transaction_date: string; contact_name: string | null; type: string; status: string; advance_status: string | null } | null;
+    transactions: { transaction_date: string; contact_name: string | null; type: string; status: string; advance_status: string | null; base_amount: number | null; amount_after_discount: number | null } | null;
   };
   const rows = (raw as unknown as Row[])
     .filter((r) => r.transactions && r.transactions.status === "ปกติ")
     // D119 — สำรองจ่ายที่เคลียแล้ว: รายการเดียวกันถูกคัดลอกไปเป็นบิลของกิจการปลายทาง → ไม่นับซ้ำ
     .filter((r) => !(r.transactions!.type === ADVANCE_TYPE && r.transactions!.advance_status === "เคลียแล้ว"))
     .map((r) => ({
+      itemId: String(r.item_id),
       itemName: r.item_name,
       quantity: Number(r.quantity) || 0,
       exVat: Number(r.ex_vat) || 0,
@@ -488,6 +492,15 @@ export async function searchPriceHistory(params: {
       txId: r.tx_id,
       category: r.item_category ?? "",
       job: r.item_job ?? "",
+      // D181 — ราคาต่อหน่วยสุทธิ: เกลี่ยส่วนลดท้ายบิลลงบรรทัด (total_price หักแค่ส่วนลดรายบรรทัด)
+      ...netLine({
+        type: r.transactions!.type,
+        quantity: Number(r.quantity) || 0,
+        exVat: Number(r.ex_vat) || 0,
+        totalPrice: Number(r.total_price) || 0,
+        baseAmount: Number(r.transactions!.base_amount) || 0,
+        amountAfterDiscount: Number(r.transactions!.amount_after_discount) || 0,
+      }, PRICE_CHECK_TYPE),
     }))
     // ใหม่สุดก่อนตามวันที่บิล (item_id เรียงตามลำดับที่คีย์ ซึ่งไม่ใช่วันที่บิลเสมอ) · sort เสถียร = คงลำดับเดิมเมื่อวันเท่ากัน
     .sort((a, b) => (a.date === b.date ? 0 : a.date < b.date ? 1 : -1));

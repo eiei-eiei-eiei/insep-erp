@@ -2,6 +2,7 @@
 
 import { useConfirm } from "@/lib/shared/ui";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
+import { emitDataChanged } from "@/lib/shared/dataChanged";
 import { useUnsaved } from "@/lib/shared/pageGuardHost";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -297,7 +298,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
       if (whtBaseSave != null) { setMsg({ ok: false, text: WHT_BASE_INST_REASON }); return; }
       if (Math.abs(instSumPct - 100) > 0.01) { setMsg({ ok: false, text: `ผลรวมงวด = ${instSumPct}% (ต้อง 100%)` }); return; }
       const rows = instRows.map((r) => ({ ...r, description: `${description}${description ? " " : ""}(งวด ${r.installmentNo}/${r.installmentTotal})` }));
-      run(() => saveInstallmentsAction({ transaction_date: txDate, type, category, contact_name: contactName, contact_id: resolvedContactId, entity_id: effEntity }, rows, itemInputs), `บันทึก ${rows.length} งวดเรียบร้อย (เป็นหนี้ค้างทั้งหมด)`, () => { resetItems(); refreshItemHist(); });
+      run(() => saveInstallmentsAction({ transaction_date: txDate, type, category, contact_name: contactName, contact_id: resolvedContactId, entity_id: effEntity }, rows, itemInputs), `บันทึก ${rows.length} งวดเรียบร้อย (เป็นหนี้ค้างทั้งหมด)`, () => { resetItems(); refreshItemHist(); emitDataChanged("accounting"); });
       return;
     }
     run(
@@ -313,7 +314,7 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
         ? `บันทึกสำรองจ่ายแล้ว — รอเบิกคืนจาก ${advanceForName || effAdvanceFor} (เคลียได้ที่แท็บลูกหนี้-เจ้าหนี้)`
         : "บันทึกข้อมูลเรียบร้อยแล้ว",
       // forward วัตถุดิบพลาด = บิลลงบัญชีแล้วแต่สต็อกผลิตไม่ได้รับ → ต้องขึ้น "เหลือง" ไม่ใช่เขียว
-      (data) => { const d = data as { warning?: string | null } | undefined; if (d?.warning) setMsg({ ok: true, warn: true, text: d.warning }); resetItems(); refreshItemHist(); },
+      (data) => { const d = data as { warning?: string | null } | undefined; if (d?.warning) setMsg({ ok: true, warn: true, text: d.warning }); resetItems(); refreshItemHist(); emitDataChanged("accounting"); },
     );
   }
   /**

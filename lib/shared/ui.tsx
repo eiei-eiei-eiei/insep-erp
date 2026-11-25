@@ -122,9 +122,12 @@ export function useRead<T>(
   fetcher: () => Promise<T>,
   deps: unknown[],
   opts: { skip?: boolean } = {},
-): { data: T | null; loading: boolean; err: boolean; reload: () => void } {
+): { data: T | null; loading: boolean; refreshing: boolean; err: boolean; reload: () => void } {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(false);
+  // D181 — กำลังโหลดรอบถัดไปโดยที่ข้อมูลเก่ายังโชว์อยู่ · ไม่บอก = ผู้ใช้เห็นตารางเก่า/"ไม่มีรายการ"
+  //   ระหว่างรอ แล้วสรุปว่าบันทึกไม่เข้า ทั้งที่อีกไม่กี่วินาทีข้อมูลใหม่ก็มา
+  const [refreshing, setRefreshing] = useState(false);
   const [err, setErr] = useState(false);
   const [tick, setTick] = useState(0);
   const first = useRef(true);
@@ -137,6 +140,7 @@ export function useRead<T>(
     if (skip) return;
     let alive = true; // กัน race ตอนสลับ deps เร็ว ๆ (แพตเทิร์นเดิมของทุกแท็บ)
     if (first.current) setLoading(true);
+    else setRefreshing(true);
     setErr(false);
     fnRef
       .current()
@@ -144,12 +148,14 @@ export function useRead<T>(
         if (!alive) return;
         setData(r);
         setLoading(false);
+        setRefreshing(false);
         first.current = false;
       })
       .catch(() => {
         if (!alive) return;
         setErr(true);
         setLoading(false); // 🚨 ต้องจบสถานะโหลดเสมอ ไม่งั้นค้าง "กำลังโหลด…"
+        setRefreshing(false);
         first.current = false;
       });
     return () => {
@@ -159,7 +165,7 @@ export function useRead<T>(
   }, [...deps, skip, tick]);
 
   const reload = useCallback(() => setTick((n) => n + 1), []);
-  return { data, loading, err, reload };
+  return { data, loading, refreshing, err, reload };
 }
 
 /** แถบแดง "โหลดไม่สำเร็จ" + ปุ่มลองใหม่ — ไม่ขึ้นอะไรเลยเมื่อไม่มี error */

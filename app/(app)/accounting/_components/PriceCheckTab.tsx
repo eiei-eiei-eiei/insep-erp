@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { inVatFromExVat } from "@/lib/accounting/calc";
+import { inVatFromExVat, round2 } from "@/lib/accounting/calc";
+import { emitDataChanged } from "@/lib/shared/dataChanged";
 import { saveTransactionAction, type TxItemInput } from "../actions";
 import type { Bootstrap } from "./types";
 import { Card, Field, NumInput, SaveButton, TextInput, fmt, todayISO, useSaver } from "./ui";
@@ -23,7 +24,8 @@ export function PriceCheckTab({ boot, entityId }: { boot: Bootstrap; entityId: s
       quantity: it.quantity,
       in_vat: inVatFromExVat(it.exVat),
       ex_vat: it.exVat,
-      total_price: 0,
+      // D181 — ระบบเดิม (_js_pricecheck) เก็บ totalPrice = จำนวน × ราคา · เดิมที่นี่ส่ง 0 ⇒ ประวัติราคาโชว์รวม 0.00
+      total_price: round2(it.quantity * it.exVat),
     }));
     run(
       () =>
@@ -37,7 +39,7 @@ export function PriceCheckTab({ boot, entityId }: { boot: Bootstrap; entityId: s
           itemInputs,
         ),
       "บันทึกการเช็คราคาเรียบร้อย (ไม่กระทบบัญชี/ภาษี)",
-      () => setItems([{ itemName: "", quantity: 1, exVat: 0 }]),
+      () => { setItems([{ itemName: "", quantity: 1, exVat: 0 }]); emitDataChanged("accounting"); },
     );
   }
 
