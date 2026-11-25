@@ -58,7 +58,8 @@ export function DashboardTab({
   const [busy, setBusy] = useState(false);
   // ★ "วันนี้" = วันขายปัจจุบันตามรอบที่ตั้งไว้ ไม่ใช่วันปฏิทิน (ตีหนึ่งยังเป็นคืนเดิม)
   const today = businessDate(new Date(), boot.settings.window);
-  const [range, setRange] = useState(() => presetRange("30d", today));
+  // ค่าเริ่มต้น "เดือนนี้" (ผู้ใช้ขอ 2026-11-25 · เดิม 30 วัน) — วันที่ 1 ของเดือนตามวันขาย ถึงวันนี้
+  const [range, setRange] = useState(() => presetRange("thisMonth", today));
   const [sales, setSales] = useState<SaleRow[]>([]);
   const [prevSales, setPrevSales] = useState<SaleRow[]>([]);
   const [items, setItems] = useState<SaleItemRow[]>([]);
