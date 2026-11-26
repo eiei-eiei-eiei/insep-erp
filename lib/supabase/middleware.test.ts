@@ -94,6 +94,7 @@ describe("D135 — server client ก็มีเพดานเวลาเห�
   it("lib/supabase/server.ts ส่ง withAuthTimeout() เข้า createServerClient", async () => {
     const fs = await import("node:fs");
     const src = fs.readFileSync("lib/supabase/server.ts", "utf8");
-    expect(src).toMatch(/global:\s*\{\s*fetch:\s*withAuthTimeout\(\)\s*\}/);
+    // D187 เติม `headers` (กิจการที่เลือก) ต่อท้ายใน global เดียวกัน — ยังต้องมี fetch ตัวมีเพดานเสมอ
+    expect(src).toMatch(/global:\s*\{\s*fetch:\s*withAuthTimeout\(\)\s*[,}]/);
   });
 });

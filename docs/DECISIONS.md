@@ -11833,3 +11833,30 @@ grant-platform-admin · harness เทส) · ผลข้างเคียง�
 **เทส**: `lib/production/exciseData.test.ts` (อ่านซอร์สหลังตัดคอมเมนต์ · ห้าม `.from("…")` ตรงนอกจาก entities/log_product ในตัวช่วย · ตัวช่วยทุกตัวแบ่งหน้า+เรียง+count · readLog ทุกจุดส่ง `entityId` · positive control ครบ 5 ตาราง log) — **พิสูจน์ว่าจับได้จริง**: ลบตัวกรองกิจการ + ส่ง "EID01" ตายตัว → แดง 2 ข้อ · คืนแล้วเขียว · `reports.test.ts` +4 ข้อข้ามปี · `exciseHidden.test.ts` ปรับรูปการเรียกเป็น `exciseLogProduct(supabase, entityId)`
 - test **2956** · lint ผ่าน · tsc ผ่าน (ยกเว้น error เดิมใน `lib/connector/cardView.test.ts` ที่มีก่อนงานนี้) · build ผ่าน (รันใน git worktree ชั่วคราวบนไดรฟ์ D แยกโฟลเดอร์ เพราะมี dev server ของอีก session รันอยู่ — กติกา D96 · 🪤 junction node_modules ข้ามไดรฟ์ C→D แล้ว webpack หาไฟล์ไม่เจอ) · ⏳ ยังไม่ได้เทสเบราว์เซอร์ · ชุดเทส TESTING ส่วนที่ **136**
 - ⚠️ เจอแต่ไม่ได้แก้ (นอกขอบเขต): หน้าจออื่นของผลิต (`production/data.ts` — ประวัติ/สต็อก/batch ~30 จุด) ก็อ่านแบบไม่แบ่งหน้า · เป็นหน้าจอ ไม่ใช่เลขยื่น แต่จะตัดเงียบเมื่อเกิน 1,000 เหมือนกัน
+
+### D187 — ทาง Y เฟส 1: ฐาน "กิจการที่เลือกอยู่" — `my_current_entity()` · `entity_guard()` · cookie → header (migration 0115, 2026-11-27)
+
+**ที่มา**: สเปก `docs/ENTITY_WORKSPACE_SPEC.md` (ผู้ใช้ตัดสินครบ 14 ข้อ 2026-11-26 · NEXT_STEPS 0.-32) · ตรวจ 2 DB ก่อนเริ่มผ่าน (`supabase/checks/2026-11-27_entity_workspace_precheck.sql` — DB เจ้าของมีบาร์ทั้งก้อนใน EID02 ตาม `bar_entity` ไม่ปน · สเปกส่วนที่ 11)
+
+**ทำ (เพิ่มอย่างเดียว — ไม่มี RLS/default/RPC เดิมตัวไหนเรียกของใหม่ ⇒ แอปทำงานเหมือนเดิมทุกจุด)**
+- `profiles.last_entity_id` (ไม่มี FK โดยตั้งใจ — เป็นแค่ความชอบ ทุกจุดที่อ่านตรวจซ้ำ · FK จะขวาง `fn_mig_truncate` และชน D137)
+- `my_current_entity()` definer: header `x-entity-id` → `last_entity_id` → กิจการหลัก → กิจการแรก · **ทุกชั้นต้องอยู่ใน tenant + ใน `my_entities()`** ไม่ผ่าน = ข้ามไปชั้นถัดไป
+  - 🔁 **ต่างจากร่างสเปก** ("ไม่มี header = null"): มีชั้นสำรองเพื่อให้ connector (Q14 · ไม่มี cookie) ได้กิจการล่าสุดเอง · ไม่ทำให้ข้อมูลปน เพราะคืนกิจการเดียวในสิทธิ์เสมอ
+  - 🔒 header ไม่ใช่ด่าน — ผู้ใช้ยิง PostgREST ตรงพร้อม header อะไรก็ได้ · เทส test:tenant ส่ง header ของ tenant อื่น/นอกสิทธิ์เองตรง ๆ แล้วต้องถูกข้าม
+- `entity_guard(p_entity, p_cap)` definer: ล็อกอิน + `has_cap` + `p_entity = my_current_entity()` · ไม่ตรง = `… (อาจสลับในอีกแท็บ) — รีเฟรชหน้านี้ก่อนบันทึก` (ฝาแฝด TS `ENTITY_MISMATCH_HINT`) · ยังไม่มีใครเรียก — เฟส 2-5 ใช้แทน `bar_guard`/ด่านเฉพาะตัว
+- `fn_set_last_entity(p_entity)` definer: จดของตัวเอง (`where id = auth.uid()`) · กิจการนอก tenant/นอกสิทธิ์ = error ดัง ๆ (เป็นการกดของผู้ใช้ ต้องบอก)
+- definer ใหม่ 3 ตัว: `revoke … from public, anon` + `grant … to authenticated, service_role` (D99) · ทุกตัวมี `my_tenant()` ใน body ⇒ ผ่าน `hasGuard` ของ `definerPolicy.ts`
+- แอป: `lib/shared/entityWorkspace.ts` (ชื่อ cookie/header · ตัดค่าขยะ · สีประจำกิจการ · `ENTITY_SCOPED_MODULES`) · `lib/supabase/server.ts` แนบ header จาก cookie · `switchEntityAction` (จดใน DB ก่อน แล้วตั้ง cookie ด้วยค่าที่ DB ยืนยัน) · `signOut` ลบ cookie กิจการ · `EntitySwitcher` บนแถบบน
+
+**ตัดสินระหว่างทำ (เทคนิค — ไม่กระทบคำตอบเชิงธุรกิจของผู้ใช้)**
+- 🚨 **ตัวสลับซ่อนจนกว่าจะมีโมดูลทำตาม** (`ENTITY_SCOPED_MODULES = []`) — ตัวสลับที่กดแล้วไม่มีอะไรเปลี่ยน = ปุ่มหลอก ผู้ใช้จะคิดว่าพัง · layout ไม่ยิงคิวรีเพิ่มเลยตอนลิสต์ว่าง (ไม่เพิ่มภาระทุกหน้า) · เฟสที่ทำโมดูลเสร็จเติม key ที่เดียว แล้วตัวสลับขึ้นพร้อม "มีผลกับ: …" บนจอ
+- 🔁 **เลิกค่าปริยายของ `entity_id`** ในตาราง 4 โมดูล (ทำในเฟส 2-5) แทนที่จะเปลี่ยนเป็น `default my_current_entity()` ตามร่างสเปก — ค่าปริยายแบบนั้นทำให้แท็บที่ค้างจอกิจการ A บันทึกลงกิจการ B **เงียบ ๆ** · ไม่มีค่าปริยาย = ลืมส่ง → not null ล้มดัง · ส่งกิจการเก่า → RLS `with check` ปฏิเสธ
+- 🔁 `app_settings.entity_id` + `setting_for()` **ย้ายไปเฟส 3** — ต้องแก้ unique `(tenant_id, kind, value)` ที่ action ทั้งแอปใช้ upsert อยู่ · ทำตอนยังไม่มีค่าตั้งต่อกิจการตัวไหนใช้ = เสี่ยงฟรี
+- ไม่แตะ middleware — header สร้างฝั่ง server จาก cookie ไม่ได้ส่งต่อ request ของเบราว์เซอร์ (ร่างสเปกเผื่อไว้ว่าต้องลบ header ปลอม — ไม่จำเป็น)
+
+**เทส**
+- `lib/shared/entityWorkspace.test.ts` 35 ข้อ — ตัวช่วย + อ่าน SQL 0115 (ทุกชั้นผ่าน tenant+สิทธิ์ · ลำดับชั้น · ข้อความฝาแฝด · revoke anon · 🚫 ไม่มี policy/default ในไฟล์) + อ่านซอร์ส (server.ts แนบ header · action จด DB ก่อนตั้ง cookie · signOut ลบ cookie)
+- `tests/tenant/entity-workspace.test.ts` 17 ข้อ ยิง DB จริง 2 ทิศ: header ของตัวเองใช้ได้ / ของ tenant อื่น·ขยะ·นอกสิทธิ์ถูกข้าม · positive control B ใช้ header ของตัวเองได้ (header ถึง DB จริง) · จด last ได้/ข้าม tenant ไม่ได้/ไม่แตะโปรไฟล์คนอื่น · ผู้ใช้จำกัดเหลือ EID02 ส่ง header EID01 ได้ EID02 · entity_guard ผ่าน/จอค้าง/ข้าม tenant/ไม่มี cap/ค่าว่าง
+- `lib/supabase/middleware.test.ts` คลาย regex D135 ให้ `global` มี key อื่นต่อท้ายได้ (ยังบังคับ `fetch: withAuthTimeout()`)
+- harness: `anonClient(headers)` · `signIn(t, headers)` · `seedUser(t, role, headers)` (ค่าปริยาย = ไม่มี header · ของเดิมไม่กระทบ)
+- ✅ 0115 ลงครบ 2 DB (backup `D:/insep-erp-backup/2026-11-27`) · `db:audit-grants` ผ่านทั้ง 2 ก้อน · `test:tenant` ทั้งชุด **672 ผ่าน** (39 ไฟล์) · ⏳ `npm run build` ยังไม่ได้รัน (dev server ของอีก session รันอยู่ · D96) · ชุดเทส TESTING ส่วนที่ **137**

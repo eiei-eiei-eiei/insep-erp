@@ -3,7 +3,8 @@ import { ToastHost } from "@/lib/shared/toast";
 import { TouchTitles } from "@/lib/shared/touchTitle";
 import { PageGuards } from "@/lib/shared/pageGuardHost";
 import { createClient } from "@/lib/supabase/server";
-import { workspacesFor } from "@/lib/shared/workspaces";
+import { workspacesFor, type ModuleKey } from "@/lib/shared/workspaces";
+import { ENTITY_SCOPED_MODULES, showEntitySwitcher, type EntityOption } from "@/lib/shared/entityWorkspace";
 import { can, toRole } from "@/lib/shared/roles";
 import { brandingFromSettings } from "@/lib/shared/branding";
 import { bangkokDateISO } from "@/lib/shared/datetime";
@@ -82,6 +83,22 @@ export default async function AppLayout({
   const branding = brandingFromSettings(settings);
   const dateFormats = dateFormatsFromSettings(settings);
 
+  // ── D187 ตัวสลับกิจการ (ทาง Y) ─────────────────────────────────────────────
+  // ★ ยังไม่มีโมดูลไหนทำตามกิจการที่เลือก (ENTITY_SCOPED_MODULES ว่าง) ⇒ ไม่ยิงคิวรีเพิ่มเลย
+  //   เฟสที่เปิดโมดูลแรกจะเริ่มอ่าน entities (RLS กรองตามสิทธิ์ D120 ให้แล้ว) + my_current_entity()
+  // 🚨 อ่านไม่สำเร็จ = ไม่แสดงตัวสลับ (ไม่ล็อกผู้ใช้ออกจากแอปเพราะตัวสลับ) — กิจการที่ใช้จริงตัดสินใน DB อยู่ดี
+  let entitySwitch: { entities: EntityOption[]; current: string | null; scoped: readonly ModuleKey[] } | null = null;
+  if (ENTITY_SCOPED_MODULES.length > 0) {
+    const [{ data: ents }, { data: current }] = await Promise.all([
+      supabase.from("entities").select("entity_id, name").order("entity_id"),
+      supabase.rpc("my_current_entity"),
+    ]);
+    const list = (ents ?? []) as EntityOption[];
+    if (showEntitySwitcher(list)) {
+      entitySwitch = { entities: list, current: (current as string | null) ?? null, scoped: ENTITY_SCOPED_MODULES };
+    }
+  }
+
   // แจ้งเตือนค่าบริการ — เฉพาะเจ้าของกิจการ และเฉพาะรายที่ยังเปิดการเตือนไว้
   // (พนักงานขาย/คลังเห็นแล้วทำอะไรไม่ได้ · เป็นเรื่องน่าอายของเจ้าของด้วย)
   const billingDueOn =
@@ -99,6 +116,7 @@ export default async function AppLayout({
           role={role}
           branding={branding}
           processes={processesOf((prodTypes ?? []).map((p) => p.liquor_type as string | null))}
+          entitySwitch={entitySwitch}
         />
         {/* pb ล่างบนมือถือ กันเนื้อหาโดน bottom-tab บัง */}
         <main className="mx-auto max-w-6xl px-4 py-6 pb-24 md:pb-6">{children}</main>

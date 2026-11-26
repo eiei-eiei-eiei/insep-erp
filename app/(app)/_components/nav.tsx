@@ -6,7 +6,9 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { Route } from "next";
 import { signOut } from "../actions";
-import { ROLE_LABEL, type Role, type Workspace } from "@/lib/shared/workspaces";
+import { ROLE_LABEL, type ModuleKey, type Role, type Workspace } from "@/lib/shared/workspaces";
+import type { EntityOption } from "@/lib/shared/entityWorkspace";
+import { EntitySwitcher } from "./EntitySwitcher";
 import { navSubItems } from "@/lib/shared/tabs";
 import { WORKSPACE_ICON, IconLogout, IconChevronDown, type IconKey } from "@/lib/shared/icons";
 import type { Branding } from "@/lib/shared/branding";
@@ -19,6 +21,7 @@ export function Nav({
   role,
   branding,
   processes,
+  entitySwitch,
 }: {
   workspaces: Workspace[];
   displayName: string;
@@ -26,6 +29,8 @@ export function Nav({
   branding: Branding;
   /** D78 — ประเภทสุราที่มีสินค้าจริง (ใช้ซ่อนแท็บผลิตของเส้นทางที่โรงนี้ไม่ได้ทำ) */
   processes?: string[];
+  /** D187 — ตัวสลับกิจการ (null = ไม่แสดง · layout ตัดสินด้วย showEntitySwitcher) */
+  entitySwitch?: { entities: EntityOption[]; current: string | null; scoped: readonly ModuleKey[] } | null;
 }) {
   const pathname = usePathname();
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
@@ -77,6 +82,7 @@ export function Nav({
           </nav>
 
           <div className="ml-auto flex shrink-0 items-center gap-2 text-sm md:ml-0">
+            {entitySwitch && <EntitySwitcher {...entitySwitch} />}
             <span className="hidden items-center gap-2 sm:flex">
               <span className="grid h-6 w-6 place-items-center rounded bg-brand-soft text-[10px] font-bold text-brand">
                 {initials}

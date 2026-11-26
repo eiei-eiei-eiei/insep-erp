@@ -58,8 +58,8 @@ export const admin = (): SupabaseClient =>
   createClient(URL, SERVICE, { auth: { persistSession: false, autoRefreshToken: false } });
 
 /** client แบบผู้ใช้ทั่วไป (anon key) — RLS มีผลเต็ม */
-export const anonClient = (): SupabaseClient =>
-  createClient(URL, ANON, { auth: { persistSession: false, autoRefreshToken: false } });
+export const anonClient = (headers: Record<string, string> = {}): SupabaseClient =>
+  createClient(URL, ANON, { auth: { persistSession: false, autoRefreshToken: false }, global: { headers } });
 
 export type Tenant = {
   slug: string;
@@ -269,8 +269,8 @@ export async function seedTenant(
 }
 
 /** ล็อกอินเป็นผู้ใช้ของ tenant นั้น → client ที่ RLS มีผลเต็ม */
-export async function signIn(t: Tenant): Promise<SupabaseClient> {
-  const c = anonClient();
+export async function signIn(t: Tenant, headers: Record<string, string> = {}): Promise<SupabaseClient> {
+  const c = anonClient(headers);
   const { error } = await c.auth.signInWithPassword({ email: t.email, password: t.password });
   if (error) throw new Error(`ล็อกอิน ${t.slug}: ${error.message}`);
   return c;
@@ -285,6 +285,8 @@ export async function signIn(t: Tenant): Promise<SupabaseClient> {
 export async function seedUser(
   t: Tenant,
   role: string,
+  /** D187 — header ติดตัว client (เช่น x-entity-id) · ไม่ส่ง = ไม่มี header */
+  headers: Record<string, string> = {},
 ): Promise<{ client: SupabaseClient; email: string; userId: string }> {
   const db = admin();
   const password = generateInitialPassword();
@@ -300,7 +302,7 @@ export async function seedUser(
   must(`ตั้ง role ${role}`, (await db.from("profiles")
     .update({ role }).eq("id", u!.user!.id)).error);
 
-  const client = anonClient();
+  const client = anonClient(headers);
   const { error: sErr } = await client.auth.signInWithPassword({ email, password });
   if (sErr) throw new Error(`ล็อกอิน ${role}: ${sErr.message}`);
   return { client, email, userId: u!.user!.id };
