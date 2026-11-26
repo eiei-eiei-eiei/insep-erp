@@ -202,8 +202,9 @@ describe("D92 — โครงของ cron route", () => {
   it("🚨 สองงานต้องเป็นอิสระต่อกัน — แยกฟังก์ชัน ไม่ใช่ต่อท้ายหลัง continue", () => {
     expect(src).toMatch(/async function taxPart\(/);
     expect(src).toMatch(/async function excisePart\(/);
-    expect(src).toMatch(/includes\("accounting"\)[\s\S]{0,120}taxPart\(/);
-    expect(src).toMatch(/includes\("production"\)[\s\S]{0,120}excisePart\(/);
+    // D182 Y2 — ธงโมดูลถามผ่าน has() → hasModule() (ค่าว่าง = เปิดครบ) แทน mods.includes
+    expect(src).toMatch(/has\("accounting"\)[\s\S]{0,120}taxPart\(/);
+    expect(src).toMatch(/has\("production"\)[\s\S]{0,120}excisePart\(/);
   });
 
   it("ใช้ action แยกจากฝั่งภาษี", () => {

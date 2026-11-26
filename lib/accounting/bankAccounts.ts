@@ -124,3 +124,17 @@ export function renameWarnText(oldName: string, u: AccountUsage | undefined): st
   const what = [bills > 0 ? `บิล ${bills.toLocaleString("th-TH")} รายการ` : "", refs > 0 ? `ค่าตั้ง ${refs} จุด` : ""].filter(Boolean).join(" และ ");
   return `เปลี่ยนชื่อจาก “${oldName}” — ระบบจะแก้ชื่อตามใน${what}ให้ด้วย` + (bills > 0 ? " (ประวัติการแก้ไขจะมีแถวเพิ่มตามจำนวนบิล)" : "");
 }
+
+/**
+ * 🔴 Y3 (รีวิว Fable · D182) — โอนเงินระหว่างบัญชีตอนเลือก "ทุกกิจการ" ที่แถบบน
+ * เดิมส่ง `'ALL'` ลงคอลัมน์ `entity_id` ตรง ๆ → FK ล้มด้วย error อังกฤษดิบ ไม่บอกว่าต้องทำอะไร
+ * ⇒ คืนเหตุผลที่กดไม่ได้ (โชว์บนจอ · D83) หรือ `null` = โอนได้
+ * ★ ฝาแฝด SQL: ด่านเดียวกันใน `fn_save_transfer` (0114) — ยิง API ตรงก็ไม่รอด
+ */
+export function transferBlockedText(entityId: string | null | undefined): string | null {
+  const id = (entityId ?? "").trim();
+  if (id === "" || id === "ALL") {
+    return 'เลือกกิจการที่แถบด้านบนก่อน — เงินโอนต้องลงกิจการใดกิจการหนึ่ง (ตอนนี้เลือก "ทุกกิจการ" อยู่)';
+  }
+  return null;
+}

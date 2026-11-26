@@ -8,6 +8,8 @@
  *   เกณฑ์ "ใกล้ครบกำหนด/เลยกำหนด" จึงต้องมาจากที่นี่ที่เดียว — เขียนซ้ำเมื่อไหร่จะเพี้ยนกันวันหนึ่ง
  */
 
+import { MODULES, type ModuleKey } from "@/lib/shared/workspaces";
+
 export type Cycle = "monthly" | "yearly";
 
 /** ถือว่า "ใกล้ครบกำหนด" เมื่อเหลือไม่เกินกี่วัน (ใช้ที่หน้าแอดมิน) */
@@ -116,48 +118,83 @@ export function noticeLevel(dueOn: string | null | undefined, todayISO: string):
 
 // ── ราคา ─────────────────────────────────────────────────────────────────────
 
-/** ราคาต่อเดือนตาม docs/NEXT_STEPS.md 4.1 — แก้ราคาที่นี่ที่เดียว */
-export const MODULE_PRICE: Record<string, number> = {
+/**
+ * ราคาต่อเดือนตาม docs/NEXT_STEPS.md 4.1 — แก้ราคาที่นี่ที่เดียว
+ *
+ * 🔴 Y8 (รีวิว Fable · D182) — เดิมเป็น `Record<string, number>` รู้จักแค่ 3 โมดูล
+ *    ⇒ ลูกค้าที่ซื้อบาร์อย่างเดียวถูกเสนอ **0 บาท "ยังไม่ระบุ"** · ซื้อ 3 โมดูล + เงินเดือน = ราคาเท่า 3 โมดูล
+ *    และ TS ไม่ฟ้องเพราะ key เป็น string อะไรก็ได้ (ตระกูล D84)
+ *    ⇒ บังคับครบทุก `ModuleKey` · `null` = **ยังไม่ได้ตั้งราคา** (ผู้ใช้สั่ง 2026-11-26: ราคาสรุปทีเดียวทีหลัง)
+ *    — ห้ามใส่ 0 แทน null: 0 คือ "ฟรี" ซึ่งเป็นการตัดสินเชิงพาณิชย์อีกแบบ
+ */
+export const MODULE_PRICE: Record<ModuleKey, number | null> = {
   production: 790,
   accounting: 490,
   sales: 490,
+  payroll: null, // ⏳ ยังไม่ตั้งราคา (NEXT_STEPS 0.-7)
+  bar: null, // ⏳ เสนอไว้ ฿490 แต่ยังไม่สรุป (NEXT_STEPS 0.-7)
 };
 
-/** ซื้อครบ 3 โมดูล = ราคาเหมา (ถูกกว่าบวกกันเอง 270) */
+/** 3 โมดูลที่ราคาเหมาครอบ — ราคาเหมาตั้งไว้ตอนมีแค่ 3 โมดูล ยังไม่รวมเงินเดือน/บาร์ */
+export const FULL_BUNDLE: readonly ModuleKey[] = ["production", "accounting", "sales"];
+
+/** ซื้อครบ 3 โมดูลหลัก = ราคาเหมา (ถูกกว่าบวกกันเอง 270) */
 export const FULL_PRICE = 1490;
 
 /** กิจการที่ 2 ขึ้นไป (add-on) — ช่วงราคาจริง 390–590 ใช้ค่ากลางเป็นค่าเสนอ */
 export const EXTRA_ENTITY_PRICE = 490;
 
-const MODULE_SHORT: Record<string, string> = {
+/** ★ Record<ModuleKey,…> — เพิ่มโมดูลใหม่แล้วลืมเติม = TS ฟ้อง (D84) */
+const MODULE_SHORT: Record<ModuleKey, string> = {
   production: "ผลิต",
   accounting: "บัญชี",
   sales: "ขาย",
+  payroll: "เงินเดือน",
+  bar: "บาร์",
 };
+
+const isModule = (m: string): m is ModuleKey => (MODULES as readonly string[]).includes(m);
+/** โมดูลที่ซื้อ (ตัดค่าที่ไม่รู้จัก · เรียงตามลำดับมาตรฐาน · ไม่ซ้ำ) */
+const boughtOf = (modules: string[]): ModuleKey[] => MODULES.filter((m) => modules.includes(m));
 
 /**
  * ราคาที่ระบบ **เสนอ** — คนกดพิมพ์ทับได้เสมอ (ส่วนลด/ดีลพิเศษเป็นเรื่องของคน)
  * มีไว้กันลืมคิดเงินตอนลูกค้าซื้อโมดูล/กิจการเพิ่ม ไม่ได้มีไว้บังคับ
  *
+ * ★ โมดูลที่ยังไม่ตั้งราคา **ไม่ถูกนับ** — ผู้เรียกต้องโชว์ `unpricedText()` คู่กันเสมอ
+ *   (ไม่งั้นตัวเลขที่เสนอดูเหมือนครบ ทั้งที่ยังขาดโมดูลนั้น)
  * ⚠️ รายปี = รายเดือน × 12 **ไม่ใส่ส่วนลดอัตโนมัติ** — เป็นการตัดสินใจเชิงพาณิชย์
  */
 export function suggestPrice(modules: string[], entityCount: number, cycle: Cycle): number {
-  const known = modules.filter((m) => m in MODULE_PRICE);
-  const base =
-    known.length >= Object.keys(MODULE_PRICE).length
-      ? FULL_PRICE
-      : known.reduce((sum, m) => sum + MODULE_PRICE[m], 0);
+  const bought = boughtOf(modules.filter(isModule));
+  const fullBundle = FULL_BUNDLE.every((m) => bought.includes(m));
+  const base = bought.reduce((sum, m) => {
+    if (fullBundle && FULL_BUNDLE.includes(m)) return sum; // อยู่ในราคาเหมาแล้ว
+    return sum + (MODULE_PRICE[m] ?? 0);
+  }, fullBundle ? FULL_PRICE : 0);
   const extra = Math.max(0, Math.trunc(entityCount) - 1) * EXTRA_ENTITY_PRICE;
   const monthly = base + extra;
   return cycle === "yearly" ? monthly * 12 : monthly;
 }
 
-/** ชื่อแพ็กเกจที่เสนอ เช่น 'ผลิต+บัญชี' หรือ 'ครบทุกโมดูล' */
+/** โมดูลที่ลูกค้าซื้อแต่ยังไม่มีราคาตั้ง — ราคาที่เสนอไม่ได้รวมไว้ */
+export function unpricedModules(modules: string[]): ModuleKey[] {
+  return boughtOf(modules.filter(isModule)).filter((m) => MODULE_PRICE[m] === null);
+}
+
+/** ข้อความเตือนบนจอ (D83) · `null` = ราคาที่เสนอครอบทุกโมดูลที่ซื้อแล้ว */
+export function unpricedText(modules: string[]): string | null {
+  const miss = unpricedModules(modules);
+  if (miss.length === 0) return null;
+  return `โมดูล${miss.map((m) => MODULE_SHORT[m]).join(" · ")} ยังไม่มีราคาตั้งในระบบ — ราคาที่เสนอไม่ได้รวมไว้ พิมพ์ราคาเองให้ครอบ`;
+}
+
+/** ชื่อแพ็กเกจที่เสนอ เช่น 'ผลิต+บัญชี' · ซื้อครบทุกโมดูล = 'ครบทุกโมดูล' */
 export function suggestPlanName(modules: string[]): string {
-  const known = Object.keys(MODULE_PRICE).filter((m) => modules.includes(m));
-  if (known.length === 0) return "ยังไม่ระบุ";
-  if (known.length >= Object.keys(MODULE_PRICE).length) return "ครบทุกโมดูล";
-  return known.map((m) => MODULE_SHORT[m]).join("+");
+  const bought = boughtOf(modules.filter(isModule));
+  if (bought.length === 0) return "ยังไม่ระบุ";
+  if (bought.length === MODULES.length) return "ครบทุกโมดูล";
+  return bought.map((m) => MODULE_SHORT[m]).join("+");
 }
 
 /** ราคาต่อเดือนเทียบเท่า — ใช้รวมเป็นรายได้ต่อเดือน (MRR) โดยไม่ให้รายปีมาบวมทีเดียว */

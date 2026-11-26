@@ -19,6 +19,7 @@ import {
 } from "@/lib/bar/reminder";
 import { unpostedDays } from "@/lib/bar/posting";
 import { businessDate } from "@/lib/bar/businessDate";
+import { hasModule } from "@/lib/shared/workspaces";
 
 /**
  * cron — เตือนกำหนดยื่นเข้ากลุ่ม LINE ล่วงหน้า 3 วัน (D88 ภาษีสรรพากร · D92 งบเดือนสรรพสามิต)
@@ -405,10 +406,14 @@ export async function GET(req: NextRequest) {
 
   for (const t of tenants ?? []) {
     if (!t.is_active || t.is_platform) continue;
-    const mods = ((t.modules_enabled as string[]) ?? []);
+    // 🔴 Y2 (รีวิว Fable · D182) — ถามผ่าน `hasModule()` ตัวเดียวกับที่แอปใช้วาดเมนู
+    //    เดิม `mods.includes(...)` กับค่าว่าง/null = "ไม่มีโมดูลเลย" แต่แอปถือว่า "เปิดครบ" (D53 fail-open)
+    //    ⇒ ลูกค้าเห็นครบทุกโมดูล แต่ไม่เคยได้เตือน ภพ.30/ภงด./งบเดือน/ลงบัญชีบาร์ เลย โดยไม่มีอะไรฟ้อง
+    const mods = t.modules_enabled as string[] | null;
+    const has = (k: "accounting" | "production" | "bar") => hasModule(mods, k);
     // 🐛 D96 — เดิมเขียนแค่ accounting/production ⇒ ลูกค้าที่ซื้อ **แค่โมดูลบาร์**
     //    ถูกข้ามตั้งแต่บรรทัดนี้ งานเตือนบาร์จะไม่มีวันทำงาน (กับดัก D92 เป๊ะ)
-    if (!mods.includes("accounting") && !mods.includes("production") && !mods.includes("bar")) continue;
+    if (!has("accounting") && !has("production") && !has("bar")) continue;
 
     const entRes = await admin
       .from("entities")
@@ -424,11 +429,11 @@ export async function GET(req: NextRequest) {
     if (entities.length === 0) continue;
 
     const tn: Tn = { id: t.id as string, slug: t.slug as string };
-    if (mods.includes("accounting")) await taxPart(tn, entities);
-    if (mods.includes("production")) await excisePart(tn, entities);
+    if (has("accounting")) await taxPart(tn, entities);
+    if (has("production")) await excisePart(tn, entities);
     // ★ เตือนเรื่องลงบัญชีจะมีความหมายก็ต่อเมื่อซื้อโมดูลบัญชีด้วย —
     //   ซื้อแค่บาร์ = ไม่มีที่ให้ลงบัญชี ไม่ต้องเตือน
-    if (mods.includes("bar") && mods.includes("accounting")) await barPart(tn);
+    if (has("bar") && has("accounting")) await barPart(tn);
   }
 
   return NextResponse.json({ ok: true, date: today, dry, tenants: report });

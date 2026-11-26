@@ -49,7 +49,17 @@ export type BarTotals = {
  */
 export function barTotals(
   cart: readonly CartLine[],
-  opts: { discount?: number; roundCash?: boolean } = {},
+  opts: {
+    discount?: number;
+    roundCash?: boolean;
+    /**
+     * ยอดปัดเศษที่ **แช่ไว้ในบิลแล้ว** (`bar_sale.rounding`) — ใช้ตอนพิมพ์ซ้ำบิลที่ปิดแล้ว
+     * ★ ส่งมา = ใช้ค่านี้ตรง ๆ ไม่คิดใหม่จาก `roundCash` (ค่าตั้งวันนี้อาจไม่ใช่ค่าตั้งวันที่ปิดบิล)
+     * 🔴 R4 (รีวิว Fable · D182): เดิมพิมพ์ซ้ำไม่ส่งค่านี้ → บิล 99.75 ที่ปัดเป็น 100.00 ไว้
+     *    ใบพิมพ์ซ้ำโชว์ 99.75 + VAT ของ 99.75 ขณะที่ DB/ยอดลงบัญชีเป็น 100.00
+     */
+    savedRounding?: number;
+  } = {},
 ): BarTotals {
   const subTotal = round2(cart.reduce((s, l) => s + lineAmount(l), 0));
   const lineDiscountTotal = round2(
@@ -61,8 +71,11 @@ export function barTotals(
   const discount = round2(Math.min(wanted, subTotal));
   const afterDiscount = round2(subTotal - discount);
 
-  const rounded = opts.roundCash ? Math.round(afterDiscount) : afterDiscount;
-  const rounding = round2(rounded - afterDiscount);
+  const saved = Number(opts.savedRounding);
+  const rounding =
+    opts.savedRounding !== undefined && Number.isFinite(saved)
+      ? round2(saved)
+      : round2((opts.roundCash ? Math.round(afterDiscount) : afterDiscount) - afterDiscount);
 
   return {
     subTotal,

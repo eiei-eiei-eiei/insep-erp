@@ -756,6 +756,11 @@ export type DashPending = {
   transactionDateISO: string; // yyyy-MM-dd (วันออกหนังสือ 50ทวิ)
   contactName: string;
   contactId: string; // สาขาที่แน่นอน (multi-branch D30) — "" = ข้อมูลเก่า fallback ชื่อ
+  /**
+   * 🔴 Y4 (รีวิว Fable · D182) — กิจการของบิล = กิจการที่ต้องออก 50ทวิ ในนาม
+   * เดิมไม่มีช่องนี้ → มุม "ทุกกิจการ" ส่งกิจการว่างไป แล้ว SQL ตก 'EID01' (ใบออกผิดนิติบุคคล + กินเลขชุดผิด)
+   */
+  entityId: string;
   category: string;
   /** D179 — ยอดที่ใช้คิดหัก ณ ที่จ่าย (whtBaseOf) = "จำนวนเงินที่จ่าย" บนใบ 50ทวิ — ไม่ใช่ยอดทั้งบิลแล้ว */
   amount: number;
@@ -829,6 +834,7 @@ export function dashboardData(
           transactionDateISO: String(tx.settled_on || tx.transaction_date || "").substring(0, 10),
           contactName: tx.contact_name ?? "",
           contactId: tx.contact_id ?? "",
+          entityId: tx.entity_id ?? "",
           category: tx.category ?? "",
           amount: whtBaseOf(tx),
           whtAmount,

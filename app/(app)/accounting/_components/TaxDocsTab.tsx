@@ -302,7 +302,7 @@ export function TaxDocsTab({
           <>
             <p className="mb-2 text-sm text-muted">ยังไม่ออกใบ ({wht.pending.length})</p>
             {wht.pending.length === 0 ? <p className="text-sm text-faint">— ไม่มีรายการค้าง —</p> :
-              wht.pending.map((p) => <IssueRow key={p.transactionId} p={p} entityId={realEntity} onIssued={reload} onBuild={buildAndOpenWht} setMsg={setMsg} />)}
+              wht.pending.map((p) => <IssueRow key={p.transactionId} p={p} entityId={p.entityId || realEntity} onIssued={reload} onBuild={buildAndOpenWht} setMsg={setMsg} />)}
 
             <p className="mb-2 mt-4 text-sm text-muted">ออกแล้วเดือนนี้ ({wht.history.length})</p>
             {wht.history.length === 0 ? <p className="text-sm text-faint">— ไม่มี —</p> : (

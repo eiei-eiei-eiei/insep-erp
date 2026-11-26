@@ -99,17 +99,29 @@ describe("🚩 cron ต้องเรียก barPart ด้วยธงโม
     expect(src).toContain("async function barPart(");
   });
 
-  it("เรียก barPart โดยมี mods.includes(\"bar\") เป็นเงื่อนไข", () => {
+  it("เรียก barPart โดยมี has(\"bar\") เป็นเงื่อนไข", () => {
     const call = src.split("\n").find((l) => l.includes("await barPart("));
     expect(call, "ไม่พบบรรทัดที่เรียก barPart — เทสนี้จะกลายเป็นเทสเปล่า").toBeTruthy();
-    expect(call!).toContain('mods.includes("bar")');
+    expect(call!).toContain('has("bar")');
   });
 
   it("🚨 ด่านคัด tenant ข้างบนต้องไม่ตัดลูกค้าที่ซื้อโมดูลบาร์ทิ้ง", () => {
     // เดิมเขียนว่า `if (!accounting && !production) continue;` → ลูกค้าบาร์ถูกข้ามตั้งแต่บรรทัดแรก
-    const gate = src.split("\n").find((l) => l.includes("continue;") && l.includes("mods.includes"));
+    const gate = src.split("\n").find((l) => l.includes("continue;") && l.includes('has("'));
     expect(gate, "หาด่านคัดโมดูลไม่เจอ — เทสนี้จะกลายเป็นเทสเปล่า").toBeTruthy();
-    expect(gate!).toContain('mods.includes("bar")');
+    expect(gate!).toContain('has("bar")');
+  });
+
+  /**
+   * 🔴 Y2 (รีวิว Fable · D182) — `modules_enabled` ว่าง: แอปถือว่าเปิดครบ (D53 fail-open)
+   * แต่ cron เดิมถือว่า "ไม่มีโมดูลเลย" ⇒ ลูกค้าเห็นครบทุกเมนูแต่ไม่เคยได้เตือนเข้า LINE
+   * ⇒ ธงโมดูลของ cron ต้องถามผ่าน hasModule() ตัวเดียวกับแอป ห้าม `.includes(` ตรง ๆ
+   */
+  it("🚨 ธงโมดูลของ cron ถามผ่าน hasModule() ตัวเดียวกับแอป (ค่าว่าง = เปิดครบ)", () => {
+    const code = src.split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+    expect(code).toMatch(/import \{ hasModule \} from "@\/lib\/shared\/workspaces"/);
+    expect(code).toMatch(/const has = \(k: [^)]*\) => hasModule\(mods, k\);/);
+    expect(code, "ยังมีการถามโมดูลด้วย mods.includes ตรง ๆ").not.toMatch(/mods\.includes\(/);
   });
 
   it("ส่งก่อนแล้วค่อยจด — insert integration_log ต้องอยู่หลังการส่ง", () => {

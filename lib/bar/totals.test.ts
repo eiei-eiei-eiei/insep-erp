@@ -118,6 +118,53 @@ describe("ปัดเศษเงินสด — ค่าปริยาย�
   });
 });
 
+/**
+ * 🔴 R4 (รีวิว Fable · D182) — พิมพ์ซ้ำบิลที่ปิดแล้วจากแท็บประวัติ
+ * เดิมเรียก `barTotals(lines, { discount })` เฉย ๆ → rounding = 0 เสมอ
+ * ⇒ บิลที่ปิดไว้ 100.00 (99.75 + ปัด 0.25) ใบพิมพ์ซ้ำขึ้น 99.75 + VAT ของ 99.75
+ *    = ใบกำกับภาษีอย่างย่อสองใบ เลขบิลเดียวกัน ยอดไม่เท่ากัน
+ */
+describe("พิมพ์ซ้ำ — ใช้ยอดปัดเศษที่แช่ไว้ในบิล (savedRounding)", () => {
+  it("ใช้ค่าที่แช่ไว้ตรง ๆ → ยอดเท่ายอดใน DB", () => {
+    const t = barTotals([L(1, 99.75)], { savedRounding: 0.25 });
+    expect(t.rounding).toBe(0.25);
+    expect(t.grandTotal).toBe(100);
+  });
+
+  it("ค่าที่แช่ไว้ชนะค่าตั้งวันนี้ — วันนี้ปิดปัดเศษแล้ว บิลเก่ายังพิมพ์ยอดเดิม", () => {
+    const t = barTotals([L(1, 99.75)], { roundCash: false, savedRounding: 0.25 });
+    expect(t.grandTotal).toBe(100);
+  });
+
+  it("ค่าที่แช่ไว้ชนะค่าตั้งวันนี้ — วันนี้เปิดปัดเศษ แต่บิลเก่าไม่ได้ปัด ก็ไม่ปัดให้", () => {
+    const t = barTotals([L(1, 99.75)], { roundCash: true, savedRounding: 0 });
+    expect(t.grandTotal).toBe(99.75);
+  });
+
+  it("ปัดลงที่แช่ไว้ (ติดลบ) ก็ใช้ได้", () => {
+    expect(barTotals([L(1, 260.4)], { savedRounding: -0.4 }).grandTotal).toBe(260);
+  });
+
+  it("ไม่ส่ง savedRounding = พฤติกรรมเดิมทุกประการ (จอขายยังคิดจาก roundCash)", () => {
+    expect(barTotals([L(1, 260.6)], { roundCash: true }).rounding).toBe(0.4);
+    expect(barTotals([L(1, 260.6)]).rounding).toBe(0);
+  });
+
+  it("ค่าที่อ่านมาเสีย (NaN) → ถอยไปคิดแบบเดิม ไม่ใช่ยอด NaN บนใบ", () => {
+    const t = barTotals([L(1, 260.6)], { savedRounding: Number("x") });
+    expect(t.grandTotal).toBe(260.6);
+  });
+
+  it("🪤 แท็บประวัติต้องส่งยอดปัดเศษที่แช่ไว้เข้าไปจริง (อ่านซอร์ส)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync("app/(app)/bar/_components/HistoryTab.tsx", "utf8")
+      .split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+    const calls = src.match(/barTotals\([^;]*\);/g) ?? [];
+    expect(calls.length).toBeGreaterThan(0);
+    for (const c of calls) expect(c).toMatch(/savedRounding:\s*Number\(s\.rounding\)/);
+  });
+});
+
 describe("ยกเลิกรายการทีละแถว — ยอดต้องถูกคิดใหม่จากแถวที่ยังอยู่", () => {
   it("แถวที่ถูกยกเลิกไม่นับ (soft-void ไม่ลบแถวจริง)", () => {
     const t = totalsOfLiveLines([

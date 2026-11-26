@@ -47,7 +47,7 @@ export function FermentTab({
     if (v > 0 && q > 0) setRows((prev) => prev.map((r, i) => (i === 0 ? { ...r, amount: (v * q).toFixed(2) } : r)));
   }
   async function del(r: RecentFerment) {
-    if (!(await ask({ title: `ลบ batch หมัก "${r.batch}" (${r.productName})?`, detail: `ระบบจะคืนวัตถุดิบที่เบิก + ลบค่าติดตามหมัก · ถ้ากลั่นไปแล้วจะลบไม่ได้`, confirmText: "ลบ batch", danger: true }))) return;
+    if (!(await ask({ title: `ลบ batch หมัก "${r.batch}" (${r.productName})?`, detail: `ระบบจะคืนวัตถุดิบที่เบิก + ลบค่าติดตามหมัก · ถ้ากลั่นหรือรินสุราแช่ไปแล้วจะลบไม่ได้`, confirmText: "ลบ batch", danger: true }))) return;
     run(() => deleteFermentBatchAction(r.batch), `ลบ batch ${r.batch} + คืนวัตถุดิบเรียบร้อย`, loadRecent);
   }
 
@@ -236,7 +236,7 @@ export function FermentTab({
               ))}
             </tbody>
           </table>
-          <p className="mt-1 text-xs text-faint">ลบ batch = คืนวัตถุดิบที่เบิก + ลบค่าติดตามหมัก · batch ที่กลั่นแล้วลบไม่ได้ (กันข้อมูล ภส. หาย)</p>
+          <p className="mt-1 text-xs text-faint">ลบ batch = คืนวัตถุดิบที่เบิก + ลบค่าติดตามหมัก · batch ที่กลั่นแล้วหรือรินสุราแช่แล้วลบไม่ได้ (กันข้อมูล ภส. หาย)</p>
         </div>
       )}
     </Card>

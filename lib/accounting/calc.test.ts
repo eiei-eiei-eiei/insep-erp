@@ -239,6 +239,14 @@ describe("A11 — dashboard + WHT pending", () => {
     const d = dashboardData("2026-07", EID, txs, new Set(["P1"]));
     expect(d.whtPending.map((p) => p.transactionId)).toEqual(["P2"]);
   });
+  // 🔴 Y4 (D182) — แถวรอออก 50ทวิ ต้องพกกิจการของบิลมาด้วย (มุม "ทุกกิจการ" ใช้ออกใบในนามที่ถูก)
+  it("แถวรอออกพกกิจการของบิล — มุมทุกกิจการก็รู้ว่าต้องออกในนามใคร", () => {
+    const d = dashboardData("2026-07", "ALL", txs, new Set());
+    expect(d.whtPending.length).toBeGreaterThan(0);
+    for (const p of d.whtPending) {
+      expect(p.entityId).toBe(txs.find((t) => t.tx_id === p.transactionId)!.entity_id);
+    }
+  });
 });
 
 

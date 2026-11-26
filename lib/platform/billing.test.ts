@@ -11,7 +11,11 @@ import {
   periodEnd,
   suggestPlanName,
   suggestPrice,
+  MODULE_PRICE,
+  unpricedModules,
+  unpricedText,
 } from "./billing";
+import { MODULES } from "@/lib/shared/workspaces";
 
 /**
  * สูตรค่างวด — ชั้นสูตรที่เกี่ยวกับเงิน จึงต้องคุมทุกเคสขอบตามกติกาเหล็ก CLAUDE.md
@@ -169,10 +173,50 @@ describe("suggestPrice / suggestPlanName — ราคาที่ระบบ�
   });
 
   it("ชื่อแพ็กเกจอ่านรู้เรื่อง", () => {
-    expect(suggestPlanName(["production", "accounting", "sales"])).toBe("ครบทุกโมดูล");
+    // D182 Y8 — มี 5 โมดูลแล้ว: 3 ตัวหลักไม่ใช่ "ครบทุกโมดูล" อีกต่อไป
+    expect(suggestPlanName(["production", "accounting", "sales"])).toBe("ผลิต+บัญชี+ขาย");
+    expect(suggestPlanName(["production", "accounting", "sales", "payroll", "bar"])).toBe("ครบทุกโมดูล");
     expect(suggestPlanName(["production", "accounting"])).toBe("ผลิต+บัญชี");
     expect(suggestPlanName(["sales"])).toBe("ขาย");
     expect(suggestPlanName([])).toBe("ยังไม่ระบุ");
+  });
+});
+
+/**
+ * 🔴 Y8 (รีวิว Fable · D182) — เดิมรู้จักแค่ 3 โมดูล: ซื้อบาร์อย่างเดียว = เสนอ 0 บาท "ยังไม่ระบุ"
+ * ผู้ใช้สั่ง (2026-11-26): ยังไม่ตั้งราคาเงินเดือน/บาร์ → ระบบต้อง **บอกว่ายังไม่มีราคา** ไม่ใช่เสนอ 0 เงียบ ๆ
+ */
+describe("Y8 — โมดูลที่ยังไม่ตั้งราคา (เงินเดือน · บาร์)", () => {
+  it("ทุกโมดูลในทะเบียนต้องมีช่องราคา (null = ยังไม่ตั้ง ไม่ใช่ลืม)", () => {
+    expect(Object.keys(MODULE_PRICE).sort()).toEqual([...MODULES].sort());
+  });
+
+  it("ซื้อบาร์อย่างเดียว → ชื่อแพ็กเกจบอกว่าบาร์ + มีคำเตือนว่ายังไม่มีราคา", () => {
+    expect(suggestPlanName(["bar"])).toBe("บาร์");
+    expect(unpricedModules(["bar"])).toEqual(["bar"]);
+    expect(unpricedText(["bar"])).toMatch(/บาร์ ยังไม่มีราคาตั้ง/);
+  });
+
+  it("3 โมดูลหลัก + เงินเดือน → ราคาเหมาเดิม + คำเตือนว่าเงินเดือนยังไม่รวม", () => {
+    const mods = ["production", "accounting", "sales", "payroll"];
+    expect(suggestPrice(mods, 1, "monthly")).toBe(1490);
+    expect(unpricedText(mods)).toMatch(/เงินเดือน/);
+    expect(suggestPlanName(mods)).toBe("ผลิต+บัญชี+ขาย+เงินเดือน");
+  });
+
+  it("ซื้อเฉพาะโมดูลที่มีราคาแล้ว = ไม่มีคำเตือน", () => {
+    expect(unpricedText(["production", "accounting"])).toBeNull();
+    expect(unpricedText([])).toBeNull();
+  });
+
+  it("หลายตัวที่ยังไม่ตั้ง เรียงตามทะเบียนโมดูล", () => {
+    expect(unpricedModules(["bar", "payroll", "sales"])).toEqual(["payroll", "bar"]);
+  });
+
+  it("🪤 หน้าค่างวดต้องโชว์คำเตือนคู่กับราคาที่เสนอ (อ่านซอร์ส)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync("app/(platform)/platform/billing/_components/billing-manager.tsx", "utf8");
+    expect(src).toContain("unpricedText(row.modules)");
   });
 });
 

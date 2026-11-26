@@ -6,6 +6,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import {
   ACCOUNT_SETTING_KINDS,
   accountsFor,
+  transferBlockedText,
   activeAccountNames,
   accountNameError,
   usageText,
@@ -90,5 +91,21 @@ describe("A25 — รายชื่อ kind ต้องตรงกับ SQL"
     const wl = [...all.matchAll(/app_settings_kind_check[\s\S]*?\)\);/g)].map((m) => m[0]).join("\n");
     expect(wl.length).toBeGreaterThan(0); // กันเทสผ่านเพราะ regex ไม่เจออะไรเลย
     for (const k of ACCOUNT_SETTING_KINDS) expect(wl, k).toContain(`'${k}'`);
+  });
+});
+
+describe("Y3 (D182) — โอนเงินต้องอยู่กิจการใดกิจการหนึ่ง", () => {
+  it("เลือก 'ทุกกิจการ' / ว่าง = กดไม่ได้ พร้อมบอกว่าต้องทำอะไร", () => {
+    for (const v of ["ALL", "", "  ", null, undefined]) {
+      expect(transferBlockedText(v)).toMatch(/เลือกกิจการที่แถบด้านบนก่อน/);
+    }
+  });
+  it("เลือกกิจการจริง = โอนได้", () => {
+    expect(transferBlockedText("EID02")).toBeNull();
+  });
+  it("🪤 ข้อความเดียวกับด่านใน fn_save_transfer (0114) — สองที่ต้องพูดเหมือนกัน", async () => {
+    const { readFileSync } = await import("node:fs");
+    const sql = readFileSync("supabase/migrations/20261126000114_fable_review_fixes.sql", "utf8");
+    expect(sql).toContain(transferBlockedText("ALL")!);
   });
 });

@@ -141,7 +141,8 @@ export function HistoryTab({
         isComp: l.is_comp,
         voidedAt: l.voided_at,
       }));
-    const t = barTotals(ls.filter((l) => !l.voidedAt), { discount: Number(s.discount) });
+    // 🔴 R4 (D182) — ยอดบนใบพิมพ์ซ้ำต้องเท่ายอดในบิลที่แช่ไว้ ⇒ ใช้ส่วนลด/ปัดเศษ "ที่บันทึกไว้" ไม่คิดใหม่
+    const t = barTotals(ls.filter((l) => !l.voidedAt), { discount: Number(s.discount), savedRounding: Number(s.rounding) });
     const cust = boot.customers.find((c) => c.customerId === s.customer_id) ?? null;
     const doc = buildReceipt({
       status: s.status,

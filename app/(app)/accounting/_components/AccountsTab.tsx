@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { getBalancesAction, getStatementAction, saveTransferAction } from "../actions";
 import type { Bootstrap } from "./types";
-import { accountsFor } from "@/lib/accounting/bankAccounts";
+import { accountsFor, transferBlockedText } from "@/lib/accounting/bankAccounts";
 import type { StatementRange } from "@/lib/accounting/ledger";
 import { STATEMENT_PRESETS, presetRange, rangeTitle, rangeError, isMultiMonth, type StatementPreset } from "@/lib/accounting/statementView";
 import { Badge, Card, Field, NumBox, RowBtn, SaveButton, Select, TextInput, fmt, todayISO, useSaver, useRead, LoadError } from "./ui";
@@ -31,6 +31,7 @@ export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstra
 
   // บัญชีที่เลือกได้ในหน้าโอน = เฉพาะที่ผูกกับกิจการนี้ (ว่าง = ใช้ร่วมทุกกิจการ)
   const accountOptions = accountsFor(boot.accounts, entityId);
+  const transferBlocked = transferBlockedText(entityId);
 
   // 🚨 D89 — ยอดคงเหลือทุกบัญชีมาจากที่นี่ · อ่านไม่ได้ต้องฟ้อง ไม่ใช่โชว์ยอดที่ขาดยอดยกมา
   const { data: bal, err, reload } = useRead<Balances>(
@@ -63,6 +64,7 @@ export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstra
   }
 
   function doTransfer() {
+    if (transferBlocked) { setMsg({ ok: false, text: transferBlocked }); return; }
     if (!from || !to || amount <= 0) { setMsg({ ok: false, text: "กรอกบัญชีต้นทาง/ปลายทาง + จำนวนเงิน" }); return; }
     run(() => saveTransferAction({ from, to, amount, date: tdate, note, entityId }), "โอนเรียบร้อย", () => { setAmount(0); setNote(""); reload(); });
   }
@@ -164,7 +166,9 @@ export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstra
           <Field label="วันที่"><TextInput type="date" value={tdate} onChange={(e) => setTdate(e.target.value)} /></Field>
           <div className="col-span-2 md:col-span-4"><Field label="หมายเหตุ"><TextInput value={note} onChange={(e) => setNote(e.target.value)} /></Field></div>
         </div>
-        <div className="mt-3"><SaveButton pending={pending} onClick={doTransfer}>โอนเงิน</SaveButton></div>
+        {/* Y3 (D182) — เลือก "ทุกกิจการ" อยู่ = ปุ่มเทา + เหตุผลบนจอ (D83) แทนการปล่อยให้ FK ล้ม */}
+        {transferBlocked && <p className="mt-3 text-sm text-warn">{transferBlocked}</p>}
+        <div className="mt-3"><SaveButton pending={pending} disabled={!!transferBlocked} onClick={doTransfer}>โอนเงิน</SaveButton></div>
       </Card>
     </div>
   );

@@ -25,6 +25,7 @@ import {
   monthlyEquivalent,
   suggestPlanName,
   suggestPrice,
+  unpricedText,
   type Cycle,
 } from "@/lib/platform/billing";
 import type { BillingRow } from "@/lib/platform/billing-db";
@@ -186,6 +187,8 @@ function BillingPanel({
             ใช้ราคานี้
           </RowBtn>
         </div>
+        {/* D182 Y8 — โมดูลที่ยังไม่ตั้งราคาไม่ถูกนับในราคาที่เสนอ ⇒ ต้องบอกบนจอ ไม่ใช่เสนอ 0 เงียบ ๆ */}
+        {unpricedText(row.modules) && <p className="text-xs text-warn">{unpricedText(row.modules)}</p>}
 
         <label className="flex items-center gap-2 text-sm text-ink">
           <input type="checkbox" checked={notice} onChange={(e) => setNotice(e.target.checked)} />
