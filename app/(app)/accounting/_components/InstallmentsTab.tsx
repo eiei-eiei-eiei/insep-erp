@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { getInstallmentGroupAction, listInstallmentGroupsAction, voidTransactionAction } from "../actions";
 import { Card, Combobox, Field, fmt, useSaver } from "./ui";
 import { IconRefresh } from "@/lib/shared/icons";
+import { SkeletonTable } from "@/lib/shared/page";
 
 type Group = Awaited<ReturnType<typeof getInstallmentGroupAction>>;
 type GroupList = Awaited<ReturnType<typeof listInstallmentGroupsAction>>;
@@ -56,7 +57,7 @@ export function InstallmentsTab() {
         </div>
       </Card>
 
-      {loading && <p className="text-faint">กำลังโหลด…</p>}
+      {loading && <SkeletonTable rows={3} cols={5} what="กลุ่มงวด" />}
       {group === null && !loading && poId && <p className="text-sm text-faint">— ไม่พบกลุ่มงวด —</p>}
       {group && (
         <Card title={`กลุ่มงวด ${group.poGroupId} — ${group.header.contactName}`}>

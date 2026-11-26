@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { IconAlert, IconRefresh } from "@/lib/shared/icons";
+import { Button } from "@/lib/shared/page";
 
 /**
  * หน้า error ภาษาไทยของทุก workspace — แทนจอขาว Next default ภาษาอังกฤษ
@@ -23,11 +24,11 @@ export default function AppError({ error, reset }: { error: Error & { digest?: s
       <p className="mb-5 text-sm text-muted">ข้อมูลที่บันทึกไปแล้วไม่หาย กด &quot;ลองใหม่&quot; ได้เลย</p>
 
       <div className="flex flex-wrap justify-center gap-2">
-        <button
+        <Button
           onClick={reset}
-          className="min-h-[44px] rounded-lg bg-brand px-5 font-medium text-on-brand hover:opacity-90"
+          tone="primary"
         ><IconRefresh size={15} className="mr-1 inline align-[-2px]" />ลองใหม่
-        </button>
+        </Button>
         <Link
           href="/"
           className="flex min-h-[44px] items-center rounded-lg border border-line px-5 font-medium text-muted hover:bg-raised"

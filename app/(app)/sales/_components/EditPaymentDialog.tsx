@@ -13,6 +13,7 @@ import {
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { editPaymentMethodAction, getOrderItemsAction, getOrderPaymentsAction } from "../actions";
 import { openPrintWindow, printSalesDocs, type OrderLike } from "./print";
+import { Button, SkeletonText } from "@/lib/shared/page";
 
 /**
  * D144 — แก้วิธีชำระของการรับเงินที่บันทึกไปแล้ว (เฟส 2 ของแบ่งชำระหลายงวด)
@@ -110,7 +111,7 @@ export function EditPaymentDialog({
         {err ? (
           <LoadError err onRetry={load} what="การรับเงินของออเดอร์" />
         ) : payments === null ? (
-          <div className="py-6 text-center text-faint">กำลังโหลด…</div>
+          <div className="py-2"><SkeletonText lines={4} what="การรับเงิน" /></div>
         ) : payments.length === 0 ? (
           <div className="py-6 text-center text-sm text-faint">
             ไม่พบประวัติการรับเงินของออเดอร์นี้ (ออเดอร์เก่าที่ไม่มีบิลรายรับให้ย้ายข้อมูลมา) — แก้บัญชีของบิลได้ที่ บัญชี → ค้นบิล
@@ -129,9 +130,9 @@ export function EditPaymentDialog({
                   {editing !== p.seq && (
                     <div className="flex gap-1.5">
                       {justEdited === p.seq && receiptDocFor(p.label, order) && (
-                        <button onClick={() => reprint(p)} className="rounded border border-brand bg-brand px-2.5 py-1.5 text-xs font-semibold text-on-brand hover:opacity-90">
+                        <Button onClick={() => reprint(p)} tone="primary" size="sm">
                           พิมพ์ใบนี้ใหม่
-                        </button>
+                        </Button>
                       )}
                       <button onClick={() => startEdit(p)} className="rounded border border-line px-2.5 py-1.5 text-xs font-semibold text-muted hover:bg-raised hover:text-ink">
                         แก้
@@ -156,14 +157,14 @@ export function EditPaymentDialog({
                     {unchanged(p) && <p className="text-xs text-faint">เลือกวิธีชำระใหม่ก่อน ถึงจะบันทึกได้</p>}
                     <div className="flex justify-end gap-2">
                       <button onClick={() => setEditing(null)} className="rounded border border-line px-3 py-1.5 text-xs font-semibold text-muted hover:bg-raised">เลิกแก้</button>
-                      <button
+                      <Button
                         onClick={() => save(p)}
                         // เช็คเดิม → เช็คเดิมได้ (แก้เลขที่/ธนาคารที่กรอกผิด) · วิธีอื่นต้องเปลี่ยนก่อนถึงบันทึก
                         disabled={pending || chequeMissing || unchanged(p)}
-                        className="rounded bg-brand px-3 py-1.5 text-xs font-bold text-on-brand hover:opacity-90 disabled:opacity-50"
+                        tone="primary" size="sm"
                       >
                         {pending ? "กำลังบันทึก…" : "บันทึกวิธีชำระ"}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 )}

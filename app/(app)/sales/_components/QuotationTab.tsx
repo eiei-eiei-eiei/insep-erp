@@ -22,6 +22,7 @@ import { AddCustomerModal } from "./CustomerFields";
 import { defaultRevenueCat, revenueCatHint, revenueCatOptions } from "@/lib/sales/revenueCats";
 import { bangkokDateISO } from "@/lib/shared/datetime";
 import { revisionLabel } from "@/lib/sales/quotationRevision";
+import { Button } from "@/lib/shared/page";
 
 export function QuotationTab({
   boot,
@@ -225,12 +226,12 @@ export function QuotationTab({
         <Card>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-semibold text-ink">รายการสินค้า{isVat ? " (ราคารวม VAT)" : ""}</h2>
-            <button
+            <Button
               onClick={() => setShowCustom(true)}
               disabled={!selCustId}
-              className="rounded-lg bg-brand px-3 py-1 text-xs font-medium text-on-brand transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              tone="primary" size="sm"
             ><IconPlus size={15} className="mr-1 inline align-[-2px]" />สินค้านอกระบบ/สั่งทำ
-            </button>
+            </Button>
           </div>
           {!selCustId ? (
             <div className="py-8 text-center text-sm text-faint">เลือกลูกค้าก่อนเพื่อเริ่มจัดออเดอร์</div>
@@ -418,7 +419,7 @@ export function QuotationTab({
       {items.length > 0 && (
         <div className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-between gap-2 border-t border-line bg-card/95 px-4 py-2 shadow-lg backdrop-blur lg:hidden">
           <span className="text-sm text-muted"><IconCart size={14} className="mr-1 inline align-[-2px]" />{items.length} รายการ · <b className="text-warn">฿{fmt(totals.grandTotal)}</b></span>
-          <button onClick={() => cartRef.current?.scrollIntoView({ behavior: "smooth" })} className="rounded-lg bg-brand px-4 py-2 text-sm font-bold text-on-brand">ดูตะกร้า / บันทึก</button>
+          <Button onClick={() => cartRef.current?.scrollIntoView({ behavior: "smooth" })} tone="primary">ดูตะกร้า / บันทึก</Button>
         </div>
       )}
     </div>
@@ -451,9 +452,9 @@ function CustomItemModal({ onClose, onAdd, isVat }: { onClose: () => void; onAdd
       footer={
         <>
           <ModalCancel onClick={onClose} />
-          <button onClick={add} className="rounded-lg bg-brand px-4 py-2 font-bold text-on-brand hover:opacity-90">
+          <Button onClick={add} tone="primary">
             เพิ่มลงตะกร้า
-          </button>
+          </Button>
         </>
       }
     >

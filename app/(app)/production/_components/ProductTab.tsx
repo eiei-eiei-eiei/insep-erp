@@ -128,7 +128,7 @@ export function ProductTab({ products }: { products: Product[] }) {
                   <tr key={r.id as number} className="editing">
                     <td><TextInput type="date" value={edit.date} onChange={(e) => setEdit({ ...edit, date: e.target.value })} className="w-36" /></td>
                     <td><Select value={edit.transType} onChange={(e) => setEdit({ ...edit, transType: e.target.value })} className="w-32">{PRODUCT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</Select></td>
-                    <td><Select value={edit.productId} onChange={(e) => setEdit({ ...edit, productId: e.target.value })} className="w-48">{products.map((p) => <option key={p.product_id} value={p.product_id}>{p.name} {p.degree ? `${p.degree}°` : ""}</option>)}</Select></td>
+                    <td><div className="w-48">{/* D185 — พิมพ์ค้นได้ในแถวตาราง (รายการลอยพ้นกรอบเลื่อน) */}<Combobox aria-label="สินค้า" value={edit.productId} onChange={(v) => setEdit({ ...edit, productId: v })} options={products.map((p) => ({ value: p.product_id, label: `${p.name} ${p.degree ? `${p.degree}°` : ""}`.trim() }))} /></div></td>
                     <td><NumInput value={edit.amount} onChange={(e) => setEdit({ ...edit, amount: e.target.value })} className="w-24 text-right" /></td>
                     <td><TextInput value={edit.note} onChange={(e) => setEdit({ ...edit, note: e.target.value })} /></td>
                     <td className="whitespace-nowrap">

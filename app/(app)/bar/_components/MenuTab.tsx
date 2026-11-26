@@ -19,6 +19,7 @@ import {
 } from "../actions";
 import { MenuOrderEditor } from "./MenuOrderEditor";
 import { menuRemoveState, menuDeleteConfirm, menuToggleDoneText, menuDeletedText, inactiveToggleLabel } from "@/lib/bar/menuRemove";
+import { Button } from "@/lib/shared/page";
 
 const MODE_LABEL: Record<string, string> = {
   recipe: "มีสูตร",
@@ -419,16 +420,16 @@ function CategoryEditor({
       })}
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <button
+        <Button
           type="button"
           disabled={busy || !dirty || problem !== ""}
           onClick={async () => {
             if (await onRun(() => saveCategoriesAction({ order: ids, names }), "บันทึกหมวดแล้ว")) reset();
           }}
-          className="rounded-lg bg-brand px-3 py-1.5 text-sm text-on-brand disabled:opacity-50"
+          tone="primary"
         >
           บันทึก
-        </button>
+        </Button>
         {dirty && (
           <>
             <button type="button" onClick={reset} className="text-xs text-muted underline">
@@ -448,16 +449,16 @@ function CategoryEditor({
             disabled={dirty}
           />
         </div>
-        <button
+        <Button
           type="button"
           disabled={busy || dirty || !newName.trim()}
           onClick={async () => {
             if (await onRun(() => saveCategoryAction({ name: newName }), "เพิ่มหมวดแล้ว")) setNewName("");
           }}
-          className="rounded-lg bg-brand px-3 py-1.5 text-sm text-on-brand disabled:opacity-50"
+          tone="primary"
         >
           เพิ่มหมวด
-        </button>
+        </Button>
         {dirty && <span className="text-xs text-warn">เพิ่ม/ลบหมวดได้หลังบันทึกหรือเลิกแก้ที่ค้างอยู่</span>}
       </div>
     </div>
@@ -528,14 +529,14 @@ export function MenuModal({
       footer={
         <>
           <ModalCancel onClick={onClose} />
-          <button
+          <Button
             type="button"
             disabled={busy || !name.trim()}
             onClick={save}
-            className="rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
+            tone="primary"
           >
             บันทึก
-          </button>
+          </Button>
         </>
       }
     >

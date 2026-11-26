@@ -12,6 +12,7 @@ import { CANCEL_ORDER_DETAIL } from "@/lib/sales/cancelledDocs";
 import { cancelLockedText } from "@/lib/production/monthClose";
 import { cancelOrderAction, getCancelPlanAction, getCreditNotesAction, getOrderItemsAction, getOrderPaymentsAction } from "../actions";
 import { openPrintWindow, printCreditNote, type OrderLike } from "./print";
+import { SkeletonText } from "@/lib/shared/page";
 
 type Plan = Awaited<ReturnType<typeof getCancelPlanAction>>;
 
@@ -106,7 +107,7 @@ export function CancelOrderDialog({
         {err ? (
           <LoadError err onRetry={load} what="ข้อมูลใบกำกับของออเดอร์" />
         ) : !plan ? (
-          <div className="py-6 text-center text-faint">กำลังโหลด…</div>
+          <div className="py-2"><SkeletonText lines={4} what="ข้อมูลการยกเลิก" /></div>
         ) : plan.partialBlocked ? (
           // D160 — มีใบลดหนี้บางส่วนแล้ว: ยกเลิกทั้งออเดอร์ไม่ได้ (RPC บังคับซ้ำ) · บอกว่าต้องกดอะไรแทน
           <div className="space-y-3 text-sm">

@@ -55,6 +55,8 @@ const TAILWIND_WORDS = new Set([
   "md", "inner",
   // ring-inset = วาดกรอบเข้าด้านใน (คำของ Tailwind ไม่ใช่สี · D112)
   "inset",
+  // D184 — ทิศของพื้นไล่สี (`bg-linear-to-l` · Tailwind 4) และระยะห่างของกรอบโฟกัส (`outline-offset-2`) ไม่ใช่สี
+  "linear-to-l", "linear-to-r", "offset-2",
 ]);
 
 /** ไฟล์ .tsx ทั้งหมดใต้ app/ และ lib/ */

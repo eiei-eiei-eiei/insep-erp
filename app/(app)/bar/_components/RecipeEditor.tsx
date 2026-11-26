@@ -37,6 +37,7 @@ import { garnishContent, resolveRecipe, slotOption } from "@/lib/bar/houseSlot";
 import { garnishOption } from "@/lib/bar/menuPricing";
 import { applyPick, quickChips, type QuickChip, type QuickPick } from "@/lib/bar/quickPick";
 import { Help, NumBox, TextInput, fmt } from "@/lib/shared/ui";
+import { Button } from "@/lib/shared/page";
 
 const TARGET_KEY = "bar:targetCostPct";
 
@@ -408,14 +409,14 @@ export function PriceSuggest({
             <span className="text-ink">
               ราคาแนะนำ <b>{fmt(suggest)}</b> บาท
             </span>
-            <button
+            <Button
               type="button"
               disabled={nPrice === suggest}
               onClick={() => onUsePrice(suggest)}
-              className="rounded-lg bg-brand px-2.5 py-1 text-xs text-on-brand disabled:opacity-50"
+              tone="primary" size="sm"
             >
               ใช้ราคานี้
-            </button>
+            </Button>
           </>
         ) : (
           <span className="text-muted">— (ยังไม่มีต้นทุนให้คิด)</span>

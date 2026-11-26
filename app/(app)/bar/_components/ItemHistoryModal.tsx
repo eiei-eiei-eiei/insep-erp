@@ -7,6 +7,7 @@ import { receiveHistory, changeText, type ReceiveRecord } from "@/lib/bar/receiv
 import { Empty, Help, LoadError, Modal, ModalCancel, fmt, useRead } from "@/lib/shared/ui";
 import { itemMovesAction, itemReceivesAction } from "../actions";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
+import { SkeletonTable } from "@/lib/shared/page";
 
 type MoveRow = {
   id: number;
@@ -91,7 +92,7 @@ export function ItemHistoryModal({
           <>
             <LoadError err={receives.err} onRetry={receives.reload} what="ประวัติราคา" />
             {receives.loading ? (
-              <Empty>กำลังโหลด…</Empty>
+              <SkeletonTable rows={4} cols={4} what="ประวัติ" />
             ) : priced.length === 0 ? (
               <Empty>— ยังไม่เคยรับของตัวนี้เข้า —</Empty>
             ) : (
@@ -163,7 +164,7 @@ export function ItemHistoryModal({
           <>
             <LoadError err={moves.err} onRetry={moves.reload} what="ประวัติ" />
             {moves.loading ? (
-              <Empty>กำลังโหลด…</Empty>
+              <SkeletonTable rows={4} cols={4} what="ประวัติ" />
             ) : moveRows.length === 0 ? (
               <Empty>— ยังไม่มีความเคลื่อนไหว —</Empty>
             ) : (

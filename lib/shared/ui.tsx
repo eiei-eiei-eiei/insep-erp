@@ -11,13 +11,15 @@
  *   ห้ามเขียน bg-slate-800 / text-red-500 ตรง ๆ — ดู docs/DESIGN_SYSTEM.md
  */
 
-import { useCallback, useEffect, useId, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useTransition } from "react";
 import { showToast } from "./toast";
 
 import { missingText, type FieldCheck } from "./forms";
 import { comboKey } from "./keyboard";
 import { Modal, ModalCancel } from "./modal";
 import { Help } from "./help";
+import { BTN_BASE, BTN_SIZE, BTN_TONE } from "./page";
+import { floatPlace, type FloatStyle } from "./floatPlace";
 
 export { Modal, ModalCancel, type ModalProps } from "./modal";
 export { Help, type HelpProps } from "./help";
@@ -318,7 +320,34 @@ export function NumBox({
 }
 
 /**
+ * D185 — ตำแหน่งรายการลอยแบบ fixed ตามช่อง (พ้นกรอบ `overflow-x-auto` ของตาราง)
+ * ★ ตามช่องเมื่อหน้า/กรอบใดก็ตามเลื่อน (scroll แบบ capture = ทุกกล่องเลื่อน) และเมื่อจอเปลี่ยนขนาด
+ * ★ ไม่ใช้ portal — รายการยังอยู่ใต้ช่องใน DOM ⇒ เช็ค "กดนอกช่อง" / โฟกัสออก / ป๊อปอัพครอบ ทำงานเหมือนเดิม
+ *   (`Modal` ไม่มี transform จึง fixed อ้างกับจอจริง)
+ */
+function useFloat(anchor: React.RefObject<HTMLElement | null>, open: boolean): FloatStyle | null {
+  const [st, setSt] = useState<FloatStyle | null>(null);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const el = anchor.current;
+      if (el) setSt(floatPlace(el.getBoundingClientRect(), window.innerHeight, window.innerWidth));
+    };
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open, anchor]);
+  return open ? st : null;
+}
+const floatCls = "fixed z-50 overflow-y-auto rounded-lg border border-line bg-card shadow-lg";
+
+/**
  * dropdown พิมพ์ค้นหาได้ (combobox) — สำหรับรายการยาว เช่น ลูกค้า/คู่ค้าหลายราย
+ * ★ D185 — ใช้ในแถวตารางได้แล้ว (รายการลอยพ้นกรอบเลื่อนของตาราง) · `emptyLabel` = มีทางล้างค่ากลับเป็นว่าง
  *
  * คีย์บอร์ด (กติกาอยู่ที่ `comboKey` ใน keyboard.ts · มีเทสคุม):
  *   พิมพ์ = กรอง · ↓ ↑ เลื่อนไฮไลต์ (รายการเลื่อนตาม) · Enter = เลือกแล้วอยู่ช่องเดิม ·
@@ -330,14 +359,27 @@ export function Combobox({
   onChange,
   placeholder,
   autoFocus,
+  emptyLabel,
+  className,
+  inputAttrs,
+  ...aria
 }: {
+  /** แอตทริบิวต์เพิ่มของช่อง เช่น `{ "data-item-first": "" }` (หน้าบันทึกบิลหาช่องแรกของแถวใหม่ด้วยตัวนี้) */
+  inputAttrs?: Record<`data-${string}`, string>;
   options: { value: string; label: string }[];
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   /** ให้ป๊อปอัพ (`Modal`) วางเคอร์เซอร์ที่ช่องนี้ตอนเปิด */
   autoFocus?: boolean;
+  /** ใส่ = มีรายการแรกไว้ล้างค่ากลับเป็นว่าง (เช่น "— ไม่ระบุ —") */
+  emptyLabel?: string;
+  /** คลาสเพิ่มของช่อง (เช่นความกว้างในแถวตาราง) */
+  className?: string;
+  /** ช่องในแถวตารางไม่มีป้าย — ต้องบอกโปรแกรมอ่านหน้าจอว่าช่องอะไร */
+  "aria-label"?: string;
 }) {
+  options = emptyLabel !== undefined ? [{ value: "", label: emptyLabel }, ...options] : options;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [hi, setHi] = useState(0);
@@ -346,6 +388,8 @@ export function Combobox({
   const ref = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const listId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const float = useFloat(inputRef, open);
   const selected = options.find((o) => o.value === value);
 
   useEffect(() => {
@@ -392,7 +436,10 @@ export function Combobox({
       }}
     >
       <input
-        className={inputCls}
+        {...inputAttrs}
+        ref={inputRef}
+        aria-label={aria["aria-label"]}
+        className={`${inputCls} ${className ?? ""}`}
         role="combobox"
         aria-expanded={open}
         aria-controls={listId}
@@ -400,7 +447,7 @@ export function Combobox({
         aria-activedescendant={open && filtered[hi] ? `${listId}-${hi}` : undefined}
         autoComplete="off"
         data-autofocus={autoFocus ? "" : undefined}
-        value={open ? query : selected?.label ?? ""}
+        value={open ? query : selected && selected.value !== "" ? selected.label : ""}
         placeholder={open && selected ? selected.label : placeholder ?? "พิมพ์ค้นหา…"}
         onFocus={openList}
         onMouseDown={() => { if (!open) openList(); }}
@@ -426,12 +473,13 @@ export function Combobox({
           }
         }}
       />
-      {open && (
+      {open && float && (
         <div
           ref={listRef}
           id={listId}
           role="listbox"
-          className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-line bg-card shadow-lg"
+          style={float}
+          className={floatCls}
         >
           {filtered.length === 0 && <div className="px-3 py-2 text-sm text-faint">ไม่พบ</div>}
           {filtered.map((o, i) => (
@@ -460,6 +508,115 @@ export function Combobox({
   );
 }
 
+/**
+ * ช่องพิมพ์อิสระ + รายการแนะนำ (D185) — แทน `<input list=…>` + `<datalist>` ของเบราว์เซอร์
+ *
+ * 🪤 datalist เดิม: หน้าตาวาดโดยเบราว์เซอร์ (ไม่ตามธีม/โหมดมืด) · มือถือแต่ละรุ่นโชว์ต่างกัน (D110) ·
+ *    คีย์บอร์ดไม่เหมือนช่องอื่นของแอป · ในแถวตารางบางเบราว์เซอร์โดนกรอบตัด
+ * ★ D185 แทนตัวเดิมที่เป็น datalist (ชื่อ/props เดิม — ที่ใช้อยู่ 5 จุดได้หน้าตาใหม่เอง)
+ * ★ ต่างจาก `Combobox`: **พิมพ์คำใหม่ที่ไม่มีในรายการได้** (ชื่อสินค้า/หมวด/งานใหม่) — ค่าคือข้อความที่พิมพ์
+ * ★ คีย์บอร์ด: พิมพ์ = กรองรายการ (ยังไม่ไฮไลต์) · ↓ ↑ เลือกรายการ · Enter = ใช้รายการที่ไฮไลต์ ถ้ายังไม่ไฮไลต์
+ *   Enter ไหลต่อ (หน้าบันทึกบิล = เพิ่มแถว) · Esc ปิดรายการ (ไม่ปิดป๊อปอัพที่ครอบ)
+ * ★ `data-enter="own"` ติดมาเอง — Enter ในป๊อปอัพไม่ส่งฟอร์ม (เหมือนช่อง list= เดิม · modal.tsx)
+ * ★ props อื่นของ `<input>` (เช่น `data-item-first`, placeholder) ส่งต่อให้ช่องตรง ๆ
+ */
+export function SuggestInput({
+  value,
+  onChange,
+  options: suggestions,
+  listId: _legacyListId,
+  className,
+  onKeyDown,
+  onFocus,
+  ...rest
+}: Omit<React.InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "list"> & {
+  value: string;
+  onChange: (v: string) => void;
+  /** รายการแนะนำ (ไม่บังคับเลือก) */
+  options: readonly string[];
+  /** ⚠️ เลิกใช้ — เดิมผูก `<datalist>` ด้วย id (D185 ไม่ใช้ datalist แล้ว) · รับไว้ให้ที่เรียกเดิมไม่ต้องแก้ */
+  listId?: string;
+}) {
+  void _legacyListId;
+  const [open, setOpen] = useState(false);
+  const [hi, setHi] = useState(-1);
+  const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const listId = useId();
+  const float = useFloat(inputRef, open);
+
+  const q = value.trim().toLowerCase();
+  // ★ ตัดตัวที่ตรงเป๊ะกับที่พิมพ์ออก (ไม่มีอะไรให้เลือกเพิ่ม) · จำกัด 50 รายการ (ประวัติชื่อสินค้ามีเป็นพัน)
+  const filtered = (q ? suggestions.filter((v) => v.toLowerCase().includes(q) && v.toLowerCase() !== q) : [...suggestions]).slice(0, 50);
+  const show = open && float && filtered.length > 0;
+
+  useEffect(() => {
+    if (!show || hi < 0) return;
+    listRef.current?.querySelector<HTMLElement>(`[data-i="${hi}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [hi, show]);
+
+  function close() { setOpen(false); setHi(-1); }
+  function pick(v: string) { onChange(v); close(); }
+
+  return (
+    <div
+      className="relative"
+      ref={ref}
+      onBlur={(e) => { if (!ref.current?.contains(e.relatedTarget as Node | null)) close(); }}
+    >
+      <input
+        {...rest}
+        ref={inputRef}
+        className={`${inputCls} ${className ?? ""}`}
+        role="combobox"
+        aria-expanded={!!show}
+        aria-controls={listId}
+        aria-autocomplete="list"
+        aria-activedescendant={show && hi >= 0 ? `${listId}-${hi}` : undefined}
+        autoComplete="off"
+        data-enter="own"
+        value={value}
+        onFocus={(e) => { setOpen(true); setHi(-1); onFocus?.(e); }}
+        onMouseDown={() => { if (!open) setOpen(true); }}
+        onChange={(e) => { onChange(e.target.value); setOpen(true); setHi(-1); }}
+        onKeyDown={(e) => {
+          const act = comboKey(e.key, { open: !!show, hi, count: filtered.length, touched: hi >= 0 });
+          if (act?.type === "open") { e.preventDefault(); setOpen(true); setHi(0); }
+          else if (act?.type === "move") { e.preventDefault(); setHi(act.hi); }
+          else if (act?.type === "pick") { if (act.stay) e.preventDefault(); pick(filtered[act.index]); }
+          else if (act?.type === "close") {
+            if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); }
+            close();
+          }
+          onKeyDown?.(e);
+        }}
+      />
+      {show && (
+        <div ref={listRef} id={listId} role="listbox" style={float} className={floatCls}>
+          {filtered.map((v, i) => (
+            <button
+              key={v}
+              id={`${listId}-${i}`}
+              data-i={i}
+              type="button"
+              role="option"
+              aria-selected={i === hi}
+              tabIndex={-1}
+              onMouseDown={(e) => e.preventDefault()}
+              onMouseEnter={() => setHi(i)}
+              onClick={() => pick(v)}
+              className={`block min-h-[44px] w-full px-3 py-2 text-left text-sm text-ink sm:min-h-0 ${i === hi ? "bg-raised" : ""}`}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── buttons ──────────────────────────────────────────────────────────────────
 export function SaveButton({
   pending,
@@ -472,7 +629,9 @@ export function SaveButton({
     <button
       {...rest}
       disabled={pending || rest.disabled}
-      className={`min-h-[44px] rounded bg-brand px-5 text-sm font-semibold tracking-wide text-on-brand transition hover:opacity-90 disabled:opacity-50 sm:min-h-0 sm:py-2 ${className}`}
+      aria-busy={pending || undefined}
+      // D184 — หน้าตาเดียวกับ <Button tone="primary"> (lib/shared/page) · ของเก่าที่ใช้ SaveButton ไม่ต้องไล่เปลี่ยน
+      className={`${BTN_BASE} ${BTN_SIZE.md} ${BTN_TONE.primary} ${className}`}
     >
       {pending ? pendingText : children}
     </button>
@@ -485,16 +644,21 @@ export function RowBtn({
   className = "",
   ...rest
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & { tone?: "slate" | "green" | "red" | "brand" }) {
-  const tones = {
-    slate: "border-line text-muted hover:bg-raised hover:text-ink",
-    green: "border-ok-line text-ok hover:bg-ok-bg",
-    red: "border-crit-line text-crit hover:bg-crit-bg",
-    brand: "border-brand-line text-brand hover:bg-brand-soft",
+  /**
+   * D184 — ปุ่ม 3 ระดับ (DESIGN_SYSTEM) · tone เดิมยังรับได้ แต่ map เข้า 3 ระดับ:
+   *   green ("บันทึก" ตอนแก้แถว = ยืนยัน) → primary · red → danger · slate/brand → secondary
+   * ★ ปุ่มในแถวตารางบนจอแคบสูง 44px เหมือนเดิม (เดิม RowBtn ตั้งไว้ · กฎกลางจอสัมผัสให้แค่ 32)
+   */
+  const tones: Record<"slate" | "green" | "red" | "brand", string> = {
+    slate: BTN_TONE.secondary,
+    green: BTN_TONE.primary,
+    red: BTN_TONE.danger,
+    brand: BTN_TONE.secondary,
   };
   return (
     <button
       {...rest}
-      className={`min-h-[44px] rounded border px-3 text-xs font-medium transition ${tones[tone]} disabled:opacity-50 sm:min-h-0 sm:py-1 ${className}`}
+      className={`${BTN_BASE} ${BTN_SIZE.sm} ${tones[tone]} min-h-[44px] sm:min-h-0 ${className}`}
     />
   );
 }
@@ -571,43 +735,6 @@ export function Badge({
     >
       {children}
     </span>
-  );
-}
-
-/**
- * ช่องพิมพ์อิสระ + รายการแนะนำ (datalist)
- *
- * ★ ต่างจาก `Combobox`: อันนี้ **พิมพ์ค่าใหม่ที่ไม่มีในรายการได้** — ใช้กับช่องที่ค่าที่ถูกต้อง
- *   ไม่ได้จำกัดอยู่แค่ที่มีในระบบ (หมวดรายจ่าย/ชื่อคู่ค้าที่อาจยังไม่เคยมี)
- *   แพตเทิร์นเดียวกับช่องหมวด/คู่ค้าในแท็บบันทึกของบัญชี
- */
-export function SuggestInput({
-  value,
-  onChange,
-  options,
-  placeholder,
-  listId,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: string[];
-  placeholder?: string;
-  /** ต้องไม่ซ้ำกันในหน้าเดียว — datalist ผูกด้วย id */
-  listId: string;
-}) {
-  return (
-    <>
-      <input
-        className={inputCls}
-        list={listId}
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-      />
-      <datalist id={listId}>
-        {options.map((o) => <option key={o} value={o} />)}
-      </datalist>
-    </>
   );
 }
 

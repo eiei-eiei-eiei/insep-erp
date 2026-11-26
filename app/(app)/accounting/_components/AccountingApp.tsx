@@ -15,6 +15,7 @@ import { InstallmentsTab } from "./InstallmentsTab";
 import { TaxDocsTab } from "./TaxDocsTab";
 import { SettingsTab } from "./SettingsTab";
 import { IconLedger } from "@/lib/shared/icons";
+import { Button, ModuleTabs, PageHeader } from "@/lib/shared/page";
 import { tabsFor, labelFromSlug, slugFromLabel } from "@/lib/shared/tabs";
 import { useTabUrl } from "../../_components/useTabUrl";
 import { can, toRole, ROLE_LABEL } from "@/lib/shared/roles";
@@ -64,10 +65,8 @@ export function AccountingApp({ boot }: { boot: Bootstrap }) {
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <IconLedger size={24} className="text-brand" />
-        <h1 className="text-2xl font-bold text-ink">บัญชี</h1>
-        <div className="ml-auto flex flex-wrap items-center gap-2 text-sm">
+      {/* D184 — หน้าตัวอย่างหัวหน้าจอ + แถบแท็บตัวกลาง (lib/shared/page) */}
+      <PageHeader icon={<IconLedger size={24} />} title="บัญชี">
           {multiEntity && (
             <div className="w-48"><Select value={entityId} onChange={(e) => setEntityId(e.target.value)}>
               <option value="ALL">ทุกกิจการ</option>
@@ -75,12 +74,11 @@ export function AccountingApp({ boot }: { boot: Bootstrap }) {
             </Select></div>
           )}
           <div className="flex items-center gap-1">
-            <button onClick={() => setMonth(shiftMonth(month, -1))} title="เดือนก่อน" className="rounded-lg border border-line px-2.5 py-2 text-muted hover:bg-raised">‹</button>
+            <Button onClick={() => setMonth(shiftMonth(month, -1))} aria-label="เดือนก่อน" className="px-3">‹</Button>
             <div className="w-40"><TextInput type="month" value={month} onChange={(e) => setMonth(e.target.value)} /></div>
-            <button onClick={() => setMonth(shiftMonth(month, 1))} title="เดือนถัดไป" className="rounded-lg border border-line px-2.5 py-2 text-muted hover:bg-raised">›</button>
+            <Button onClick={() => setMonth(shiftMonth(month, 1))} aria-label="เดือนถัดไป" className="px-3">›</Button>
           </div>
-        </div>
-      </div>
+      </PageHeader>
 
       {/* 🪤 ห้ามเขียนชื่อบทบาทที่ทำได้ไว้ในข้อความ — D85 เพิ่มบทบาทที่บันทึกได้อีก 3 ตัว
              แล้วข้อความเดิม ("ต้องเป็น main") กลายเป็นคำโกหกทันทีโดยไม่มีอะไรฟ้อง */}
@@ -91,11 +89,7 @@ export function AccountingApp({ boot }: { boot: Bootstrap }) {
       )}
       {boot.entities.length === 0 && <div className="mb-4 rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">ยังไม่มีข้อมูลกิจการ (entities) — เพิ่มก่อนใช้งาน</div>}
 
-      <div className="mb-5 -mx-4 flex gap-1 overflow-x-auto border-b border-line px-4">
-        {TABS.map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={`shrink-0 whitespace-nowrap rounded-t-lg px-4 py-2 text-sm font-medium transition ${tab === t ? "border-b-2 border-brand text-ink" : "text-faint hover:text-ink"}`}>{t}</button>
-        ))}
-      </div>
+      <ModuleTabs tabs={TABS} active={tab} onPick={setTab} label="แท็บของบัญชี" />
 
       {visited.has("บันทึก") && <div className={show("บันทึก")}><EntryTab boot={boot} entityId={entryEntity} ambiguous={entityId === "ALL"} /></div>}
       {visited.has("แดชบอร์ด") && <div className={show("แดชบอร์ด")}><DashboardTab period={month} entityId={entityId} active={tab === "แดชบอร์ด"} /></div>}

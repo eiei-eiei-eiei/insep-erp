@@ -42,6 +42,7 @@ import { RecipeEditor } from "./RecipeEditor";
 import { BilledLineRow, EditBillCustomer } from "./BilledLines";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { useUnsaved } from "@/lib/shared/pageGuardHost";
+import { Button } from "@/lib/shared/page";
 
 // D116 — เหลือ เงินสด · โอน/QR (ไม่รับบัตร · โอนกับ QR เคยทำงานเหมือนกันทุกอย่าง)
 const METHODS: readonly string[] = PAY_METHODS;
@@ -1142,13 +1143,13 @@ function TrayRow({
             />
             แถม (ยอด 0 แต่ต้นทุนยังนับ)
           </label>
-          <button
+          <Button
             type="button"
             onClick={onDrop}
-            className="ml-auto flex items-center gap-1 rounded border border-crit-line px-2 py-1 text-crit"
+            tone="danger" className="ml-auto"
           >
             <IconTrash size={13} /> เอาออก
-          </button>
+          </Button>
         </div>
       )}
     </div>
@@ -1507,7 +1508,7 @@ function NewTabButton({
       >
         <IconPlus size={15} />
       </button>
-      <button
+      <Button
         type="button"
         onClick={() => {
           onOpen(name, channel, cust || null);
@@ -1515,10 +1516,10 @@ function NewTabButton({
           setName("");
           setCust("");
         }}
-        className="rounded-lg bg-brand px-3 py-2 text-sm text-on-brand"
+        tone="primary"
       >
         เปิด
-      </button>
+      </Button>
     </div>
   );
 }
@@ -1568,14 +1569,14 @@ function NewMenuModal({
       footer={
         <>
           <ModalCancel onClick={onClose} />
-          <button
+          <Button
             type="button"
             disabled={busy || !name.trim()}
             onClick={save}
-            className="rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
+            tone="primary"
           >
             บันทึกแล้วใส่ลงถาด
-          </button>
+          </Button>
         </>
       }
     >

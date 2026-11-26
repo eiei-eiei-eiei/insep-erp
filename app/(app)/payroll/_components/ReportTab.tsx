@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Card, Field, NumBox, Empty, fmt, LoadError } from "@/lib/shared/ui";
 import { buildPayrollReport, type PayrollReport } from "@/lib/payroll/report";
 import { getPayrollReportAction } from "../read-actions";
+import { SkeletonTable } from "@/lib/shared/page";
 
 /**
  * แท็บรายงาน — บัญชีลงเป็นก้อน (ยอดสุทธิ/นำส่ง) เพื่อไม่ให้หมวดรายจ่ายรุงรัง
@@ -51,7 +52,7 @@ export function ReportTab({ active }: { active: boolean }) {
         </p>
       </Card>
 
-      {loading && <p className="text-sm text-faint">กำลังโหลด…</p>}
+      {loading && <SkeletonTable rows={5} cols={6} what="รายงานเงินเดือน" />}
       <LoadError err={err} onRetry={() => load(year)} what="รายงานเงินเดือน" />
 
       {!loading && report && report.rows.length === 0 && (

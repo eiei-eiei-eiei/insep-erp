@@ -10,6 +10,7 @@ import { can, toRole } from "@/lib/shared/roles";
 import { Modal, ModalCancel, todayISO } from "@/lib/shared/ui";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { shipDateError, shipDateNote } from "@/lib/sales/backdate";
+import { Button, SkeletonCard, SkeletonTable } from "@/lib/shared/page";
 
 export function WarehouseTab({ role, company, active, hasProduction }: { role: string; company: CompanyInfo; active: boolean; hasProduction: boolean }) {
   // D133 — ไม่มีโมดูลผลิต = ประโยคไม่พูดถึงสุรา/ฟอร์ม ภส./โรงกลั่น
@@ -93,7 +94,7 @@ function PendingOrders({ canWrite, company, active, txt }: { canWrite: boolean; 
     printSalesDocs(company, o as OrderLike, o.items, docTypes);
   }
 
-  if (loading) return <div className="py-10 text-center text-faint">กำลังโหลด…</div>;
+  if (loading) return <SkeletonCard rows={4} cols={5} what="คลัง" />;
   if (err) return <LoadError err onRetry={refresh} what="คิวออเดอร์รอจัดส่ง" />;
 
   return (
@@ -107,15 +108,15 @@ function PendingOrders({ canWrite, company, active, txt }: { canWrite: boolean; 
           footer={
             <>
               <ModalCancel onClick={() => setAsk(null)} />
-              <button
+              <Button
                 type="button"
                 data-autofocus
                 disabled={!!shipErr}
                 onClick={() => confirmShip(ask, shipDate)}
-                className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-on-brand disabled:opacity-50"
+                tone="primary"
               >
                 ยืนยันจัดส่ง &amp; ตัดสต็อก
-              </button>
+              </Button>
             </>
           }
         >
@@ -169,9 +170,9 @@ function PendingOrders({ canWrite, company, active, txt }: { canWrite: boolean; 
               พิมพ์เอกสาร
             </button>
             {canWrite && (
-              <button onClick={() => openConfirm(o)} disabled={busy === o.quNo} className="rounded bg-brand px-4 py-1.5 text-sm font-bold text-on-brand hover:opacity-90 disabled:opacity-50">
+              <Button onClick={() => openConfirm(o)} disabled={busy === o.quNo} tone="primary">
                 {busy === o.quNo ? "กำลังตัดสต็อก…" : "ยืนยันจัดส่ง & ตัดสต็อก"}
-              </button>
+              </Button>
             )}
           </div>
         </Card>
@@ -246,9 +247,9 @@ function StockPanel({ canWrite, active, txt }: { canWrite: boolean; active: bool
             </Select>
             <NumInput placeholder="จำนวน" value={form.qty} onChange={(e) => setForm({ ...form, qty: Number(e.target.value) || 0 })} />
             <TextInput placeholder="อ้างอิง" value={form.refNo} onChange={(e) => setForm({ ...form, refNo: e.target.value })} />
-            <button onClick={submit} disabled={pending} className="rounded-lg bg-brand px-4 py-2 font-medium text-on-brand hover:opacity-90 disabled:opacity-50">
+            <Button onClick={submit} disabled={pending} tone="primary">
               {pending ? "…" : "บันทึก"}
-            </button>
+            </Button>
           </div>
           {txt.manualStockNote && <div className="mt-2 text-xs text-faint">{txt.manualStockNote}</div>}
         </Card>
@@ -257,7 +258,7 @@ function StockPanel({ canWrite, active, txt }: { canWrite: boolean; active: bool
       <Card title={txt.stockTitle}>
         <TextInput placeholder="ค้นหา" value={search} onChange={(e) => setSearch(e.target.value)} className="mb-3 max-w-xs" />
         {loading ? (
-          <div className="py-8 text-center text-faint">กำลังโหลด…</div>
+          <SkeletonTable rows={5} cols={6} what="ความเคลื่อนไหวสต็อก" />
         ) : err ? (
           <LoadError err onRetry={refresh} what="สต็อก" />
         ) : (

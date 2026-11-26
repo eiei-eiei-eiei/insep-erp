@@ -6,6 +6,7 @@ import { SettingsCard } from "@/lib/shared/settings";
 import { tableLabel, type TenantTable } from "@/lib/shared/tenantTables";
 import { changedFields, rawBefore, rowPkLabel, ACTION_LABEL_TH, type EditLogRow } from "@/lib/shared/editLog";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
+import { Button } from "@/lib/shared/page";
 
 /**
  * ประวัติการแก้ไข — ดูอย่างเดียว + คัดลอกค่าเก่า (D80)
@@ -87,12 +88,12 @@ export function HistoryCard({
           <Field label="ค้นด้วยเลขที่/รหัส">
             <div className="flex gap-1">
               <TextInput name="q" defaultValue={filter.q} placeholder="เช่น TR-2026… / TESTDISL" />
-              <button
+              <Button
                 type="submit"
-                className="whitespace-nowrap rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-on-brand hover:opacity-90"
+                tone="primary"
               >
                 ค้น
-              </button>
+              </Button>
             </div>
           </Field>
         </form>

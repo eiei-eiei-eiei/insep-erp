@@ -199,3 +199,21 @@ describe("ป๊อปอัพทั้งแอปใช้ Modal ตัวก
     }
   });
 });
+
+describe("D185 — ช่องพิมพ์อิสระ (SuggestInput · hi = -1 = ยังไม่ไฮไลต์)", () => {
+  const F = (p: Partial<ComboState> = {}): ComboState => ({ open: true, hi: -1, count: 5, touched: false, ...p });
+  it("🚨 พิมพ์แล้วกด Enter = ได้คำที่พิมพ์ (ไม่เลือกรายการแรกให้) — Enter ไหลต่อไป 'เพิ่มแถว' ได้", () => {
+    expect(comboKey("Enter", F())).toBeNull();
+  });
+  it("Tab ตอนยังไม่ไฮไลต์ = ปิดรายการเฉย ๆ ไม่เปลี่ยนค่า", () => {
+    expect(comboKey("Tab", F({ touched: true }))).toEqual({ type: "close" });
+  });
+  it("กดลูกศรลงครั้งแรก → ไฮไลต์รายการแรก แล้ว Enter เลือกได้", () => {
+    expect(comboKey("ArrowDown", F())).toEqual({ type: "move", hi: 0 });
+    expect(comboKey("Enter", F({ hi: 0, touched: true }))).toEqual({ type: "pick", index: 0, stay: true });
+  });
+  it("Combobox เดิม (hi ≥ 0 เสมอ) พฤติกรรมไม่เปลี่ยน", () => {
+    expect(comboKey("Enter", F({ hi: 2 }))).toEqual({ type: "pick", index: 2, stay: true });
+    expect(comboKey("Tab", F({ hi: 1, touched: true }))).toEqual({ type: "pick", index: 1, stay: false });
+  });
+});

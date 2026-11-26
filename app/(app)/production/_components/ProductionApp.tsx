@@ -17,6 +17,7 @@ import { HistoryTab } from "./HistoryTab";
 import { BoardTab } from "./BoardTab";
 import { ExciseTab } from "./ExciseTab";
 import { IconStill } from "@/lib/shared/icons";
+import { ModuleTabs, PageHeader } from "@/lib/shared/page";
 import { tabsFor, labelFromSlug, slugFromLabel } from "@/lib/shared/tabs";
 import type { Role } from "@/lib/shared/roles";
 import { processesOf } from "@/lib/production/calc";
@@ -69,26 +70,8 @@ export function ProductionApp({
 
   return (
     <div>
-      <div className="mb-4 flex items-center gap-3">
-        <IconStill size={24} className="text-brand" />
-        <h1 className="text-2xl font-bold text-ink">ผลิต</h1>
-      </div>
-
-      <div className="mb-5 -mx-4 flex gap-1 overflow-x-auto border-b border-line px-4">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`shrink-0 whitespace-nowrap rounded-t-lg px-4 py-2 text-sm font-medium transition ${
-              tab === t
-                ? "border-b-2 border-brand text-ink"
-                : "text-faint hover:text-ink"
-            }`}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+      <PageHeader icon={<IconStill size={24} />} title="ผลิต" />
+      <ModuleTabs tabs={TABS} active={tab} onPick={setTab} label="แท็บของผลิต" />
 
       {visited.has("กระดาน batch") && (
         <div className={show("กระดาน batch")}><BoardTab active={tab === "กระดาน batch"} onOpen={openBatch} /></div>

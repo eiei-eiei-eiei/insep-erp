@@ -6,6 +6,7 @@ import { Card, LoadError } from "./ui";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { getSyncHistoryAction } from "../actions";
 import { IconRefresh } from "@/lib/shared/icons";
+import { SkeletonTable } from "@/lib/shared/page";
 
 const ACTION_LABEL: Record<string, string> = {
   SELL_PRODUCT: "ขาย → ผลิต (ตัดสต็อกสุรา)",
@@ -49,7 +50,7 @@ export function SyncHistoryTab({ active }: { active: boolean }) {
         </button>
       </div>
       {loading ? (
-        <div className="py-8 text-center text-faint">กำลังโหลด…</div>
+        <SkeletonTable rows={5} cols={5} what="ประวัติ" />
       ) : err ? (
         <LoadError err onRetry={refresh} what="ประวัติเชื่อมระบบ" />
       ) : (

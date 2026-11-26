@@ -39,6 +39,7 @@ import {
 import { RecipeEditor } from "./RecipeEditor";
 import { MenuModal } from "./MenuTab";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
+import { Button, SkeletonCard } from "@/lib/shared/page";
 
 export type LabData = {
   me: string | null;
@@ -130,7 +131,7 @@ export function LabTab({ boot, onReload }: { boot: BarBoot; onReload: () => Prom
       </div>
 
       <LoadError err={lab.err} onRetry={lab.reload} what="ข้อมูลห้องทดลอง" />
-      {!data && !lab.err && <p className="text-sm text-muted">กำลังโหลด…</p>}
+      {!data && !lab.err && <SkeletonCard rows={3} cols={4} what="ห้องทดลอง" />}
 
       {data && view === "recipes" && (
         <RecipesView boot={boot} data={data} busy={busy} run={run} onDelete={removeUse} />
@@ -171,14 +172,14 @@ function RecipesView({
   return (
     <>
       <div className="flex flex-wrap items-center gap-2">
-        <button
+        <Button
           type="button"
           disabled={busy || !boot.canWrite}
           onClick={() => setRound({ recipeId: null, name: "", rows: [blankRecipeRow(), blankRecipeRow(), blankRecipeRow()] })}
-          className="min-h-[44px] rounded-lg bg-brand px-4 py-2 text-sm text-on-brand disabled:opacity-50 sm:min-h-0"
+          tone="primary"
         >
           ＋ ลองสูตรใหม่
-        </button>
+        </Button>
         <div className="min-w-48 flex-1">
           <TextInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นชื่อสูตร…" aria-label="ค้นชื่อสูตร" />
         </div>
@@ -309,7 +310,7 @@ function RecipeCard({
             <div className="w-56">
               <TextInput value={renaming} onChange={(e) => setRenaming(e.target.value)} aria-label="ชื่อสูตร" />
             </div>
-            <button
+            <Button
               type="button"
               disabled={busy || !renaming.trim()}
               onClick={async () => {
@@ -321,10 +322,10 @@ function RecipeCard({
                 )
                   setRenaming(null);
               }}
-              className="rounded-lg bg-brand px-3 py-1 text-xs text-on-brand disabled:opacity-50"
+              tone="primary" size="sm"
             >
               บันทึกชื่อ
-            </button>
+            </Button>
             <button type="button" onClick={() => setRenaming(null)} className="text-xs text-muted underline">
               เลิกแก้
             </button>
@@ -374,14 +375,14 @@ function RecipeCard({
 
       {boot.canWrite && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button
+          <Button
             type="button"
             disabled={busy || !!block || !latest}
             onClick={() => latest && onRetry(roundToDraft(latest, refsOf(boot)))}
-            className="min-h-[44px] rounded-lg bg-brand px-3 py-1.5 text-sm text-on-brand disabled:opacity-50 sm:min-h-0"
+            tone="primary"
           >
             ลองรอบใหม่
-          </button>
+          </Button>
           {latest && recipe.status !== "เลิกลอง" && (
             <button
               type="button"
@@ -464,14 +465,14 @@ function RoundRow({
           />
         </div>
         {dirty && (
-          <button
+          <Button
             type="button"
             disabled={busy || !boot.canWrite}
             onClick={() => run(() => labUpdateUseAction({ useId: use.useId, note, eventName: use.eventName }), "บันทึกโน้ตแล้ว")}
-            className="rounded-lg bg-brand px-3 py-1 text-xs text-on-brand disabled:opacity-50"
+            tone="primary" size="sm"
           >
             บันทึกโน้ต
-          </button>
+          </Button>
         )}
       </div>
     </div>
@@ -509,14 +510,14 @@ function RoundModal({
       footer={
         <>
           <ModalCancel onClick={onClose} />
-          <button
+          <Button
             type="button"
             disabled={busy || missing.length > 0}
             onClick={() => onSubmit({ name, glasses: glasses as number, recipe, note })}
-            className="rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
+            tone="primary"
           >
             {busy ? "กำลังบันทึก…" : "ชงแล้ว — ตัดสต็อก"}
-          </button>
+          </Button>
         </>
       }
     >
@@ -625,7 +626,7 @@ function UseView({
             ) : (
               <div className="flex gap-1">
                 <TextInput value={newCat} onChange={(e) => setNewCat(e.target.value)} placeholder="ชิมให้ลูกค้า" aria-label="ชื่อหมวดใหม่" />
-                <button
+                <Button
                   type="button"
                   disabled={busy || !newCat.trim()}
                   onClick={async () => {
@@ -639,10 +640,10 @@ function UseView({
                       await run(async () => r, "");
                     }
                   }}
-                  className="shrink-0 rounded-lg bg-brand px-2 text-xs text-on-brand disabled:opacity-50"
+                  tone="primary" size="sm" className="shrink-0"
                 >
                   เพิ่ม
-                </button>
+                </Button>
                 <button type="button" onClick={() => setNewCat(null)} className="shrink-0 text-xs text-muted underline">
                   ยกเลิก
                 </button>
@@ -715,7 +716,7 @@ function UseView({
             ทุนโดยประมาณ <b className="text-ink">{fmt(preview)}</b> บาท (ตัวจริงคิดตอนกด จากต้นทุน ณ ตอนนั้น)
           </p>
         )}
-        <button
+        <Button
           type="button"
           disabled={busy || pending === 0 || plan.errors.length > 0 || !boot.canWrite}
           onClick={async () => {
@@ -736,10 +737,10 @@ function UseView({
               setNote("");
             }
           }}
-          className="mt-3 min-h-[44px] rounded-lg bg-brand px-4 py-2 text-sm text-on-brand disabled:opacity-50 sm:min-h-0"
+          tone="primary" className="mt-3"
         >
           {pending > 0 ? `ตัดสต็อก ${pending} รายการ` : "ตัดสต็อก"}
-        </button>
+        </Button>
       </Card>
 
       <Card title="รายการล่าสุด">
@@ -960,7 +961,7 @@ export function LabCategoriesCard({ boot }: { boot: BarBoot }) {
         );
       })}
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button
+        <Button
           type="button"
           disabled={busy || !dirty || blank || !boot.canConfig}
           onClick={async () => {
@@ -976,10 +977,10 @@ export function LabCategoriesCard({ boot }: { boot: BarBoot }) {
               setBusy(false);
             }
           }}
-          className="rounded-lg bg-brand px-3 py-1.5 text-sm text-on-brand disabled:opacity-50"
+          tone="primary"
         >
           บันทึก
-        </button>
+        </Button>
         {dirty && (
           <>
             <button type="button" onClick={() => setRows(null)} className="text-xs text-muted underline">

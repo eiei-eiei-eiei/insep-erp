@@ -28,6 +28,7 @@ import {
 import { ItemHistoryModal } from "./ItemHistoryModal";
 import { PrepView } from "./PrepTab";
 import { useUnsaved } from "@/lib/shared/pageGuardHost";
+import { Button } from "@/lib/shared/page";
 
 /**
  * สต็อกบาร์ (D96 · D103 · D104)
@@ -498,17 +499,17 @@ function ItemsEditor({
       {plan.errors.length > 0 && <p className="mt-2 text-xs text-warn">ยังบันทึกไม่ได้ — {errorsText(plan.errors)}</p>}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button
+        <Button
           type="button"
           disabled={busy || plan.rows.length === 0 || plan.errors.length > 0}
           onClick={async () => {
             const n = plan.rows.length;
             if (await onRun(() => updateItemsAction(plan.rows), `บันทึกวัตถุดิบแล้ว ${n} รายการ`)) onDone();
           }}
-          className="rounded-lg bg-brand px-4 py-2 text-sm text-on-brand disabled:opacity-50"
+          tone="primary"
         >
           {plan.rows.length > 0 ? `บันทึก ${plan.rows.length} รายการ` : "บันทึก"}
-        </button>
+        </Button>
         <button type="button" onClick={onCancel} className="rounded-lg bg-raised px-4 py-2 text-sm text-ink">
           ยกเลิก
         </button>
@@ -671,7 +672,7 @@ function ReceiveCard({
       )}
       {plan.errors.length > 0 && <p className="mt-2 text-xs text-warn">ยังบันทึกไม่ได้ — {errorsText(plan.errors)}</p>}
 
-      <button
+      <Button
         type="button"
         disabled={busy || plan.rows.length === 0 || plan.errors.length > 0}
         onClick={async () => {
@@ -680,11 +681,11 @@ function ReceiveCard({
             setRows(blanks(3, newReceive));
           }
         }}
-        className="mt-3 rounded-lg bg-brand px-4 py-2 text-sm text-on-brand disabled:opacity-50"
+        tone="primary" className="mt-3"
       >
         {plan.rows.length > 0 ? `รับเข้า ${plan.rows.length} รายการ` : "รับเข้า"}
         {plan.rows.length > 0 && boot.canSeeCost && ` · รวม ${fmt(total)} บาท`}
-      </button>
+      </Button>
       {plan.rows.length === 0 && plan.errors.length === 0 && (
         <p className="mt-1 text-xs text-faint">เลือกวัตถุดิบอย่างน้อย 1 แถว</p>
       )}
@@ -821,17 +822,17 @@ function CountCard({
       {plan.errors.length > 0 && <p className="mt-2 text-xs text-warn">ยังบันทึกไม่ได้ — {errorsText(plan.errors)}</p>}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button
+        <Button
           type="button"
           disabled={busy || plan.rows.length === 0 || plan.errors.length > 0}
           onClick={async () => {
             const n = plan.rows.length;
             if (await onRun(() => adjustBatchAction(plan.rows), `ปรับยอดแล้ว ${n} รายการ`)) setEdits({});
           }}
-          className="rounded-lg bg-brand px-4 py-2 text-sm text-on-brand disabled:opacity-50"
+          tone="primary"
         >
           {plan.rows.length > 0 ? `บันทึกการนับ ${plan.rows.length} รายการ` : "บันทึกการนับ"}
-        </button>
+        </Button>
         {Object.keys(edits).length > 0 && (
           <button type="button" onClick={() => setEdits({})} className="text-sm text-muted underline">
             ล้างที่กรอก
@@ -879,14 +880,14 @@ function NewItemsModal({
       footer={
         <>
           <ModalCancel onClick={onClose} />
-          <button
+          <Button
             type="button"
             disabled={busy || plan.rows.length === 0 || plan.errors.length > 0}
             onClick={() => void save()}
-            className="rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
+            tone="primary"
           >
             {plan.rows.length > 0 ? `บันทึก ${plan.rows.length} รายการ` : "บันทึก"}
-          </button>
+          </Button>
         </>
       }
     >

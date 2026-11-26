@@ -20,6 +20,7 @@ import { CASH_METHOD, accountForMethod } from "@/lib/bar/payMethods";
 import { customerLabel } from "@/lib/bar/customerName";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { weekdayShort } from "@/lib/shared/dateFormat";
+import { Button, SkeletonTable } from "@/lib/shared/page";
 
 type PostRow = { post_date: string; status: string; tx_ids: string[]; totals: Record<string, unknown>; posted_at: string };
 type CustRow = { customer_id: string; name: string; last_seen: string | null; visits: number; spend_total: number };
@@ -236,14 +237,14 @@ export function DashboardTab({
             <span className="flex-1">
               <b>{unpostedText(boot.unposted, df.day)}</b> · รวม {fmt(unpostedTotal(boot.unposted))} บาท
             </span>
-            <button
+            <Button
               type="button"
               disabled={busy || !canPost}
               onClick={() => void postAll()}
-              className="rounded-lg bg-brand px-3 py-1.5 text-sm text-on-brand disabled:opacity-50"
+              tone="primary"
             >
               ลงบัญชีทั้งหมด
-            </button>
+            </Button>
           </div>
           {!canPost && (
             <div className="mt-1 text-xs">
@@ -497,7 +498,7 @@ export function DashboardTab({
           )}
         </>
       ) : (
-        <Empty>{range.from > range.to ? "— แก้ช่วงเวลาก่อน —" : "กำลังโหลดยอด…"}</Empty>
+        range.from > range.to ? <Empty>— แก้ช่วงเวลาก่อน —</Empty> : <SkeletonTable rows={5} cols={6} what="ยอด" />
       )}
     </div>
   );

@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { BarBoot } from "../data";
 import { Field, Modal, ModalCancel, TextInput } from "@/lib/shared/ui";
 import type { saveCustomerAction } from "../actions";
+import { Button } from "@/lib/shared/page";
 
 /**
  * ฟอร์มเพิ่ม/แก้ลูกค้าบาร์ (D96)
@@ -68,14 +69,14 @@ export function CustomerModal({
             </button>
           )}
           <ModalCancel onClick={onClose} />
-          <button
+          <Button
             type="button"
             disabled={busy || !name.trim()}
             onClick={save}
-            className="rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
+            tone="primary"
           >
             บันทึก
-          </button>
+          </Button>
         </>
       }
     >

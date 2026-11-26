@@ -62,6 +62,7 @@ import type { EmployeeRow } from "../data";
 import type { PayrollConfig } from "./PayrollApp";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { bangkokDateISO } from "@/lib/shared/datetime";
+import { Button } from "@/lib/shared/page";
 
 /**
  * ถามยืนยันก่อนลบ — ใช้ตัวเดียวกันทุกจุดในหน้านี้ ข้อความจะได้สม่ำเสมอ
@@ -618,10 +619,10 @@ function Formulas({ config, employees }: { config: PayrollConfig; employees: Emp
             onClick={() => setEdit({ type: "var", v: blankVariable(), isNew: true })}
             className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-brand-line px-3 py-2 text-sm font-medium text-brand"
           ><IconPlus size={16} /> ตัวแปร</button>
-          <button
+          <Button
             onClick={() => setEdit({ type: "comp", c: blankComponent(), isNew: true })}
-            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-brand px-3 py-2 text-sm font-medium text-on-brand"
-          ><IconPlus size={16} /> รายการเพิ่ม/หัก</button>
+            tone="primary"
+          ><IconPlus size={16} /> รายการเพิ่ม/หัก</Button>
         </>
       }
     >
@@ -1058,10 +1059,10 @@ function PostLegs({ config }: { config: PayrollConfig }) {
       help={<>กำหนดว่าเงินเดือนไปเป็นรายจ่ายในบัญชีเป็นกี่ก้อน — ตั้งกี่ขาก็ได้ ·
         หมวดรายจ่ายพิมพ์เอง ไม่ต้องมีในรายการหมวดเดิม</>}
       action={
-        <button
+        <Button
           onClick={() => setEdit(blankLeg())}
-          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-brand px-3 py-2 text-sm font-medium text-on-brand"
-        ><IconPlus size={16} /> เพิ่มขา</button>
+          tone="primary"
+        ><IconPlus size={16} /> เพิ่มขา</Button>
       }
     >
       {confirmNode}

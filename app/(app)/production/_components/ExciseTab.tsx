@@ -24,6 +24,7 @@ import { reminderHintText } from "@/lib/production/exciseReminder";
 import { can, capHolderText, type Role } from "@/lib/shared/roles";
 import { visibleExciseForms } from "@/lib/production/calc";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
+import { Button, SkeletonCard } from "@/lib/shared/page";
 
 // report_key ของ report_runs ↔ ฟอร์ม ภส. (FLOW sec 6 — "เดือนนี้สร้างครบยัง")
 // 🚨 `needs` ต้องตรงกับเงื่อนไขที่ซ่อนกล่องเลือกรายการด้านล่าง (จำนวนสินค้าต่อประเภท)
@@ -277,7 +278,7 @@ export function ExciseTab({ active, role }: { active: boolean; role: Role }) {
     [options],
   );
 
-  if (!loaded) return <p className="text-sm text-faint">กำลังโหลด…</p>;
+  if (!loaded) return <SkeletonCard rows={4} cols={5} what="รายงานสรรพสามิต" />;
 
   return (
     <div>
@@ -344,13 +345,13 @@ export function ExciseTab({ active, role }: { active: boolean; role: Role }) {
           <span className="mb-1 block text-muted">เดือน</span>
           <TextInput type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
         </label>
-        <button
+        <Button
           onClick={generate}
           disabled={busy}
-          className="rounded-lg bg-brand px-5 py-2 font-medium text-on-brand hover:opacity-90 disabled:opacity-50"
+          tone="primary"
         >
           {busy ? "กำลังสร้าง…" : "สร้าง PDF ที่เลือก"}
-        </button>
+        </Button>
       </div>
 
       <div className="mb-4">
@@ -476,14 +477,14 @@ export function ExciseTab({ active, role }: { active: boolean; role: Role }) {
               </button>
             ) : (
               <>
-                <button
+                <Button
                   type="button"
                   disabled={!mayClose || mcBusy}
                   onClick={() => runClose(() => closeExciseMonthAction(month, entityId, mcNote), "ปิดเดือนแล้ว")}
-                  className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-on-brand hover:opacity-90 disabled:opacity-50"
+                  tone="primary"
                 >
                   ปิดเดือน
-                </button>
+                </Button>
                 <button
                   type="button"
                   disabled={!mayClose || mcBusy || pendingN === 0}

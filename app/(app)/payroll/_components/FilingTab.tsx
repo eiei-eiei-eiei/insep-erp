@@ -19,6 +19,7 @@ import { issueEmp50TawiAction, nextEmpWhtDocNoAction } from "../actions";
 import type { PeriodRow, EmpCertRow } from "../data";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { bangkokDateISO } from "@/lib/shared/datetime";
+import { SkeletonTable } from "@/lib/shared/page";
 
 /**
  * แท็บ "เอกสารยื่น" — ภงด.1 · สปส.1-10 · ภงด.1ก · 50ทวิ
@@ -148,7 +149,7 @@ export function FilingTab({ periods, active }: { periods: PeriodRow[]; active: b
         </p>
       </Card>
 
-      {loading && <p className="text-sm text-faint">กำลังโหลด…</p>}
+      {loading && <SkeletonTable rows={4} cols={5} what="เอกสารยื่น" />}
       {/* 🚨 D89 — เอกสารยื่นราชการ · โหลดไม่ครบแล้วพิมพ์ = ยื่นขาดคน/ยอดผิด */}
       <LoadError err={err} onRetry={load} what="ข้อมูลเอกสารยื่น" />
 

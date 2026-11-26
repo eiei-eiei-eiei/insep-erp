@@ -35,7 +35,7 @@ import {
 import type { Bootstrap, Contact } from "./types";
 import { Card, Field, NumBox, NumInput, SaveButton, Select, TextInput, fmt, todayISO, useSaver } from "./ui";
 import { ContactFields, blankContactForm, contactPayload, type ContactForm } from "./ContactFields";
-import { Modal, ModalCancel } from "@/lib/shared/ui";
+import { Modal, ModalCancel, SuggestInput, Combobox } from "@/lib/shared/ui";
 import { IconTrash } from "@/lib/shared/icons";
 import { isForwardCat } from "@/lib/accounting/forwardCats";
 import { ADVANCE_TYPE, advanceTargets } from "@/lib/accounting/advance";
@@ -265,6 +265,8 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
   }, [items.length]);
   // D117 — Enter ในแถวรายการ (ทุกช่อง รวมช่องชื่อ) = เพิ่มรายการใหม่ · Ctrl+Enter = บันทึก (จับที่ระดับบน)
   function onItemsKeyDown(e: React.KeyboardEvent) {
+    // D185 — Enter ที่ดร็อปดาวน์ใช้ไปแล้ว (เลือกรายการที่ไฮไลต์) ไม่นับเป็น "เพิ่มแถว"
+    if (e.defaultPrevented) return;
     const el = e.target as HTMLElement;
     const inItemRow = (el.tagName === "INPUT" || el.tagName === "SELECT") && el.closest("[data-item-row]") !== null;
     if (!isAddRowKey({ key: e.key, ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing, inItemRow })) return;
@@ -474,16 +476,14 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
                 <tr key={i} data-item-row>
                   <td>
                     {isCost ? (
-                      <Select data-item-first value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })}>
-                        <option value="">— เลือกวัตถุดิบ —</option>
-                        {boot.materials.map((m) => (<option key={m.material_id} value={m.name}>{m.name}</option>))}
-                      </Select>
+                      <Combobox inputAttrs={{ "data-item-first": "" }} aria-label="วัตถุดิบ" placeholder="— เลือกวัตถุดิบ —" value={it.itemName} onChange={(v) => setItem(i, { itemName: v })}
+                        options={boot.materials.map((m) => ({ value: m.name, label: m.name }))} />
                     ) : (
-                      <TextInput data-item-first list="hist-item-names" value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })} placeholder="ชื่อสินค้า/บริการ" />
+                      <SuggestInput data-item-first options={itemHist.itemNames} value={it.itemName} onChange={(v) => setItem(i, { itemName: v })} placeholder="ชื่อสินค้า/บริการ" aria-label="ชื่อสินค้า/บริการ" />
                     )}
                   </td>
-                  <td><TextInput list="hist-item-cats" value={it.itemCategory} onChange={(e) => setItem(i, { itemCategory: e.target.value })} placeholder="หมวดหมู่" /></td>
-                  <td><TextInput list="hist-item-jobs" value={it.itemJob} onChange={(e) => setItem(i, { itemJob: e.target.value })} placeholder="งาน" /></td>
+                  <td><SuggestInput options={itemCatOptions} value={it.itemCategory} onChange={(v) => setItem(i, { itemCategory: v })} placeholder="หมวดหมู่" aria-label="หมวดหมู่สินค้า" /></td>
+                  <td><SuggestInput options={itemJobOptions} value={it.itemJob} onChange={(v) => setItem(i, { itemJob: v })} placeholder="งาน" aria-label="งาน" /></td>
                   <td><NumBox value={it.quantity} onChange={(v) => onQty(i, v)} /></td>
                   <td><NumBox value={priceOf(it)} blankZero onChange={(v) => onPrice(i, v === "" ? 0 : v)} /></td>
                   <td><NumBox value={it.discPct} blankZero onChange={(v) => onDiscPct(i, v === "" ? 0 : v)} /></td>
@@ -503,12 +503,10 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
               <div className="mb-2 flex items-start gap-2">
                 <div className="flex-1">
                   {isCost ? (
-                    <Select data-item-first value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })}>
-                      <option value="">— เลือกวัตถุดิบ —</option>
-                      {boot.materials.map((m) => (<option key={m.material_id} value={m.name}>{m.name}</option>))}
-                    </Select>
+                    <Combobox inputAttrs={{ "data-item-first": "" }} aria-label="วัตถุดิบ" placeholder="— เลือกวัตถุดิบ —" value={it.itemName} onChange={(v) => setItem(i, { itemName: v })}
+                      options={boot.materials.map((m) => ({ value: m.name, label: m.name }))} />
                   ) : (
-                    <TextInput data-item-first list="hist-item-names" value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })} placeholder="ชื่อสินค้า/บริการ" />
+                    <SuggestInput data-item-first options={itemHist.itemNames} value={it.itemName} onChange={(v) => setItem(i, { itemName: v })} placeholder="ชื่อสินค้า/บริการ" aria-label="ชื่อสินค้า/บริการ" />
                   )}
                 </div>
                 <button type="button" onClick={() => removeItem(i)} title="ลบรายการนี้" className="px-2 py-1 text-crit hover:text-crit">✕</button>
@@ -516,8 +514,8 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <label className="block"><span className="mb-0.5 block text-faint">จำนวน</span><NumBox value={it.quantity} onChange={(v) => onQty(i, v)} /></label>
                 <label className="block"><span className="mb-0.5 block text-faint">{unitPriceHeader(vatMode)}</span><NumBox value={priceOf(it)} blankZero onChange={(v) => onPrice(i, v === "" ? 0 : v)} /></label>
-                <label className="block"><span className="mb-0.5 block text-faint">หมวดหมู่</span><TextInput list="hist-item-cats" value={it.itemCategory} onChange={(e) => setItem(i, { itemCategory: e.target.value })} /></label>
-                <label className="block"><span className="mb-0.5 block text-faint">งาน</span><TextInput list="hist-item-jobs" value={it.itemJob} onChange={(e) => setItem(i, { itemJob: e.target.value })} /></label>
+                <label className="block"><span className="mb-0.5 block text-faint">หมวดหมู่</span><SuggestInput options={itemCatOptions} value={it.itemCategory} onChange={(v) => setItem(i, { itemCategory: v })} /></label>
+                <label className="block"><span className="mb-0.5 block text-faint">งาน</span><SuggestInput options={itemJobOptions} value={it.itemJob} onChange={(v) => setItem(i, { itemJob: v })} /></label>
                 <label className="block"><span className="mb-0.5 block text-faint">ลด %</span><NumBox value={it.discPct} blankZero onChange={(v) => onDiscPct(i, v === "" ? 0 : v)} /></label>
                 <label className="block"><span className="mb-0.5 block text-faint">ลด บาท</span><NumBox value={it.discBaht} blankZero onChange={(v) => onDiscBaht(i, v === "" ? 0 : v)} /></label>
               </div>
@@ -526,9 +524,6 @@ export function EntryTab({ boot, entityId, ambiguous }: { boot: Bootstrap; entit
           ))}
         </div>
 
-        <datalist id="hist-item-names">{itemHist.itemNames.map((v) => (<option key={v} value={v} />))}</datalist>
-        <datalist id="hist-item-cats">{itemCatOptions.map((v) => (<option key={v} value={v} />))}</datalist>
-        <datalist id="hist-item-jobs">{itemJobOptions.map((v) => (<option key={v} value={v} />))}</datalist>
         <button type="button" onClick={addItem} className="mt-2 text-sm text-muted hover:text-ink">+ เพิ่มรายการ</button>
         <p className="mt-1 text-xs text-faint">{itemsHintText(effVatMode)}</p>
       </Card>

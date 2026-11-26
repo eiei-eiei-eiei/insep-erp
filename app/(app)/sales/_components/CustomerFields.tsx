@@ -8,6 +8,7 @@ import { Modal, ModalCancel, TextArea } from "@/lib/shared/ui";
 import { saveCustomerAction } from "../actions";
 import { IconPlus } from "@/lib/shared/icons";
 import { validateNewCustomer, branchToSave, taxIdToSave, hidesBranch } from "@/lib/sales/customer";
+import { Button } from "@/lib/shared/page";
 
 /**
  * ฟอร์มเพิ่มลูกค้าใหม่ — **ใช้ร่วมกันระหว่างหน้าใบเสนอราคาและหน้าขายหน้าร้าน (D86)**
@@ -58,9 +59,9 @@ export function AddCustomerModal({ onClose, onAdded, hasProduction }: { onClose:
       footer={
         <>
           <ModalCancel onClick={onClose} />
-          <button onClick={save} disabled={pending} className="rounded-lg bg-brand px-4 py-2 font-bold text-on-brand hover:opacity-90 disabled:opacity-50">
+          <Button onClick={save} disabled={pending} tone="primary">
             {pending ? "กำลังบันทึก…" : "บันทึกข้อมูลลูกค้า"}
-          </button>
+          </Button>
         </>
       }
     >

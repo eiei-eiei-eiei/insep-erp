@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { IconSettings } from "@/lib/shared/icons";
+import { PageHeader } from "@/lib/shared/page";
 import { SettingsTabs } from "./_components/settings-tabs";
 import { can, toRole } from "@/lib/shared/roles";
 
@@ -28,10 +29,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
 
   return (
     <div>
-      <div className="mb-4 flex items-center gap-3">
-        <IconSettings size={24} className="text-brand" />
-        <h1 className="text-2xl font-bold text-ink">ตั้งค่า</h1>
-      </div>
+      <PageHeader icon={<IconSettings size={24} />} title="ตั้งค่า" />
       <SettingsTabs>{children}</SettingsTabs>
     </div>
   );

@@ -16,6 +16,7 @@ import {
   type AdvanceGroup,
   type AdvanceRow,
 } from "@/lib/accounting/advance";
+import { Button, SkeletonCard } from "@/lib/shared/page";
 
 type Data = Awaited<ReturnType<typeof getAdvancesAction>>;
 
@@ -40,7 +41,7 @@ export function AdvanceCard({ boot, entityId, active }: { boot: Bootstrap; entit
   // กิจการเดียวในระบบ = สำรองจ่ายไม่มีความหมาย และไม่มีข้อมูลเก่า → ไม่ต้องโชว์การ์ดนี้เลย
   if (boot.entities.length < 2 && !(data && (data.pending.length || data.cleared.length))) return null;
   if (err && !data) return <LoadError err onRetry={reload} what="สำรองจ่าย" />;
-  if (loading || !data) return <p className="text-faint">กำลังโหลดสำรองจ่าย…</p>;
+  if (loading || !data) return <SkeletonCard rows={2} cols={5} what="สำรองจ่าย" />;
 
   const total = groups.reduce((s, g) => s + g.total, 0);
 
@@ -249,14 +250,14 @@ function AdvanceGroupBlock({
               </Select>
             </Field>
             <Field label="วันที่เคลีย (วันที่บริษัทโอน)"><TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
-            <button
+            <Button
               type="button"
               disabled={pending || problem !== null}
               onClick={async () => { if (await onClear(chosen, payAccount, effRefund, date)) { setSel([]); setRefundAccount(""); } }}
-              className="rounded-lg bg-brand px-4 py-2 text-sm text-on-brand disabled:opacity-50"
+              tone="primary"
             >
               เคลีย {chosen.length} ใบ · {fmt(chosenSum)} บาท
-            </button>
+            </Button>
           </div>
           {problem && <p className="mt-1 text-xs text-warn">ยังกดไม่ได้: {problem}</p>}
           {warn && <p className="mt-1 text-xs text-warn">{warn}</p>}

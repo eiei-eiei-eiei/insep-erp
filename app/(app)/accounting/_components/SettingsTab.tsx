@@ -18,6 +18,7 @@ import { useConfirm, Modal, ModalCancel } from "@/lib/shared/ui";
 import { ListEmpty, ListRow, SettingsCard, SettingsList, SettingsShell, type ShellSection } from "@/lib/shared/settings";
 import { IconEdit, IconPlus, IconTrash } from "@/lib/shared/icons";
 import { BankAccountsCard } from "./BankAccountsCard";
+import { Button } from "@/lib/shared/page";
 
 /**
  * ตั้งค่าที่เป็น "ข้อมูลของโดเมนบัญชี" เท่านั้น
@@ -203,9 +204,9 @@ function Contacts({ initial, onCount }: { initial: Contact[]; onCount: (n: numbe
       unit="ราย"
       help="ชื่อ เลขภาษี และที่อยู่ของคู่ค้า ใช้เติมลงบิล และออกหนังสือรับรองหัก ณ ที่จ่าย (50ทวิ)"
       action={
-        <button onClick={openNew} className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-brand px-3 py-2 text-sm font-medium text-on-brand">
+        <Button onClick={openNew} tone="primary">
           <IconPlus size={16} /> เพิ่มคู่ค้า
-        </button>
+        </Button>
       }
     >
       {confirmNode}

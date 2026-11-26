@@ -1,6 +1,6 @@
 "use client";
 
-import { useConfirm } from "@/lib/shared/ui";
+import { useConfirm, SuggestInput } from "@/lib/shared/ui";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { searchBillsAction, getBillDetailAction, voidTransactionAction, updateTransactionAction, getItemHistoryAction } from "../actions";
@@ -19,6 +19,7 @@ import { can, toRole } from "@/lib/shared/roles";
 import { ADVANCE_TYPE, ADVANCE_REFUND_TYPE, advanceStatusLabel } from "@/lib/accounting/advance";
 import { entityMoveBlock, entityMoveError, entityMoveWarnings, entityMoveSavedText, type MoveTx } from "@/lib/accounting/entityMove";
 import { whtIssuedEditNote } from "@/lib/accounting/whtCancel";
+import { SkeletonTable, SkeletonText } from "@/lib/shared/page";
 
 type Bills = Awaited<ReturnType<typeof searchBillsAction>>;
 type Detail = Awaited<ReturnType<typeof getBillDetailAction>>;
@@ -124,7 +125,7 @@ export function BillsTab({ boot, period, entityId, active }: { boot: Bootstrap; 
       <Card title={`ผลลัพธ์ (${shown.length})`}>
         <LoadError err={err} onRetry={reload} what="บิล" />
         {rows.length >= 500 && <p className="mb-2 text-xs text-warn">แสดง 500 รายการแรก — ถ้าไม่เจอที่ต้องการ ให้แคบด้วยเดือน/คู่ค้า/ประเภท</p>}
-        {loading ? <p className="text-faint">กำลังโหลด…</p> : shown.length === 0 ? (
+        {loading ? <SkeletonTable rows={6} cols={6} what="บิล" /> : shown.length === 0 ? (
           // ★ อ่านไม่ได้ = แถบแดงด้านบนอธิบายไปแล้ว · ตรงนี้พูดได้แค่ตอนที่ "ไม่มีข้อมูลจริง ๆ"
           <p className="text-sm text-faint">{err ? "— โหลดไม่สำเร็จ —" : "— ไม่มีรายการ —"}</p>
         ) : (
@@ -387,7 +388,7 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
         </>
       )}
     >
-        {loading ? <p className="text-faint">กำลังโหลด…</p> : (
+        {loading ? <SkeletonText lines={5} what="บิล" /> : (
           <>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
               {/* D132 — กิจการเดียวไม่ต้องเห็นช่องนี้ (D53) · ย้ายไม่ได้ = ปุ่มเทาพร้อมเหตุผล ไม่ซ่อน (D86) */}
@@ -437,8 +438,8 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
                   {items.map((it, i) => (
                     <tr key={i}>
                       <td><TextInput value={it.itemName} onChange={(e) => setItem(i, { itemName: e.target.value })} placeholder="ชื่อสินค้า/บริการ" /></td>
-                      <td><TextInput list="edit-item-cats" value={it.itemCategory} onChange={(e) => setItem(i, { itemCategory: e.target.value })} placeholder="หมวดหมู่" /></td>
-                      <td><TextInput list="edit-item-jobs" value={it.itemJob} onChange={(e) => setItem(i, { itemJob: e.target.value })} placeholder="งาน" /></td>
+                      <td><SuggestInput options={itemCatOptions} value={it.itemCategory} onChange={(v) => setItem(i, { itemCategory: v })} placeholder="หมวดหมู่" aria-label="หมวดหมู่สินค้า" /></td>
+                      <td><SuggestInput options={itemJobOptions} value={it.itemJob} onChange={(v) => setItem(i, { itemJob: v })} placeholder="งาน" aria-label="งาน" /></td>
                       <td><NumBox value={it.quantity} onChange={(v) => onQty(i, v)} /></td>
                       <td><NumBox value={priceOf(it)} blankZero onChange={(v) => onPrice(i, v === "" ? 0 : v)} /></td>
                       <td><NumBox value={it.discPct} blankZero onChange={(v) => onDiscPct(i, v === "" ? 0 : v)} /></td>
@@ -451,16 +452,14 @@ function EditBillModal({ txId, boot, onClose, onSaved }: { txId: string; boot: B
               </table>
             </div>
             {/* id ต้องไม่ซ้ำกับ EntryTab (hist-item-*) — แท็บบัญชี mount ค้างพร้อมกัน id ซ้ำ = ผูก list ผิดตัวเงียบ ๆ */}
-            <datalist id="edit-item-cats">{itemCatOptions.map((v) => (<option key={v} value={v} />))}</datalist>
-            <datalist id="edit-item-jobs">{itemJobOptions.map((v) => (<option key={v} value={v} />))}</datalist>
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
               <button type="button" onClick={addItem} className="text-sm text-muted hover:text-ink">+ เพิ่มรายการ</button>
               {/* ทั้งบิลมักเป็นงานเดียวกัน — เติมทีเดียวแทนไล่พิมพ์ทีละแถว (ปุ่มปิดเมื่อช่องว่าง กันล้างค่าเดิมทั้งบิล) */}
               <div className="flex flex-wrap items-center gap-1.5 text-xs text-faint">
                 <span>เติมทุกแถว:</span>
-                <div className="w-32"><TextInput list="edit-item-cats" value={bulkCat} onChange={(e) => setBulkCat(e.target.value)} placeholder="หมวดหมู่" className="py-1 text-sm" /></div>
+                <div className="w-32"><SuggestInput options={itemCatOptions} value={bulkCat} onChange={setBulkCat} placeholder="หมวดหมู่" aria-label="หมวดหมู่ที่จะใส่ทุกแถว" className="py-1 text-sm" /></div>
                 <button type="button" onClick={() => fillAll({ itemCategory: bulkCat.trim() })} disabled={!bulkCat.trim()} title={bulkCat.trim() ? "เติมหมวดหมู่นี้ให้ทุกแถว" : "พิมพ์หมวดหมู่ในช่องซ้ายก่อน (ช่องว่าง = จะไปล้างค่าเดิมทั้งบิล)"} className="rounded border border-line px-2 py-1 text-muted hover:bg-raised disabled:opacity-40">เติม</button>
-                <div className="w-32"><TextInput list="edit-item-jobs" value={bulkJob} onChange={(e) => setBulkJob(e.target.value)} placeholder="งาน" className="py-1 text-sm" /></div>
+                <div className="w-32"><SuggestInput options={itemJobOptions} value={bulkJob} onChange={setBulkJob} placeholder="งาน" aria-label="งานที่จะใส่ทุกแถว" className="py-1 text-sm" /></div>
                 <button type="button" onClick={() => fillAll({ itemJob: bulkJob.trim() })} disabled={!bulkJob.trim()} title={bulkJob.trim() ? "เติมงานนี้ให้ทุกแถว" : "พิมพ์ชื่องานในช่องซ้ายก่อน (ช่องว่าง = จะไปล้างค่าเดิมทั้งบิล)"} className="rounded border border-line px-2 py-1 text-muted hover:bg-raised disabled:opacity-40">เติม</button>
                 <span className="basis-full text-xs text-faint">พิมพ์ในช่องก่อนจึงกด เติม ได้ — ช่องว่างจะไม่ล้างค่าเดิมของบิล</span>
               </div>

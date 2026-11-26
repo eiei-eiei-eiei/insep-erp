@@ -6,8 +6,9 @@ import type { Bootstrap } from "./types";
 import { accountsFor, transferBlockedText } from "@/lib/accounting/bankAccounts";
 import type { StatementRange } from "@/lib/accounting/ledger";
 import { STATEMENT_PRESETS, presetRange, rangeTitle, rangeError, isMultiMonth, type StatementPreset } from "@/lib/accounting/statementView";
-import { Badge, Card, Field, NumBox, RowBtn, SaveButton, Select, TextInput, fmt, todayISO, useSaver, useRead, LoadError } from "./ui";
+import { Badge, Card, Field, NumBox, Select, TextInput, fmt, todayISO, useSaver, useRead, LoadError } from "./ui";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
+import { Button, SkeletonTable } from "@/lib/shared/page";
 
 type Balances = Awaited<ReturnType<typeof getBalancesAction>>;
 type Statement = Awaited<ReturnType<typeof getStatementAction>>;
@@ -73,7 +74,7 @@ export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstra
     <div className="space-y-4">
       <Card title={`ยอดคงเหลือทุกบัญชี ณ สิ้นเดือน ${d.month(period)}`} help="ป้าย “ใช้ร่วม” = ใช้ได้หลายกิจการ">
         <LoadError err={err} onRetry={reload} what="ยอดคงเหลือ" />
-        {!bal ? <p className="text-faint">{err ? "— โหลดไม่สำเร็จ —" : "กำลังโหลด…"}</p> : (
+        {!bal ? (err ? <p className="text-faint">— โหลดไม่สำเร็จ —</p> : <SkeletonTable rows={3} cols={6} what="ยอดคงเหลือ" />) : (
           <div className="overflow-x-auto">
             <table className="tbl">
               <thead><tr className="text-left text-faint"><th>บัญชี</th><th className="num">ยอดยกมา</th><th className="num">เข้า</th><th className="num">ออก</th><th className="num">คงเหลือ</th><th></th></tr></thead>
@@ -85,7 +86,7 @@ export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstra
                     <td className="text-ok num">{fmt(b.totalIn)}</td>
                     <td className="text-crit num">{fmt(b.totalOut)}</td>
                     <td className="font-semibold num">{fmt(b.balance)}</td>
-                    <td><RowBtn onClick={() => openStatement(b.accountType)}>statement</RowBtn></td>
+                    <td><Button size="sm" onClick={() => openStatement(b.accountType)}>statement</Button></td>
                   </tr>
                 ))}
                 <tr className="border-t-2 border-line font-semibold"><td>รวมทุกบัญชี</td><td colSpan={3}></td><td className="num">{fmt(bal.grandTotal)}</td><td></td></tr>
@@ -116,7 +117,7 @@ export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstra
           {rangeErr ? <p className="text-sm text-warn">{rangeErr}</p> : (
             <>
               <LoadError err={stmtErr} onRetry={stmtReload} what="statement" />
-              {!stmt ? <p className="text-faint">{stmtErr ? "— โหลดไม่สำเร็จ —" : "กำลังโหลด…"}</p> : (
+              {!stmt ? (stmtErr ? <p className="text-faint">— โหลดไม่สำเร็จ —</p> : <SkeletonTable rows={5} cols={6} what="statement" />) : (
                 <div className="overflow-x-auto">
                   <p className="mb-2 text-sm text-muted">
                     ยอดยกมา: <b>{fmt(stmt.openingBalance)}</b> · ยอดยกไป: <b>{fmt(stmt.closingBalance)}</b> · {stmt.rows.length} รายการ
@@ -168,7 +169,7 @@ export function AccountsTab({ boot, period, entityId, active }: { boot: Bootstra
         </div>
         {/* Y3 (D182) — เลือก "ทุกกิจการ" อยู่ = ปุ่มเทา + เหตุผลบนจอ (D83) แทนการปล่อยให้ FK ล้ม */}
         {transferBlocked && <p className="mt-3 text-sm text-warn">{transferBlocked}</p>}
-        <div className="mt-3"><SaveButton pending={pending} disabled={!!transferBlocked} onClick={doTransfer}>โอนเงิน</SaveButton></div>
+        <div className="mt-3"><Button tone="primary" pending={pending} disabled={!!transferBlocked} onClick={doTransfer}>โอนเงิน</Button></div>
       </Card>
     </div>
   );

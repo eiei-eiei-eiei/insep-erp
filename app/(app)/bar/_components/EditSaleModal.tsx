@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Field, Help, Modal, ModalCancel, TextInput, fmt } from "@/lib/shared/ui";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { editMethodOptions, editSaleChanged, editSaleProblem } from "@/lib/bar/billDay";
+import { Button } from "@/lib/shared/page";
 
 /**
  * D163 — แก้บิลที่รับเงินแล้ว: **วันขาย** กับ **วิธีรับเงิน** เท่านั้น
@@ -64,14 +65,14 @@ export function EditSaleModal({
       footer={
         <>
           <ModalCancel onClick={onClose}>กลับ</ModalCancel>
-          <button
+          <Button
             type="button"
             disabled={busy || Boolean(problem) || !changed}
             onClick={() => onSave({ businessDate: date, method })}
-            className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-on-brand disabled:opacity-50"
+            tone="primary"
           >
             บันทึก
-          </button>
+          </Button>
         </>
       }
     >

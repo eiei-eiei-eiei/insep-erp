@@ -34,6 +34,7 @@ import { IconEdit, IconTrash } from "@/lib/shared/icons";
 import { Badge, Field, Help, IconBtn, RowBtn, Select, TextInput, fmt, todayISO, useSaver, LoadError } from "./ui";
 import { whtCertFiledPeriods } from "@/lib/accounting/whtCancel";
 import { CancelWhtDialog } from "./CancelWhtDialog";
+import { Button, SkeletonTable } from "@/lib/shared/page";
 
 /** ★ กำหนดยื่นเติมตอน render (ขึ้นกับเดือนที่เลือก) — ดู `dueDateOf` ใน lib/accounting/taxPay */
 const TAX_CHECKLIST = [
@@ -233,7 +234,7 @@ export function TaxDocsTab({
           <div className={box}>
             <h3 className="mb-1 font-semibold text-ink">ภพ.30 — รายงานภาษีซื้อ-ขาย</h3>
             <p className="mb-2 text-sm text-muted">ภาษีซื้อยกมา (เดือนก่อน): <b>{fwd === null ? "…" : fmt(fwd)}</b> <span className="text-xs text-faint">← เช็คว่าตรงกับ ภพ.30 เดือนก่อน</span></p>
-            <button onClick={genPhorPor30} disabled={busy} className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-on-brand disabled:opacity-50">สร้าง ภพ.30</button>
+            <Button onClick={genPhorPor30} disabled={busy} tone="primary">สร้าง ภพ.30</Button>
             <MissingInvoiceList rows={missing} />
           </div>
         ) : (
@@ -245,7 +246,7 @@ export function TaxDocsTab({
         )}
         <div className={box}>
           <h3 className="mb-2 flex items-center gap-1.5 font-semibold text-ink">ภงด.3 / ภงด.53<Help>แยกบุคคล/นิติบุคคลอัตโนมัติ</Help></h3>
-          <button onClick={genPnd} disabled={busy} className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-on-brand disabled:opacity-50">สร้าง ภงด.3/53</button>
+          <Button onClick={genPnd} disabled={busy} tone="primary">สร้าง ภงด.3/53</Button>
         </div>
       </div>
 
@@ -298,7 +299,7 @@ export function TaxDocsTab({
       {/* 50ทวิ */}
       <div className={box}>
         <h3 className="mb-2 font-semibold text-ink">50ทวิ — หนังสือรับรองหัก ณ ที่จ่าย (เลขรันแยกต่อกิจการ)</h3>
-        {!wht ? <p className="text-sm text-faint">กำลังโหลด…</p> : (
+        {!wht ? <SkeletonTable rows={3} cols={6} what="50ทวิ" /> : (
           <>
             <p className="mb-2 text-sm text-muted">ยังไม่ออกใบ ({wht.pending.length})</p>
             {wht.pending.length === 0 ? <p className="text-sm text-faint">— ไม่มีรายการค้าง —</p> :
@@ -387,7 +388,7 @@ function IssueRow({ p, entityId, onIssued, onBuild, setMsg }: {
     <div className="mb-2 rounded-lg border border-line-soft p-2">
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
         <span>{d.date(p.pendDateISO)} · <b>{p.contactName}</b> · {p.category} · ยอดที่จ่าย {fmt(p.amount)} · ภาษี {fmt(p.whtAmount)}</span>
-        <button onClick={toggleForm} className="rounded bg-brand px-3 py-1 text-xs text-on-brand">{open ? "ซ่อน" : "ออกหนังสือ"}</button>
+        <Button onClick={toggleForm} tone="primary" size="sm">{open ? "ซ่อน" : "ออกหนังสือ"}</Button>
       </div>
       {open && (
         <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-3">
@@ -399,7 +400,7 @@ function IssueRow({ p, entityId, onIssued, onBuild, setMsg }: {
           <Field label="วันที่ออกหนังสือ"><TextInput type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} /></Field>
           {/* D179 — บอกบนจอว่าใบจะพิมพ์ยอดไหน + แก้ที่ไหน (ยอดอยู่ที่บิล ใบ 50ทวิ กับ ภงด.3/53 ต้องได้เลขเดียวกัน) */}
           <p className="col-span-2 text-xs text-faint md:col-span-3">จำนวนเงินที่จ่ายบนใบ = <b className="tnum">{fmt(p.amount)}</b> · ภาษีที่หัก <b className="tnum">{fmt(p.whtAmount)}</b> — ถ้ายอดจ่ายไม่ถูก (เช่น หักเฉพาะค่าทำของ ไม่รวมค่าขนส่ง) ให้แก้ช่อง <b>ยอดที่ใช้คิดหัก ณ ที่จ่าย</b> ที่หน้าแก้บิล {p.transactionId} ก่อนออก</p>
-          <div className="col-span-2 md:col-span-3"><button onClick={issue} disabled={pending} className="rounded-lg bg-brand px-4 py-2 text-sm text-on-brand disabled:opacity-50">ออก + พิมพ์</button></div>
+          <div className="col-span-2 md:col-span-3"><Button onClick={issue} disabled={pending} tone="primary">ออก + พิมพ์</Button></div>
         </div>
       )}
     </div>
@@ -466,7 +467,7 @@ function EditRow({ h, entityId, onSaved, onReprint, busy, canWrite, filed }: {
             <Field label="ประเภทเงินได้"><Select value={seq} onChange={(e) => setSeq(Number(e.target.value))}>{SEQ.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}</Select></Field>
             <Field label="ระบุ (อื่นๆ)"><TextInput value={incomeType} onChange={(e) => setIncomeType(e.target.value)} /></Field>
           </div>
-          <div className="mt-2 flex gap-2"><button onClick={save} disabled={pending} className="rounded-lg bg-brand px-4 py-2 text-sm text-on-brand disabled:opacity-50">บันทึก</button></div>
+          <div className="mt-2 flex gap-2"><Button onClick={save} disabled={pending} tone="primary">บันทึก</Button></div>
         </td></tr>
       )}
     </>

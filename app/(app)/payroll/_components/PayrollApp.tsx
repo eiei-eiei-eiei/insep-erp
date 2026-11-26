@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { IconPeople } from "@/lib/shared/icons";
+import { ModuleTabs, PageHeader } from "@/lib/shared/page";
 import { tabsFor, labelFromSlug, slugFromLabel } from "@/lib/shared/tabs";
 import type { Role } from "@/lib/shared/roles";
 import { useTabUrl } from "../../_components/useTabUrl";
@@ -51,10 +52,7 @@ export function PayrollApp({
 
   return (
     <div>
-      <div className="mb-4 flex items-center gap-3">
-        <IconPeople size={24} className="text-brand" />
-        <h1 className="text-2xl font-bold text-ink">เงินเดือน</h1>
-      </div>
+      <PageHeader icon={<IconPeople size={24} />} title="เงินเดือน" />
 
       {missing.length > 0 && (
         <div className="mb-4 rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn">
@@ -62,19 +60,7 @@ export function PayrollApp({
         </div>
       )}
 
-      <div className="mb-5 -mx-4 flex gap-1 overflow-x-auto border-b border-line px-4">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`shrink-0 whitespace-nowrap rounded-t-lg px-4 py-2 text-sm font-medium transition ${
-              tab === t ? "border-b-2 border-brand text-ink" : "text-faint hover:text-ink"
-            }`}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+      <ModuleTabs tabs={TABS} active={tab} onPick={setTab} label="แท็บของเงินเดือน" />
 
       {visited.has("งวดจ่าย") && (
         <div className={show("งวดจ่าย")}>

@@ -58,6 +58,7 @@ import {
   useRead,
   LoadError,
 } from "./ui";
+import { SkeletonTable } from "@/lib/shared/page";
 
 type Board = Awaited<ReturnType<typeof getTaxPayBoardAction>>;
 type Prefs = Board["prefs"];
@@ -168,7 +169,7 @@ export function TaxPayCard({
       </p>
 
       {!board ? (
-        <p className="text-sm text-faint">กำลังโหลด…</p>
+        <SkeletonTable rows={3} cols={4} what="การชำระภาษี" />
       ) : (
         <div className="space-y-2">
           {board.rows.map((r) => (

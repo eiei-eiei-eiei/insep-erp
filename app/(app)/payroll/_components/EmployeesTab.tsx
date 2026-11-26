@@ -7,6 +7,7 @@ import { WAGE_LABEL, wageSwitchWarning, wageUnit } from "@/lib/payroll/workDays"
 import { saveEmployeeAction } from "../actions";
 import type { EmployeeRow } from "../data";
 import type { PayrollConfig } from "./PayrollApp";
+import { Button } from "@/lib/shared/page";
 
 const WHT_LABEL: Record<string, string> = {
   none: "ไม่หัก",
@@ -61,12 +62,12 @@ export function EmployeesTab({ config, initial }: { config: PayrollConfig; initi
       <Card title={`พนักงาน (${rowsAll.length})`}>
         <div className="mb-3 flex items-center gap-2">
           <TextInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นชื่อพนักงาน…" />
-          <button
+          <Button
             onClick={() => setEdit(blank())}
-            className="whitespace-nowrap rounded-lg bg-brand px-4 py-2 text-sm text-on-brand"
+            tone="primary"
           >
             + เพิ่มพนักงาน
-          </button>
+          </Button>
         </div>
 
         <div className="overflow-x-auto">

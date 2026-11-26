@@ -30,6 +30,7 @@ import {
 } from "../actions";
 import { RecipeEditor } from "./RecipeEditor";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
+import { Button, SkeletonCard } from "@/lib/shared/page";
 
 type PrepData = { canSeeCost: boolean; preps: PrepDef[]; batches: PrepBatch[] };
 type Res = { ok: boolean; error?: string; data?: unknown };
@@ -96,7 +97,7 @@ export function PrepView({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
     return (
       <>
         <LoadError err={prep.err} onRetry={prep.reload} what="ของทำเอง" />
-        {!prep.err && <p className="text-sm text-muted">กำลังโหลด…</p>}
+        {!prep.err && <SkeletonCard rows={3} cols={4} what="ของทำเอง" />}
       </>
     );
   }
@@ -122,14 +123,14 @@ export function PrepView({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
                   {data.canSeeCost && ` · ทุน ${fmt(b.costTotal)}`}
                 </span>
                 <span className="ml-auto flex gap-3">
-                  <button
+                  <Button
                     type="button"
                     disabled={busy || !boot.canWrite}
                     onClick={() => setFinishing(b)}
-                    className="min-h-[44px] rounded-lg bg-brand px-3 py-1 text-xs text-on-brand disabled:opacity-50 sm:min-h-0"
+                    tone="primary" size="sm"
                   >
                     เสร็จแล้ว
-                  </button>
+                  </Button>
                   <button type="button" disabled={busy || !boot.canWrite} onClick={() => cancel(b)} className="text-xs text-crit underline">
                     ยกเลิก
                   </button>
@@ -150,14 +151,14 @@ export function PrepView({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
           </>
         }
       >
-        <button
+        <Button
           type="button"
           disabled={busy || !boot.canWrite}
           onClick={() => setEdit({ def: null })}
-          className="min-h-[44px] rounded-lg bg-brand px-4 py-2 text-sm text-on-brand disabled:opacity-50 sm:min-h-0"
+          tone="primary"
         >
           ＋ ของทำเองใหม่
-        </button>
+        </Button>
         {defs.length === 0 && <Empty>— ยังไม่มีของทำเอง —</Empty>}
 
         <div className="mt-3 space-y-3">
@@ -182,14 +183,14 @@ export function PrepView({ boot, onReload }: { boot: BarBoot; onReload: () => Pr
                 {d.note && <div className="text-xs text-muted">โน้ต: {d.note}</div>}
                 {boot.canWrite && (
                   <div className="mt-2 flex flex-wrap items-center gap-3">
-                    <button
+                    <Button
                       type="button"
                       disabled={busy}
                       onClick={() => setMaking(d)}
-                      className="min-h-[44px] rounded-lg bg-brand px-3 py-1.5 text-sm text-on-brand disabled:opacity-50 sm:min-h-0"
+                      tone="primary"
                     >
                       ทำล็อต
-                    </button>
+                    </Button>
                     <button type="button" disabled={busy} onClick={() => setEdit({ def: d })} className="text-sm text-muted underline">
                       แก้สูตร
                     </button>
@@ -410,14 +411,14 @@ function PrepModal({
       footer={
         <>
           <ModalCancel onClick={onClose} />
-          <button
+          <Button
             type="button"
             disabled={busy || err !== ""}
             onClick={save}
-            className="rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
+            tone="primary"
           >
             บันทึก
-          </button>
+          </Button>
         </>
       }
     >
@@ -528,15 +529,15 @@ function BatchModal({
           >
             เริ่มแช่ — ยังไม่ได้ของ
           </button>
-          <button
+          <Button
             type="button"
             disabled={busy || errNow !== ""}
             title={errNow || undefined}
             onClick={() => onSubmit({ multiplier: mult as number, inputs, yieldQty: yieldQty as number, note })}
-            className="min-h-[44px] rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50 sm:min-h-0"
+            tone="primary"
           >
             ทำเสร็จแล้ว — เข้าสต็อกเลย
-          </button>
+          </Button>
         </>
       }
     >
@@ -620,14 +621,14 @@ function FinishModal({
       footer={
         <>
           <ModalCancel onClick={onClose} />
-          <button
+          <Button
             type="button"
             disabled={busy || yieldQty === "" || !(yieldQty > 0)}
             onClick={() => onSubmit(yieldQty as number)}
-            className="rounded-lg bg-brand px-3 py-2 text-sm text-on-brand disabled:opacity-50"
+            tone="primary"
           >
             เสร็จแล้ว — เข้าสต็อก
-          </button>
+          </Button>
         </>
       }
     >

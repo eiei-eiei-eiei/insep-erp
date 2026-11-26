@@ -12,6 +12,7 @@ import { businessDate } from "@/lib/bar/businessDate";
 import { EditSaleModal } from "./EditSaleModal";
 import { useReloadWhenShown } from "./useReloadWhenShown";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
+import { Button } from "@/lib/shared/page";
 
 type SaleRow = {
   sale_no: string;
@@ -214,14 +215,14 @@ export function HistoryTab({
           <Field label="ค้น (เลขบิล · ชื่อโต๊ะ · ช่องทาง)">
             <TextInput value={q} onChange={(e) => setQ(e.target.value)} />
           </Field>
-          <button
+          <Button
             type="button"
             disabled={busy}
             onClick={search}
-            className="rounded-lg bg-brand px-4 py-2 text-sm text-on-brand disabled:opacity-50"
+            tone="primary"
           >
             ค้น
-          </button>
+          </Button>
         </div>
         <p className="mt-1 text-xs text-faint">
           {/* 🚨 บิลที่ยังเปิดอยู่ **ยังไม่มีวันขาย** (เซ็ตตอนปิดบิล) จึงไม่มีวันโผล่ในลิสต์นี้

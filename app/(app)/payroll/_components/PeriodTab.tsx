@@ -26,6 +26,7 @@ import { getPeriodDetailAction } from "../read-actions";
 import type { EmployeeRow, ItemRow, PeriodRow } from "../data";
 import type { PayrollConfig } from "./PayrollApp";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
+import { SkeletonTable } from "@/lib/shared/page";
 
 /**
  * แท็บงวดจ่าย
@@ -424,7 +425,7 @@ export function PeriodTab({
 
           <Card title={`ตารางงวด ${period.periodId} · วันทำงานมาตรฐาน ${period.workDaysStd} วัน`}>
             {loading ? (
-              <p className="text-sm text-faint">กำลังโหลด…</p>
+              <SkeletonTable rows={5} cols={7} what="งวดเงินเดือน" />
             ) : items.length === 0 ? (
               <Empty>— ยังไม่มีพนักงานในงวดนี้ (กด &ldquo;สร้างงวด / เติมพนักงาน&rdquo;) —</Empty>
             ) : (

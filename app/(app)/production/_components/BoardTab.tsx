@@ -6,6 +6,7 @@ import type { BatchCard } from "../data";
 import { Card, TextInput } from "./ui";
 import { IconCheck, IconFlame, IconFlask, IconRefresh } from "@/lib/shared/icons";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
+import { SkeletonStats } from "@/lib/shared/page";
 
 const STAGE_STYLE: Record<BatchCard["stage"], string> = {
   "ลงหมัก": "bg-raised text-muted",
@@ -63,7 +64,7 @@ export function BoardTab({
       </div>
 
       {loading ? (
-        <p className="py-8 text-center text-faint">กำลังโหลด…</p>
+        <SkeletonStats count={6} mdCols={3} what="กระดาน batch" />
       ) : filtered.length === 0 ? (
         <p className="py-8 text-center text-faint">— ยังไม่มี batch —</p>
       ) : (

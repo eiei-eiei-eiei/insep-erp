@@ -8,6 +8,7 @@ import { IconEdit, IconTrash } from "@/lib/shared/icons";
 import { IconBtn, NumInput, Select, TextInput, useSaver } from "./ui";
 import type { Container, Material, Product } from "./types";
 import { LIQUOR_PROCESS } from "@/lib/production/calc";
+import { Button } from "@/lib/shared/page";
 
 type Field = {
   key: string;
@@ -153,9 +154,9 @@ function CrudSection({
                 </td>
               ))}
               <td className="num">
-                <button disabled={pending} onClick={add} className="rounded bg-brand px-3 py-1 text-on-brand hover:opacity-90 disabled:opacity-50">
+                <Button disabled={pending} onClick={add} tone="primary">
                   + เพิ่ม
-                </button>
+                </Button>
               </td>
             </tr>
 

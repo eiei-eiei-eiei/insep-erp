@@ -129,7 +129,7 @@ export function MaterialTab({ materials }: { materials: Material[] }) {
                   <tr key={r.id as number} className="editing">
                     <td><TextInput type="date" value={edit.date} onChange={(e) => setEdit({ ...edit, date: e.target.value })} className="w-36" /></td>
                     <td><Select value={edit.transType} onChange={(e) => setEdit({ ...edit, transType: e.target.value })} className="w-28">{MATERIAL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</Select></td>
-                    <td><Select value={edit.materialId} onChange={(e) => setEdit({ ...edit, materialId: e.target.value })} className="w-44">{materials.map((m) => <option key={m.material_id} value={m.material_id}>{m.name}</option>)}</Select></td>
+                    <td><div className="w-44">{/* D185 — พิมพ์ค้นได้ในแถวตาราง (รายการลอยพ้นกรอบเลื่อน) */}<Combobox aria-label="วัตถุดิบ" value={edit.materialId} onChange={(v) => setEdit({ ...edit, materialId: v })} options={materials.map((m) => ({ value: m.material_id, label: m.name }))} /></div></td>
                     <td><NumInput value={edit.amount} onChange={(e) => setEdit({ ...edit, amount: e.target.value })} className="w-24 text-right" /></td>
                     <td><div className="flex gap-1"><TextInput value={edit.docRef} onChange={(e) => setEdit({ ...edit, docRef: e.target.value })} className="w-28" placeholder="หลักฐาน" /><TextInput value={edit.note} onChange={(e) => setEdit({ ...edit, note: e.target.value })} placeholder="หมายเหตุ" /></div></td>
                     <td className="whitespace-nowrap">

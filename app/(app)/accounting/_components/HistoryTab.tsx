@@ -12,6 +12,7 @@ import type { StatementRange } from "@/lib/accounting/ledger";
 import { STATEMENT_PRESETS, presetRange, rangeTitle, rangeError, type StatementPreset } from "@/lib/accounting/statementView";
 import { billTotalLabel, billTotalsNote, PRICE_CHECK_TYPE } from "@/lib/accounting/billTotals";
 import { priceHistoryTotals, singleItemSummary, priceHistoryCapNote, priceHistoryTable, toTsv } from "@/lib/accounting/priceHistory";
+import { SkeletonTable } from "@/lib/shared/page";
 
 type Hist = Awaited<ReturnType<typeof searchPriceHistoryAction>>;
 type ItemHist = Awaited<ReturnType<typeof getItemHistoryAction>>;
@@ -146,7 +147,7 @@ export function HistoryTab({ boot, period, entityId, active }: { boot: Bootstrap
         <LoadError err={err} onRetry={reload} what="ประวัติราคา" />
         {refreshing && <p className="mb-2 text-xs text-brand">กำลังโหลดข้อมูลล่าสุด…</p>}
         {capNote && <p className="mb-2 text-xs text-warn">{capNote}</p>}
-        {rangeErr ? <p className="text-sm text-faint">— แก้ช่วงเวลาก่อน —</p> : loading ? <p className="text-faint">กำลังโหลด…</p> : shown.length === 0 ? (
+        {rangeErr ? <p className="text-sm text-faint">— แก้ช่วงเวลาก่อน —</p> : loading ? <SkeletonTable rows={6} cols={7} what="ประวัติราคา" /> : shown.length === 0 ? (
           <p className="text-sm text-faint">{err ? "— โหลดไม่สำเร็จ —" : refreshing ? "กำลังโหลด…" : "— ไม่มีรายการ —"}</p>
         ) : (
           <>

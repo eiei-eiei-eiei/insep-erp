@@ -8,6 +8,7 @@ import { getSaleMenuAction, getMenuLinkOptionsAction, saveSaleMenuAction, delete
 import type { SaleMenuRow } from "../data";
 
 import { salesProductionText, menuCategoryOptions } from "@/lib/sales/productionText";
+import { SkeletonTable } from "@/lib/shared/page";
 
 type LinkOpts = { products: { id: string; name: string }[]; warehouse: { id: string; name: string }[] };
 
@@ -75,7 +76,7 @@ export function MenuTab({ active, hasProduction }: { active: boolean; hasProduct
       {confirmNode}
       <Card title="เมนูขาย (sale_menu)">
         {loading ? (
-          <div className="py-8 text-center text-faint">กำลังโหลด…</div>
+          <SkeletonTable rows={5} cols={5} what="เมนูขาย" />
         ) : err ? (
           <LoadError err onRetry={refresh} what="เมนูขาย" />
         ) : (

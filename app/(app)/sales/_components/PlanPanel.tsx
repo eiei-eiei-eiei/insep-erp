@@ -12,6 +12,7 @@ import {
 import { amountsVat } from "@/lib/sales/docVat";
 import { issueInstallmentInvoiceAction, setOrderPlanAction, voidInstallmentInvoiceAction } from "../actions";
 import { InstallmentEditor } from "./InstallmentEditor";
+import { Button, BTN_TONE } from "@/lib/shared/page";
 
 /**
  * ตารางงวดบนการ์ดออเดอร์ (D147 · เฟส 3c) — แสดงเฉพาะออเดอร์ที่มีแผนงวด
@@ -56,8 +57,9 @@ export function PlanPanel({
   }
 
   const btn = "rounded border px-2 py-1 text-[11px] font-semibold transition whitespace-nowrap";
-  const sec = `${btn} border-line bg-card text-muted hover:bg-raised hover:text-ink`;
-  const pri = `${btn} border-brand bg-brand text-on-brand hover:opacity-90`;
+  // D184 — สีชุดเดียวกับ <Button> ทั้งแอป (ขนาดเล็กพิเศษของการ์ดงวดคงเดิม)
+  const sec = `${btn} ${BTN_TONE.secondary}`;
+  const pri = `${btn} ${BTN_TONE.primary}`;
 
   return (
     <div className="rounded-lg border border-line bg-raised p-2 text-xs">
@@ -177,9 +179,9 @@ function InstallmentInvoiceDialog({
       footer={
         <>
           <ModalCancel onClick={onClose} />
-          <button onClick={submit} disabled={pending} className="rounded-lg bg-brand px-4 py-2 font-bold text-on-brand hover:opacity-90 disabled:opacity-50">
+          <Button onClick={submit} disabled={pending} tone="primary">
             {pending ? "กำลังบันทึก…" : "ออกใบแจ้งหนี้"}
-          </button>
+          </Button>
         </>
       }
     >
@@ -230,13 +232,13 @@ function ReplanDialog({ order, onClose, onDone }: { order: OrderRow; onClose: ()
       footer={
         <>
           <ModalCancel onClick={onClose} />
-          <button
+          <Button
             onClick={() => run(() => setOrderPlanAction(order.quNo, rows), "บันทึกแผนงวดแล้ว", onDone)}
             disabled={pending || !!err || remain <= 0}
-            className="rounded-lg bg-brand px-4 py-2 font-bold text-on-brand hover:opacity-90 disabled:opacity-50"
+            tone="primary"
           >
             {pending ? "กำลังบันทึก…" : "บันทึกแผนงวด"}
-          </button>
+          </Button>
         </>
       }
     >

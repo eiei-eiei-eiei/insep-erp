@@ -24,6 +24,7 @@ import {
 import { Help, Select } from "@/lib/shared/ui";
 import { useUnsaved } from "@/lib/shared/pageGuardHost";
 import { getMenuSalesAction, reorderMenusAction } from "../actions";
+import { Button } from "@/lib/shared/page";
 
 const DAYS = 30;
 
@@ -161,16 +162,16 @@ export function MenuOrderEditor({
             </div>
           )}
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <button
+            <Button
               type="button"
               disabled={busy || !dirty}
               onClick={async () => {
                 if (await onRun(() => reorderMenusAction(view, ids), "บันทึกลำดับเมนูแล้ว")) setDraft(null);
               }}
-              className="rounded-lg bg-brand px-3 py-1.5 text-sm text-on-brand disabled:opacity-50"
+              tone="primary"
             >
               บันทึกลำดับ
-            </button>
+            </Button>
             {dirty && (
               <>
                 <button type="button" onClick={() => setDraft(null)} className="text-xs text-muted underline">

@@ -10,6 +10,7 @@ import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { CN_REASONS, CN_REASON_KEYS, cnInputError, cnInvoiceLines, cnWhtNote, partialRemaining, partialTotals, type CnReason } from "@/lib/sales/creditNote";
 import { getCreditNotesAction, getOrderItemsAction, getOrderPaymentsAction, getPartialCreditPlanAction, issueCreditNoteAction } from "../actions";
 import { openPrintWindow, printCreditNote, type OrderLike } from "./print";
+import { Button, SkeletonText } from "@/lib/shared/page";
 
 type Plan = Awaited<ReturnType<typeof getPartialCreditPlanAction>>;
 
@@ -101,13 +102,13 @@ export function CreditNoteDialog({
       : (
         <>
           <ModalCancel onClick={onClose} disabled={busy}>กลับ</ModalCancel>
-          <button
+          <Button
             onClick={submit}
             disabled={busy || !!inputErr || !totals}
-            className="rounded bg-brand px-3 py-2 text-sm font-semibold text-on-brand hover:opacity-90 disabled:opacity-50"
+            tone="primary"
           >
             {busy ? "กำลังทำ…" : "ออกใบลดหนี้"}
-          </button>
+          </Button>
         </>
       );
 
@@ -117,7 +118,7 @@ export function CreditNoteDialog({
         {err ? (
           <LoadError err onRetry={load} what="ข้อมูลใบกำกับของออเดอร์" />
         ) : !plan || !rem ? (
-          <div className="py-6 text-center text-faint">กำลังโหลด…</div>
+          <div className="py-2"><SkeletonText lines={4} what="ข้อมูลใบลดหนี้" /></div>
         ) : rem.gross <= 0 || !plan.bills.length ? (
           // ลดหนี้ครบแล้ว / ไม่มีใบกำกับที่มี VAT → ไม่มีอะไรให้กรอก บอกเหตุผลแล้วจบ (ไม่โชว์ฟอร์มที่กดไม่ได้)
           <div className="space-y-3 text-sm">

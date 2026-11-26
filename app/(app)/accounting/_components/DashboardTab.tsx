@@ -3,6 +3,7 @@
 import { getDashboardAction } from "../actions";
 import { Card, Stat, fmt, useRead, LoadError } from "./ui";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
+import { SkeletonCard, SkeletonStats } from "@/lib/shared/page";
 
 type Dash = Awaited<ReturnType<typeof getDashboardAction>>;
 
@@ -17,7 +18,14 @@ export function DashboardTab({ period, entityId, active }: { period: string; ent
   );
 
   if (err && !data) return <LoadError err onRetry={reload} what="แดชบอร์ด" />;
-  if (loading || !data) return <p className="text-faint">กำลังโหลด…</p>;
+  // D184 — โครงร่างรูปเดียวกับหน้าจริง (การ์ดตัวเลข 4+2 + ตาราง 50ทวิ) แทน "กำลังโหลด…" ตัวหนังสือ
+  if (loading || !data) return (
+    <div className="space-y-4">
+      <SkeletonStats count={4} mdCols={4} what="แดชบอร์ด" />
+      <SkeletonStats count={2} mdCols={2} />
+      <SkeletonCard rows={3} cols={5} />
+    </div>
+  );
   const { netIncome, netExpense, vatOut, vatIn } = data.dash;
 
   return (

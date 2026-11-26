@@ -30,6 +30,7 @@ import {
   renameDoneText,
   renameWarnText,
 } from "@/lib/accounting/bankAccounts";
+import { Button, SkeletonText } from "@/lib/shared/page";
 
 const KIND_OPTIONS = ["ออมทรัพย์", "กระแสรายวัน", "ฝากประจำ", "เงินสด", "เงินสดย่อย", "บัตรเครดิต", "e-Wallet"];
 
@@ -128,14 +129,14 @@ export function BankAccountsCard({ boot, onCount }: { boot: Bootstrap; onCount?:
       unit="บัญชี"
       help={<>คงเหลือ = ยอดยกมา + เงินเข้า − เงินออก ถึงวันนี้ (ตัวเดียวกับแท็บ บัญชี &amp; เงินสด)</>}
       action={
-        <button onClick={openNew} className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-brand px-3 py-2 text-sm font-medium text-on-brand">
+        <Button onClick={openNew} tone="primary">
           <IconPlus size={16} /> เพิ่มบัญชี
-        </button>
+        </Button>
       }
     >
       {confirmNode}
       <LoadError err={err} onRetry={reload} what="บัญชีเงิน" />
-      {!data ? <ListEmpty>{err ? "— โหลดไม่สำเร็จ —" : "กำลังโหลด…"}</ListEmpty> : rows.length === 0 ? (
+      {!data ? (err ? <ListEmpty>— โหลดไม่สำเร็จ —</ListEmpty> : <SkeletonText lines={3} what="บัญชีเงิน" />) : rows.length === 0 ? (
         <ListEmpty>ยังไม่มีบัญชีเงิน — กด เพิ่มบัญชี (บิลทุกใบต้องเลือกบัญชีที่เงินเข้า/ออก)</ListEmpty>
       ) : (
         <>

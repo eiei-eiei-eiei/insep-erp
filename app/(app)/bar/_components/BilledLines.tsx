@@ -16,6 +16,7 @@ import { lineAmount } from "@/lib/bar/totals";
 import { customerLabel } from "@/lib/bar/customerName";
 import { Combobox, Help, NumBox, TextInput, fmt } from "@/lib/shared/ui";
 import { IconEdit, IconTrash } from "@/lib/shared/icons";
+import { Button } from "@/lib/shared/page";
 
 type LinePatch = { lineDiscount: number; lineDiscountPct: number | null; isComp: boolean };
 
@@ -140,16 +141,16 @@ export function BilledLineRow({
             ยอดใหม่ <b className="text-ink">{fmt(newAmount)}</b>
           </span>
           <div className="ml-auto flex gap-2">
-            <button
+            <Button
               type="button"
               disabled={busy || !dirty}
               onClick={async () => {
                 if (await onSave(draft)) setOpen(false);
               }}
-              className="rounded bg-brand px-2.5 py-1 text-on-brand disabled:opacity-50"
+              tone="primary"
             >
               บันทึก
-            </button>
+            </Button>
             <button type="button" onClick={reset} className="text-muted underline">
               เลิกแก้
             </button>
@@ -203,14 +204,14 @@ export function EditBillCustomer({
         />
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <button
+        <Button
           type="button"
           disabled={busy || !dirty}
           onClick={() => onSave(cust || null, name)}
-          className="rounded-lg bg-brand px-3 py-1.5 text-on-brand disabled:opacity-50"
+          tone="primary"
         >
           บันทึก
-        </button>
+        </Button>
         <button type="button" onClick={onCancel} className="text-muted underline">
           เลิกแก้
         </button>

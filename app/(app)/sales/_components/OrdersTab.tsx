@@ -25,6 +25,7 @@ import { PlanPanel } from "./PlanPanel";
 import { EditPaymentDialog } from "./EditPaymentDialog";
 import { CancelOrderDialog } from "./CancelOrderDialog";
 import { CreditNoteDialog } from "./CreditNoteDialog";
+import { Button, SkeletonCard, BTN_TONE } from "@/lib/shared/page";
 
 const itemsCache = new Map<string, OrderItem[]>();
 async function loadItems(quNo: string): Promise<OrderItem[]> {
@@ -354,7 +355,7 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
       </div>
 
       {loading ? (
-        <div className="py-10 text-center text-faint">กำลังโหลด…</div>
+        <SkeletonCard rows={5} cols={6} what="ออเดอร์" />
       ) : err && filtered.length === 0 ? (
         <LoadError err onRetry={refresh} what="ออเดอร์" />
       ) : filtered.length === 0 ? (
@@ -478,12 +479,8 @@ export function OrdersTab({ boot, canWrite, onEdit, active }: { boot: SalesBoot;
   );
 }
 
-// 3 ระดับตามความหมาย — ไม่ใช่ 7 สีสุ่ม (D43)
-const ACT_TONES = {
-  primary: "border-brand bg-brand text-on-brand hover:opacity-90",   // สิ่งที่ควรทำต่อ
-  secondary: "border-line bg-card text-muted hover:bg-raised hover:text-ink", // ทำได้ ไม่เร่ง
-  danger: "border-crit-line bg-card text-crit hover:bg-crit-bg",     // ทำลาย/ย้อนกลับไม่ได้
-} as const;
+// 3 ระดับตามความหมาย — ไม่ใช่ 7 สีสุ่ม (D43) · D184: สีชุดเดียวกับ <Button> ทั้งแอป (lib/shared/page)
+const ACT_TONES = BTN_TONE;
 function ActBtn({
   tone,
   icon,
@@ -613,9 +610,9 @@ function PaymentDialog({
       footer={
         <>
           <ModalCancel onClick={onClose} />
-          <button onClick={submit} disabled={pending || !!manualErr || !!instErr} className="rounded-lg bg-brand px-4 py-2 font-bold text-on-brand hover:opacity-90 disabled:opacity-50">
+          <Button onClick={submit} disabled={pending || !!manualErr || !!instErr} tone="primary">
             {pending ? "กำลังบันทึก…" : "บันทึก"}
-          </button>
+          </Button>
         </>
       }
     >

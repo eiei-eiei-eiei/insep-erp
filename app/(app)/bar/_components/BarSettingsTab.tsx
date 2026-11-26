@@ -13,6 +13,7 @@ import { ReceiptLayoutCard } from "./ReceiptLayoutCard";
 import { QuickPickSettings } from "./QuickPickSettings";
 import { LabCategoriesCard } from "./LabTab";
 import type { ReceiptLayout } from "@/lib/bar/layout";
+import { Button } from "@/lib/shared/page";
 
 /** ชวนเลือก — ★ พิมพ์เองได้เสมอ ผังบัญชีของแต่ละเจ้าไม่เหมือนกัน (บทเรียน D80-B2) */
 const INCOME_CATS = ["รายได้บาร์", "รายได้จากการขาย", "ขายสินค้า"];
@@ -303,14 +304,14 @@ export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: ()
       intro={
         // ปุ่มนี้อยู่เหนือทุกหัวข้อ — บันทึกค่าของหัวข้อ ทั่วไป · รับเงิน · รูปแบบบิล ทีเดียว (ไม่รวมการ์ดใน เมนูและสต็อก)
         <div className="rounded-lg border border-line bg-card p-3 sm:p-4">
-          <button
+          <Button
             type="button"
             disabled={busy || !data.canConfig}
             onClick={save}
-            className="min-h-[44px] rounded-lg bg-brand px-4 py-2 text-sm font-medium text-on-brand disabled:opacity-50 sm:min-h-0"
+            tone="primary"
           >
             บันทึกการตั้งค่า
-          </button>
+          </Button>
           <p className="mt-1 text-xs text-muted">
             ปุ่มนี้บันทึกหัวข้อ <b>ทั่วไป · รับเงิน · รูปแบบบิล</b> พร้อมกัน — การ์ดในหัวข้อ <b>เมนูและสต็อก</b> มีปุ่มบันทึกของตัวเอง
           </p>

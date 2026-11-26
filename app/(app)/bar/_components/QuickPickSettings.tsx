@@ -43,6 +43,7 @@ import { IconBtn, Combobox, TextInput, MissingHint, useSaver } from "@/lib/share
 import { SettingsCard } from "@/lib/shared/settings";
 import { IconTrash } from "@/lib/shared/icons";
 import { saveGarnishesAction, saveHouseSlotsAction, savePinsAction } from "../actions";
+import { Button } from "@/lib/shared/page";
 
 type Reload = () => Promise<void>;
 type Notify = (text: string) => void;
@@ -448,14 +449,14 @@ function SaveRow({
             {addText}
           </button>
         )}
-        <button
+        <Button
           type="button"
           disabled={busy || !dirty || problem !== "" || !canConfig}
           onClick={onSave}
-          className="rounded-lg bg-brand px-3 py-1.5 text-sm text-on-brand disabled:opacity-50"
+          tone="primary"
         >
           {busy ? "กำลังบันทึก…" : "บันทึก"}
-        </button>
+        </Button>
         {dirty && (
           <>
             <button type="button" onClick={onReset} className="text-xs text-muted underline">

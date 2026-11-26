@@ -8,7 +8,11 @@
 // ── ดร็อปดาวน์พิมพ์ค้น (Combobox) ────────────────────────────────────────────
 export type ComboState = {
   open: boolean;
-  /** ตำแหน่งที่ไฮไลต์อยู่ */
+  /**
+   * ตำแหน่งที่ไฮไลต์อยู่ · **-1 = ยังไม่ไฮไลต์อะไร** (เฉพาะ SuggestInput · D185)
+   * ★ ช่องพิมพ์อิสระ (ชื่อสินค้าใหม่ได้) — พิมพ์แล้วกด Enter ต้องได้ "คำที่พิมพ์" ไม่ใช่รายการแรกที่ตรง
+   *   ⇒ เลือกรายการได้เฉพาะเมื่อผู้ใช้กดลูกศรไปที่รายการแล้ว (เหมือน datalist เดิม)
+   */
   hi: number;
   /** จำนวนรายการหลังกรอง */
   count: number;
@@ -44,10 +48,10 @@ export function comboKey(key: string, s: ComboState): ComboAction {
     case "End":
       return s.open && s.touched ? { type: "move", hi: last } : null;
     case "Enter":
-      return s.open && s.count > 0 ? { type: "pick", index: Math.min(s.hi, last), stay: true } : null;
+      return s.open && s.count > 0 && s.hi >= 0 ? { type: "pick", index: Math.min(s.hi, last), stay: true } : null;
     case "Tab":
       if (!s.open) return null;
-      return s.touched && s.count > 0 ? { type: "pick", index: Math.min(s.hi, last), stay: false } : { type: "close" };
+      return s.touched && s.count > 0 && s.hi >= 0 ? { type: "pick", index: Math.min(s.hi, last), stay: false } : { type: "close" };
     case "Escape":
       return s.open ? { type: "close" } : null;
     default:

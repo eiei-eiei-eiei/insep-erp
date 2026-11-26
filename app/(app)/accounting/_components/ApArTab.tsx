@@ -6,8 +6,9 @@ import { getApArAction, settleApArAction, voidTransactionAction } from "../actio
 import type { Bootstrap } from "./types";
 import { AdvanceCard } from "./AdvanceCard";
 import { accountsFor } from "@/lib/accounting/bankAccounts";
-import { Card, Field, RowBtn, Select, TextInput, fmt, todayISO, useSaver, useRead, LoadError } from "./ui";
+import { Card, Field, Select, TextInput, fmt, todayISO, useSaver, useRead, LoadError } from "./ui";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
+import { ActionRow, Button, SkeletonCard } from "@/lib/shared/page";
 
 type ApAr = Awaited<ReturnType<typeof getApArAction>>;
 
@@ -51,7 +52,14 @@ export function ApArTab({ boot, entityId, active }: { boot: Bootstrap; entityId:
   }
 
   if (err && !data) return <LoadError err onRetry={reload} what="ยอดลูกหนี้-เจ้าหนี้" />;
-  if (loading || !data) return <p className="text-faint">กำลังโหลด…</p>;
+  // D184 — โครงร่าง 3 การ์ด (เจ้าหนี้ · ลูกหนี้ · ยอดค้างจากออเดอร์) แทนตัวหนังสือ
+  if (loading || !data) return (
+    <div className="space-y-4">
+      <SkeletonCard rows={3} cols={6} what="ยอดลูกหนี้-เจ้าหนี้" />
+      <SkeletonCard rows={2} cols={6} />
+      <SkeletonCard rows={2} cols={4} />
+    </div>
+  );
 
   const table = (title: string, rows: ApAr["payable"], total: number, tone: string) => (
     <Card title={`${title} — รวม ${fmt(total)} บาท`}>
@@ -68,9 +76,11 @@ export function ApArTab({ boot, entityId, active }: { boot: Bootstrap; entityId:
                     <td>{r.description}{r.installment ? ` [งวด ${r.installment}]` : ""}</td>
                     <td className="whitespace-nowrap">{d.date(r.dueDate)}</td>
                     <td className={`p-1 text-right font-medium ${tone}`}>{fmt(r.amount)}</td>
-                    <td className="whitespace-nowrap">
-                      <RowBtn tone="brand" onClick={() => toggleSettle(r.transactionId)}>ชำระ</RowBtn>
-                      <RowBtn tone="red" onClick={() => doVoid(r.transactionId)} className="ml-2">ยกเลิก</RowBtn>
+                    <td>
+                      {/* D184 — ชำระ = ปุ่มรอง · ยกเลิก = ปุ่มอันตรายแยกด้วยเส้นคั่น (กันนิ้วพลาด) */}
+                      <ActionRow compact danger={<Button size="sm" tone="danger" onClick={() => doVoid(r.transactionId)}>ยกเลิก</Button>}>
+                        <Button size="sm" aria-expanded={settleId === r.transactionId} onClick={() => toggleSettle(r.transactionId)}>ชำระ</Button>
+                      </ActionRow>
                     </td>
                   </tr>
                   {settleId === r.transactionId && (
@@ -79,7 +89,7 @@ export function ApArTab({ boot, entityId, active }: { boot: Bootstrap; entityId:
                         <div className="flex flex-wrap items-end gap-2">
                           <Field label="บัญชีที่ใช้ชำระ"><Select value={acc} onChange={(e) => setAcc(e.target.value)}><option value="">— เลือก —</option>{accountOptions.map((a) => <option key={a.account_name} value={a.account_name}>{a.account_name}</option>)}</Select></Field>
                           <Field label="วันที่ชำระ"><TextInput type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} /></Field>
-                          <button onClick={() => doSettle(r.transactionId)} disabled={pending} className="rounded-lg bg-brand px-4 py-2 text-sm text-on-brand disabled:opacity-50">ยืนยันชำระ</button>
+                          <Button tone="primary" pending={pending} onClick={() => doSettle(r.transactionId)}>ยืนยันชำระ</Button>
                         </div>
                         <p className="mt-1 text-xs text-faint">
                           ยอดเงินในบัญชีจะขยับในวันที่ชำระ · บิลยังอยู่ในรายงานภาษีเดือนเดิม ({d.month(r.date)}) ไม่ย้ายตามวันที่ชำระ

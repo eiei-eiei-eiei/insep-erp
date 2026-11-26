@@ -10,6 +10,7 @@ import {
   exportFileName, sheetNameOf, sheetRows, totalRows, EXPORT_TABLES,
 } from "@/lib/export/tenantExport";
 import { exportTenantDataAction, type ExportResult } from "../actions";
+import { Button } from "@/lib/shared/page";
 
 type Kind = "json" | "xlsx";
 
@@ -170,13 +171,13 @@ export function DataManager() {
           footer={
             <>
               <ModalCancel onClick={() => setAsk(null)} disabled={pending} />
-              <button
+              <Button
                 onClick={submit}
                 disabled={pending || !password}
-                className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-on-brand hover:opacity-90 disabled:opacity-50"
+                tone="primary"
               >
                 {pending ? "กำลังเตรียมไฟล์…" : "ดาวน์โหลด"}
-              </button>
+              </Button>
             </>
           }
         >

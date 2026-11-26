@@ -10,6 +10,7 @@ import { WarehouseTab } from "./WarehouseTab";
 import { SyncHistoryTab } from "./SyncHistoryTab";
 import { MenuTab } from "./MenuTab";
 import { IconCart } from "@/lib/shared/icons";
+import { ModuleTabs, PageHeader } from "@/lib/shared/page";
 import { slugFromLabel, tabsFor } from "@/lib/shared/tabs";
 import { can, toRole, ROLE_LABEL } from "@/lib/shared/roles";
 import { useTabUrl } from "../../_components/useTabUrl";
@@ -46,13 +47,9 @@ export function SalesApp({ boot }: { boot: SalesBoot }) {
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <IconCart size={24} className="text-brand" />
-        <h1 className="text-2xl font-bold text-ink">ขาย</h1>
-        <span className="ml-auto text-sm text-faint">
-          บทบาท <b>{ROLE_LABEL[role]}</b>
-        </span>
-      </div>
+      <PageHeader icon={<IconCart size={24} />} title="ขาย">
+        <span className="text-faint">บทบาท <b>{ROLE_LABEL[role]}</b></span>
+      </PageHeader>
 
       {/* ★ ตัดสินจากสิทธิ์ ไม่ใช่เทียบชื่อบทบาท — เพิ่มบทบาทอ่านอย่างเดียวตัวใหม่แล้วต้องขึ้นเอง */}
       {!canWrite && (
@@ -61,17 +58,14 @@ export function SalesApp({ boot }: { boot: SalesBoot }) {
         </div>
       )}
 
-      <div className="mb-5 -mx-4 flex gap-1 overflow-x-auto border-b border-line px-4">
-        {allowedTabs.map((t) => (
-          <button
-            key={t.slug}
-            onClick={() => setTab(t.slug)}
-            className={`shrink-0 whitespace-nowrap rounded-t-lg px-4 py-2 text-sm font-medium transition ${tab === t.slug ? "border-b-2 border-warn-line text-warn" : "text-faint hover:text-ink"}`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {/* D184 — แถบแท็บตัวกลาง (เดิมขายใช้ขีดสีส้ม warn ต่างจากโมดูลอื่น → สีแบรนด์เหมือนกันทุกโมดูล) */}
+      <ModuleTabs
+        tabs={allowedTabs.map((t) => t.slug)}
+        active={tab}
+        onPick={setTab}
+        label="แท็บของขาย"
+        labelOf={(s) => allowedTabs.find((t) => t.slug === s)?.label ?? s}
+      />
 
       {visited.has("create") && (
         <div className={show("create")}><QuotationTab boot={boot} canWrite={canWrite} editOrder={editOrder} onDoneEdit={() => setEditOrder(null)} /></div>

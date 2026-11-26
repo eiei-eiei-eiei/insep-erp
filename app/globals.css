@@ -195,6 +195,14 @@ body {
    ใช้คู่กับ <TableWrap> ใน lib/shared/ui.tsx ที่คุมการเลื่อนแนวนอน
    -------------------------------------------------------------------------- */
 @layer components {
+  /* แถบแท็บของโมดูล (`ModuleTabs` · D184) — ปัด/เลื่อนได้แต่ไม่วาดแถบเลื่อน
+     เดิมโผล่เป็นแถบเทา + ลูกศรใต้แท็บบนมือถือ · บอกว่ายังมีแท็บซ่อนด้วยขอบขวาจางแทน */
+  .tabbar {
+    scrollbar-width: none;
+  }
+  .tabbar::-webkit-scrollbar {
+    display: none;
+  }
   .tbl {
     width: 100%;
     border-collapse: collapse;

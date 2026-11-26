@@ -15,6 +15,7 @@ import { BarSettingsTab } from "./BarSettingsTab";
 import { slugFromLabel, tabsFor } from "@/lib/shared/tabs";
 import { toRole, ROLE_LABEL } from "@/lib/shared/roles";
 import { IconGlass } from "@/lib/shared/icons";
+import { ModuleTabs, PageHeader } from "@/lib/shared/page";
 import { useTabUrl } from "../../_components/useTabUrl";
 
 /**
@@ -70,15 +71,11 @@ export function BarApp({ boot }: { boot: BarBoot }) {
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        {/* 🐛 D96 — เดิมเป็นอิโมจิ 🍸 ทั้งที่ D43 เลิกใช้อิโมจิทั้งแอปไปแล้ว
-            (อิโมจิเปลี่ยนหน้าตาตาม OS · ปรับสีตาม token ไม่ได้ · ดู "ทำเล่น" ตอนเดโมขาย) */}
-        <IconGlass size={24} className="text-brand" />
-        <h1 className="text-2xl font-bold text-ink">บาร์</h1>
-        <span className="ml-auto text-sm text-faint">
-          บทบาท <b>{ROLE_LABEL[role]}</b>
-        </span>
-      </div>
+      {/* 🐛 D96 — เดิมเป็นอิโมจิ 🍸 ทั้งที่ D43 เลิกใช้อิโมจิทั้งแอปไปแล้ว
+          (อิโมจิเปลี่ยนหน้าตาตาม OS · ปรับสีตาม token ไม่ได้ · ดู "ทำเล่น" ตอนเดโมขาย) */}
+      <PageHeader icon={<IconGlass size={24} />} title="บาร์">
+        <span className="text-faint">บทบาท <b>{ROLE_LABEL[role]}</b></span>
+      </PageHeader>
 
       {/* ★ ยังไม่ได้ตั้งกิจการ = ทำอะไรไม่ได้เลย · ต้องบอกตรง ๆ ว่าไปกดที่ไหน (D83)
           🚨 จงใจไม่เดาเป็นกิจการหลัก — เดาผิดแล้วยอดขายทั้งคืนไปลงบัญชีโรงกลั่น */}
@@ -96,21 +93,15 @@ export function BarApp({ boot }: { boot: BarBoot }) {
         </div>
       )}
 
+      {/* D184 — แถบแท็บตัวกลาง (เดิมเป็นปุ่มเม็ดยาสีแบรนด์ ต่างจากทุกโมดูล) · แท็บเดียว = ไม่ต้องมีแถบ (เหมือนเดิม) */}
       {allowedTabs.length > 1 && (
-        <div className="mb-4 flex flex-wrap gap-2">
-          {allowedTabs.map((t) => (
-            <button
-              key={t.slug}
-              type="button"
-              onClick={() => setTab(t.slug)}
-              className={`rounded-lg px-3 py-1.5 text-sm ${
-                tab === t.slug ? "bg-brand text-on-brand" : "bg-raised text-muted hover:text-ink"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+        <ModuleTabs
+          tabs={allowedTabs.map((t) => t.slug)}
+          active={tab}
+          onPick={setTab}
+          label="แท็บของบาร์"
+          labelOf={(s) => allowedTabs.find((t) => t.slug === s)?.label ?? s}
+        />
       )}
 
       {allowed.includes("pos") && visited.has("pos") && (

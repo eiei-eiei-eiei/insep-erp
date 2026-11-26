@@ -12,6 +12,7 @@ import { customerNameParts } from "@/lib/bar/customerName";
 import { recipeText, refsOf } from "@/lib/bar/houseSlot";
 import { useDateFmt } from "@/lib/shared/dateFormatContext";
 import { bangkokDateISO } from "@/lib/shared/datetime";
+import { SkeletonText } from "@/lib/shared/page";
 
 type CardData = {
   favMenuIds: string[];
@@ -209,7 +210,7 @@ function CustomerCard({
   onReload: () => void;
 }) {
   const df = useDateFmt();
-  if (!card) return <div className="mt-3 text-sm text-muted">กำลังโหลด…</div>;
+  if (!card) return <div className="mt-3"><SkeletonText lines={4} what="ข้อมูลลูกค้า" /></div>;
 
   const live = card.lines.filter((l) => !l.voided_at);
   const byMenu = new Map<string, { name: string; qty: number; last: string | null }>();
