@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { saveLineAction, clearLineAction } from "../actions";
 import { Field, SaveButton, TextInput, useSaver } from "@/lib/shared/ui";
 import { SettingsCard } from "@/lib/shared/settings";
+import { useUnsaved } from "@/lib/shared/pageGuardHost";
 
 /**
  * แจ้งเตือน LINE ของกิจการนี้ (0033)
@@ -28,6 +29,9 @@ export function LineCard({
   const [groupId, setGroupId] = useState(current.groupId);
   const [token, setToken] = useState("");
   const [editingToken, setEditingToken] = useState(!current.hasToken);
+  // D173 — พิมพ์โทเคนใหม่ค้างไว้ หรือแก้ Group ID แล้วยังไม่บันทึก · บันทึกแล้วล้างโทเคน + props ใหม่ ⇒ หายเอง
+  // 🚨 ไม่เอาค่าโทเคนไปแสดงที่ไหนเพิ่ม (ค่าลับ) — ใช้แค่ว่า "มีที่พิมพ์ค้าง" หรือไม่
+  useUnsaved(token.trim() !== "" || groupId.trim() !== current.groupId.trim(), "การแจ้งเตือน LINE");
 
   function save() {
     run(

@@ -138,3 +138,45 @@ export function tableCaption(locked: boolean): string {
     ? "งวดนี้ลงบัญชีแล้ว — ตัวเลขบนตารางคือค่าที่บันทึกไว้ ไม่ใช่ผลคำนวณสด (แก้เกณฑ์ทีหลังจะไม่ทำให้ยอดของงวดนี้ขยับ)"
     : "ตัวเลขบนตารางคือผลคำนวณสด — กดบันทึกเพื่อแช่ค่าไว้ก่อนลงบัญชี";
 }
+
+/** ค่าที่กรอกของ 1 แถวในตารางงวด — รูปเดียวกับ `LineInput` ใน payroll/actions.ts (ไม่ import ข้าม "use server") */
+export type PeriodDraftLine = {
+  workDaysOverride: number | null;
+  values: Record<string, number>;
+  manual: Record<string, number>;
+  whtOverride: number | null;
+};
+
+/** เทียบช่องตัวเลขแบบ "ไม่มี key = 0" — กันกรณี NumBox เติม 0 ให้ทั้งที่ผู้ใช้ไม่ได้แก้ */
+function sameNums(a: Record<string, number> = {}, b: Record<string, number> = {}): boolean {
+  for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    if ((Number(a[k]) || 0) !== (Number(b[k]) || 0)) return false;
+  }
+  return true;
+}
+
+/**
+ * ตารางงวดเงินเดือนมีค่าที่ "แก้แล้วยังไม่บันทึก" ไหม — ตัวตัดสินของ `useUnsaved` (D173 งานค้าง ข้อ 1)
+ *
+ * ★ เทียบกับค่าที่โหลดมาตอนเปิดงวด/หลังบันทึก (baseline) ไม่ใช่ดูว่า draft มีค่าหรือไม่
+ *   เพราะ draft ถูกเติมจากค่าที่บันทึกไว้ตั้งแต่โหลด (มีค่าเสมอแม้ไม่ได้แก้)
+ * 🪤 `setVal` เติม key เป็น 0 ได้ทั้งที่ไม่ได้แก้ → ช่องที่ไม่มี key ถือเป็น 0
+ * ★ งวดที่ลงบัญชีแล้ว (locked) = ไม่นับเสมอ (แก้อะไรไม่ได้อยู่แล้ว)
+ * ★ แถวที่ไม่มีใน baseline (เช่นเพิ่งเติมพนักงานแต่ยังไม่โหลดใหม่) เทียบกับแถวว่าง
+ */
+export function periodDraftDirty(
+  locked: boolean,
+  draft: Record<string, PeriodDraftLine>,
+  baseline: Record<string, PeriodDraftLine>,
+): boolean {
+  if (locked) return false;
+  const empty: PeriodDraftLine = { workDaysOverride: null, values: {}, manual: {}, whtOverride: null };
+  for (const id of Object.keys(draft)) {
+    const d = draft[id];
+    const b = baseline[id] ?? empty;
+    if ((d.workDaysOverride ?? null) !== (b.workDaysOverride ?? null)) return true;
+    if ((d.whtOverride ?? null) !== (b.whtOverride ?? null)) return true;
+    if (!sameNums(d.values, b.values) || !sameNums(d.manual, b.manual)) return true;
+  }
+  return false;
+}

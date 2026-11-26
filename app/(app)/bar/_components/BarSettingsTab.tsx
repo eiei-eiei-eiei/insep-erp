@@ -6,6 +6,8 @@ import { promptPayError, promptPayPayload } from "@/lib/bar/promptpay";
 import { hasSaleWindow } from "@/lib/bar/businessDate";
 import { Field, TextInput, TextArea, Select, useSaver, MissingHint, SuggestInput } from "@/lib/shared/ui";
 import { SettingsCard, SettingsShell } from "@/lib/shared/settings";
+import { useUnsaved } from "@/lib/shared/pageGuardHost";
+import { formDiffers } from "@/lib/shared/pageGuards";
 import { saveBarSettingsAction } from "../actions";
 import { ReceiptLayoutCard } from "./ReceiptLayoutCard";
 import { QuickPickSettings } from "./QuickPickSettings";
@@ -47,6 +49,21 @@ export function BarSettingsTab({ boot, onReload }: { boot: BarBoot; onReload: ()
   const [incomeCat, setIncomeCat] = useState(s.incomeCat);
   const [layout, setLayout] = useState<ReceiptLayout>(data.layout);
   const [preview, setPreview] = useState<string | null>(null);
+
+  // D173 งานค้าง ข้อ 2 — ตั้งค่าบาร์ (รวมผังบิล) บันทึกด้วยปุ่มเดียว ⇒ ตัวเตือนตัวเดียว
+  //   ค่าอ้างอิง = boot ที่ onReload() โหลดใหม่หลังบันทึก ⇒ บันทึกแล้วเตือนหายเอง
+  useUnsaved(
+    formDiffers(
+      { entityId, ppType, ppId, channels, dayStart, dayEnd, roundCash, blockNegative, footer, revenueAccount, cashAccount, incomeCat, layout: JSON.stringify(layout) },
+      {
+        entityId: s.entityId, ppType: s.promptPayType as string, ppId: s.promptPayId, channels: s.channels.join("\n"),
+        dayStart: s.window.start, dayEnd: s.window.end, roundCash: s.roundCash, blockNegative: s.blockNegative,
+        footer: s.footer, revenueAccount: s.revenueAccount, cashAccount: s.cashAccount, incomeCat: s.incomeCat,
+        layout: JSON.stringify(data.layout),
+      },
+    ),
+    "ตั้งค่าบาร์",
+  );
 
   const target = { type: ppType as "mobile" | "natid" | "ewallet", id: ppId };
   const ppErr = promptPayError(target);

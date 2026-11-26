@@ -6,6 +6,8 @@ import { saveBrandingAction } from "../actions";
 import { BRAND_COLORS, type BrandColor, type ColorMode } from "@/lib/shared/branding";
 import { Field, Help, MissingHint, SaveButton, Select, TextInput, useSaver } from "@/lib/shared/ui";
 import { SettingsCard } from "@/lib/shared/settings";
+import { useUnsaved } from "@/lib/shared/pageGuardHost";
+import { formDiffers } from "@/lib/shared/pageGuards";
 
 /**
  * ตั้งค่าแบรนด์ของกิจการ (D43) — ชื่อ/สี/โลโก้/โหมดเริ่มต้น
@@ -24,6 +26,11 @@ export function BrandingCard({
   const [color, setColor] = useState<BrandColor>(current.color);
   const [logoUrl, setLogoUrl] = useState(current.logoUrl ?? "");
   const [mode, setMode] = useState<ColorMode>(current.defaultMode);
+  // D173 — `current` มาจาก server · อัปเดตเองหลัง router.refresh() ⇒ บันทึกแล้วเตือนหาย
+  useUnsaved(
+    formDiffers({ name, color, logoUrl, mode }, { name: current.name, color: current.color, logoUrl: current.logoUrl ?? "", mode: current.defaultMode }),
+    "แบรนด์ของกิจการ",
+  );
 
   function save() {
     run(

@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   shownLine, differsFromStored, round2, employeeForCalc, tableCaption,
-  carriedValues, overStdEmpIds, rebaseNotice,
+  carriedValues, overStdEmpIds, rebaseNotice, periodDraftDirty, type PeriodDraftLine,
 } from "./periodView";
+import { readFileSync } from "node:fs";
 import type { PayrollLine } from "./types";
 
 const L = (net: number, gross = net): PayrollLine =>
@@ -163,5 +164,36 @@ describe("tableCaption — ประโยคต้องตรงกับเ�
       const saysStored = tableCaption(locked).includes("ค่าที่บันทึกไว้");
       expect(saysStored).toBe(usesStored);
     }
+  });
+});
+
+describe("periodDraftDirty — เตือนยังไม่บันทึกในตารางงวด (D173 งานค้าง ข้อ 1)", () => {
+  const L = (p: Partial<PeriodDraftLine> = {}): PeriodDraftLine => ({ workDaysOverride: null, values: {}, manual: {}, whtOverride: null, ...p });
+  const base = { E1: L({ values: { OT: 5 } }), E2: L() };
+
+  it("เพิ่งโหลดมา (draft = baseline) = ไม่เตือน", () => {
+    expect(periodDraftDirty(false, structuredClone(base), base)).toBe(false);
+  });
+  it("🪤 NumBox เติม key เป็น 0 ทั้งที่ไม่ได้แก้ = ไม่เตือน", () => {
+    expect(periodDraftDirty(false, { ...base, E2: L({ values: { OT: 0 }, manual: { BONUS: 0 } }) }, base)).toBe(false);
+  });
+  it("แก้ช่องตัวเลข / วันทำงาน / ภาษีที่กรอกเอง = เตือน", () => {
+    expect(periodDraftDirty(false, { ...base, E1: L({ values: { OT: 6 } }) }, base)).toBe(true);
+    expect(periodDraftDirty(false, { ...base, E2: L({ manual: { BONUS: 100 } }) }, base)).toBe(true);
+    expect(periodDraftDirty(false, { ...base, E2: L({ workDaysOverride: 20 }) }, base)).toBe(true);
+    expect(periodDraftDirty(false, { ...base, E2: L({ whtOverride: 0 }) }, base)).toBe(true);
+  });
+  it("แก้แล้วแก้กลับเป็นค่าเดิม = ไม่เตือน", () => {
+    expect(periodDraftDirty(false, { ...base, E1: L({ values: { OT: 5 } }) }, base)).toBe(false);
+  });
+  it("งวดที่ลงบัญชีแล้ว = ไม่เตือนเสมอ", () => {
+    expect(periodDraftDirty(true, { ...base, E1: L({ values: { OT: 99 } }) }, base)).toBe(false);
+  });
+  it("🪤 หน้างวดต้องเรียก useUnsaved ด้วยตัวนี้ และตั้ง baseline ใน load() (อ่านซอร์ส)", () => {
+    const src = readFileSync("app/(app)/payroll/_components/PeriodTab.tsx", "utf8")
+      .split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+    expect(src).toMatch(/useUnsaved\(periodDraftDirty\(locked, draft, baseline\),/);
+    const load = src.slice(src.indexOf("const load = useCallback"), src.indexOf("}, []);", src.indexOf("const load = useCallback")));
+    expect(load).toContain("setBaseline(");
   });
 });

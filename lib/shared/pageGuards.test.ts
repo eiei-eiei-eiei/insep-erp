@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { leaveGuard, pageTitle, unsavedDetail, type LeaveClick } from "./pageGuards";
+import { leaveGuard, pageTitle, unsavedDetail, formDiffers, type LeaveClick } from "./pageGuards";
 
 /** D173 เฟส 5 — ชื่อแท็บเบราว์เซอร์ · เตือนยังไม่บันทึก · ล้อเมาส์ช่องตัวเลข · หัวตารางติดบน */
 
@@ -84,5 +84,45 @@ describe("ของกลางถูกต่อจริง", () => {
     expect(block).toContain("min-width: 768px");
     expect(block).toContain("position: sticky");
     expect(block).toMatch(/background:\s*var\(--color-/);
+  });
+});
+
+describe("formDiffers — การ์ดตั้งค่าที่เป็นฟอร์ม (D173 งานค้าง ข้อ 2)", () => {
+  it("เท่าค่าที่บันทึกไว้ = ไม่เตือน", () => {
+    expect(formDiffers({ a: "x", b: 1, c: true }, { a: "x", b: 1, c: true })).toBe(false);
+  });
+  it("แก้ช่องใดช่องหนึ่ง = เตือน", () => {
+    expect(formDiffers({ a: "y", b: 1 }, { a: "x", b: 1 })).toBe(true);
+    expect(formDiffers({ a: "x", b: 2 }, { a: "x", b: 1 })).toBe(true);
+    expect(formDiffers({ a: "x", c: false }, { a: "x", c: true })).toBe(true);
+  });
+  it("เว้นวรรคหัวท้ายไม่นับ (server trim ตอนบันทึกอยู่แล้ว)", () => {
+    expect(formDiffers({ a: " x  " }, { a: "x" })).toBe(false);
+  });
+  it("null/undefined เท่ากัน", () => {
+    expect(formDiffers({ a: undefined as unknown as null }, { a: null })).toBe(false);
+  });
+});
+
+describe("D173 งานค้าง ข้อ 1-2 — ฟอร์มที่ต้องมีตัวเตือนยังไม่บันทึก (อ่านซอร์ส)", () => {
+  const FILES: [string, number][] = [
+    ["app/(app)/payroll/_components/PeriodTab.tsx", 1],
+    ["app/(app)/settings/_components/CompanyCard.tsx", 3], // บันทึกแยก 3 ปุ่ม = 3 ตัว
+    ["app/(app)/settings/_components/BrandingCard.tsx", 1],
+    ["app/(app)/settings/_components/LineCard.tsx", 1],
+    ["app/(app)/bar/_components/BarSettingsTab.tsx", 1], // รวมผังบิล (บันทึกปุ่มเดียวกัน)
+  ];
+  for (const [f, n] of FILES) {
+    it(`${f} เรียก useUnsaved ${n} ครั้ง`, () => {
+      const code = fs.readFileSync(path.join(process.cwd(), f), "utf8")
+        .split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+      expect((code.match(/\buseUnsaved\(/g) ?? []).length).toBe(n);
+    });
+  }
+  it("🪤 LabCategoriesCard: useUnsaved อยู่ก่อน early return (ลำดับ hook)", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "app/(app)/bar/_components/LabTab.tsx"), "utf8");
+    const fn = src.slice(src.indexOf("export function LabCategoriesCard"));
+    expect(fn.indexOf("useUnsaved(")).toBeGreaterThan(-1);
+    expect(fn.indexOf("useUnsaved(")).toBeLessThan(fn.indexOf("if (!lab.data) return null;"));
   });
 });

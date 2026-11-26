@@ -9,7 +9,8 @@ import { ratesOn } from "@/lib/payroll/sso";
 import { printSlips, slipCompany, type SlipCompany, type SlipData } from "@/lib/payroll/slip";
 import type { FilingEntity } from "@/lib/payroll/filingHtml";
 import { legCoverage, legTotal, suggestLegDate } from "@/lib/payroll/legs";
-import { shownLine, differsFromStored, employeeForCalc, tableCaption, overStdEmpIds, rebaseNotice } from "@/lib/payroll/periodView";
+import { shownLine, differsFromStored, employeeForCalc, tableCaption, overStdEmpIds, rebaseNotice, periodDraftDirty } from "@/lib/payroll/periodView";
+import { useUnsaved } from "@/lib/shared/pageGuardHost";
 import { notInPeriodReason } from "@/lib/payroll/employment";
 import { formulaWorkDays, overrideFromInput, resolveWorkDays, ruleOf, storedOverride, workDayCaption } from "@/lib/payroll/workDays";
 import type { PayrollLine } from "@/lib/payroll/types";
@@ -67,6 +68,8 @@ export function PeriodTab({
   /** กิจการของงวด — หัวสลิป · null = อ่านไม่สำเร็จ (ปุ่มพิมพ์บอกผู้ใช้เอง) */
   const [entity, setEntity] = useState<FilingEntity | null>(null);
   const [draft, setDraft] = useState<Record<string, LineInput>>({});
+  /** ค่าที่โหลดมาตอนเปิดงวด/หลังบันทึก — ไว้เทียบว่ามีอะไรแก้ค้าง (D173 งานค้าง ข้อ 1) */
+  const [baseline, setBaseline] = useState<Record<string, LineInput>>({});
   const [loading, setLoading] = useState(false);
 
   // ฟอร์มสร้างงวด
@@ -91,13 +94,15 @@ export function PeriodTab({
         setWorkDaysStd(d.period.workDaysStd);
         setPayDate(d.period.payDate ?? "");
       }
-      setDraft(Object.fromEntries(d.items.map((i) => [i.empId, {
+      const loaded: Record<string, LineInput> = Object.fromEntries(d.items.map((i) => [i.empId, {
         empId: i.empId,
         workDaysOverride: storedOverride(i.inputs, d.period?.workDaysStd ?? 0),
         values: i.inputs.values ?? {},
         manual: i.inputs.manual ?? {},
         whtOverride: i.inputs.whtOverride ?? null,
-      }])));
+      }]));
+      setDraft(loaded);
+      setBaseline(loaded);
       setLoading(false);
     });
   }, []);
@@ -105,6 +110,8 @@ export function PeriodTab({
   useEffect(() => { if (active && periodId) load(periodId); }, [active, periodId, load]);
 
   const locked = period != null && period.status !== "draft";
+  // D173 — เตือนก่อนออกจากหน้าเมื่อแก้ตัวเลขในตารางแล้วยังไม่กด "คำนวณและบันทึก" · หลังบันทึก load() ตั้ง baseline ใหม่ = หายเอง
+  useUnsaved(periodDraftDirty(locked, draft, baseline), "งวดเงินเดือนที่แก้ค้างไว้");
 
   // ── พรีวิวสด ────────────────────────────────────────────────────────────────
   const rates = useMemo(

@@ -11,6 +11,8 @@ import { cashSettingText } from "@/lib/sales/cashAccount";
 import { FILING_METHODS, FILING_METHOD_LABEL, toFilingMethod } from "@/lib/accounting/taxFiling";
 import { companyHeaderPreviewHtml } from "../../sales/_components/print";
 import type { CompanySections } from "@/lib/shared/moduleScope";
+import { useUnsaved } from "@/lib/shared/pageGuardHost";
+import { formDiffers } from "@/lib/shared/pageGuards";
 
 /**
  * ข้อมูลกิจการ — ขึ้นหัวเอกสารการค้า (D44) + เลขทะเบียนสรรพสามิตที่ขึ้นหัวฟอร์ม ภส. (D64)
@@ -61,6 +63,19 @@ export function CompanyCard({
   const [revId, setRevId] = useState(revenueEntityId || (multiEntity ? "" : entities[0]?.entity_id ?? ""));
   const [revAcc, setRevAcc] = useState(revenueAccountName);
   const [cashAcc, setCashAcc] = useState(cashAccountName);
+
+  // D173 งานค้าง ข้อ 2 — การ์ดนี้บันทึกแยก 3 ปุ่ม ⇒ ตัวเตือนแยก 3 ตัว
+  //   ค่าอ้างอิงมาจาก props ซึ่งอัปเดตเองหลัง router.refresh() ⇒ บันทึกแล้วเตือนหายเอง
+  const savedForm = useMemo(() => toForm(entities.find((e) => e.entity_id === entityId)), [entities, entityId]);
+  useUnsaved(formDiffers(form, savedForm), "ข้อมูลกิจการ");
+  useUnsaved(docId !== docEntityId, "กิจการที่ออกเอกสารการค้า");
+  useUnsaved(
+    formDiffers(
+      { revId, revAcc, cashAcc },
+      { revId: revenueEntityId || (multiEntity ? "" : entities[0]?.entity_id ?? ""), revAcc: revenueAccountName, cashAcc: cashAccountName },
+    ),
+    "กิจการ/บัญชีที่รับรายได้ขาย",
+  );
 
   const preview = useMemo(
     () =>

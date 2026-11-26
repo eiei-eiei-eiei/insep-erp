@@ -916,11 +916,13 @@ export function LabCategoriesCard({ boot }: { boot: BarBoot }) {
   const { setMsg } = useSaver();
   const [busy, setBusy] = useState(false);
   const [rows, setRows] = useState<LabCategory[] | null>(null);
-  if (!lab.data) return null;
-  const saved = labCategories(lab.data.categories);
+  // 🪤 D173 — hook ต้องอยู่ก่อน early return (ลำดับ hook ต้องเท่ากันทุกรอบ) ⇒ คิด dirty ก่อนเช็ค lab.data
+  const saved = lab.data ? labCategories(lab.data.categories) : [];
   const cur = rows ?? saved;
-  const used = (id: string) => lab.data!.uses.filter((u) => u.categoryId === id).length;
   const dirty = JSON.stringify(cur.map((c) => [c.categoryId, c.name])) !== JSON.stringify(saved.map((c) => [c.categoryId, c.name]));
+  useUnsaved(dirty, "หมวดการใช้ (ห้องทดลอง)");
+  if (!lab.data) return null;
+  const used = (id: string) => lab.data!.uses.filter((u) => u.categoryId === id).length;
   const blank = cur.some((c) => !c.name.trim());
   const set = (i: number, name: string) => setRows(cur.map((c, j) => (j === i ? { ...c, name } : c)));
   const ARROW = "grid h-8 w-8 place-items-center rounded text-muted hover:bg-raised hover:text-ink disabled:opacity-30";

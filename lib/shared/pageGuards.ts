@@ -56,3 +56,19 @@ export function unsavedDetail(labels: string[]): string {
   if (uniq.length === 0) return "ออกจากหน้านี้แล้วสิ่งที่กรอกไว้จะหาย";
   return `ยังไม่ได้บันทึก: ${uniq.join(" · ")} — ออกจากหน้านี้แล้วสิ่งที่กรอกไว้จะหาย`;
 }
+
+/**
+ * ฟอร์มต่างจากค่าที่บันทึกไว้ไหม — ตัวตัดสิน `useUnsaved` ของการ์ดตั้งค่าที่เป็นฟอร์ม (D173 งานค้าง ข้อ 2)
+ *
+ * ★ เทียบทีละช่องที่ **ทั้งสองฝั่งมี** แบบตื้น (string/number/boolean/null) · ช่องข้อความตัดช่องว่างหัวท้ายก่อน
+ *   (พิมพ์เว้นวรรคต่อท้ายแล้วลบออก ไม่ควรค้างเตือน · ฝั่ง server ก็ trim ตอนบันทึกอยู่แล้ว)
+ * 🚨 `saved` ต้องเป็นค่าที่ **อัปเดตตามหลังบันทึก** (props หลัง `router.refresh()` หรือ state ที่ตั้งใหม่)
+ *    ไม่งั้นเตือนค้างทั้งที่บันทึกแล้ว
+ */
+export function formDiffers<T extends Record<string, unknown>>(current: T, saved: T): boolean {
+  const norm = (v: unknown) => (typeof v === "string" ? v.trim() : v ?? null);
+  for (const k of Object.keys(saved)) {
+    if (norm(current[k]) !== norm(saved[k])) return true;
+  }
+  return false;
+}
