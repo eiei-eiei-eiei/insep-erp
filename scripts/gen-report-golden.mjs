@@ -43,7 +43,7 @@ const logProduct = [
 ];
 
 // ── แปลง db-shaped → sheet-shaped (ชื่อคอลัมน์ไทยตามระบบเดิม) ─────────────────────
-const sheet = {
+const toSheet = ({ materials, products, logMaterial, logFerment, logDistill, logDilute, logProduct }) => ({
   Master_Material: materials.map((m) => ({ "รหัสวัตถุดิบ": m.material_id, "ชื่อวัตถุดิบ": m.name, "หน่วยนับ": m.unit })),
   Master_Product: products.map((p) => ({ "รหัสสินค้า": p.product_id, "ชื่อสุรา": p.name, "ดีกรี": p.degree, "ขนาดขวด(ลิตร)": p.bottle_size_l, "ประเภทสุรา": p.liquor_type, "ชนิดสุรา": p.liquor_kind })),
   Log_Material: logMaterial.map((r) => ({ "วันที่": r.doc_date, "ประเภท(รับ/จ่าย)": r.trans_type, "รหัสวัตถุดิบ": r.material_id, "จำนวน": r.amount, "หลักฐานเลขที่": r.doc_ref, "หมายเหตุ": "" })),
@@ -51,7 +51,8 @@ const sheet = {
   Log_Distill: logDistill.map((r) => ({ "วันที่กลั่น": r.distill_date, "ชื่อสุรา": r.product_name, "รหัสBatchที่นำมากลั่น": r.batch, "ปริมาณน้ำสุราที่ได้(ลิตร)": r.vol, "ดีกรี": r.abv })),
   Log_Dilute: logDilute.map((r) => ({ "วันที่ปรุงแต่ง": r.dilute_date, "ชื่อสุรา": r.product_name, "ปริมาณสุราตั้งต้น(ลิตร)": r.start_vol, "ปริมาณสุราหลังปรุง(ลิตร)": r.final_vol, "ดีกรีหลังปรุง": r.final_abv })),
   Log_Product: logProduct.map((r) => ({ "วันที่": r.doc_date, "ประเภท(รับ/จ่าย)": r.trans_type, "รหัสสินค้า": r.product_id, "จำนวน(ขวด)": r.amount, "ลูกค้า/หมายเหตุ": r.note })),
-};
+});
+const sheet = toSheet({ materials, products, logMaterial, logFerment, logDistill, logDilute, logProduct });
 
 // ── stubs + eval ฟังก์ชันเดิม ─────────────────────────────────────────────────────
 const stubs = `
@@ -85,3 +86,51 @@ writeFileSync(
 );
 console.log("✓ lib/production/__golden__/reports.json");
 console.log("  production grid rows:", expected.production.grid.length, "· summary products:", expected.summary.products.length);
+
+// ── D186: ชุดข้ามปี — "ยอดสะสมทั้งปี" ต้องนับเฉพาะ ม.ค. ถึงเดือนรายงานของปีนั้น
+//    ส่วน "ยอดยกมา" ต้องรวมทุกปีก่อนหน้า (ของคงเหลือจริงไม่รีเซ็ตตอนขึ้นปีใหม่)
+//    คาดหวังมาจากฟังก์ชันเดิมใน Reports.js (ไม่ได้พิมพ์ตัวเลขเอง)
+const YB_MONTH = "2026-02";
+const yb = {
+  materials, products,
+  logMaterial: [
+    { doc_date: "2025-11-10", trans_type: "รับ", material_id: "T-MAT01", amount: 500, doc_ref: "PO-68-1" },
+    { doc_date: "2025-12-20", trans_type: "จ่าย", material_id: "T-MAT01", amount: 100, doc_ref: "9/68" },
+    { doc_date: "2026-01-05", trans_type: "รับ", material_id: "T-MAT01", amount: 50, doc_ref: "PO-69-1" },
+    { doc_date: "2026-02-03", trans_type: "จ่าย", material_id: "T-MAT01", amount: 30, doc_ref: "1/69" },
+    { doc_date: "2026-03-01", trans_type: "รับ", material_id: "T-MAT01", amount: 999, doc_ref: "PO-69-2" },
+  ],
+  logFerment: [
+    { ferment_date: "2025-12-28", product_name: "สาโททดสอบ", batch: "9/68", container_qty: 1, material_amounts: "100" },
+    { ferment_date: "2026-02-03", product_name: "สาโททดสอบ", batch: "1/69", container_qty: 1, material_amounts: "30" },
+  ],
+  logDistill: [
+    { distill_date: "2026-01-03", product_name: "สาโททดสอบ", batch: "9/68", vol: 20, abv: 60 },
+  ],
+  logDilute: [
+    { dilute_date: "2025-12-30", product_name: "สาโททดสอบ", start_vol: 10, final_vol: 15, final_abv: 40 },
+    { dilute_date: "2026-02-02", product_name: "สาโททดสอบ", start_vol: 20, final_vol: 30, final_abv: 40 },
+  ],
+  logProduct: [
+    { doc_date: "2025-12-31", trans_type: "รับ", product_id: "T-PROD01", amount: 40, note: "" },
+    { doc_date: "2026-01-15", trans_type: "จ่าย", product_id: "T-PROD01", amount: 10, note: "" },
+    { doc_date: "2026-02-10", trans_type: "รับ", product_id: "T-PROD01", amount: 30, note: "" },
+    { doc_date: "2026-02-11", trans_type: "จ่าย", product_id: "T-PROD01", amount: 5, note: "" },
+  ],
+};
+const R2 = factory(toSheet(yb));
+writeFileSync(
+  "lib/production/__golden__/reports-yearboundary.json",
+  JSON.stringify({
+    entity: ENTITY, month: YB_MONTH, materialId: MATERIAL_ID, productId: PRODUCT_ID,
+    db: yb,
+    expected: {
+      material: strip(R2.getMaterialReportData(YB_MONTH, MATERIAL_ID)),
+      product: strip(R2.getProductReportData(YB_MONTH, PRODUCT_ID)),
+      production: strip(R2.getProductionReportData(YB_MONTH, PRODUCT_ID)),
+      summary: strip(R2.getSummaryReportData(YB_MONTH)),
+    },
+  }, null, 1),
+  "utf8",
+);
+console.log("✓ lib/production/__golden__/reports-yearboundary.json");

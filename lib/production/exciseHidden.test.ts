@@ -37,7 +37,7 @@ describe("D90 — ฝั่งฟอร์ม ภส. ต้องกรอง�
     const raw = src.split(/\r?\n/).filter((l) => l.includes('from("log_product")') && !l.includes("function exciseLogProduct"));
     // บรรทัดที่เหลือต้องอยู่ในตัว helper เท่านั้น (helper มีบรรทัดเดียว)
     expect(raw.length, `มีจุดอ่าน log_product ที่ไม่ผ่าน helper:\n${raw.join("\n")}`).toBe(1);
-    expect(src).toContain("exciseLogProduct(supabase)");
+    expect(src).toContain("exciseLogProduct(supabase, entityId)"); // D186: กรองกิจการด้วย
   });
 
   it("helper ต้องกรอง excise_hidden จริง", () => {

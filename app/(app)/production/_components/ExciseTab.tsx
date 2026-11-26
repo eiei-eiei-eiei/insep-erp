@@ -120,6 +120,9 @@ export function ExciseTab({ active, role }: { active: boolean; role: Role }) {
       setSel0702_1Chae(o.productNamesFermented);
       setSel0702_2(o.products.map((p) => p.product_id));
       setLoaded(true);
+    }).catch((e) => {
+      // D89/D186 — อ่านทะเบียนไม่สำเร็จ (หรือได้ไม่ครบ) ต้องฟ้อง ไม่ใช่ค้างหน้าว่างเงียบ ๆ
+      if (alive) setMsg({ ok: false, text: e instanceof Error ? e.message : "โหลดรายการสำหรับฟอร์มไม่สำเร็จ" });
     });
     return () => { alive = false; };
   }, [active, loaded]);
